@@ -573,6 +573,15 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
 
         const result = await openPack(setNumber, username);
 
+        if (!result) {
+            if (pointCost > 0) {
+                await addPoints(username, pointCost, 'pokepack-refund');
+                console.log(`[PokePack] Refunded ${pointCost} to ${username} (pack failed)`);
+            }
+            sendChatMessage(`@${username}, couldn't open that pack. Try a different set!`, 'broadcaster').catch(() => {});
+            return;
+        }
+
         if (result) {
             const cardNames = result.pack.map((c: any) => {
                 const star = (c.rarity === 'Rare' || c.rarity === 'Rare Holo') ? '⭐' : '';
@@ -581,8 +590,12 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
             const { getUserPoints: getBalance } = require('./points');
             const newBalance = await getBalance(username);
 
-            // 1. Broadcaster posts the card list + balance
-            await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster');
+            // 1. Broadcaster posts the card list + balance (chat mode only)
+            const { getPokeMode } = require('./poke-mode');
+            const pokeMode = getPokeMode();
+            if (pokeMode === 'chat') {
+                await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster');
+            }
 
             // 2. AI reaction to the pack
             const rares = result.pack.filter((c: any) => c.rarity === 'Rare' || c.rarity === 'Rare Holo');
@@ -617,13 +630,16 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 }
             }
 
-            // 3. Post as bot with TTS
-            const { markTtsHandled } = require('./chat-dispatcher');
-            markTtsHandled(aiReaction);
-            await sendChatMessage(aiReaction, 'bot');
+            // 3. Post as bot with TTS (chat mode only)
+            if (pokeMode === 'chat') {
+                const { markTtsHandled } = require('./chat-dispatcher');
+                markTtsHandled(aiReaction);
+                await sendChatMessage(aiReaction, 'bot');
+            }
 
-            try {
-                const { textToSpeech } = await import('../ai/flows/text-to-speech');
+            if (pokeMode === 'chat') {
+                try {
+                    const { textToSpeech } = await import('../ai/flows/text-to-speech');
                 const ttsResult = await textToSpeech({ text: aiReaction });
                 if (ttsResult.audioDataUri) {
                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
@@ -640,8 +656,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
             } catch (err) {
                 console.error('[PokePack] TTS error:', err);
             }
-        } else {
-            sendChatMessage(`@${username}, couldn't open that pack. Try a different set!`, 'broadcaster').catch(() => {});
+            }
         }
     } catch (error) {
         console.error('[PokePack] Error:', error);

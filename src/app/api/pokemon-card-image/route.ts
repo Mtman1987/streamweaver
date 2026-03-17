@@ -13,9 +13,10 @@ export async function GET(request: NextRequest) {
   }
 
   const databasePath = path.join(process.cwd(), 'carddb-uploader', 'cards', 'database');
+  const hasLocalDb = fs.existsSync(databasePath);
 
   // Try with card name first if provided
-  if (cardName && cardName !== 'Unknown') {
+  if (hasLocalDb && cardName && cardName !== 'Unknown') {
     const cleanName = cardName.replace(/[^a-zA-Z0-9 -]/g, '');
     const localPath = path.join(databasePath, `${cleanName}_${number}_${setCode}.jpg`);
     
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Search database folder for matching file by pattern: *_number_setCode.jpg
+  if (hasLocalDb) {
   try {
     const files = fs.readdirSync(databasePath);
     const pattern = new RegExp(`^.+_${number}_${setCode}\.jpg$`, 'i');
@@ -48,10 +50,11 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error searching database:', error);
   }
+  }
 
   // Fallback to Pokemon TCG API
   try {
-    let imageUrl = `https://images.pokemontcg.io/${setCode}-${number}_hires.png`;
+    let imageUrl = `https://images.pokemontcg.io/${setCode}/${number}_hires.png`;
     let response = await fetch(imageUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
     });
     
     if (!response.ok) {
-      imageUrl = `https://images.pokemontcg.io/${setCode}-${number}.png`;
+      imageUrl = `https://images.pokemontcg.io/${setCode}/${number}.png`;
       response = await fetch(imageUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',

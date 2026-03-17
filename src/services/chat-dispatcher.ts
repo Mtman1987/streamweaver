@@ -217,165 +217,172 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     }
 
     if (isCommand && !isBot) {
+        // Handle !collection command
+        if (actualMessage.toLowerCase() === '!collection') {
+            const { getUserCards } = require('./pokemon-collection');
+            const { getUserCollection } = require('./pokemon-storage-discord');
+            const cards = await getUserCards(actualUsername);
+            if (cards.length === 0) {
+                await sendChatMessage(`@${actualUsername}, you don't have any cards yet! Use !pack to open packs.`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const rareCount = cards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
+
+            // Generate Pokédex HTML, upload to Discord, shorten URL
+            let pokedexUrl = '';
+            try {
+                const { generatePokedexHtml } = require('./pokedex-html');
+                const { uploadFileToDiscord, deleteMessage } = require('./discord');
+                const fsSync = require('fs');
+                const pathMod = require('path');
+                const idsPath = pathMod.join(process.cwd(), 'data', 'pokemon-discord-ids.json');
+                const ids = fsSync.existsSync(idsPath) ? JSON.parse(fsSync.readFileSync(idsPath, 'utf-8')) : {};
+                const key = actualUsername.toLowerCase();
+                const pokedexMsgKey = `pokedex_${key}`;
+                const pokedexUrlKey = `pokedex_url_${key}`;
+                const pokedexCountKey = `pokedex_count_${key}`;
+                const STORAGE_CHANNEL = '1476540488147533895';
+
+                // Reuse cached short URL if card count hasn't changed
+                if (ids[pokedexUrlKey] && ids[pokedexCountKey] === cards.length) {
+                    pokedexUrl = ids[pokedexUrlKey];
+                } else {
+                    // Delete old Pokédex message
+                    if (ids[pokedexMsgKey]) {
+                        await deleteMessage(STORAGE_CHANNEL, ids[pokedexMsgKey]).catch(() => {});
+                    }
+
+                    const collection = await getUserCollection(actualUsername);
+                    const html = await generatePokedexHtml(actualUsername, cards, collection.packsOpened);
+                    const result = await uploadFileToDiscord(
+                        STORAGE_CHANNEL, html,
+                        `pokedex_${key}.html`,
+                        `${actualUsername}'s Pok\u00e9dex | ${cards.length} cards | ${rareCount} rare`
+                    );
+
+                    if (result?.data && (result.data as any).id) {
+                        ids[pokedexMsgKey] = (result.data as any).id;
+                        const cdnUrl = (result.data as any).attachments?.[0]?.url;
+                        if (cdnUrl) {
+                            // Shorten with TinyURL
+                            try {
+                                const ts = Date.now().toString(36);
+                                const alias = `${key}-pokedex-${ts}`;
+                                const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(cdnUrl)}&alias=${encodeURIComponent(alias)}`);
+                                const short = tinyRes.ok ? (await tinyRes.text()).trim() : '';
+                                pokedexUrl = short && short.startsWith('http') ? short : cdnUrl;
+                            } catch {
+                                pokedexUrl = cdnUrl;
+                            }
+                            ids[pokedexUrlKey] = pokedexUrl;
+                            ids[pokedexCountKey] = cards.length;
+                        }
+                    }
+                    fsSync.writeFileSync(idsPath, JSON.stringify(ids, null, 2));
+                }
+            } catch (e) {
+                console.error('[Collection] Pok\u00e9dex upload failed:', e);
+            }
+
+            const urlPart = pokedexUrl ? ` Pok\u00e9dex: ${pokedexUrl}` : '';
+            await sendChatMessage(`@${actualUsername} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <#> <#> <#>`, 'broadcaster').catch(() => {});
+
+            if (typeof (global as any).broadcast === 'function') {
+                const BATCH_SIZE = 20;
+                const batches: any[][] = [];
+                for (let i = 0; i < cards.length; i += BATCH_SIZE) {
+                    batches.push(cards.slice(i, i + BATCH_SIZE));
+                }
+                for (let i = 0; i < batches.length; i++) {
+                    setTimeout(() => {
+                        (global as any).broadcast({
+                            type: 'pokemon-collection-show',
+                            payload: { username: actualUsername, cards: batches[i], batch: i + 1, totalBatches: batches.length }
+                        });
+                    }, i * 5000);
+                }
+            }
+            return;
+        }
+
         // Handle !show command for Pokemon cards (BEFORE command store check)
         if (actualMessage.toLowerCase().startsWith('!show ')) {
-          const args = actualMessage.substring(6).trim().split(/\s+/);
-          const cardQuery = args[0];
-          const setFilter = args[1]?.toLowerCase() || null;
-          
-          if (!cardQuery) {
-            await sendChatMessage(`@${actualUsername}, usage: !show <card name or number> [set]`, 'bot').catch(() => {});
+          const searchName = actualMessage.substring(6).trim().toLowerCase();
+          if (!searchName) {
+            await sendChatMessage(`@${actualUsername}, usage: !show <card name>`, 'broadcaster').catch(() => {});
             return;
           }
-          
+
           const path = require('path');
           const fs = require('fs');
           const CARDS_DB_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
-          const files = fs.readdirSync(CARDS_DB_DIR).filter((f: string) => f.endsWith('.json'));
-          const isNumber = /^\d+$/.test(cardQuery);
-          const searchName = cardQuery.toLowerCase();
-          const matches: any[] = [];
-          
-          for (const file of files) {
-            const setCode = file.replace('.json', '');
-            if (setFilter && setCode !== setFilter) continue;
-            
-            try {
-              const cardData = JSON.parse(fs.readFileSync(path.join(CARDS_DB_DIR, file), 'utf-8'));
-              const cards = isNumber 
-                ? cardData.filter((c: any) => c.number === cardQuery)
-                : cardData.filter((c: any) => c.name && c.name.toLowerCase() === searchName);
-              
-              cards.forEach((card: any) => {
-                matches.push({ ...card, setCode });
-              });
-            } catch (err) {
-              console.error(`[Dispatcher] Error reading card file ${file}:`, err);
-            }
-          }
-          
-          if (matches.length === 0) {
-            await sendChatMessage(`@${actualUsername}, card not found!`, 'bot').catch(() => {});
-            return;
-          }
-          
           const { getUserCards } = require('./pokemon-collection');
           const userCards = await getUserCards(actualUsername);
-          
-          // If more than 5 cards, create file and upload to Discord
-          if (matches.length > 5) {
-            const fileContent = matches.map(card => {
-              const owned = userCards.filter((c: any) => c.number === card.number && c.setCode === card.setCode).length;
-              return [
-                card.name,
-                card.level ? `Lv.${card.level}` : '',
-                `#${card.number}`,
-                `Set: ${card.setCode}`,
-                card.rarity || 'Common',
-                card.hp ? `HP: ${card.hp}` : '',
-                card.types ? `Type: ${card.types.join('/')}` : '',
-                `(owned: ${owned})`
-              ].filter(Boolean).join(' | ');
-            }).join('\n');
-            
-            const { uploadFileToDiscord, deleteMessage, getChannelMessages } = require('./discord');
-            const STORAGE_CHANNEL_ID = '1476540488147533895';
-            const fileName = `cards_${cardQuery}_${Date.now()}.txt`;
-            
-            // Delete old query files from this user
+
+          // Find owned cards matching the search (exact then partial)
+          let owned = userCards.filter((c: any) => c.name.toLowerCase() === searchName);
+          if (owned.length === 0) {
+            owned = userCards.filter((c: any) => c.name.toLowerCase().includes(searchName));
+          }
+
+          if (owned.length === 0) {
+            await sendChatMessage(`@${actualUsername}, you don't own any card matching "${searchName}".`, 'broadcaster').catch(() => {});
+            return;
+          }
+
+          // Dedupe by setCode+number, keep first of each
+          const seen = new Set<string>();
+          const unique = owned.filter((c: any) => {
+            const key = `${c.setCode}-${c.number}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          for (const card of unique) {
+            // Look up full TCG data for stats
+            let tcg: any = null;
             try {
-              const messages = await getChannelMessages(STORAGE_CHANNEL_ID, 50);
-              for (const msg of messages) {
-                if (msg.content?.includes(`${actualUsername} requested cards`) && msg.attachments?.length > 0) {
-                  await deleteMessage(STORAGE_CHANNEL_ID, msg.id).catch(() => {});
-                }
-              }
+              const setData = JSON.parse(fs.readFileSync(path.join(CARDS_DB_DIR, `${card.setCode}.json`), 'utf-8'));
+              tcg = setData.find((c: any) => c.number === card.number);
             } catch {}
-            
-            const result = await uploadFileToDiscord(
-              STORAGE_CHANNEL_ID,
-              fileContent,
-              fileName,
-              `${actualUsername} requested cards: ${cardQuery}`
-            );
-            
-            if (result && result.data && (result.data as any).attachments?.[0]?.url) {
-              const discordUrl = (result.data as any).attachments[0].url;
-              await sendChatMessage(`@${actualUsername}: Found ${matches.length} cards with "${cardQuery}"! Download: ${discordUrl}`, 'broadcaster').catch(() => {});
-            }
-            
-            // Show cards on overlay in batches of 20
+
+            const count = userCards.filter((c: any) => c.number === card.number && c.setCode === card.setCode).length;
+            const info = [
+              card.name,
+              tcg?.level ? `Lv.${tcg.level}` : '',
+              `#${card.number}`,
+              `Set: ${card.setCode}`,
+              card.rarity || 'Common',
+              tcg?.hp ? `HP: ${tcg.hp}` : '',
+              tcg?.types ? `Type: ${tcg.types.join('/')}` : '',
+              tcg?.attacks?.length ? `Attacks: ${tcg.attacks.map((a: any) => `${a.name} (${a.damage || 0})`).join(', ')}` : '',
+              tcg?.weaknesses?.length ? `Weak: ${tcg.weaknesses.map((w: any) => w.type).join('/')}` : '',
+              `(owned: ${count}x)`
+            ].filter(Boolean).join(' | ');
+
+            await sendChatMessage(`@${actualUsername}: ${info}`, 'broadcaster').catch(() => {});
+
             if (typeof (global as any).broadcast === 'function') {
-              const BATCH_SIZE = 20;
-                            const batches: Array<any[]> = [];
-              
-              for (let i = 0; i < matches.length; i += BATCH_SIZE) {
-                batches.push(matches.slice(i, i + BATCH_SIZE));
-              }
-              
-              for (let i = 0; i < batches.length; i++) {
-                setTimeout(() => {
-                  (global as any).broadcast({
-                    type: 'pokemon-show-cards-grid',
-                    payload: {
-                      cards: batches[i].map((card: any) => {
-                        const owned = userCards.filter((c: any) => c.number === card.number && c.setCode === card.setCode).length;
-                        return {
-                          imageUrl: card.images?.large,
-                          name: card.name,
-                          number: card.number,
-                          setCode: card.setCode,
-                          rarity: card.rarity,
-                          hp: card.hp,
-                          types: card.types,
-                          level: card.level,
-                          owned
-                        };
-                      }),
-                      username: actualUsername,
-                      batch: i + 1,
-                      totalBatches: batches.length
-                    }
-                  });
-                }, i * 5000); // 5 second delay between batches
-              }
-            }
-          } else {
-            // Show in chat if 5 or fewer
-            for (const card of matches) {
-              const owned = userCards.filter((c: any) => c.number === card.number && c.setCode === card.setCode).length;
-              
-              const info = [
-                `${card.name}`,
-                card.level ? `Lv.${card.level}` : '',
-                `#${card.number}`,
-                `${card.rarity || 'Common'}`,
-                card.hp ? `HP: ${card.hp}` : '',
-                card.types ? `Type: ${card.types.join('/')}` : '',
-                `(owned: ${owned})`
-              ].filter(Boolean).join(' | ');
-              
-              await sendChatMessage(`@${actualUsername}: ${info}`, 'broadcaster').catch(() => {});
-              
-              if (typeof (global as any).broadcast === 'function') {
-                (global as any).broadcast({
-                  type: 'pokemon-show-card',
-                  payload: {
-                    imageUrl: card.images?.large,
-                    name: card.name,
-                    number: card.number,
-                    setCode: card.setCode,
-                    rarity: card.rarity,
-                    hp: card.hp,
-                    types: card.types,
-                    level: card.level,
-                    attacks: card.attacks,
-                    abilities: card.abilities,
-                    username: actualUsername,
-                    owned
-                  }
-                });
-              }
+              (global as any).broadcast({
+                type: 'pokemon-show-card',
+                payload: {
+                  imageUrl: tcg?.images?.large || card.imageUrl,
+                  name: card.name,
+                  number: card.number,
+                  setCode: card.setCode,
+                  rarity: card.rarity,
+                  hp: tcg?.hp,
+                  types: tcg?.types,
+                  level: tcg?.level,
+                  attacks: tcg?.attacks,
+                  abilities: tcg?.abilities,
+                  weaknesses: tcg?.weaknesses,
+                  resistances: tcg?.resistances,
+                  username: actualUsername,
+                  owned: count
+                }
+              });
             }
           }
           return;
@@ -551,12 +558,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !gamblemode command - toggle between modes
+        // Handle !pokemode command - toggle between overlay and chat
+        if (actualMessage.toLowerCase() === '!pokemode') {
+            const { togglePokeMode } = require('./poke-mode');
+            const mode = await togglePokeMode();
+            await sendChatMessage(`🃏 Pokemon mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
+            return;
+        }
+
+        // Handle !gamblemode command - toggle between overlay and chat
         if (actualMessage.toLowerCase() === '!gamblemode') {
-            const { toggleGambleMode, getGambleMode } = require('./gamble/classic-gamble');
-            await toggleGambleMode(actualUsername);
-            const mode = await getGambleMode();
-            await sendChatMessage(`🎲 Gamble mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
+            const { getSettings, updateSettings } = require('./gamble/classic-gamble');
+            const s = getSettings();
+            if (s.useOverlay && !s.useBot) {
+                await updateSettings({ useOverlay: false, useBot: true });
+                await sendChatMessage('🎲 Gamble mode: CHAT', 'bot').catch(() => {});
+            } else {
+                await updateSettings({ useOverlay: true, useBot: false });
+                await sendChatMessage('🎲 Gamble mode: OVERLAY', 'bot').catch(() => {});
+            }
             return;
         }
         
@@ -705,20 +725,148 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !accept command (Pokemon trade)
+        // Handle !accept command (check swaps first, then Pokemon trade)
         if (actualMessage.toLowerCase() === '!accept') {
+            const { acceptSwap, hasPendingSwap } = require('./pokemon-swap');
+            if (hasPendingSwap(actualUsername)) {
+                await acceptSwap(actualUsername);
+                return;
+            }
             const { acceptTrade } = require('./pokemon-trade-manager');
             await acceptTrade(actualUsername);
             return;
         }
         
-        // Handle !cancel command (Pokemon trade)
+        // Handle !cancel command (check swaps first, then Pokemon trade)
         if (actualMessage.toLowerCase() === '!cancel') {
+            const { cancelSwap, hasPendingSwap } = require('./pokemon-swap');
+            if (hasPendingSwap(actualUsername)) {
+                await cancelSwap(actualUsername);
+                return;
+            }
             const { cancelTrade } = require('./pokemon-trade-manager');
             await cancelTrade(actualUsername);
             return;
         }
         
+        // Handle !swap command — one-shot trade proposal
+        if (actualMessage.toLowerCase().startsWith('!swap ')) {
+            const parts = actualMessage.substring(6).trim().match(/^@?(\S+)\s+(\d+)\s+for\s+(\d+)$/i);
+            if (!parts) {
+                await sendChatMessage(`@${actualUsername}, usage: !swap @user <your card#> for <their card#>`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const targetUser = parts[1].replace('@', '');
+            const myCard = parseInt(parts[2]);
+            const theirCard = parseInt(parts[3]);
+            if (targetUser.toLowerCase() === actualUsername.toLowerCase()) {
+                await sendChatMessage(`@${actualUsername}, you can't swap with yourself!`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const { proposeSwap } = require('./pokemon-swap');
+            await proposeSwap(actualUsername, targetUser, myCard, theirCard);
+            return;
+        }
+
+        // Handle !deck command - view saved deck
+        if (actualMessage.toLowerCase() === '!deck') {
+            const { getUserCollection } = require('./pokemon-storage-discord');
+            const col = await getUserCollection(actualUsername);
+            if (!col.deck || !col.deck.cards?.length) {
+                await sendChatMessage(`@${actualUsername}, you don't have a deck yet. Use the Pok\u00e9dex deck builder and !setdeck to save one.`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const { getUserCards } = require('./pokemon-collection');
+            const cards = await getUserCards(actualUsername);
+            const names = col.deck.cards.slice(0, 8).map((idx: number) => cards[idx - 1]?.name || '?').join(', ');
+            const energyStr = Object.entries(col.deck.energy || {}).filter(([, n]) => (n as number) > 0).map(([t, n]) => `${n} ${t}`).join(', ');
+            const total = col.deck.cards.length + Object.values(col.deck.energy || {}).reduce((a: number, b: any) => a + Number(b), 0);
+            await sendChatMessage(`@${actualUsername}'s deck (${total}/40): ${names}${col.deck.cards.length > 8 ? '...' : ''}${energyStr ? ' | Energy: ' + energyStr : ''}`, 'broadcaster').catch(() => {});
+            return;
+        }
+
+        // Handle !setdeck command - save a 40-card deck from base64
+        if (actualMessage.toLowerCase().startsWith('!setdeck ')) {
+            const encoded = actualMessage.substring(9).trim();
+            try {
+                const decoded = JSON.parse(Buffer.from(encoded, 'base64').toString('utf-8'));
+                if (!decoded.cards || !Array.isArray(decoded.cards)) throw new Error('bad format');
+                const energy: Record<string, number> = decoded.energy || {};
+                const energyTotal = Object.values(energy).reduce((a: number, b: any) => a + Number(b), 0);
+                const total = decoded.cards.length + energyTotal;
+                if (total !== 40) {
+                    await sendChatMessage(`@${actualUsername}, deck must be exactly 40 cards (got ${total}).`, 'broadcaster').catch(() => {});
+                    return;
+                }
+                const { getUserCards } = require('./pokemon-collection');
+                const cards = await getUserCards(actualUsername);
+                const invalid = decoded.cards.find((idx: number) => !cards[idx - 1]);
+                if (invalid) {
+                    await sendChatMessage(`@${actualUsername}, card #${invalid} doesn't exist in your collection!`, 'broadcaster').catch(() => {});
+                    return;
+                }
+                // Verify all cards are from current season
+                const nonSeason = decoded.cards.find((idx: number) => cards[idx - 1].seasonId !== 'season-1');
+                if (nonSeason) {
+                    await sendChatMessage(`@${actualUsername}, card #${nonSeason} (${cards[nonSeason - 1].name}) is not from the current season!`, 'broadcaster').catch(() => {});
+                    return;
+                }
+                const { getUserCollection, saveUserCollection } = require('./pokemon-storage-discord');
+                const col = await getUserCollection(actualUsername);
+                col.deck = { cards: decoded.cards, energy };
+                await saveUserCollection(actualUsername, col);
+                const pokemonCount = decoded.cards.filter((idx: number) => {
+                    const c = cards[idx - 1];
+                    try {
+                        const setData = JSON.parse(require('fs').readFileSync(require('path').join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en', `${c.setCode}.json`), 'utf-8'));
+                        const tcg = setData.find((t: any) => t.number === c.number);
+                        return tcg?.supertype === 'Pok\u00e9mon';
+                    } catch { return false; }
+                }).length;
+                await sendChatMessage(`@${actualUsername}, deck saved! ${decoded.cards.length} cards + ${energyTotal} energy (${pokemonCount} Pok\u00e9mon).`, 'broadcaster').catch(() => {});
+            } catch {
+                await sendChatMessage(`@${actualUsername}, invalid deck code. Use the Pok\u00e9dex deck builder to generate one.`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        // Handle !gymteam command - set 3 cards for gym battles
+        if (actualMessage.toLowerCase().startsWith('!gymteam')) {
+            const args = actualMessage.substring(8).trim().split(/\s+/).map(Number);
+            if (args.length !== 3 || args.some(n => isNaN(n) || n < 1)) {
+                await sendChatMessage(`@${actualUsername}, usage: !gymteam <card#> <card#> <card#> (use !collection to see your card numbers)`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const { getUserCards } = require('./pokemon-collection');
+            const cards = await getUserCards(actualUsername);
+            const indices = args.map(n => n - 1);
+            const invalid = indices.find(i => !cards[i]);
+            if (invalid !== undefined) {
+                await sendChatMessage(`@${actualUsername}, card #${invalid + 1} doesn't exist in your collection!`, 'broadcaster').catch(() => {});
+                return;
+            }
+            // Verify all are Pokemon
+            const fs = require('fs');
+            const path = require('path');
+            const CARDS_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
+            for (const i of indices) {
+                const c = cards[i];
+                try {
+                    const setData = JSON.parse(fs.readFileSync(path.join(CARDS_DIR, `${c.setCode}.json`), 'utf-8'));
+                    const tcg = setData.find((t: any) => t.number === c.number);
+                    if (tcg && tcg.supertype !== 'Pok\u00e9mon') {
+                        await sendChatMessage(`@${actualUsername}, ${c.name} (#${i + 1}) is not a Pok\u00e9mon!`, 'broadcaster').catch(() => {});
+                        return;
+                    }
+                } catch {}
+            }
+            const { setGymTeam } = require('./gym-team');
+            await setGymTeam(actualUsername, indices);
+            const names = indices.map(i => cards[i].name).join(', ');
+            await sendChatMessage(`@${actualUsername}, gym team set: ${names}`, 'broadcaster').catch(() => {});
+            return;
+        }
+
         // Handle !challenge command (Gym Battle queue)
         if (actualMessage.toLowerCase() === '!challenge') {
             const { joinQueue } = require('./gym-battle');
@@ -726,6 +874,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        // Handle !importcards command (mod-only — import all collections from Discord)
+        if (actualMessage.toLowerCase() === '!importcards') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { importAllFromDiscord } = require('./pokemon-storage-discord');
+                const count = await importAllFromDiscord();
+                await sendChatMessage(`📥 Imported ${count} collections from Discord.`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        // Handle !testgym command (mod-only test battle)
+        if (actualMessage.toLowerCase() === '!testgym') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { testGymBattle } = require('./gym-battle');
+                await testGymBattle();
+            }
+            return;
+        }
+
         // Handle !nextchallenger command (Streamer starts next battle)
         if (actualMessage.toLowerCase() === '!nextchallenger') {
             if (tags.mod || tags.badges?.broadcaster) {
@@ -986,7 +1153,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         
         // Handle !commands
         if (actualMessage.toLowerCase() === '!commands') {
-            const cmdSummary = '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!offer,!accept,!challenge,!attack,!switch | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands';
+            const cmdSummary = '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands';
             await sendChatMessage(cmdSummary, 'broadcaster').catch(() => {});
             return;
         }
@@ -1231,7 +1398,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                             const batches: Array<any[]> = [];
                       
                       for (let i = 0; i < cards.length; i += BATCH_SIZE) {
-                        batches.push(cards.slice(i, i + BATCH_SIZE));
+                        batches.push(cards.slice(i, i + BATCH_SIZE).map((c: any) => `${c.setCode}-${c.number}`));
                       }
                       
                       for (let i = 0; i < batches.length; i++) {

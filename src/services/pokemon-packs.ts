@@ -70,17 +70,19 @@ export async function openPack(setNumber: number, username: string, enabledSets?
   const rare = cardData.filter((c: any) => c.rarity === 'Rare' || c.rarity === 'Rare Holo');
   const other = cardData.filter((c: any) => c.supertype === 'Energy' || c.supertype === 'Trainer');
 
-  if (common.length < 4 || uncommon.length < 3 || rare.length < 1 || other.length < 1) {
-    console.log(`[Pokemon] Not enough cards in ${setInfo.name}`);
+  let picked: any[];
+  if (common.length >= 4 && uncommon.length >= 3 && rare.length >= 1 && other.length >= 1) {
+    picked = [...pickRandom(common, 4), ...pickRandom(uncommon, 3), ...pickRandom(rare, 1), ...pickRandom(other, 1)];
+  } else if (cardData.length >= 9) {
+    // Promo or non-standard sets: pick 9 random cards
+    picked = pickRandom(cardData, 9);
+    console.log(`[Pokemon] ${setInfo.name} uses fallback pack (non-standard rarities)`);
+  } else {
+    console.log(`[Pokemon] Not enough cards in ${setInfo.name} (${cardData.length} total)`);
     return null;
   }
 
-  const pack = [
-    ...pickRandom(common, 4),
-    ...pickRandom(uncommon, 3),
-    ...pickRandom(rare, 1),
-    ...pickRandom(other, 1)
-  ].map(card => ({
+  const pack = picked.map(card => ({
     name: card.name,
     number: card.number,
     setCode: setInfo.code,

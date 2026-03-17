@@ -95,6 +95,33 @@ interface GymBattle {
   expiresAt: number;
 }
 
+// Pick 3 battle-worthy Pokemon: use saved team if set, else filter Trainers/Energy and prefer rares
+async function pickThree(cards: any[], username: string): Promise<BattleCard[]> {
+  const { getGymTeam } = require('./gym-team');
+  const team = await getGymTeam(username);
+  if (team && team.length === 3) {
+    const picked = team.map((i: number) => cards[i]).filter(Boolean);
+    if (picked.length === 3) {
+      const valid = picked.every((c: any) => {
+        const tcg = loadSetCards(c.setCode).find((t: any) => t.number === c.number);
+        return !tcg || tcg.supertype === 'Pokémon';
+      });
+      if (valid) return picked.map((c: any) => lookupCardStats(c));
+    }
+  }
+  const pokemon = cards.filter(c => {
+    const tcg = loadSetCards(c.setCode).find((t: any) => t.number === c.number);
+    return !tcg || tcg.supertype === 'Pokémon';
+  });
+  const pool = pokemon.length >= 3 ? pokemon : cards;
+  const rarityOrder: Record<string, number> = { 'Rare Holo': 4, 'Rare': 3, 'Uncommon': 2, 'Promo': 2, 'Common': 1 };
+  const sorted = [...pool].sort(() => Math.random() - 0.5)
+    .sort((a, b) => (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0));
+  const top = sorted.slice(0, Math.max(5, 3));
+  const picked = [...top].sort(() => Math.random() - 0.5).slice(0, 3);
+  return picked.map(c => lookupCardStats(c));
+}
+
 // ── State ──
 
 const challengeQueue: string[] = [];
@@ -187,14 +214,9 @@ export async function startNextBattle(): Promise<void> {
   }
 
   // Pick 3 random cards, look up full stats
-  const pickThree = (cards: any[]): BattleCard[] => {
-    const shuffled = [...cards].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 3).map(c => lookupCardStats(c));
-  };
-
   activeBattle = {
-    challenger: { username: challengerName, cards: pickThree(challengerCards), activeIndex: 0, energy: [] },
-    gymLeader: { username: broadcaster, cards: pickThree(leaderCards), activeIndex: 0, energy: [] },
+    challenger: { username: challengerName, cards: await pickThree(challengerCards, challengerName), activeIndex: 0, energy: [] },
+    gymLeader: { username: broadcaster, cards: await pickThree(leaderCards, broadcaster), activeIndex: 0, energy: [] },
     currentTurn: 'challenger',
     turnCount: 1,
     expiresAt: Date.now() + 300000
@@ -364,35 +386,11 @@ function findBestAttack(card: BattleCard, energy: string[]): BattleAttack | null
 }
 
 function canAfford(cost: string[], energy: string[]): boolean {
-  const pool = [...energy];
-  for (const c of cost) {
-    if (c === 'Colorless') {
-      if (pool.length === 0) return false;
-      pool.splice(0, 1); // use any energy
-    } else {
-      const idx = pool.indexOf(c);
-      if (idx === -1) {
-        // Try colorless-like: use any
-        if (pool.length === 0) return false;
-        pool.splice(0, 1);
-      } else {
-        pool.splice(idx, 1);
-      }
-    }
-  }
-  return true;
+  return energy.length >= cost.length;
 }
 
 function spendEnergy(player: BattlePlayer, cost: string[]): void {
-  for (const c of cost) {
-    if (c === 'Colorless') {
-      player.energy.splice(0, 1);
-    } else {
-      const idx = player.energy.indexOf(c);
-      if (idx !== -1) player.energy.splice(idx, 1);
-      else player.energy.splice(0, 1);
-    }
-  }
+  player.energy.splice(0, cost.length);
 }
 
 async function endTurn(): Promise<void> {
@@ -415,6 +413,11 @@ async function endTurn(): Promise<void> {
     `@${activePlayer.username}'s turn! ${activeCard.name} (${activeCard.hp}/${activeCard.maxHp} HP) | Energy: ${activePlayer.energy.join(', ')} | !attack or !switch`,
     'broadcaster'
   );
+
+  // Auto-play TestChallenger turns
+  if (activeBattle && activeBattle.currentTurn === 'challenger' && activeBattle.challenger.username === 'TestChallenger') {
+    setTimeout(() => battleAttack('TestChallenger').catch(() => {}), 2000);
+  }
 }
 
 async function announceActiveCards(): Promise<void> {
@@ -504,3 +507,41 @@ setInterval(() => {
     activeBattle = null;
   }
 }, 30000);
+
+export async function testGymBattle(): Promise<void> {
+  if (activeBattle) {
+    await sendChatMessage('A gym battle is already in progress!', 'broadcaster');
+    return;
+  }
+
+  const broadcaster = getBroadcasterUsername();
+  const leaderCards = await getUserCards(broadcaster);
+  if (leaderCards.length < 3) {
+    await sendChatMessage(`Gym leader doesn't have enough cards!`, 'broadcaster');
+    return;
+  }
+
+  const testCards: BattleCard[] = [
+    lookupCardStats({ name: 'Charizard', number: '4', setCode: 'base1' }),
+    lookupCardStats({ name: 'Blastoise', number: '2', setCode: 'base1' }),
+    lookupCardStats({ name: 'Venusaur', number: '15', setCode: 'base1' }),
+  ];
+
+  const leaderPick = await pickThree(leaderCards, broadcaster);
+  activeBattle = {
+    challenger: { username: 'TestChallenger', cards: testCards, activeIndex: 0, energy: [testCards[0].types[0] || 'Colorless'] },
+    gymLeader: { username: broadcaster, cards: leaderPick, activeIndex: 0, energy: [leaderPick[0].types[0] || 'Colorless'] },
+    currentTurn: 'gymLeader',
+    turnCount: 1,
+    expiresAt: Date.now() + 300000
+  };
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({ type: 'gym-battle-start', payload: buildBattleState() });
+  }
+
+  const leaderCard = leaderPick[0];
+  await sendChatMessage(`🧪 TEST GYM BATTLE! TestChallenger vs Gym Leader @${broadcaster}!`, 'broadcaster');
+  await sendChatMessage(`@${broadcaster}'s turn! ${leaderCard.name} (${leaderCard.hp}/${leaderCard.maxHp} HP) | Energy: ${activeBattle.gymLeader.energy.join(', ')} | !attack or !switch`, 'broadcaster');
+}
