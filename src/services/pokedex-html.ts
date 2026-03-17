@@ -338,7 +338,8 @@ function render(){
   grid.innerHTML='';
   filtered.forEach(c=>{
     const isHolo=c.rarity&&c.rarity.includes('Holo');
-    const inGym=currentUser===OWNER&&gymTeam.includes(c.idx);
+    const cardId=c.setCode+'-'+c.number;
+    const inGym=currentUser===OWNER&&gymTeam.includes(cardId);
     const isMySwap=mySwapCard&&mySwapCard.user===currentUser&&mySwapCard.idx===c.idx;
     const isTheirSwap=theirSwapCard&&theirSwapCard.user===currentUser&&theirSwapCard.idx===c.idx;
     const div=document.createElement('div');
@@ -352,7 +353,7 @@ function render(){
     const deckCount=deckCountOf(c.idx);
     if(inDeck)div.className+=' in-deck';
     if(currentUser===OWNER){
-      if(c.supertype==='Pok\u00e9mon')inner+='<button data-gym="'+c.idx+'">'+(inGym?'\u2715':'\u2694\ufe0f')+'</button>';
+      if(c.supertype==='Pok\u00e9mon')inner+='<button data-gym="'+cardId+'">'+(inGym?'\u2715':'\u2694\ufe0f')+'</button>';
       inner+='<button data-swap-my="'+c.idx+'">\ud83d\udd04</button>';
       if(c.seasonId===CURRENT_SEASON)inner+='<button data-deck="'+c.idx+'" style="'+(inDeck?'background:#22c55e;color:#000':'')+'">\ud83c\udccf'+(deckCount>0?' x'+deckCount:'')+'</button>';
     } else {
@@ -362,7 +363,7 @@ function render(){
     div.innerHTML=inner;
     div.querySelector('img').addEventListener('click',()=>showDetail(c.idx));
     const gymBtn=div.querySelector('[data-gym]');
-    if(gymBtn)gymBtn.addEventListener('click',e=>{e.stopPropagation();toggleGym(c.idx)});
+    if(gymBtn)gymBtn.addEventListener('click',e=>{e.stopPropagation();toggleGym(cardId)});
     const myBtn=div.querySelector('[data-swap-my]');
     if(myBtn)myBtn.addEventListener('click',e=>{e.stopPropagation();pickMy(c)});
     const theirBtn=div.querySelector('[data-swap-their]');
@@ -376,10 +377,10 @@ function render(){
   });
 }
 
-function toggleGym(idx){
-  const i=gymTeam.indexOf(idx);
+function toggleGym(cardId){
+  const i=gymTeam.indexOf(cardId);
   if(i>=0)gymTeam.splice(i,1);
-  else if(gymTeam.length<3)gymTeam.push(idx);
+  else if(gymTeam.length<3)gymTeam.push(cardId);
   updateGymUI();render();
 }
 function pickMy(c){
@@ -409,7 +410,7 @@ function updateGymUI(){
   for(let i=0;i<3;i++){
     const slot=document.getElementById('slot'+i);
     if(!slot)return;
-    if(gymTeam[i]){const c=ALL_USERS[OWNER].cards.find(x=>x.idx===gymTeam[i]);slot.innerHTML=c?'<img src="'+c.imageUrl+'" title="'+c.name+'">':''+(i+1)}
+    if(gymTeam[i]){const c=ALL_USERS[OWNER].cards.find(x=>x.setCode+'-'+x.number===gymTeam[i]);slot.innerHTML=c?'<img src="'+c.imageUrl+'" title="'+c.name+'">':''+(i+1)}
     else slot.innerHTML=''+(i+1);
   }
   const cmd=document.getElementById('gymCmd');

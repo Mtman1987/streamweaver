@@ -1,18 +1,25 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 /**
  * CSS-rendered Pokemon-style card back with streamer avatar.
- * No external image needed — works as a drop-in replacement for the broken background.jpg.
- *
- * Usage: <CardBack width={240} height={336} avatarUrl="..." />
+ * Fetches avatar from /api/user-profile (same source as sidebar).
  */
 export default function CardBack({ width = 240, height = 336, avatarUrl }: {
   width?: number;
   height?: number;
   avatarUrl?: string;
 }) {
-  const avatar = avatarUrl || '/api/twitch/avatar';
+  const [avatar, setAvatar] = useState(avatarUrl || '');
   const r = Math.min(width, height) * 0.22;
+
+  useEffect(() => {
+    if (avatarUrl) return;
+    fetch('/api/user-profile').then(r => r.json()).then(d => {
+      if (d.twitch?.avatar) setAvatar(d.twitch.avatar);
+    }).catch(() => {});
+  }, [avatarUrl]);
 
   return (
     <div style={{
@@ -59,12 +66,13 @@ export default function CardBack({ width = 240, height = 336, avatarUrl }: {
         overflow: 'hidden',
         background: '#1e3a6e',
       }}>
-        <img
-          src={avatar}
-          alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
+        {avatar && (
+          <img
+            src={avatar}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
       </div>
 
       {/* Pokeball bottom accent */}

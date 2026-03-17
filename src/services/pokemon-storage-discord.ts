@@ -171,7 +171,7 @@ export async function getUserCollection(username: string): Promise<UserCollectio
 
   // If we have local data, use it
   if (data[key]) {
-    return { cards: data[key].cards, packsOpened: data[key].packsOpened || 0, updatedAt: data[key].updatedAt };
+    return { cards: data[key].cards, packsOpened: data[key].packsOpened || 0, updatedAt: data[key].updatedAt, deck: data[key].deck };
   }
 
   // First time seeing this user — check Discord for cross-stream data

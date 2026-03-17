@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 const TEAMS_PATH = path.resolve(process.cwd(), 'data', 'gym-teams.json');
-let teams: Record<string, number[]> = {};
+let teams: Record<string, string[]> = {};
 let loaded = false;
 
 async function load() {
@@ -18,13 +18,13 @@ async function save() {
   await fs.writeFile(TEAMS_PATH, JSON.stringify(teams, null, 2));
 }
 
-export async function setGymTeam(username: string, indices: number[]): Promise<void> {
+export async function setGymTeam(username: string, cardIds: string[]): Promise<void> {
   await load();
-  teams[username.toLowerCase()] = indices;
+  teams[username.toLowerCase()] = cardIds;
   await save();
 }
 
-export async function getGymTeam(username: string): Promise<number[] | null> {
+export async function getGymTeam(username: string): Promise<string[] | null> {
   await load();
   return teams[username.toLowerCase()] || null;
 }

@@ -13,6 +13,8 @@ interface TradeData {
   type: string;
   userA: string;
   userB: string;
+  avatarA?: string;
+  avatarB?: string;
   cardA: TradeCard;
   cardB: TradeCard;
 }
@@ -38,7 +40,7 @@ export default function PokemonTradeOverlay() {
               setTrade(data);
               setPhase('preview');
             } else if (data.type === 'pokemon-trade-execute') {
-              setTrade(data);
+              setTrade(prev => ({ ...data, avatarA: data.avatarA || prev?.avatarA, avatarB: data.avatarB || prev?.avatarB }));
               setPhase('preview');
               setTimeout(() => setPhase('slide'), 1500);
               setTimeout(() => setPhase('flash'), 4000);
@@ -58,56 +60,64 @@ export default function PokemonTradeOverlay() {
 
   if (!trade || phase === 'hidden') return null;
 
-  const cardAUrl = trade.cardA.imageUrl || `https://images.pokemontcg.io/${trade.cardA.setCode}/${trade.cardA.number}_hires.png`;
-  const cardBUrl = trade.cardB.imageUrl || `https://images.pokemontcg.io/${trade.cardB.setCode}/${trade.cardB.number}_hires.png`;
+  // After flash, cards have swapped sides
+  const swapped = phase === 'done';
+  const leftCard = swapped ? trade.cardB : trade.cardA;
+  const rightCard = swapped ? trade.cardA : trade.cardB;
+  const leftUrl = leftCard.imageUrl || `https://images.pokemontcg.io/${leftCard.setCode}/${leftCard.number}_hires.png`;
+  const rightUrl = rightCard.imageUrl || `https://images.pokemontcg.io/${rightCard.setCode}/${rightCard.number}_hires.png`;
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
       {/* User A side */}
       <div style={{
         position: 'absolute', left: '10%', top: '10%', textAlign: 'center',
-        transition: 'all 1s ease'
       }}>
+        {trade.avatarA && (
+          <img src={trade.avatarA} alt="" style={{ width: 128, height: 128, borderRadius: '50%', border: '4px solid #ffd700', marginBottom: 10, boxShadow: '0 4px 20px rgba(255,215,0,0.5)' }} />
+        )}
         <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', textShadow: '2px 2px 6px black', marginBottom: '12px' }}>
           {trade.userA}
         </div>
         <div style={{
           width: '220px', height: '308px',
-          transition: 'all 1s ease',
-          transform: phase === 'slide' ? 'translateX(calc(50vw - 160px))' : 'translateX(0)',
+          transition: 'transform 1.5s ease-in-out',
+          transform: phase === 'slide' ? 'translateX(calc(40vw - 110px))' : 'translateX(0)',
         }}>
-          <img src={cardAUrl} alt={trade.cardA.name}
+          <img src={leftUrl} alt={leftCard.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.6)' }}
           />
         </div>
         <div style={{ fontSize: '18px', color: '#ddd', marginTop: '8px', textShadow: '1px 1px 4px black' }}>
-          {trade.cardA.name}
+          {leftCard.name}
         </div>
       </div>
 
       {/* User B side */}
       <div style={{
         position: 'absolute', right: '10%', top: '10%', textAlign: 'center',
-        transition: 'all 1s ease'
       }}>
+        {trade.avatarB && (
+          <img src={trade.avatarB} alt="" style={{ width: 128, height: 128, borderRadius: '50%', border: '4px solid #ffd700', marginBottom: 10, boxShadow: '0 4px 20px rgba(255,215,0,0.5)' }} />
+        )}
         <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', textShadow: '2px 2px 6px black', marginBottom: '12px' }}>
           {trade.userB}
         </div>
         <div style={{
           width: '220px', height: '308px',
-          transition: 'all 1s ease',
-          transform: phase === 'slide' ? 'translateX(calc(-50vw + 160px))' : 'translateX(0)',
+          transition: 'transform 1.5s ease-in-out',
+          transform: phase === 'slide' ? 'translateX(calc(-40vw + 110px))' : 'translateX(0)',
         }}>
-          <img src={cardBUrl} alt={trade.cardB.name}
+          <img src={rightUrl} alt={rightCard.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.6)' }}
           />
         </div>
         <div style={{ fontSize: '18px', color: '#ddd', marginTop: '8px', textShadow: '1px 1px 4px black' }}>
-          {trade.cardB.name}
+          {rightCard.name}
         </div>
       </div>
 
-      {/* VS indicator */}
+      {/* Trade arrow */}
       <div style={{
         position: 'absolute', top: '45%', left: '50%', transform: 'translate(-50%, -50%)',
         fontSize: '64px', fontWeight: 'bold', color: '#FFD700',

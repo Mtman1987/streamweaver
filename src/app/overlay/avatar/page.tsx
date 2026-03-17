@@ -70,12 +70,14 @@ export default function AvatarOverlayPage() {
                 const data = payload?.data;
                 if (!data) return;
                 const serverType = (data.animationType === 'json' ? 'lottie' : data.animationType) as 'lottie' | 'gif' | 'mp4';
+                const serverDisplayMode = data.displayMode || savedDisplayMode;
+                const shouldShow = serverDisplayMode === 'always';
                 setAvatarState(prev => ({
                     ...prev,
                     animationType: serverType || prev.animationType,
-                    idleUrl: data.idleFile ? `/avatars/${data.idleFile}` : prev.idleUrl,
-                    talkingUrl: data.talkingFile ? `/avatars/${data.talkingFile}` : prev.talkingUrl,
-                    isVisible: savedDisplayMode === 'always' || prev.isVisible,
+                    idleUrl: data.idleFile ? `/api/avatars?type=idle&format=${serverType}` : prev.idleUrl,
+                    talkingUrl: data.talkingFile ? `/api/avatars?type=talking&format=${serverType}` : prev.talkingUrl,
+                    isVisible: shouldShow || prev.isVisible,
                 }));
 
                 if (serverType === 'lottie') {
@@ -125,7 +127,13 @@ export default function AvatarOverlayPage() {
                 
                 if (data.type === 'update-avatar-settings') {
                     console.log('[Avatar Overlay] Updating settings:', data.payload);
-                    setAvatarState(prev => ({ ...prev, ...data.payload }));
+                    const p = data.payload;
+                    setAvatarState(prev => ({
+                        ...prev,
+                        ...p,
+                        // Interpret displayMode if sent
+                        ...(p.displayMode ? { isVisible: p.displayMode === 'always' } : {}),
+                    }));
                 }
                 
                 if (data.type === 'play-tts') {
@@ -188,9 +196,9 @@ export default function AvatarOverlayPage() {
         }
 
         if (avatarState.animationType === 'mp4' && currentUrl) {
-            console.log('[Avatar Overlay] Rendering MP4:', currentUrl);
             return (
                 <video 
+                    key={currentUrl}
                     ref={videoRef}
                     src={currentUrl} 
                     autoPlay 
@@ -199,7 +207,6 @@ export default function AvatarOverlayPage() {
                     playsInline
                     className="w-full h-full object-contain"
                     onError={(e) => console.error('[Avatar Overlay] Video error:', e)}
-                    onLoadedData={() => console.log('[Avatar Overlay] Video loaded:', currentUrl)}
                 />
             );
         }

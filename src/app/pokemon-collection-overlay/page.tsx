@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 
 interface ShowCard {
@@ -17,9 +17,18 @@ interface ShowCard {
 }
 
 export default function PokemonCollectionOverlay() {
-  const [cards, setCards] = useState<string[]>([]);
   const [username, setUsername] = useState('');
+  const [cardCount, setCardCount] = useState(0);
   const [showCard, setShowCard] = useState<ShowCard | null>(null);
+  const [scrolling, setScrolling] = useState(false);
+  const scrollRef = useRef<number>(0);
+  const avatarRef = useRef('');
+
+  useEffect(() => {
+    fetch('/api/user-profile').then(r => r.json()).then(d => {
+      if (d.twitch?.avatar) avatarRef.current = d.twitch.avatar;
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -39,11 +48,16 @@ export default function PokemonCollectionOverlay() {
               const payload = data.payload || data;
               setShowCard(null);
               setUsername(payload.username || '');
-              setCards(payload.cards || []);
-              runAnimation(payload.cards || []);
+              setCardCount((payload.cards || []).length);
+              setScrolling(true);
+              runAnimation(payload.cards || [], payload.username || '');
             }
             if (data.type === 'pokemon-show-card') {
-              setCards([]);
+              setScrolling(false);
+              cancelAnimationFrame(scrollRef.current);
+              const container = document.getElementById('cardContainer');
+              if (container) { container.innerHTML = ''; container.style.transform = ''; }
+              setUsername('');
               setShowCard(data.payload);
               clearTimeout(hideTimeout);
               hideTimeout = setTimeout(() => setShowCard(null), 12000);
@@ -59,56 +73,67 @@ export default function PokemonCollectionOverlay() {
     return () => { clearTimeout(reconnectTimeout); clearTimeout(hideTimeout); ws?.close(); };
   }, []);
 
-  const runAnimation = (cardData: any[]) => {
+  const runAnimation = (cardData: any[], user: string) => {
     const container = document.getElementById('cardContainer');
     if (!container) return;
-
     container.innerHTML = '';
-    let index = 0;
+    cancelAnimationFrame(scrollRef.current);
 
-    const showBatch = () => {
-      if (index >= cardData.length) {
-        container.innerHTML = '';
-        return;
-      }
+    const cardW = 170;
+    const cardH = 238;
+    const gapX = 12;
+    const gapY = 12;
+    const rowH = cardH + gapY;
+    const screenW = 1920;
+    const perRow = 10;
+    const totalRows = Math.ceil(cardData.length / perRow);
+    const stripW = perRow * cardW + (perRow - 1) * gapX;
+    const offsetX = (screenW - stripW) / 2;
 
-      const batch = cardData.slice(index, index + 11);
-      container.innerHTML = '';
+    cardData.forEach((card, i) => {
+      const row = Math.floor(i / perRow);
+      const col = i % perRow;
+      const el = document.createElement('div');
+      el.className = 'scroll-card';
+      const imgUrl = typeof card === 'string'
+        ? `https://images.pokemontcg.io/${card.split('-')[0]}/${card.split('-')[1]}_hires.png`
+        : (card.imageUrl || `https://images.pokemontcg.io/${card.setCode}/${card.number}_hires.png`);
+      el.innerHTML = `<img src="${imgUrl}" alt="" onerror="this.src='https://images.pokemontcg.io/${typeof card === 'string' ? card.replace('-','/') : card.setCode + '/' + card.number}.png'">`;
+      el.style.position = 'absolute';
+      el.style.left = `${offsetX + col * (cardW + gapX)}px`;
+      el.style.top = `${row * rowH}px`;
+      el.style.width = `${cardW}px`;
+      el.style.height = `${cardH}px`;
+      container.appendChild(el);
+    });
 
-      batch.forEach((card, i) => {
-        const el = document.createElement('div');
-        el.className = 'card real';
-        const imgUrl = typeof card === 'string'
-          ? `https://images.pokemontcg.io/${card.split('-')[0]}/${card.split('-')[1]}_hires.png`
-          : (card.imageUrl || `https://images.pokemontcg.io/${card.setCode}/${card.number}_hires.png`);
-        el.innerHTML = `
-          <div class="inner">
-            <div class="back"></div>
-            <img class="front" src="${imgUrl}" alt="${typeof card === 'string' ? 'Card' : card.name}" onerror="this.src='https://images.pokemontcg.io/${typeof card === 'string' ? card.replace('-','/') : card.setCode + '/' + card.number}.png'">
-          </div>`;
-        container.appendChild(el);
+    const visibleRows = 2;
+    const visibleH = visibleRows * rowH;
+    const totalH = totalRows * rowH;
+    let offset = visibleH + rowH;
+    const endOffset = -(totalH);
+    const totalDist = offset - endOffset;
+    const durationSec = 18;
+    const speed = totalDist / (durationSec * 60);
 
-        const fx = i < 3 ? 270 + i * 160 : 200 + (i - 3) * 160;
-        const fy = i < 3 ? 190 : 360;
-
-        el.style.transform = `translateX(${fx}px) translateY(-500px) translateZ(600px) scale(2.5)`;
-        el.style.transition = 'transform 1200ms ease-out';
-
+    const tick = () => {
+      offset -= speed;
+      container.style.transform = `translateY(${offset}px)`;
+      if (offset > endOffset) {
+        scrollRef.current = requestAnimationFrame(tick);
+      } else {
         setTimeout(() => {
-          el.style.transform = `translateX(${fx}px) translateY(${fy}px) translateZ(0) scale(1)`;
-        }, 20);
-
-        setTimeout(() => el.classList.add('flipped'), 600 + Math.random() * 400);
-      });
-
-      index += 11;
-      setTimeout(showBatch, 14000);
+          container.innerHTML = '';
+          container.style.transform = '';
+          setUsername('');
+          setCardCount(0);
+          setScrolling(false);
+        }, 1000);
+      }
     };
-
-    showBatch();
+    scrollRef.current = requestAnimationFrame(tick);
   };
 
-  // Show single card view
   if (showCard) {
     const isHolo = showCard.rarity?.includes('Holo');
     return (
@@ -136,19 +161,38 @@ export default function PokemonCollectionOverlay() {
     );
   }
 
-  // Collection grid view
+  const rowH = 238 + 12;
+  const visibleH = 2 * rowH;
+
   return (
-    <div style={{ margin: 0, width: '100vw', height: '100vh', background: 'transparent', overflow: 'hidden' }}>
-      <div id="cardContainer" style={{ position: 'relative', width: '100%', height: '100%', perspective: '1200px' }} />
+    <div style={{ margin: 0, width: '100vw', height: '100vh', background: 'transparent', overflow: 'hidden', position: 'relative' }}>
+      {/* Info bar above the scroll */}
+      {scrolling && username && (
+        <div style={{
+          position: 'absolute', bottom: visibleH + 12, left: '50%', transform: 'translateX(-50%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, zIndex: 11,
+        }}>
+          <div style={{ fontSize: 30, fontWeight: 'bold', color: 'white', textShadow: '2px 2px 8px black' }}>
+            {username}&apos;s Collection · {cardCount} cards
+          </div>
+          <div style={{ fontSize: 18, color: '#aaa', textShadow: '1px 1px 4px black' }}>
+            Click the link in chat for your interactive Pokédex
+          </div>
+        </div>
+      )}
+
+      {/* Viewport — only render when scrolling */}
+      {scrolling && (
+        <div style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: visibleH, overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: rowH * 0.7, background: 'linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)', zIndex: 10, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: rowH * 0.7, background: 'linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)', zIndex: 10, pointerEvents: 'none' }} />
+          <div id="cardContainer" style={{ position: 'absolute', top: 0, left: 0, width: '100%' }} />
+        </div>
+      )}
 
       <style jsx global>{`
-        .card { position: absolute; width: 140px; height: 200px; transform-origin: center bottom; z-index: 1; opacity: 1; }
-        .card.real { z-index: 2; }
-        .inner { width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.6s ease-in-out; }
-        .card.flipped .inner { transform: rotateY(180deg); }
-        .front, .back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); background-size: cover; background-position: center; }
-        .back { background: linear-gradient(135deg, #1a3a6e 0%, #2563eb 40%, #1e40af 60%, #1a3a6e 100%); box-shadow: inset 0 0 20px rgba(0,0,0,0.4); }
-        .front { transform: rotateY(180deg); }
+        .scroll-card { border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+        .scroll-card img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
       `}</style>
     </div>
   );

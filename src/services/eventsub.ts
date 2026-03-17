@@ -275,6 +275,9 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
                             if (!squareNum || isNaN(squareNum) || squareNum < 1) {
                                 // No number yet — store pending redemption, wait for chat message
                                 pendingPartnerCheckins.set(userLogin.toLowerCase(), { timestamp: Date.now(), guildId, roleName, pointCost: redeemsConfig.partnerCheckin.pointCost });
+                                if ((global as any).broadcast) {
+                                    (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username: userLogin } });
+                                }
                                 console.log(`[EventSub] Waiting for ${userLogin} to type a partner number...`);
                                 return;
                             }
@@ -437,6 +440,11 @@ export { handlePartnerCheckin as handlePartnerCheckinCmd };
 async function handlePartnerCheckin(username: string, squareNum: number, guildId: string, roleName: string, pointCost: number): Promise<void> {
     console.log(`[Partner Checkin] START: ${username} -> square ${squareNum}`);
     
+    // Immediately show pending state on overlay
+    if ((global as any).broadcast) {
+        (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username } });
+    }
+
     try {
         // Check points if cost > 0
         if (pointCost > 0) {
@@ -498,6 +506,9 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
                     const data = await resp.json() as any;
                     const text = data.openai?.generated_text?.trim();
                     if (text) aiGreeting = text;
+                    else console.warn('[Partner Checkin] AI returned empty text, using fallback');
+                } else {
+                    console.warn('[Partner Checkin] AI request failed:', resp.status, await resp.text().catch(() => ''));
                 }
             } catch (err) {
                 console.error('[Partner Checkin] AI greeting failed, using fallback:', err);

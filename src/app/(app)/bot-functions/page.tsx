@@ -290,7 +290,7 @@ export default function BotFunctionsPage() {
         }
     };
 
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, type: 'idle' | 'talking') => {
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>, type: 'idle' | 'talking') => {
         const file = event.target.files?.[0];
         if (!file) return;
         
@@ -306,40 +306,34 @@ export default function BotFunctionsPage() {
             }
             setAnimationType(fileExt as 'mp4' | 'gif');
             
-            // Save file to server
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const base64 = e.target?.result as string;
-                try {
-                    await fetch('/api/avatars', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            type, 
-                            data: base64,
+            // Save file to server via FormData (handles large MP4/GIF)
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', type);
+            
+            try {
+                const res = await fetch('/api/avatars', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+                
+                localStorage.setItem(`avatar_${type}_file`, `${type}.${fileExt}`);
+                localStorage.setItem('avatar_type', fileExt);
+                
+                if (typeof window !== 'undefined' && (window as any).ws) {
+                    (window as any).ws.send(JSON.stringify({
+                        type: 'update-avatar-settings',
+                        payload: {
+                            [type === 'idle' ? 'idleUrl' : 'talkingUrl']: `/avatars/${type}.${fileExt}`,
                             animationType: fileExt
-                        })
-                    });
-                    
-                    // Save just the filename to localStorage
-                    localStorage.setItem(`avatar_${type}_file`, `${type}.${fileExt}`);
-                    localStorage.setItem('avatar_type', fileExt);
-                    
-                    // Send to server via WebSocket
-                    if (typeof window !== 'undefined' && (window as any).ws) {
-                        (window as any).ws.send(JSON.stringify({
-                            type: 'update-avatar-settings',
-                            payload: {
-                                [type === 'idle' ? 'idleUrl' : 'talkingUrl']: `/avatars/${type}.${fileExt}`,
-                                animationType: fileExt
-                            }
-                        }));
-                    }
-                } catch (error) {
-                    console.error('Failed to save avatar:', error);
+                        }
+                    }));
                 }
-            };
-            reader.readAsDataURL(file);
+            } catch (error) {
+                console.error('Failed to save avatar:', error);
+                toast({ variant: 'destructive', title: 'Upload failed', description: String(error) });
+            }
             
             toast({
                 title: `${type.charAt(0).toUpperCase() + type.slice(1)} avatar updated!`,
@@ -725,6 +719,7 @@ export default function BotFunctionsPage() {
                             onValueChange={(value) => {
                                 setDisplayMode(value);
                                 localStorage.setItem('avatar_display_mode', value);
+                                fetch('/api/avatars', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayMode: value }) }).catch(() => {});
                                 if (typeof window !== 'undefined' && (window as any).ws) {
                                     (window as any).ws.send(JSON.stringify({
                                         type: 'update-avatar-settings',

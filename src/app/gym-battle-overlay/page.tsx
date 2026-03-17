@@ -90,6 +90,12 @@ export default function GymBattleOverlay() {
     };
 
     connect();
+
+    // Fetch current queue on mount so we don't miss events
+    fetch('/api/pokemon/gym').then(r => r.json()).then(d => {
+      if (d.queue?.length) setQueue(d.queue);
+    }).catch(() => {});
+
     return () => { clearTimeout(reconnectTimeout); ws?.close(); };
   }, []);
 
@@ -101,24 +107,27 @@ export default function GymBattleOverlay() {
     return (
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }}>
         <div style={{
-          position: 'absolute', bottom: 16, right: 16,
-          display: 'flex', gap: 6, alignItems: 'center',
-          background: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: '6px 14px',
-          pointerEvents: 'auto',
+          position: 'absolute', bottom: 24, right: 24,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          background: 'rgba(0,0,0,0.7)', borderRadius: 16, padding: '14px 24px',
+          pointerEvents: 'auto', border: '2px solid rgba(255,215,0,0.3)',
         }}>
-          <span style={{ color: '#aaa', fontSize: 13, marginRight: 4 }}>⚔️ Queue:</span>
-          {queue.slice(0, 10).map((user, i) => (
-            <div key={i} title={user} style={{ position: 'relative', width: 22, height: 22 }}>
-              <svg viewBox="0 0 24 24" width={22} height={22}>
-                <circle cx="12" cy="12" r="11" fill="#e53e3e" stroke="#222" strokeWidth="1.5" />
-                <rect x="0" y="11" width="24" height="2" fill="#222" />
-                <circle cx="12" cy="12" r="4" fill="white" stroke="#222" strokeWidth="1.5" />
-                <circle cx="12" cy="12" r="2" fill="#222" />
-              </svg>
-            </div>
-          ))}
+          <span style={{ color: '#ffd700', fontSize: 22, fontWeight: 'bold' }}>⚔️ Challengers</span>
+          <div style={{ display: 'flex', gap: 18 }}>
+            {queue.slice(0, 10).map((user, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <svg viewBox="0 0 24 24" width={48} height={48}>
+                  <circle cx="12" cy="12" r="11" fill="#e53e3e" stroke="#222" strokeWidth="1.5" />
+                  <rect x="0" y="11" width="24" height="2" fill="#222" />
+                  <circle cx="12" cy="12" r="4" fill="white" stroke="#222" strokeWidth="1.5" />
+                  <circle cx="12" cy="12" r="2" fill="#222" />
+                </svg>
+                <span style={{ color: '#eee', fontSize: 14, fontWeight: 600, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>{user}</span>
+              </div>
+            ))}
+          </div>
           {queue.length > 10 && (
-            <span style={{ color: '#aaa', fontSize: 12 }}>+{queue.length - 10}</span>
+            <span style={{ color: '#aaa', fontSize: 14 }}>+{queue.length - 10} more</span>
           )}
         </div>
       </div>
@@ -166,28 +175,29 @@ export default function GymBattleOverlay() {
         </div>
       )}
 
-      {/* Queue pokeballs — bottom right corner, always visible when queue has entries */}
       {queue.length > 0 && (
         <div style={{
-          position: 'absolute', bottom: 16, right: 16,
-          display: 'flex', gap: 6, alignItems: 'center',
-          background: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: '6px 14px',
+          position: 'absolute', bottom: 24, right: 24,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          background: 'rgba(0,0,0,0.7)', borderRadius: 16, padding: '14px 24px',
+          border: '2px solid rgba(255,215,0,0.3)',
         }}>
-          <span style={{ color: '#aaa', fontSize: 13, marginRight: 4 }}>Queue:</span>
-          {queue.slice(0, 10).map((user, i) => (
-            <div key={i} title={user} style={{ position: 'relative', width: 22, height: 22 }}>
-              {/* Pokeball SVG */}
-              <svg viewBox="0 0 24 24" width={22} height={22}>
-                <circle cx="12" cy="12" r="11" fill="#e53e3e" stroke="#222" strokeWidth="1.5" />
-                <rect x="0" y="11" width="24" height="2" fill="#222" />
-                <circle cx="12" cy="12" r="11" fill="none" stroke="#222" strokeWidth="1.5" />
-                <circle cx="12" cy="12" r="4" fill="white" stroke="#222" strokeWidth="1.5" />
-                <circle cx="12" cy="12" r="2" fill="#222" />
-              </svg>
-            </div>
-          ))}
+          <span style={{ color: '#ffd700', fontSize: 22, fontWeight: 'bold' }}>⚔️ Challengers</span>
+          <div style={{ display: 'flex', gap: 18 }}>
+            {queue.slice(0, 10).map((user, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <svg viewBox="0 0 24 24" width={48} height={48}>
+                  <circle cx="12" cy="12" r="11" fill="#e53e3e" stroke="#222" strokeWidth="1.5" />
+                  <rect x="0" y="11" width="24" height="2" fill="#222" />
+                  <circle cx="12" cy="12" r="4" fill="white" stroke="#222" strokeWidth="1.5" />
+                  <circle cx="12" cy="12" r="2" fill="#222" />
+                </svg>
+                <span style={{ color: '#eee', fontSize: 14, fontWeight: 600, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>{user}</span>
+              </div>
+            ))}
+          </div>
           {queue.length > 10 && (
-            <span style={{ color: '#aaa', fontSize: 12 }}>+{queue.length - 10}</span>
+            <span style={{ color: '#aaa', fontSize: 14 }}>+{queue.length - 10} more</span>
           )}
         </div>
       )}

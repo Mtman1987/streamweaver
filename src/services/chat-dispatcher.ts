@@ -285,22 +285,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
 
             const urlPart = pokedexUrl ? ` Pok\u00e9dex: ${pokedexUrl}` : '';
-            await sendChatMessage(`@${actualUsername} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <#> <#> <#>`, 'broadcaster').catch(() => {});
+            await sendChatMessage(`@${actualUsername} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <set-num> <set-num> <set-num>`, 'broadcaster').catch(() => {});
 
             if (typeof (global as any).broadcast === 'function') {
-                const BATCH_SIZE = 20;
-                const batches: any[][] = [];
-                for (let i = 0; i < cards.length; i += BATCH_SIZE) {
-                    batches.push(cards.slice(i, i + BATCH_SIZE));
-                }
-                for (let i = 0; i < batches.length; i++) {
-                    setTimeout(() => {
-                        (global as any).broadcast({
-                            type: 'pokemon-collection-show',
-                            payload: { username: actualUsername, cards: batches[i], batch: i + 1, totalBatches: batches.length }
-                        });
-                    }, i * 5000);
-                }
+                (global as any).broadcast({
+                    type: 'pokemon-collection-show',
+                    payload: { username: actualUsername, cards }
+                });
             }
             return;
         }
@@ -832,37 +823,36 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
         // Handle !gymteam command - set 3 cards for gym battles
         if (actualMessage.toLowerCase().startsWith('!gymteam')) {
-            const args = actualMessage.substring(8).trim().split(/\s+/).map(Number);
-            if (args.length !== 3 || args.some(n => isNaN(n) || n < 1)) {
-                await sendChatMessage(`@${actualUsername}, usage: !gymteam <card#> <card#> <card#> (use !collection to see your card numbers)`, 'broadcaster').catch(() => {});
+            const args = actualMessage.substring(8).trim().split(/\s+/);
+            if (args.length !== 3 || args.some(a => !a.includes('-'))) {
+                await sendChatMessage(`@${actualUsername}, usage: !gymteam <set-num> <set-num> <set-num> (e.g. !gymteam base1-4 base6-3 gym2-15)`, 'broadcaster').catch(() => {});
                 return;
             }
             const { getUserCards } = require('./pokemon-collection');
             const cards = await getUserCards(actualUsername);
-            const indices = args.map(n => n - 1);
-            const invalid = indices.find(i => !cards[i]);
-            if (invalid !== undefined) {
-                await sendChatMessage(`@${actualUsername}, card #${invalid + 1} doesn't exist in your collection!`, 'broadcaster').catch(() => {});
+            const matched = args.map((id: string) => cards.find((c: any) => `${c.setCode}-${c.number}` === id));
+            const missing = args.filter((_: string, i: number) => !matched[i]);
+            if (missing.length) {
+                await sendChatMessage(`@${actualUsername}, card(s) not found in your collection: ${missing.join(', ')}`, 'broadcaster').catch(() => {});
                 return;
             }
             // Verify all are Pokemon
             const fs = require('fs');
             const path = require('path');
             const CARDS_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
-            for (const i of indices) {
-                const c = cards[i];
+            for (const c of matched) {
                 try {
                     const setData = JSON.parse(fs.readFileSync(path.join(CARDS_DIR, `${c.setCode}.json`), 'utf-8'));
                     const tcg = setData.find((t: any) => t.number === c.number);
                     if (tcg && tcg.supertype !== 'Pok\u00e9mon') {
-                        await sendChatMessage(`@${actualUsername}, ${c.name} (#${i + 1}) is not a Pok\u00e9mon!`, 'broadcaster').catch(() => {});
+                        await sendChatMessage(`@${actualUsername}, ${c.name} (${c.setCode}-${c.number}) is not a Pok\u00e9mon!`, 'broadcaster').catch(() => {});
                         return;
                     }
                 } catch {}
             }
             const { setGymTeam } = require('./gym-team');
-            await setGymTeam(actualUsername, indices);
-            const names = indices.map(i => cards[i].name).join(', ');
+            await setGymTeam(actualUsername, args);
+            const names = matched.map((c: any) => `${c.name} (${c.setCode}-${c.number})`).join(', ');
             await sendChatMessage(`@${actualUsername}, gym team set: ${names}`, 'broadcaster').catch(() => {});
             return;
         }
@@ -880,6 +870,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const { importAllFromDiscord } = require('./pokemon-storage-discord');
                 const count = await importAllFromDiscord();
                 await sendChatMessage(`📥 Imported ${count} collections from Discord.`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        // Handle !testswap command (mod-only — propose and auto-accept a swap for overlay testing)
+        if (actualMessage.toLowerCase() === '!testswap') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { proposeSwap, acceptSwap } = require('./pokemon-swap');
+                await proposeSwap(actualUsername, 'akhiteddy', 1, 1);
+                setTimeout(async () => {
+                    await acceptSwap('akhiteddy');
+                }, 5000);
             }
             return;
         }
@@ -1392,28 +1394,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     
                     await sendChatMessage(`@${actualUsername} has ${cards.length} cards (${rareCount} rare). Download: ${downloadUrl}`, 'broadcaster').catch(() => {});
                     
-                    // Show on overlay in batches
+                    // Show on overlay
                     if (typeof (global as any).broadcast === 'function') {
-                      const BATCH_SIZE = 20;
-                                            const batches: Array<any[]> = [];
-                      
-                      for (let i = 0; i < cards.length; i += BATCH_SIZE) {
-                        batches.push(cards.slice(i, i + BATCH_SIZE).map((c: any) => `${c.setCode}-${c.number}`));
-                      }
-                      
-                      for (let i = 0; i < batches.length; i++) {
-                        setTimeout(() => {
-                          (global as any).broadcast({
-                            type: 'pokemon-collection-show',
-                            payload: { 
-                              username: actualUsername, 
-                              cards: batches[i],
-                              batch: i + 1,
-                              totalBatches: batches.length
-                            }
-                          });
-                        }, i * 5000);
-                      }
+                      (global as any).broadcast({
+                        type: 'pokemon-collection-show',
+                        payload: { username: actualUsername, cards: cards.map((c: any) => `${c.setCode}-${c.number}`) }
+                      });
                     }
                 } else if (actionType === 'pokemon-trade-initiate') {
                     const args = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import CardBack from '@/components/CardBack';
 
@@ -18,6 +18,13 @@ export default function PokemonPackOverlay() {
   const [setName, setSetName] = useState('');
   const [username, setUsername] = useState('');
   const [phase, setPhase] = useState<'hidden' | 'stack' | 'deal' | 'flip' | 'rare'>('hidden');
+  const avatarUrl = useRef('');
+
+  useEffect(() => {
+    fetch('/api/user-profile').then(r => r.json()).then(d => {
+      if (d.twitch?.avatar) avatarUrl.current = d.twitch.avatar;
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -85,8 +92,11 @@ export default function PokemonPackOverlay() {
 
   // Pack: 4 common, 3 uncommon, 1 rare, 1 energy/trainer = 9 cards
   // Show first 8 as grid, last card (rare slot) as the big reveal
-  const gridCards = pack.slice(0, 8);
-  const rareCard = pack[8] || pack[pack.length - 1];
+  // Sort so rarest card is last for the big reveal
+  const rarityOrder: Record<string, number> = { 'Common': 0, 'Uncommon': 1, 'Rare': 2, 'Rare Holo': 3, 'Rare Holo EX': 4, 'Rare Ultra': 5, 'Rare Secret': 6 };
+  const sorted = [...pack].sort((a, b) => (rarityOrder[a.rarity] ?? 1) - (rarityOrder[b.rarity] ?? 1));
+  const gridCards = sorted.slice(0, sorted.length - 1);
+  const rareCard = sorted[sorted.length - 1];
 
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-transparent">
@@ -126,7 +136,7 @@ export default function PokemonPackOverlay() {
                 }}
               >
                 <div className="absolute inset-0 backface-hidden rounded-xl shadow-2xl">
-                  <CardBack width={240} height={336} />
+                  <CardBack width={240} height={336} avatarUrl={avatarUrl.current} />
                 </div>
                 <div className="absolute inset-0 backface-hidden rounded-xl bg-white shadow-2xl" style={{ transform: 'rotateY(180deg)' }}>
                   <img
@@ -161,7 +171,7 @@ export default function PokemonPackOverlay() {
               }}
             >
               <div className="absolute inset-0 backface-hidden rounded-xl shadow-2xl">
-                <CardBack width={240} height={336} />
+                <CardBack width={240} height={336} avatarUrl={avatarUrl.current} />
               </div>
               <div className="absolute inset-0 backface-hidden rounded-xl bg-white shadow-2xl" style={{ transform: 'rotateY(180deg)' }}>
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-yellow-400 via-transparent to-purple-400 opacity-30 animate-pulse" />

@@ -100,7 +100,7 @@ async function pickThree(cards: any[], username: string): Promise<BattleCard[]> 
   const { getGymTeam } = require('./gym-team');
   const team = await getGymTeam(username);
   if (team && team.length === 3) {
-    const picked = team.map((i: number) => cards[i]).filter(Boolean);
+    const picked = team.map((id: string) => cards.find((c: any) => `${c.setCode}-${c.number}` === id)).filter(Boolean);
     if (picked.length === 3) {
       const valid = picked.every((c: any) => {
         const tcg = loadSetCards(c.setCode).find((t: any) => t.number === c.number);
@@ -122,10 +122,17 @@ async function pickThree(cards: any[], username: string): Promise<BattleCard[]> 
   return picked.map(c => lookupCardStats(c));
 }
 
-// ── State ──
+// ── State (survive hot reload) ──
 
-const challengeQueue: string[] = [];
-let activeBattle: GymBattle | null = null;
+const g = global as any;
+if (!g.__gymBattleState) g.__gymBattleState = { queue: [] as string[], battle: null as GymBattle | null };
+const challengeQueue: string[] = g.__gymBattleState.queue;
+let activeBattle: GymBattle | null = g.__gymBattleState.battle;
+
+function setActiveBattle(b: GymBattle | null) {
+  activeBattle = b;
+  g.__gymBattleState.battle = b;
+}
 
 // Get broadcaster username
 function getBroadcasterUsername(): string {
@@ -199,11 +206,12 @@ export async function startNextBattle(): Promise<void> {
 
   const challengerName = challengeQueue.shift()!;
   const broadcaster = getBroadcasterUsername();
+  const isTest = challengerName === 'testchallenger';
 
-  const challengerCards = await getUserCards(challengerName);
+  const challengerCards = isTest ? [] : await getUserCards(challengerName);
   const leaderCards = await getUserCards(broadcaster);
 
-  if (challengerCards.length < 3) {
+  if (!isTest && challengerCards.length < 3) {
     await sendChatMessage(`@${challengerName} no longer has enough cards. Skipping...`, 'broadcaster');
     return startNextBattle();
   }
@@ -213,14 +221,21 @@ export async function startNextBattle(): Promise<void> {
     return;
   }
 
+  const challengerPick = isTest ? [
+    lookupCardStats({ name: 'Charizard', number: '4', setCode: 'base1' }),
+    lookupCardStats({ name: 'Blastoise', number: '2', setCode: 'base1' }),
+    lookupCardStats({ name: 'Venusaur', number: '15', setCode: 'base1' }),
+  ] : await pickThree(challengerCards, challengerName);
+  const displayName = isTest ? 'TestChallenger' : challengerName;
+
   // Pick 3 random cards, look up full stats
-  activeBattle = {
-    challenger: { username: challengerName, cards: await pickThree(challengerCards, challengerName), activeIndex: 0, energy: [] },
+  setActiveBattle({
+    challenger: { username: displayName, cards: challengerPick, activeIndex: 0, energy: [] },
     gymLeader: { username: broadcaster, cards: await pickThree(leaderCards, broadcaster), activeIndex: 0, energy: [] },
     currentTurn: 'challenger',
     turnCount: 1,
     expiresAt: Date.now() + 300000
-  };
+  });
 
   const broadcast = (global as any).broadcast;
   if (typeof broadcast === 'function') {
@@ -229,11 +244,11 @@ export async function startNextBattle(): Promise<void> {
   }
 
   await sendChatMessage(
-    `🏅 GYM BATTLE! @${challengerName} vs Gym Leader @${broadcaster}!`,
+    `🏅 GYM BATTLE! @${displayName} vs Gym Leader @${broadcaster}!`,
     'broadcaster'
   );
   await sendChatMessage(
-    `A gym battle has begun! ${challengerName} is challenging ${broadcaster}! Good luck to both trainers!`,
+    `A gym battle has begun! ${displayName} is challenging ${broadcaster}! Good luck to both trainers!`,
     'bot'
   );
 
@@ -243,9 +258,14 @@ export async function startNextBattle(): Promise<void> {
 
   await announceActiveCards();
   await sendChatMessage(
-    `@${challengerName}, your turn! Type !attack or !switch`,
+    `@${displayName}, your turn! Type !attack or !switch`,
     'broadcaster'
   );
+
+  // Auto-play first turn if TestChallenger
+  if (isTest) {
+    setTimeout(() => battleAttack('TestChallenger').catch(() => {}), 2000);
+  }
 }
 
 // ── Battle commands ──
@@ -396,6 +416,9 @@ function spendEnergy(player: BattlePlayer, cost: string[]): void {
 async function endTurn(): Promise<void> {
   if (!activeBattle) return;
 
+  // Reset inactivity timer every turn
+  activeBattle.expiresAt = Date.now() + 300000;
+
   activeBattle.currentTurn = activeBattle.currentTurn === 'challenger' ? 'gymLeader' : 'challenger';
   activeBattle.turnCount++;
 
@@ -453,7 +476,7 @@ async function endBattle(winner: string): Promise<void> {
     // Award gym badge
     const { awardGymBadge } = require('./user-stats');
     const badgeName = `Gym Badge: defeated ${activeBattle.gymLeader.username}`;
-    await awardGymBadge(attacker.username, badgeName);
+    await awardGymBadge(winner, badgeName);
 
     await sendChatMessage(
       `🏅 VICTORY! @${winner} defeated Gym Leader @${activeBattle.gymLeader.username} and earned a Gym Badge!`,
@@ -474,7 +497,7 @@ async function endBattle(winner: string): Promise<void> {
     );
   }
 
-  activeBattle = null;
+  setActiveBattle(null);
 }
 
 function buildBattleState() {
@@ -497,51 +520,33 @@ function buildBattleState() {
   };
 }
 
-// Cleanup expired battles
-setInterval(() => {
-  if (activeBattle && activeBattle.expiresAt < Date.now()) {
-    sendChatMessage(
-      `⏰ Gym battle between @${activeBattle.challenger.username} and @${activeBattle.gymLeader.username} expired!`,
-      'broadcaster'
-    ).catch(() => {});
-    activeBattle = null;
-  }
-}, 30000);
+// Cleanup expired battles (single interval survives hot reload)
+if (!g.__gymBattleInterval) {
+  g.__gymBattleInterval = setInterval(() => {
+    const battle = g.__gymBattleState.battle;
+    if (battle && battle.expiresAt < Date.now()) {
+      sendChatMessage(
+        `⏰ Gym battle between @${battle.challenger.username} and @${battle.gymLeader.username} expired!`,
+        'broadcaster'
+      ).catch(() => {});
+      g.__gymBattleState.battle = null;
+      activeBattle = null;
+    }
+  }, 30000);
+}
 
 export async function testGymBattle(): Promise<void> {
-  if (activeBattle) {
-    await sendChatMessage('A gym battle is already in progress!', 'broadcaster');
+  if (challengeQueue.includes('testchallenger')) {
+    await sendChatMessage('TestChallenger is already in the queue!', 'broadcaster');
     return;
   }
-
-  const broadcaster = getBroadcasterUsername();
-  const leaderCards = await getUserCards(broadcaster);
-  if (leaderCards.length < 3) {
-    await sendChatMessage(`Gym leader doesn't have enough cards!`, 'broadcaster');
-    return;
-  }
-
-  const testCards: BattleCard[] = [
-    lookupCardStats({ name: 'Charizard', number: '4', setCode: 'base1' }),
-    lookupCardStats({ name: 'Blastoise', number: '2', setCode: 'base1' }),
-    lookupCardStats({ name: 'Venusaur', number: '15', setCode: 'base1' }),
-  ];
-
-  const leaderPick = await pickThree(leaderCards, broadcaster);
-  activeBattle = {
-    challenger: { username: 'TestChallenger', cards: testCards, activeIndex: 0, energy: [testCards[0].types[0] || 'Colorless'] },
-    gymLeader: { username: broadcaster, cards: leaderPick, activeIndex: 0, energy: [leaderPick[0].types[0] || 'Colorless'] },
-    currentTurn: 'gymLeader',
-    turnCount: 1,
-    expiresAt: Date.now() + 300000
-  };
+  challengeQueue.push('testchallenger');
+  const pos = challengeQueue.length;
 
   const broadcast = (global as any).broadcast;
   if (typeof broadcast === 'function') {
-    broadcast({ type: 'gym-battle-start', payload: buildBattleState() });
+    broadcast({ type: 'gym-queue-update', payload: { queue: [...challengeQueue], count: pos } });
   }
 
-  const leaderCard = leaderPick[0];
-  await sendChatMessage(`🧪 TEST GYM BATTLE! TestChallenger vs Gym Leader @${broadcaster}!`, 'broadcaster');
-  await sendChatMessage(`@${broadcaster}'s turn! ${leaderCard.name} (${leaderCard.hp}/${leaderCard.maxHp} HP) | Energy: ${activeBattle.gymLeader.energy.join(', ')} | !attack or !switch`, 'broadcaster');
+  await sendChatMessage(`🧪 TestChallenger joined the gym queue! Position: #${pos} | Use !nextchallenger to start the battle.`, 'broadcaster');
 }

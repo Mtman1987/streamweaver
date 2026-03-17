@@ -1,14 +1,17 @@
 import { sendChatMessage } from './twitch';
 import { getUserCards, removeCardFromUser } from './pokemon-collection';
 import { getUserCollection, saveUserCollection } from './pokemon-storage-discord';
+import { getTwitchUser } from './twitch';
 
 type PendingSwap = {
   from: string;
   to: string;
   fromIdx: number;
   toIdx: number;
-  fromCard: { name: string; rarity: string };
-  toCard: { name: string; rarity: string };
+  fromCard: { name: string; rarity: string; number: string; setCode: string; imageUrl: string };
+  toCard: { name: string; rarity: string; number: string; setCode: string; imageUrl: string };
+  fromAvatar: string;
+  toAvatar: string;
   timestamp: number;
 };
 
@@ -33,13 +36,26 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
   const fc = fromCards[fromIdx];
   const tc = toCards[toIdx];
 
+  // Fetch avatars (non-blocking fallback)
+  let fromAvatar = '', toAvatar = '';
+  try {
+    const [fUser, tUser] = await Promise.all([
+      getTwitchUser(fromUser).catch(() => null),
+      getTwitchUser(toUser).catch(() => null),
+    ]);
+    fromAvatar = fUser?.profileImageUrl || '';
+    toAvatar = tUser?.profileImageUrl || '';
+  } catch {}
+
   pendingSwaps.set(toUser.toLowerCase(), {
     from: fromUser.toLowerCase(),
     to: toUser.toLowerCase(),
     fromIdx,
     toIdx,
-    fromCard: { name: fc.name, rarity: fc.rarity || 'Common' },
-    toCard: { name: tc.name, rarity: tc.rarity || 'Common' },
+    fromCard: { name: fc.name, rarity: fc.rarity || 'Common', number: fc.number, setCode: fc.setCode, imageUrl: fc.imageUrl || `https://images.pokemontcg.io/${fc.setCode}/${fc.number}_hires.png` },
+    toCard: { name: tc.name, rarity: tc.rarity || 'Common', number: tc.number, setCode: tc.setCode, imageUrl: tc.imageUrl || `https://images.pokemontcg.io/${tc.setCode}/${tc.number}_hires.png` },
+    fromAvatar,
+    toAvatar,
     timestamp: Date.now(),
   });
 
@@ -60,6 +76,13 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
     (global as any).broadcast({
       type: 'pokemon-swap-proposal',
       payload: { from: fromUser, to: toUser, fromCard: fc, toCard: tc },
+    });
+    (global as any).broadcast({
+      type: 'pokemon-trade-preview',
+      userA: fromUser, userB: toUser,
+      avatarA: fromAvatar, avatarB: toAvatar,
+      cardA: { name: fc.name, number: fc.number, setCode: fc.setCode, imageUrl: fc.imageUrl },
+      cardB: { name: tc.name, number: tc.number, setCode: tc.setCode, imageUrl: tc.imageUrl },
     });
   }
 }
@@ -106,6 +129,16 @@ export async function acceptSwap(username: string): Promise<boolean> {
     `✅ Swap complete! ${swap.from} got ${swap.toCard.name} (${swap.toCard.rarity}) ↔ ${swap.to} got ${swap.fromCard.name} (${swap.fromCard.rarity})`,
     'broadcaster'
   ).catch(() => {});
+
+  if (typeof (global as any).broadcast === 'function') {
+    (global as any).broadcast({
+      type: 'pokemon-trade-execute',
+      userA: swap.from, userB: swap.to,
+      avatarA: swap.fromAvatar, avatarB: swap.toAvatar,
+      cardA: { name: swap.fromCard.name, number: swap.fromCard.number, setCode: swap.fromCard.setCode, imageUrl: swap.fromCard.imageUrl },
+      cardB: { name: swap.toCard.name, number: swap.toCard.number, setCode: swap.toCard.setCode, imageUrl: swap.toCard.imageUrl },
+    });
+  }
 
   return true;
 }
