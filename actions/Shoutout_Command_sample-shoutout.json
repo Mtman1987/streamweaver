@@ -1,0 +1,62 @@
+{
+  "id": "sample-shoutout",
+  "name": "Shoutout Command",
+  "description": "Give a shoutout to another streamer with multiple effects",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {
+        "command": "!so",
+        "aliases": [
+          "!shoutout"
+        ],
+        "permissions": [
+          "moderator",
+          "broadcaster"
+        ]
+      }
+    }
+  ],
+  "subActions": [
+    {
+      "id": "shoutout-msg",
+      "type": "Send Chat Message",
+      "name": "Shoutout Message",
+      "config": {
+        "message": "Go check out {targetUser} at twitch.tv/{targetUser} - they're awesome! 🚀"
+      },
+      "enabled": true,
+      "order": 0
+    },
+    {
+      "id": "shoutout-overlay",
+      "type": "Show Overlay",
+      "name": "Shoutout Overlay",
+      "config": {
+        "overlayName": "shoutout",
+        "duration": 5000,
+        "data": {
+          "username": "{targetUser}"
+        }
+      },
+      "enabled": true,
+      "order": 1
+    },
+    {
+      "id": "shoutout-sound",
+      "type": "Play Sound",
+      "name": "Shoutout Sound",
+      "config": {
+        "soundFile": "shoutout.mp3",
+        "volume": 0.8
+      },
+      "enabled": true,
+      "order": 2
+    }
+  ],
+  "enabled": true,
+  "concurrent": true,
+  "queue": false,
+  "createdAt": "2024-01-15T11:00:00.000Z",
+  "updatedAt": "2024-01-15T11:00:00.000Z"
+}

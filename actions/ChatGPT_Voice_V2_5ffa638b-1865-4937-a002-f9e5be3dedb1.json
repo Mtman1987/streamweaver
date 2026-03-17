@@ -1,0 +1,22 @@
+{
+  "id": "5ffa638b-1865-4937-a002-f9e5be3dedb1",
+  "name": "ChatGPT Voice V2",
+  "description": "Imported from Streamer.bot: ChatGPT Voice V2",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Athenabot87",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

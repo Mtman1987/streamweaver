@@ -1,0 +1,13 @@
+{
+  "id": "772c85f8-7499-4225-8ddb-d83e0dc8f6a8",
+  "name": "toolbelt",
+  "description": "Imported from Streamer.bot: toolbelt",
+  "triggers": [],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "toolkits",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

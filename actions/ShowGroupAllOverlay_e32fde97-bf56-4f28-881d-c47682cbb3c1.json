@@ -1,0 +1,13 @@
+{
+  "id": "e32fde97-bf56-4f28-881d-c47682cbb3c1",
+  "name": "ShowGroupAllOverlay",
+  "description": "Imported from Streamer.bot: ShowGroupAllOverlay",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

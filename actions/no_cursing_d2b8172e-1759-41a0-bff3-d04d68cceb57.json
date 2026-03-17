@@ -1,0 +1,18 @@
+{
+  "id": "d2b8172e-1759-41a0-bff3-d04d68cceb57",
+  "name": "no cursing",
+  "description": "Imported from Streamer.bot: no cursing",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Channel point style redeems",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

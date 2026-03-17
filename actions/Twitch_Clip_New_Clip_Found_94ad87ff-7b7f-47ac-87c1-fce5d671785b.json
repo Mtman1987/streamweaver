@@ -1,0 +1,18 @@
+{
+  "id": "94ad87ff-7b7f-47ac-87c1-fce5d671785b",
+  "name": "Twitch Clip New Clip Found",
+  "description": "Imported from Streamer.bot: Twitch Clip New Clip Found",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Twitch Clip",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

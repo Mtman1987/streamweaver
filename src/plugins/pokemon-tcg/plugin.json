@@ -1,0 +1,28 @@
+{
+  "id": "pokemon-tcg-game",
+  "name": "Pokemon TCG Pack Opening Game",
+  "version": "1.0.0",
+  "author": "Mtman1987",
+  "description": "Complete Pokemon Trading Card Game system with pack opening, collection tracking, and leaderboards",
+  "category": "games",
+  "tags": ["pokemon", "tcg", "cards", "collection", "packs", "game"],
+  "commands": ["!pack", "!collection", "!trade"],
+  "features": [
+    "6 classic Pokemon TCG sets",
+    "Authentic pack opening (11 cards)",
+    "Collection tracking",
+    "Point cost system (1500 pts)",
+    "WebSocket overlay support"
+  ],
+  "files": [
+    "src/services/pokemon-packs.ts",
+    "src/services/user-stats.ts",
+    "src/app/(app)/pokemon-overlay/page.tsx",
+    "carddb-uploader/rarities/*.txt"
+  ],
+  "setup": [
+    "Add OBS browser source: http://localhost:3100/pokemon-overlay",
+    "Create channel point reward: PokePack",
+    "Test with !pack command"
+  ]
+}

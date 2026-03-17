@@ -1,0 +1,506 @@
+import { sendChatMessage } from './twitch';
+import { getUserCards } from './pokemon-collection';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const CARDS_DB_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
+
+// TCG card data cache per set
+const cardDataCache = new Map<string, any[]>();
+
+function loadSetCards(setCode: string): any[] {
+  if (cardDataCache.has(setCode)) return cardDataCache.get(setCode)!;
+  try {
+    const file = path.join(CARDS_DB_DIR, `${setCode}.json`);
+    if (fs.existsSync(file)) {
+      const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      cardDataCache.set(setCode, data);
+      return data;
+    }
+  } catch {}
+  return [];
+}
+
+function lookupCardStats(card: { name: string; number: string; setCode: string; imageUrl?: string }): BattleCard {
+  const setCards = loadSetCards(card.setCode);
+  const tcg = setCards.find((c: any) => c.number === card.number);
+
+  const hp = parseInt(tcg?.hp || '50');
+  const types: string[] = tcg?.types || ['Colorless'];
+  const weaknesses: { type: string; value: string }[] = tcg?.weaknesses || [];
+  const resistances: { type: string; value: string }[] = tcg?.resistances || [];
+
+  // Build attacks from TCG data, fallback to generic
+  let attacks: BattleAttack[] = [];
+  if (tcg?.attacks && tcg.attacks.length > 0) {
+    attacks = tcg.attacks.slice(0, 2).map((a: any) => ({
+      name: a.name,
+      cost: a.cost || ['Colorless'],
+      damage: parseInt((a.damage || '0').replace(/[^0-9]/g, '')) || 10,
+      text: a.text || ''
+    }));
+  }
+  if (attacks.length === 0) {
+    attacks = [{ name: 'Tackle', cost: ['Colorless'], damage: 10, text: '' }];
+  }
+
+  return {
+    name: card.name,
+    number: card.number,
+    setCode: card.setCode,
+    imageUrl: card.imageUrl || `https://images.pokemontcg.io/${card.setCode}/${card.number}_hires.png`,
+    hp,
+    maxHp: hp,
+    types,
+    attacks,
+    weaknesses,
+    resistances
+  };
+}
+
+// ── Types ──
+
+interface BattleAttack {
+  name: string;
+  cost: string[];
+  damage: number;
+  text: string;
+}
+
+interface BattleCard {
+  name: string;
+  number: string;
+  setCode: string;
+  imageUrl: string;
+  hp: number;
+  maxHp: number;
+  types: string[];
+  attacks: BattleAttack[];
+  weaknesses: { type: string; value: string }[];
+  resistances: { type: string; value: string }[];
+}
+
+interface BattlePlayer {
+  username: string;
+  cards: BattleCard[];
+  activeIndex: number;
+  energy: string[]; // accumulated energy types
+}
+
+interface GymBattle {
+  challenger: BattlePlayer;
+  gymLeader: BattlePlayer;
+  currentTurn: 'challenger' | 'gymLeader';
+  turnCount: number;
+  expiresAt: number;
+}
+
+// ── State ──
+
+const challengeQueue: string[] = [];
+let activeBattle: GymBattle | null = null;
+
+// Get broadcaster username
+function getBroadcasterUsername(): string {
+  try {
+    const tokensPath = path.join(process.cwd(), 'tokens', 'twitch-tokens.json');
+    if (fs.existsSync(tokensPath)) {
+      const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8'));
+      if (tokens.broadcasterUsername) return tokens.broadcasterUsername;
+    }
+  } catch {}
+  try {
+    const { readUserConfigSync } = require('../lib/user-config');
+    return readUserConfigSync().TWITCH_BROADCASTER_USERNAME || 'broadcaster';
+  } catch {}
+  return 'broadcaster';
+}
+
+// ── Queue ──
+
+export function getQueue(): string[] {
+  return [...challengeQueue];
+}
+
+export function getActiveBattle(): GymBattle | null {
+  return activeBattle;
+}
+
+export async function joinQueue(username: string): Promise<void> {
+  const broadcaster = getBroadcasterUsername();
+  if (username.toLowerCase() === broadcaster.toLowerCase()) {
+    await sendChatMessage(`@${username}, you're the gym leader — you don't queue!`, 'broadcaster');
+    return;
+  }
+
+  if (activeBattle && (activeBattle.challenger.username.toLowerCase() === username.toLowerCase())) {
+    await sendChatMessage(`@${username}, you're already in a battle!`, 'broadcaster');
+    return;
+  }
+
+  if (challengeQueue.includes(username.toLowerCase())) {
+    await sendChatMessage(`@${username}, you're already in the queue (#${challengeQueue.indexOf(username.toLowerCase()) + 1})!`, 'broadcaster');
+    return;
+  }
+
+  const cards = await getUserCards(username);
+  if (cards.length < 3) {
+    await sendChatMessage(`@${username}, you need at least 3 cards to challenge the gym! Use !pack to get cards.`, 'broadcaster');
+    return;
+  }
+
+  challengeQueue.push(username.toLowerCase());
+  const pos = challengeQueue.length;
+  await sendChatMessage(`@${username} joined the gym queue! Position: #${pos}`, 'broadcaster');
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({ type: 'gym-queue-update', payload: { queue: [...challengeQueue], count: pos } });
+  }
+}
+
+export async function startNextBattle(): Promise<void> {
+  if (activeBattle) {
+    await sendChatMessage('A gym battle is already in progress!', 'broadcaster');
+    return;
+  }
+
+  if (challengeQueue.length === 0) {
+    await sendChatMessage('No challengers in the queue!', 'broadcaster');
+    return;
+  }
+
+  const challengerName = challengeQueue.shift()!;
+  const broadcaster = getBroadcasterUsername();
+
+  const challengerCards = await getUserCards(challengerName);
+  const leaderCards = await getUserCards(broadcaster);
+
+  if (challengerCards.length < 3) {
+    await sendChatMessage(`@${challengerName} no longer has enough cards. Skipping...`, 'broadcaster');
+    return startNextBattle();
+  }
+  if (leaderCards.length < 3) {
+    await sendChatMessage(`Gym leader doesn't have enough cards!`, 'broadcaster');
+    challengeQueue.unshift(challengerName);
+    return;
+  }
+
+  // Pick 3 random cards, look up full stats
+  const pickThree = (cards: any[]): BattleCard[] => {
+    const shuffled = [...cards].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3).map(c => lookupCardStats(c));
+  };
+
+  activeBattle = {
+    challenger: { username: challengerName, cards: pickThree(challengerCards), activeIndex: 0, energy: [] },
+    gymLeader: { username: broadcaster, cards: pickThree(leaderCards), activeIndex: 0, energy: [] },
+    currentTurn: 'challenger',
+    turnCount: 1,
+    expiresAt: Date.now() + 300000
+  };
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({ type: 'gym-battle-start', payload: buildBattleState() });
+    broadcast({ type: 'gym-queue-update', payload: { queue: [...challengeQueue], count: challengeQueue.length } });
+  }
+
+  await sendChatMessage(
+    `🏅 GYM BATTLE! @${challengerName} vs Gym Leader @${broadcaster}!`,
+    'broadcaster'
+  );
+  await sendChatMessage(
+    `A gym battle has begun! ${challengerName} is challenging ${broadcaster}! Good luck to both trainers!`,
+    'bot'
+  );
+
+  // Give first turn energy
+  const activeCard = activeBattle.challenger.cards[0];
+  activeBattle.challenger.energy.push(activeCard.types[0] || 'Colorless');
+
+  await announceActiveCards();
+  await sendChatMessage(
+    `@${challengerName}, your turn! Type !attack or !switch`,
+    'broadcaster'
+  );
+}
+
+// ── Battle commands ──
+
+export async function battleAttack(username: string): Promise<void> {
+  if (!activeBattle) {
+    await sendChatMessage(`@${username}, no battle in progress!`, 'broadcaster');
+    return;
+  }
+
+  const isChallenger = username.toLowerCase() === activeBattle.challenger.username.toLowerCase();
+  const isLeader = username.toLowerCase() === activeBattle.gymLeader.username.toLowerCase();
+  if (!isChallenger && !isLeader) {
+    await sendChatMessage(`@${username}, you're not in this battle!`, 'broadcaster');
+    return;
+  }
+
+  const expectedTurn = activeBattle.currentTurn;
+  if ((isChallenger && expectedTurn !== 'challenger') || (isLeader && expectedTurn !== 'gymLeader')) {
+    await sendChatMessage(`@${username}, it's not your turn!`, 'broadcaster');
+    return;
+  }
+
+  const attacker = isChallenger ? activeBattle.challenger : activeBattle.gymLeader;
+  const defender = isChallenger ? activeBattle.gymLeader : activeBattle.challenger;
+  const activeCard = attacker.cards[attacker.activeIndex];
+  const defenderCard = defender.cards[defender.activeIndex];
+
+  // Find best affordable attack
+  const attack = findBestAttack(activeCard, attacker.energy);
+  if (!attack) {
+    await sendChatMessage(`@${username}, not enough energy! You have: ${attacker.energy.join(', ') || 'none'}. Try !switch or wait a turn.`, 'broadcaster');
+    // Still end turn — they lose their turn
+    await endTurn();
+    return;
+  }
+
+  // Spend energy
+  spendEnergy(attacker, attack.cost);
+
+  // Calculate damage with weakness/resistance
+  let damage = attack.damage;
+  const attackerType = activeCard.types[0] || 'Colorless';
+  const weak = defenderCard.weaknesses.find(w => w.type === attackerType);
+  const resist = defenderCard.resistances.find(r => r.type === attackerType);
+  if (weak) damage = Math.floor(damage * 2);
+  if (resist) damage = Math.max(0, damage - 30);
+
+  defenderCard.hp = Math.max(0, defenderCard.hp - damage);
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({
+      type: 'gym-battle-attack',
+      payload: {
+        attacker: attacker.username,
+        defender: defender.username,
+        attackName: attack.name,
+        damage,
+        wasWeakness: !!weak,
+        wasResistance: !!resist,
+        ...buildBattleState()
+      }
+    });
+  }
+
+  let msg = `${activeCard.name} used ${attack.name}! ${damage} damage to ${defenderCard.name}!`;
+  if (weak) msg += ' Super effective!';
+  if (resist) msg += ' Not very effective...';
+  msg += ` (${defenderCard.hp}/${defenderCard.maxHp} HP)`;
+  await sendChatMessage(msg, 'broadcaster');
+
+  // Check faint
+  if (defenderCard.hp <= 0) {
+    await sendChatMessage(`${defenderCard.name} fainted!`, 'broadcaster');
+
+    const alive = defender.cards.filter(c => c.hp > 0);
+    if (alive.length === 0) {
+      await endBattle(attacker.username);
+      return;
+    }
+
+    // Auto-switch to next alive card
+    const nextIdx = defender.cards.findIndex(c => c.hp > 0);
+    defender.activeIndex = nextIdx;
+    await sendChatMessage(`@${defender.username} sent out ${defender.cards[nextIdx].name}!`, 'broadcaster');
+  }
+
+  await endTurn();
+}
+
+export async function battleSwitch(username: string): Promise<void> {
+  if (!activeBattle) {
+    await sendChatMessage(`@${username}, no battle in progress!`, 'broadcaster');
+    return;
+  }
+
+  const isChallenger = username.toLowerCase() === activeBattle.challenger.username.toLowerCase();
+  const isLeader = username.toLowerCase() === activeBattle.gymLeader.username.toLowerCase();
+  if (!isChallenger && !isLeader) return;
+
+  const expectedTurn = activeBattle.currentTurn;
+  if ((isChallenger && expectedTurn !== 'challenger') || (isLeader && expectedTurn !== 'gymLeader')) {
+    await sendChatMessage(`@${username}, it's not your turn!`, 'broadcaster');
+    return;
+  }
+
+  const player = isChallenger ? activeBattle.challenger : activeBattle.gymLeader;
+  const alive = player.cards.map((c, i) => ({ c, i })).filter(x => x.c.hp > 0 && x.i !== player.activeIndex);
+
+  if (alive.length === 0) {
+    await sendChatMessage(`@${username}, no other Pokemon available!`, 'broadcaster');
+    return;
+  }
+
+  // Cycle to next alive card
+  const next = alive[0];
+  player.activeIndex = next.i;
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({ type: 'gym-battle-switch', payload: { player: player.username, ...buildBattleState() } });
+  }
+
+  await sendChatMessage(`@${username} switched to ${next.c.name}!`, 'broadcaster');
+  await endTurn();
+}
+
+// ── Helpers ──
+
+function findBestAttack(card: BattleCard, energy: string[]): BattleAttack | null {
+  // Try attacks from strongest to weakest
+  const sorted = [...card.attacks].sort((a, b) => b.damage - a.damage);
+  for (const attack of sorted) {
+    if (canAfford(attack.cost, energy)) return attack;
+  }
+  return null;
+}
+
+function canAfford(cost: string[], energy: string[]): boolean {
+  const pool = [...energy];
+  for (const c of cost) {
+    if (c === 'Colorless') {
+      if (pool.length === 0) return false;
+      pool.splice(0, 1); // use any energy
+    } else {
+      const idx = pool.indexOf(c);
+      if (idx === -1) {
+        // Try colorless-like: use any
+        if (pool.length === 0) return false;
+        pool.splice(0, 1);
+      } else {
+        pool.splice(idx, 1);
+      }
+    }
+  }
+  return true;
+}
+
+function spendEnergy(player: BattlePlayer, cost: string[]): void {
+  for (const c of cost) {
+    if (c === 'Colorless') {
+      player.energy.splice(0, 1);
+    } else {
+      const idx = player.energy.indexOf(c);
+      if (idx !== -1) player.energy.splice(idx, 1);
+      else player.energy.splice(0, 1);
+    }
+  }
+}
+
+async function endTurn(): Promise<void> {
+  if (!activeBattle) return;
+
+  activeBattle.currentTurn = activeBattle.currentTurn === 'challenger' ? 'gymLeader' : 'challenger';
+  activeBattle.turnCount++;
+
+  // Add energy matching active card's type
+  const activePlayer = activeBattle.currentTurn === 'challenger' ? activeBattle.challenger : activeBattle.gymLeader;
+  const activeCard = activePlayer.cards[activePlayer.activeIndex];
+  activePlayer.energy.push(activeCard.types[0] || 'Colorless');
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({ type: 'gym-battle-turn', payload: buildBattleState() });
+  }
+
+  await sendChatMessage(
+    `@${activePlayer.username}'s turn! ${activeCard.name} (${activeCard.hp}/${activeCard.maxHp} HP) | Energy: ${activePlayer.energy.join(', ')} | !attack or !switch`,
+    'broadcaster'
+  );
+}
+
+async function announceActiveCards(): Promise<void> {
+  if (!activeBattle) return;
+  const c = activeBattle.challenger;
+  const g = activeBattle.gymLeader;
+  const cCard = c.cards[c.activeIndex];
+  const gCard = g.cards[g.activeIndex];
+  await sendChatMessage(
+    `${c.username}: ${cCard.name} (${cCard.hp} HP) | ${g.username}: ${gCard.name} (${gCard.hp} HP)`,
+    'broadcaster'
+  );
+}
+
+async function endBattle(winner: string): Promise<void> {
+  if (!activeBattle) return;
+
+  const isChallenger = winner.toLowerCase() === activeBattle.challenger.username.toLowerCase();
+
+  const broadcast = (global as any).broadcast;
+  if (typeof broadcast === 'function') {
+    broadcast({
+      type: 'gym-battle-end',
+      payload: {
+        winner,
+        isChallenger,
+        ...buildBattleState()
+      }
+    });
+  }
+
+  if (isChallenger) {
+    // Award gym badge
+    const { awardGymBadge } = require('./user-stats');
+    const badgeName = `Gym Badge: defeated ${activeBattle.gymLeader.username}`;
+    await awardGymBadge(attacker.username, badgeName);
+
+    await sendChatMessage(
+      `🏅 VICTORY! @${winner} defeated Gym Leader @${activeBattle.gymLeader.username} and earned a Gym Badge!`,
+      'broadcaster'
+    );
+    await sendChatMessage(
+      `Congratulations ${winner}! You've proven yourself as a skilled trainer!`,
+      'bot'
+    );
+  } else {
+    await sendChatMessage(
+      `💪 Gym Leader @${activeBattle.gymLeader.username} defended the gym! @${activeBattle.challenger.username}, train harder!`,
+      'broadcaster'
+    );
+    await sendChatMessage(
+      `${activeBattle.challenger.username}, don't give up! Every defeat makes you stronger!`,
+      'bot'
+    );
+  }
+
+  activeBattle = null;
+}
+
+function buildBattleState() {
+  if (!activeBattle) return {};
+  return {
+    challenger: {
+      username: activeBattle.challenger.username,
+      cards: activeBattle.challenger.cards,
+      activeIndex: activeBattle.challenger.activeIndex,
+      energy: activeBattle.challenger.energy
+    },
+    gymLeader: {
+      username: activeBattle.gymLeader.username,
+      cards: activeBattle.gymLeader.cards,
+      activeIndex: activeBattle.gymLeader.activeIndex,
+      energy: activeBattle.gymLeader.energy
+    },
+    currentTurn: activeBattle.currentTurn,
+    turnCount: activeBattle.turnCount
+  };
+}
+
+// Cleanup expired battles
+setInterval(() => {
+  if (activeBattle && activeBattle.expiresAt < Date.now()) {
+    sendChatMessage(
+      `⏰ Gym battle between @${activeBattle.challenger.username} and @${activeBattle.gymLeader.username} expired!`,
+      'broadcaster'
+    ).catch(() => {});
+    activeBattle = null;
+  }
+}, 30000);

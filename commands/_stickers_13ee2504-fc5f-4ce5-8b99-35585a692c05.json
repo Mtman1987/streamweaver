@@ -1,0 +1,17 @@
+{
+  "id": "13ee2504-fc5f-4ce5-8b99-35585a692c05",
+  "name": "!stickers",
+  "command": "(?i).*@?stickers.*",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !stickers",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": true,
+  "group": "secret commands ",
+  "sources": 23,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "72073798-50e2-4706-9aeb-6726a50c7459",
+  "name": "Cheer",
+  "description": "Imported from Streamer.bot: Cheer",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Events",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

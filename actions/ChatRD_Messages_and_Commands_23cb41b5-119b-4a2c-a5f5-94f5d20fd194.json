@@ -1,0 +1,13 @@
+{
+  "id": "23cb41b5-119b-4a2c-a5f5-94f5d20fd194",
+  "name": "ChatRD Messages and Commands",
+  "description": "Imported from Streamer.bot: ChatRD Messages and Commands",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "ChatRD",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

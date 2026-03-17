@@ -1,0 +1,12 @@
+{
+  "TWITCH_BROADCASTER_USERNAME": "your_twitch_username",
+  "NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME": "your_twitch_username",
+  "NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID": "",
+  "NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID": "",
+  "NEXT_PUBLIC_DISCORD_SHOUTOUT_CHANNEL_ID": "",
+  "AI_PROVIDER": "edenai",
+  "AI_MODEL": "openai/gpt-4o-mini",
+  "TTS_PROVIDER": "inworld",
+  "TTS_VOICE": "Ashley",
+  "DISCORD_TTS_BRIDGE": "false"
+}

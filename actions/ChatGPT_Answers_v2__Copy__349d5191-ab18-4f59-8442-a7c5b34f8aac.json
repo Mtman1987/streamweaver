@@ -1,0 +1,26 @@
+{
+  "id": "349d5191-ab18-4f59-8442-a7c5b34f8aac",
+  "name": "ChatGPT Answers v2 (Copy)",
+  "description": "Imported from Streamer.bot: ChatGPT Answers v2 (Copy)",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "Athenabot87",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

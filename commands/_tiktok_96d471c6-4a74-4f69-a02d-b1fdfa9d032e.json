@@ -1,0 +1,17 @@
+{
+  "id": "96d471c6-4a74-4f69-a02d-b1fdfa9d032e",
+  "name": "!tiktok",
+  "command": "!tiktok",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !tiktok",
+  "cooldown": {
+    "global": 10,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Links",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

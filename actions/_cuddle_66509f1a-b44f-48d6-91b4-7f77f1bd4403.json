@@ -1,0 +1,18 @@
+{
+  "id": "66509f1a-b44f-48d6-91b4-7f77f1bd4403",
+  "name": "!cuddle",
+  "description": "Imported from Streamer.bot: !cuddle",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Chat actions",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

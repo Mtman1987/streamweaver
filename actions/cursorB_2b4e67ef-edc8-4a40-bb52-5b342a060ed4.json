@@ -1,0 +1,13 @@
+{
+  "id": "2b4e67ef-edc8-4a40-bb52-5b342a060ed4",
+  "name": "cursorB",
+  "description": "Imported from Streamer.bot: cursorB",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

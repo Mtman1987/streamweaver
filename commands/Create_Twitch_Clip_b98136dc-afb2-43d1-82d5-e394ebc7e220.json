@@ -1,0 +1,17 @@
+{
+  "id": "b98136dc-afb2-43d1-82d5-e394ebc7e220",
+  "name": "Create Twitch Clip",
+  "command": "!clip",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: Create Twitch Clip",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Twitch",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

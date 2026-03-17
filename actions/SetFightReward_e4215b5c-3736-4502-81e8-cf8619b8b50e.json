@@ -1,0 +1,13 @@
+{
+  "id": "e4215b5c-3736-4502-81e8-cf8619b8b50e",
+  "name": "SetFightReward",
+  "description": "Imported from Streamer.bot: SetFightReward",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Champion of the Hill",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

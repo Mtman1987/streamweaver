@@ -1,0 +1,18 @@
+{
+  "id": "b38bb678-788d-4e8d-accf-1f35a83c94ee",
+  "name": "Deathcounter-(re)Set without changing total",
+  "description": "Imported from Streamer.bot: Deathcounter-(re)Set without changing total",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Improved Deathcounter",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

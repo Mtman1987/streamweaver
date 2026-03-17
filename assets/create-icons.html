@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>StreamWeave Icon Generator</title>
+</head>
+<body>
+    <canvas id="canvas" width="256" height="256"></canvas>
+    <br>
+    <button onclick="downloadIcon('app-icon')">Download App Icon</button>
+    <button onclick="downloadIcon('tray-icon')">Download Tray Icon</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function createStreamWeaveIcon() {
+            // Purple gradient background
+            const gradient = ctx.createLinearGradient(0, 0, 256, 256);
+            gradient.addColorStop(0, '#8B5CF6');
+            gradient.addColorStop(1, '#3B82F6');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
+            
+            // White text
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 32px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('SW', 128, 140);
+            
+            // Subtitle
+            ctx.font = '16px Arial';
+            ctx.fillText('StreamWeave', 128, 180);
+        }
+
+        function downloadIcon(name) {
+            createStreamWeaveIcon();
+            const link = document.createElement('a');
+            link.download = name + '.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // Create initial icon
+        createStreamWeaveIcon();
+    </script>
+</body>
+</html>

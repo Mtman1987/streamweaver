@@ -1,0 +1,13 @@
+{
+  "id": "2772f073-af91-4925-94cc-4a33050c35da",
+  "name": "Currency System •sample",
+  "description": "Imported from Streamer.bot: Currency System •sample",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "channel points cost",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

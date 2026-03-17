@@ -1,0 +1,17 @@
+{
+  "id": "6166ad9c-8100-493b-a557-fc65a5464601",
+  "name": "watchtimeleader",
+  "command": "!wleader",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: watchtimeleader",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

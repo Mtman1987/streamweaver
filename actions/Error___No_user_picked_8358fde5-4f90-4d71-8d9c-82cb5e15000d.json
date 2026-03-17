@@ -1,0 +1,13 @@
+{
+  "id": "8358fde5-4f90-4d71-8d9c-82cb5e15000d",
+  "name": "Error - No user picked",
+  "description": "Imported from Streamer.bot: Error - No user picked",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Errors",
+  "createdAt": "2025-12-25T08:43:56.720Z",
+  "updatedAt": "2025-12-25T08:43:56.720Z"
+}

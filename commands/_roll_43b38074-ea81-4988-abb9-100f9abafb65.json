@@ -1,0 +1,17 @@
+{
+  "id": "43b38074-ea81-4988-abb9-100f9abafb65",
+  "name": "!roll",
+  "command": "!roll",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !roll",
+  "cooldown": {
+    "global": 0,
+    "user": 2
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat actions",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

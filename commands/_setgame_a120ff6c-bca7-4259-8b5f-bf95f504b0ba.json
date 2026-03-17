@@ -1,0 +1,17 @@
+{
+  "id": "a120ff6c-bca7-4259-8b5f-bf95f504b0ba",
+  "name": "!setgame",
+  "command": "!setgame",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !setgame",
+  "cooldown": {
+    "global": 5,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Mod commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

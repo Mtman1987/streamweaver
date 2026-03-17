@@ -1,0 +1,18 @@
+{
+  "id": "99ed5b7b-03a5-4fd4-b7c7-f06c43bae7e0",
+  "name": "ChatGPT Whisper V2",
+  "description": "Imported from Streamer.bot: ChatGPT Whisper V2",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Athenabot87",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

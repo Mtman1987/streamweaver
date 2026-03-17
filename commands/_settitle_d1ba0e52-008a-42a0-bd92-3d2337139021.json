@@ -1,0 +1,17 @@
+{
+  "id": "d1ba0e52-008a-42a0-bd92-3d2337139021",
+  "name": "!settitle",
+  "command": "!settitle",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !settitle",
+  "cooldown": {
+    "global": 5,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Mod commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

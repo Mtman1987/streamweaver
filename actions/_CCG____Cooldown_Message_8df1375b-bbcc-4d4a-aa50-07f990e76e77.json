@@ -1,0 +1,18 @@
+{
+  "id": "8df1375b-bbcc-4d4a-aa50-07f990e76e77",
+  "name": "[CCG] - Cooldown Message",
+  "description": "Imported from Streamer.bot: [CCG] - Cooldown Message",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "[CCG] - Classic Chat Gamble",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

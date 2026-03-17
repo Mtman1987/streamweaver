@@ -1,0 +1,13 @@
+{
+  "id": "1b3dc208-cb5c-4e62-83e1-eee3f566c330",
+  "name": "Currency System • Unable to Afford",
+  "description": "Imported from Streamer.bot: Currency System • Unable to Afford",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "StreamUP Currency • Core System",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

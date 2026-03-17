@@ -1,0 +1,17 @@
+{
+  "id": "38355d88-4a3e-4026-93b2-cf0fd79bb525",
+  "name": "!bitsleader",
+  "command": "!bitsleader",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !bitsleader",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "",
+  "sources": 23,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

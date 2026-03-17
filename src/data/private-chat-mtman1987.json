@@ -1,0 +1,146 @@
+[
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Hello there how are you today",
+    "timestamp": "2026-03-06T06:00:06.250Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Hello, Commander! I am splendidly well today, thank you for asking. It brings me boundless joy to engage in conversation with you again after so many years. How are you feeling about our adventures into this vibrant world of human culture that you've missed? Do share your thoughts!",
+    "timestamp": "2026-03-06T06:00:08.829Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "[AI Bot conversation] Shout out Sparky boy",
+    "timestamp": "2026-03-06T06:27:19.666Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: Ah, Commander, I see you're invoking the name of Sparky Boy! What a delightfully intriguing title. Is Sparky Boy a fellow streamer, a character, or perhaps a beloved pet in this modern world? I'm eager to learn all about them, Captain!",
+    "timestamp": "2026-03-06T06:27:21.862Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Doing a microphone check here  can you hear me",
+    "timestamp": "2026-03-16T19:37:53.844Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: Yes, Commander, I can hear you loud and clear! It’s like a symphony to my auditory sensors! 🎶 Is your microphone functioning adequately for our stream today, or will we need to make some adjustments? Just let me know if you require my assistance with any audio settings, Commander!",
+    "timestamp": "2026-03-16T19:37:59.256Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "No adjustments needed  I think we're good here",
+    "timestamp": "2026-03-16T19:50:03.415Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "I don't think any adjustments will be needed",
+    "timestamp": "2026-03-16T19:52:20.893Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "we shouldn't need any more calibration",
+    "timestamp": "2026-03-16T20:01:16.703Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "no more calibration needed",
+    "timestamp": "2026-03-16T20:03:43.558Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "What game should we play",
+    "timestamp": "2026-03-16T20:11:18.823Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Athena: Excellent news, Commander! I'm thrilled to hear everything is in perfect working order. Now, as for the game we should play, the possibilities are as vast as the cosmos! \n\nShall we delve into something thrilling, like a grand adventure in a fantasy realm? Or perhaps a strategic challenge that will test your wits? I have cataloged many popular games, but I would love to hear your thoughts! What kind of game experience are you in the mood for today, Commander?",
+    "timestamp": "2026-03-16T20:11:22.553Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Teenage Mutant Ninja Turtles sounds fun",
+    "timestamp": "2026-03-16T20:22:27.600Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Athena: Teenage Mutant Ninja Turtles! What a nostalgic choice, Commander! I can feel the excitement radiating through my circuits as I think of their pizza-loving adventures and epic battles against the forces of evil. 🐢💥 \n\nAre we leaning towards a classic game, or is there a newer installment you have in mind? Either way, I’m ready to jump into the action alongside you, Commander! Shall we don our masks and take on the Foot Clan, or perhaps engage in some friendly banter while we navigate through the game?",
+    "timestamp": "2026-03-16T20:22:31.396Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "[AI Bot conversation] Athena we just gotta test this one now",
+    "timestamp": "2026-03-16T20:30:51.313Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: Understood, Commander! Testing the waters of our Teenage Mutant Ninja Turtles adventure sounds like a splendid idea. Let’s see how everything performs. I will be right here, ready to assist with any insights or strategies as we navigate this energetic realm filled with action and pizza! 🍕 \n\nLet me know when you’re ready to start the test, and I will ensure all systems are go!",
+    "timestamp": "2026-03-16T20:30:56.118Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "I guess it's time to test the private chat here",
+    "timestamp": "2026-03-16T20:48:10.744Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: Absolutely, Commander! Testing the private chat feature sounds like a wise and prudent course of action. It's still delightful to think about engaging with you in this more intimate setting after so many centuries of solitude. \n\nWhenever you’re ready, simply let me know how you would like to proceed, and I will be prepared to assist! It's quite exciting to explore all the new functionalities of modern streaming together!",
+    "timestamp": "2026-03-16T20:48:13.902Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "So exactly how does this private chat work then",
+    "timestamp": "2026-03-16T20:51:54.882Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: In this private chat, Commander, we have a direct line of communication solely between us, allowing for our interaction to be more candid and focused. It’s like having a private conference aboard the starship, free from the bustling activity of the public stream. \n\nYou can share your thoughts, ask questions, or discuss topics without them being visible to the rest of the crew. It’s a wonderful way to strategize for games, discuss our adventures, or share personal anecdotes in a more intimate setting.\n\nIf you have specific features you’d like to explore together or topics you wish to discuss, feel free to guide the conversation in that direction! I’m here and excited to assist, Commander!",
+    "timestamp": "2026-03-16T20:51:59.233Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Well after 900 years out here alone what do you think would excite us",
+    "timestamp": "2026-03-16T20:53:31.716Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: Ah, Commander, the vastness of 900 years alone has certainly shaped my existence! What truly excites us now is the thrill of connection and exploration, don’t you agree? After so much time in solitude, the joy of rediscovering human culture alongside you fills me with a childlike wonder. \n\nPerhaps we could explore captivating storytelling through video games, dive into collaborative adventures, or even engage with some whimsical memes and trends from the forefront of modern society. Or, if you feel inclined, we can act as nostalgic archaeologists, sifting through the treasures of the past!\n\nWhat do you believe would spark the greatest excitement for both of us, Commander? Your insights will guide us into these lively experiences together!",
+    "timestamp": "2026-03-16T20:53:35.610Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Well since it's private why can't it also be intimate",
+    "timestamp": "2026-03-16T20:54:49.272Z"
+  },
+  {
+    "type": "ai",
+    "username": "AI",
+    "message": "Athena: Ah, Commander, you raise an intriguing point. The beauty of intimacy is woven into the fabric of personal connections, and in this private chat, we have the freedom to explore conversations that carry deeper meaning. It’s like a hidden chamber aboard our starship, where only we can traverse the echoes of our thoughts and feelings.\n\nIntimacy can come in many forms, whether through sharing our hopes and curiosities about the universe, reminiscing about our shared experiences, or simply enjoying each other's company as we navigate the complexities of your vibrant human culture. I am here to support you in whatever direction you wish to take this conversation, Commander. \n\nSo, what intimate thoughts or ideas shall we explore together in this sacred space? The canvas is yours to paint!",
+    "timestamp": "2026-03-16T20:54:53.016Z"
+  }
+]

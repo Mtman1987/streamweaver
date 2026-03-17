@@ -1,0 +1,18 @@
+{
+  "id": "eef25652-3bb1-4a13-81d7-eff5cc81f1a0",
+  "name": "Twitch Clip Scan for New Clips",
+  "description": "Imported from Streamer.bot: Twitch Clip Scan for New Clips",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Twitch Clip",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

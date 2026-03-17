@@ -1,0 +1,18 @@
+{
+  "id": "faddef1e-5326-466a-8b45-fbfe86277c45",
+  "name": "Auto Add Watchtime",
+  "description": "Imported from Streamer.bot: Auto Add Watchtime",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Watchtime",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

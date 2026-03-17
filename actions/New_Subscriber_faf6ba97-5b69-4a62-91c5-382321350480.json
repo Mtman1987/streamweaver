@@ -1,0 +1,18 @@
+{
+  "id": "faf6ba97-5b69-4a62-91c5-382321350480",
+  "name": "New Subscriber",
+  "description": "Imported from Streamer.bot: New Subscriber",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Events",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

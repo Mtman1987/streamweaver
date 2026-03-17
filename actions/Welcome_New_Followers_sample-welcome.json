@@ -1,0 +1,39 @@
+{
+  "id": "sample-welcome",
+  "name": "Welcome New Followers",
+  "description": "Automatically welcome new followers with a chat message and sound effect",
+  "triggers": [
+    {
+      "type": "Follow",
+      "config": {}
+    }
+  ],
+  "subActions": [
+    {
+      "id": "welcome-msg",
+      "type": "Send Chat Message",
+      "name": "Welcome Message",
+      "config": {
+        "message": "Welcome to the stream, {user}! Thanks for the follow! 🎉"
+      },
+      "enabled": true,
+      "order": 0
+    },
+    {
+      "id": "welcome-sound",
+      "type": "Play Sound",
+      "name": "Welcome Sound",
+      "config": {
+        "soundFile": "welcome.mp3",
+        "volume": 0.7
+      },
+      "enabled": true,
+      "order": 1
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z"
+}

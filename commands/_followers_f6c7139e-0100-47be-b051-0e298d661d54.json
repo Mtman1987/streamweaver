@@ -1,0 +1,17 @@
+{
+  "id": "f6c7139e-0100-47be-b051-0e298d661d54",
+  "name": "!followers",
+  "command": "!followers",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !followers",
+  "cooldown": {
+    "global": 5,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

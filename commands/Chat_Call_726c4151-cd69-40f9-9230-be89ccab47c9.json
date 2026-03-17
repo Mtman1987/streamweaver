@@ -1,0 +1,17 @@
+{
+  "id": "726c4151-cd69-40f9-9230-be89ccab47c9",
+  "name": "Chat Call",
+  "command": "(?i).*@?{{BOT_NAME}}.*",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: Chat Call",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": true,
+  "group": "Mustached_Maniac ChatGPT",
+  "sources": 1049617,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

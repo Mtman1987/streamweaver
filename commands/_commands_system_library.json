@@ -1,0 +1,26 @@
+{
+  "id": "commands-list-command",
+  "name": "Commands List",
+  "enabled": true,
+  "command": "!commands",
+  "mode": 0,
+  "regexExplicitCapture": false,
+  "location": 0,
+  "ignoreBotAccount": true,
+  "ignoreInternal": true,
+  "sources": 1,
+  "persistCounter": false,
+  "persistUserCounter": false,
+  "caseSensitive": false,
+  "globalCooldown": 0,
+  "userCooldown": 10000,
+  "group": "System",
+  "grantType": 0,
+  "permittedUsers": [],
+  "permittedGroups": [],
+  "actions": [
+    {
+      "type": "commands-list-show"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "d19e6eb2-90ab-41a2-980b-9ed160fc885a",
+  "name": "ChatRD Kick Messages",
+  "description": "Imported from Streamer.bot: ChatRD Kick Messages",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "ChatRD",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

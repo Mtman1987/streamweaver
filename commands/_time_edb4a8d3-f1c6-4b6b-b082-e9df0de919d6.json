@@ -1,0 +1,17 @@
+{
+  "id": "edb4a8d3-f1c6-4b6b-b082-e9df0de919d6",
+  "name": "!time",
+  "command": "!time",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !time",
+  "cooldown": {
+    "global": 60,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

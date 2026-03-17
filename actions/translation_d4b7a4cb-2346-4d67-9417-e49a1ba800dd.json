@@ -1,0 +1,18 @@
+{
+  "id": "d4b7a4cb-2346-4d67-9417-e49a1ba800dd",
+  "name": "translation",
+  "description": "Imported from Streamer.bot: translation",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "translation",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "fbbc4f2c-71b4-4474-8ee9-bfddcf7fc3b7",
+  "name": "YouTube Custom Emotes",
+  "description": "Imported from Streamer.bot: YouTube Custom Emotes",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "ChatRD",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

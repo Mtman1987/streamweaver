@@ -1,0 +1,13 @@
+{
+  "id": "7cc3442a-e255-44c7-b8b9-670da8aecb17",
+  "name": "ShowGroupBlerpsOverlay",
+  "description": "Imported from Streamer.bot: ShowGroupBlerpsOverlay",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "6c9a7796-282b-41ea-8f84-c9bcd09bb5d6",
+  "name": "!no",
+  "command": "!no",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !no",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

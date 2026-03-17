@@ -1,0 +1,18 @@
+{
+  "id": "da2d0114-06f8-47ab-8a82-3770e7c4d434",
+  "name": "Currency System • ban in game item (Copy)",
+  "description": "Imported from Streamer.bot: Currency System • ban in game item (Copy)",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "channel points cost",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

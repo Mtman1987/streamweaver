@@ -1,0 +1,54 @@
+{
+  "id": "01a4936a-1821-45c0-8530-372397d69dbb",
+  "name": "Play Blerps (Copy)",
+  "description": "Imported from Streamer.bot: Play Blerps (Copy)",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Channel point style redeems",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

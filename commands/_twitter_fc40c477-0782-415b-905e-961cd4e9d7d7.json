@@ -1,0 +1,17 @@
+{
+  "id": "fc40c477-0782-415b-905e-961cd4e9d7d7",
+  "name": "!twitter",
+  "command": "!twitter",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !twitter",
+  "cooldown": {
+    "global": 10,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Links",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

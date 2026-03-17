@@ -1,0 +1,17 @@
+{
+  "id": "4126ecd0-ca0f-4cfa-9496-7e18849077da",
+  "name": "!so",
+  "command": "!so",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !so",
+  "cooldown": {
+    "global": 1,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Mod commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

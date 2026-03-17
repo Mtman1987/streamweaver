@@ -1,0 +1,18 @@
+{
+  "id": "01f58d95-8f37-4359-8943-ca41be5fe1ae",
+  "name": "!vso - Video Shout out v2",
+  "description": "Imported from Streamer.bot: !vso - Video Shout out v2",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Mod commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

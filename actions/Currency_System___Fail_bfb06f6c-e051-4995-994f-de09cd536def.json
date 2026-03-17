@@ -1,0 +1,18 @@
+{
+  "id": "bfb06f6c-e051-4995-994f-de09cd536def",
+  "name": "Currency System • Fail",
+  "description": "Imported from Streamer.bot: Currency System • Fail",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "StreamUP Currency • Core System",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "61d121f1-cfd7-43b2-91b5-061ac40f9195",
+  "name": "badgeleader",
+  "command": "!bleader",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: badgeleader",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 31,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

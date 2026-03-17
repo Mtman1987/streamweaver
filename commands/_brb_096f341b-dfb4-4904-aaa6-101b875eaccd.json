@@ -1,0 +1,17 @@
+{
+  "id": "096f341b-dfb4-4904-aaa6-101b875eaccd",
+  "name": "!brb",
+  "command": "!brb",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !brb",
+  "cooldown": {
+    "global": 4,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Mod commands",
+  "sources": 21,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

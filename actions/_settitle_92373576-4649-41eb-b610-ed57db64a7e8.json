@@ -1,0 +1,18 @@
+{
+  "id": "92373576-4649-41eb-b610-ed57db64a7e8",
+  "name": "!settitle",
+  "description": "Imported from Streamer.bot: !settitle",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Mod commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "314fd204-a5bf-4e5a-a559-0a6bf3b41733",
+  "name": "EndMenuMode",
+  "description": "Imported from Streamer.bot: EndMenuMode",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

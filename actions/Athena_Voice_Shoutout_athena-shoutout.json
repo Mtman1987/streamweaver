@@ -1,0 +1,11 @@
+{
+  "id": "athena-shoutout",
+  "name": "Athena Voice Shoutout",
+  "description": "Voice-activated shoutout that finds the closest matching username",
+  "trigger": "athena shout",
+  "type": "Execute Code",
+  "code": "// Extract username from voice command (handles 'shoutout' or 'shout out')\nconst fullCommand = args.join(' ');\nconst targetName = fullCommand.replace(/^(out)?\\s*/, '').trim();\n\nif (!targetName) {\n  console.log('[Voice Shoutout] No username provided');\n  return;\n}\n\n// Call voice shoutout handler directly\nconst { handleVoiceShoutout } = require('./src/services/voice-shoutout');\nawait handleVoiceShoutout(targetName);",
+  "enabled": true,
+  "createdAt": "2025-01-22T10:00:00.000Z",
+  "updatedAt": "2025-01-22T10:00:00.000Z"
+}

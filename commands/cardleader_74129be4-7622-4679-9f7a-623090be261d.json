@@ -1,0 +1,17 @@
+{
+  "id": "74129be4-7622-4679-9f7a-623090be261d",
+  "name": "cardleader",
+  "command": "!cleader",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: cardleader",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 23,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

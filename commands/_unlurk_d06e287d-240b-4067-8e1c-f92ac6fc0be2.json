@@ -1,0 +1,17 @@
+{
+  "id": "d06e287d-240b-4067-8e1c-f92ac6fc0be2",
+  "name": "!unlurk",
+  "command": "!unlurk",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !unlurk",
+  "cooldown": {
+    "global": 0,
+    "user": 60
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat actions",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

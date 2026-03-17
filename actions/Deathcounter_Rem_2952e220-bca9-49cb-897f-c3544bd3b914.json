@@ -1,0 +1,18 @@
+{
+  "id": "2952e220-bca9-49cb-897f-c3544bd3b914",
+  "name": "Deathcounter-Rem",
+  "description": "Imported from Streamer.bot: Deathcounter-Rem",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Improved Deathcounter",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

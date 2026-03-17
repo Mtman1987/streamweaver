@@ -1,0 +1,17 @@
+{
+  "id": "85755235-014b-4a4c-bba5-ffd280b70289",
+  "name": "steal points",
+  "command": "!stealpoints",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: steal points",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "",
+  "sources": 23,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

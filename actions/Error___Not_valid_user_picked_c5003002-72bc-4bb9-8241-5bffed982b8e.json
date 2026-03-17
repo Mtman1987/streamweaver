@@ -1,0 +1,13 @@
+{
+  "id": "c5003002-72bc-4bb9-8241-5bffed982b8e",
+  "name": "Error - Not valid user picked",
+  "description": "Imported from Streamer.bot: Error - Not valid user picked",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Errors",
+  "createdAt": "2025-12-25T08:43:56.720Z",
+  "updatedAt": "2025-12-25T08:43:56.720Z"
+}

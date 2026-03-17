@@ -1,0 +1,18 @@
+{
+  "id": "0f1dac70-025f-4005-a317-6071755f2ac6",
+  "name": "!followers",
+  "description": "Imported from Streamer.bot: !followers",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Chat commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

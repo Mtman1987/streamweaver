@@ -1,0 +1,18 @@
+{
+  "id": "de9436a5-677d-4d66-8f51-310de7547c83",
+  "name": "duel (Copy)",
+  "description": "Imported from Streamer.bot: duel (Copy)",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "[CCG] - Classic Chat Gamble",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

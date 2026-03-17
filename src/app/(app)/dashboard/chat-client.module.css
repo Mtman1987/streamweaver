@@ -1,0 +1,17 @@
+.username {
+  color: white;
+}
+
+.username[data-color] {
+  color: attr(data-color);
+}
+
+/* Fallback for browsers that don't support attr() with color */
+.username[data-color="red"] { color: red; }
+.username[data-color="blue"] { color: blue; }
+.username[data-color="green"] { color: green; }
+.username[data-color="purple"] { color: purple; }
+.username[data-color="orange"] { color: orange; }
+.username[data-color="yellow"] { color: yellow; }
+.username[data-color="pink"] { color: pink; }
+.username[data-color="cyan"] { color: cyan; }

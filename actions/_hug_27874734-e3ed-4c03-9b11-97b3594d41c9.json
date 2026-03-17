@@ -1,0 +1,18 @@
+{
+  "id": "27874734-e3ed-4c03-9b11-97b3594d41c9",
+  "name": "!hug",
+  "description": "Imported from Streamer.bot: !hug",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Chat actions",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

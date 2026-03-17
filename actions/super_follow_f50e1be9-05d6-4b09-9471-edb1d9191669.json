@@ -1,0 +1,34 @@
+{
+  "id": "f50e1be9-05d6-4b09-9471-edb1d9191669",
+  "name": "super follow",
+  "description": "this is the real deal",
+  "triggers": [
+    {
+      "type": "Follow",
+      "config": {}
+    }
+  ],
+  "subActions": [
+    {
+      "id": "781db8bd-c233-49fb-b303-71b7031386c3",
+      "type": "Play Sound",
+      "name": "Play Sound",
+      "config": {},
+      "enabled": true,
+      "order": 0
+    },
+    {
+      "id": "84129a6f-e84d-40ee-ab14-fee8f0f1164b",
+      "type": "Execute Code",
+      "name": "Execute Code",
+      "config": {},
+      "enabled": true,
+      "order": 1
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "createdAt": "2025-12-14T12:21:14.532Z",
+  "updatedAt": "2025-12-14T12:21:14.532Z"
+}

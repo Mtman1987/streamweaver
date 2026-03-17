@@ -1,0 +1,18 @@
+{
+  "id": "e349a5fe-2bd3-44bf-933d-8f23e9772cf8",
+  "name": "Deathcounter-Reset-Total-Deaths",
+  "description": "Imported from Streamer.bot: Deathcounter-Reset-Total-Deaths",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Improved Deathcounter",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

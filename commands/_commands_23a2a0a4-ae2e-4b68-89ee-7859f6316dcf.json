@@ -1,0 +1,18 @@
+{
+  "id": "23a2a0a4-ae2e-4b68-89ee-7859f6316dcf",
+  "name": "!commands",
+  "command": "!commands",
+  "enabled": true,
+  "description": "List available commands",
+  "cooldown": {
+    "global": 0,
+    "user": 120
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 1,
+  "response": "Commands: !pack, !collection, !show <card>, !trade <user>, !offer <card>, !accept, !cancel, !points, !gamble, !roll, !so <user>, !clip, !discord, !youtube, !twitter, !instagram",
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

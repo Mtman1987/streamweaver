@@ -1,0 +1,29 @@
+{
+  "id": "leaderboard-system",
+  "name": "User Stats & Leaderboard System",
+  "version": "1.0.0",
+  "author": "Mtman1987",
+  "description": "Complete leaderboard system tracking points, watchtime, cards, badges with profile commands",
+  "category": "engagement",
+  "tags": ["leaderboard", "stats", "points", "profile", "tracking"],
+  "commands": ["!leader", "!pleader", "!wleader", "!cleader", "!bleader"],
+  "features": [
+    "User profile system",
+    "Multiple leaderboard types",
+    "User comparison",
+    "Anti-spam cooldowns",
+    "WebSocket broadcasting",
+    "MasterStats sync"
+  ],
+  "files": [
+    "src/services/user-stats.ts",
+    "src/services/leaderboard-commands.ts",
+    "src/services/stats-sync.ts",
+    "src/app/api/leaderboard/route.ts"
+  ],
+  "setup": [
+    "Place MasterStats folder in project root",
+    "Commands auto-register on startup",
+    "Use !leader to test"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "8b1e2aba-cc72-44b1-a020-e76f81434cc1",
+  "name": "wotd",
+  "description": "Imported from Streamer.bot: wotd",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "special actions",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "9bd57699-f793-4c43-a8e0-866b6163ab23",
+  "name": "menumode",
+  "description": "Imported from Streamer.bot: menumode",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

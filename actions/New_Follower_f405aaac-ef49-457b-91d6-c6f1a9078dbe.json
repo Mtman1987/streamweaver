@@ -1,0 +1,18 @@
+{
+  "id": "f405aaac-ef49-457b-91d6-c6f1a9078dbe",
+  "name": "New Follower",
+  "description": "Imported from Streamer.bot: New Follower",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Events",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

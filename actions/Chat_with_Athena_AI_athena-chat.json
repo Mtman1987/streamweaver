@@ -1,0 +1,12 @@
+{
+  "id": "athena-chat",
+  "name": "Chat with Athena AI",
+  "description": "Talk to Athena, the AI assistant, with voice responses",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "createdAt": "2024-12-14T10:00:00.000Z",
+  "updatedAt": "2024-12-14T10:00:00.000Z"
+}

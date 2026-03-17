@@ -1,0 +1,18 @@
+{
+  "id": "5f34c921-902d-4d36-a10c-b506d52af600",
+  "name": "ShowCategoryBlerpsOverlay",
+  "description": "Imported from Streamer.bot: ShowCategoryBlerpsOverlay",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

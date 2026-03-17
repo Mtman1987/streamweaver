@@ -1,0 +1,18 @@
+{
+  "id": "97104442-4b39-4320-a6ec-875d12024591",
+  "name": "smoke",
+  "description": "Imported from Streamer.bot: smoke",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Channel point style redeems",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "036caf26-c247-43d7-a952-a00e9b8dc5e9",
+  "name": "updateleaderboard (Copy)",
+  "description": "Imported from Streamer.bot: updateleaderboard (Copy)",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "leadberboard",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

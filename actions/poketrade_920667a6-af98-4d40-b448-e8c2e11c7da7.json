@@ -1,0 +1,18 @@
+{
+  "id": "920667a6-af98-4d40-b448-e8c2e11c7da7",
+  "name": "poketrade",
+  "description": "Imported from Streamer.bot: poketrade",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "PokemonTCG",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

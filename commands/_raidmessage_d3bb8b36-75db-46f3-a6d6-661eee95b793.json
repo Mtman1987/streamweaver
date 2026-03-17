@@ -1,0 +1,17 @@
+{
+  "id": "d3bb8b36-75db-46f3-a6d6-661eee95b793",
+  "name": "!raidmessage",
+  "command": "!raidmessage",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !raidmessage",
+  "cooldown": {
+    "global": 5,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Mod commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

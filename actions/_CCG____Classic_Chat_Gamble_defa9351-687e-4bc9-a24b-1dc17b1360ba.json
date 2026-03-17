@@ -1,0 +1,22 @@
+{
+  "id": "defa9351-687e-4bc9-a24b-1dc17b1360ba",
+  "name": "[CCG] - Classic Chat Gamble",
+  "description": "Imported from Streamer.bot: [CCG] - Classic Chat Gamble",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "[CCG] - Classic Chat Gamble",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

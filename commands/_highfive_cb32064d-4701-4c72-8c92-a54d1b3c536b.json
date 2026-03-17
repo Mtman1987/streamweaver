@@ -1,0 +1,17 @@
+{
+  "id": "cb32064d-4701-4c72-8c92-a54d1b3c536b",
+  "name": "!highfive",
+  "command": "!highfive",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !highfive",
+  "cooldown": {
+    "global": 0,
+    "user": 2
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat actions",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

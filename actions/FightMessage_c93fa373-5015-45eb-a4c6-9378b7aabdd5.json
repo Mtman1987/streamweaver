@@ -1,0 +1,13 @@
+{
+  "id": "c93fa373-5015-45eb-a4c6-9378b7aabdd5",
+  "name": "FightMessage",
+  "description": "Imported from Streamer.bot: FightMessage",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Champion of the Hill",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "cc628137-5406-4f31-94ed-0dd83933e847",
+  "name": "pointsleader",
+  "command": "!pleader",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: pointsleader",
+  "cooldown": {
+    "global": 15,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 23,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

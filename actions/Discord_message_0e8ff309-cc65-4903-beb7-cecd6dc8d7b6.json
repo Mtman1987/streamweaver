@@ -1,0 +1,13 @@
+{
+  "id": "0e8ff309-cc65-4903-beb7-cecd6dc8d7b6",
+  "name": "Discord message",
+  "description": "Imported from Streamer.bot: Discord message",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "discord",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

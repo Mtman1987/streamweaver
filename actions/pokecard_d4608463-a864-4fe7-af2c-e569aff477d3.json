@@ -1,0 +1,22 @@
+{
+  "id": "d4608463-a864-4fe7-af2c-e569aff477d3",
+  "name": "pokecard",
+  "description": "Imported from Streamer.bot: pokecard",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "PokemonTCG",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

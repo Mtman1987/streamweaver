@@ -1,0 +1,17 @@
+{
+  "id": "079079a6-2d58-430c-a119-683439d7787a",
+  "name": "!instagram",
+  "command": "!instagram",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !instagram",
+  "cooldown": {
+    "global": 10,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Links",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

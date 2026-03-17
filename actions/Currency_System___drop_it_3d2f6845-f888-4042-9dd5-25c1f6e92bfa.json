@@ -1,0 +1,18 @@
+{
+  "id": "3d2f6845-f888-4042-9dd5-25c1f6e92bfa",
+  "name": "Currency System • drop it",
+  "description": "Imported from Streamer.bot: Currency System • drop it",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "channel points cost",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

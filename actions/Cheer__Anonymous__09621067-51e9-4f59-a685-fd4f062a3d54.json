@@ -1,0 +1,13 @@
+{
+  "id": "09621067-51e9-4f59-a685-fd4f062a3d54",
+  "name": "Cheer (Anonymous)",
+  "description": "Imported from Streamer.bot: Cheer (Anonymous)",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Events",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "3e947b44-40ac-4c49-b828-7897d97a7f30",
+  "name": "ChatGPT Set-Up UI V2",
+  "description": "Imported from Streamer.bot: ChatGPT Set-Up UI V2",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Athenabot87",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

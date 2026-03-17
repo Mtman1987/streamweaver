@@ -1,0 +1,26 @@
+{
+  "id": "4d8b4226-4775-4725-8736-89c1efaaed96",
+  "name": "!roll",
+  "description": "Imported from Streamer.bot: !roll",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "[CCG] - Classic Chat Gamble",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

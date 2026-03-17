@@ -1,0 +1,17 @@
+{
+  "id": "4831ef91-dd24-4830-b867-c8d589892091",
+  "name": "!stats",
+  "command": "!stats",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !stats",
+  "cooldown": {
+    "global": 120,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

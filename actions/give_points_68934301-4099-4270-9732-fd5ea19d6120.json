@@ -1,0 +1,22 @@
+{
+  "id": "68934301-4099-4270-9732-fd5ea19d6120",
+  "name": "give points",
+  "description": "Imported from Streamer.bot: give points",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "StreamUP Currency • Core System",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

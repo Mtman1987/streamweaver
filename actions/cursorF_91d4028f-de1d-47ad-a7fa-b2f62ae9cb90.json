@@ -1,0 +1,13 @@
+{
+  "id": "91d4028f-de1d-47ad-a7fa-b2f62ae9cb90",
+  "name": "cursorF",
+  "description": "Imported from Streamer.bot: cursorF",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Menu Mode",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

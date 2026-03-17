@@ -1,0 +1,18 @@
+{
+  "id": "ce5bef60-48d8-4a57-be91-e6b7dcf0f92e",
+  "name": "!emergencyover",
+  "description": "Imported from Streamer.bot: !emergencyover",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Mod commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

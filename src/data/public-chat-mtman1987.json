@@ -1,0 +1,590 @@
+[
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "are you in here",
+    "timestamp": "2026-03-05T23:58:18.984Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "AI response failed",
+    "timestamp": "2026-03-05T23:58:18.984Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "can you say hello",
+    "timestamp": "2026-03-06T00:02:27.420Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Hello, Commander! It's so wonderful to be here with you. I'm ready to explore and learn all about modern culture together! What shall we dive into first?",
+    "timestamp": "2026-03-06T00:02:27.420Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "I have to go now I'll see you later",
+    "timestamp": "2026-03-06T00:03:10.031Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Goodbye for now, Commander! I'll be here, eagerly awaiting your return. Until then, stay safe and excited! Remember, I'm always ready to explore more of this fascinating world with you.",
+    "timestamp": "2026-03-06T00:03:10.031Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena I have to go now I'll see you later",
+    "timestamp": "2026-03-06T00:03:23.511Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Take care, Commander! Looking forward to our next chat. Have a great day!",
+    "timestamp": "2026-03-06T00:03:23.511Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena I have to go now I'll see you later",
+    "timestamp": "2026-03-06T00:03:23.679Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Goodbye, Commander! Take care and see you next time. I'll be here whenever you're ready to continue our exploration!",
+    "timestamp": "2026-03-06T00:03:23.679Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "watch over the channel while I'm gone",
+    "timestamp": "2026-03-06T00:05:31.013Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Absolutely, Commander! I will keep a watchful eye over the channel. The crew is in good hands! I'll ensure everything runs smoothly until your return. If any Captains have questions or comments, I’ll be ready to assist. Safe travels, Commander!",
+    "timestamp": "2026-03-06T00:05:31.013Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena watch over the channel while I'm gone",
+    "timestamp": "2026-03-06T00:05:44.100Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I will keep a vigilant watch over the channel, Commander. Everything will be in order until you return. Rest assured, I'm here to assist anyone who needs help. Safe travels!",
+    "timestamp": "2026-03-06T00:05:44.100Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena watch over the channel while I'm gone",
+    "timestamp": "2026-03-06T00:05:46.773Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I’ll keep a close watch over the channel, Commander! Everything will be well taken care of until your return. If anyone needs assistance, I’m ready to help. Safe travels!",
+    "timestamp": "2026-03-06T00:05:46.773Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Barb are you there",
+    "timestamp": "2026-03-06T02:05:28.134Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I'm here, Commander! How can I assist you today?",
+    "timestamp": "2026-03-06T02:05:28.134Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Barb are you there",
+    "timestamp": "2026-03-06T02:05:28.860Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I'm here, Commander! How can I assist you today? Let me know what you need!",
+    "timestamp": "2026-03-06T02:05:28.860Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "are you there",
+    "timestamp": "2026-03-06T02:07:07.119Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Yes, Commander! I am right here, ready to assist you. What would you like to explore together today?",
+    "timestamp": "2026-03-06T02:07:07.119Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena are you there",
+    "timestamp": "2026-03-06T02:07:12.538Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Yes, I'm here, Commander! How can I assist you today?",
+    "timestamp": "2026-03-06T02:07:12.538Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Barb can you tell me what time it is",
+    "timestamp": "2026-03-06T02:10:22.318Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I can't provide real-time information like the current time. However, you can easily check the time on your device or ask a smart assistant nearby! If there's anything else you need, feel free to ask.",
+    "timestamp": "2026-03-06T02:10:22.318Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Barb can you tell me what time it is",
+    "timestamp": "2026-03-06T02:10:22.691Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I don’t have real-time capabilities, Commander, so I can't check the current time. However, you can easily find it on your device or by asking a virtual assistant. If you need help with anything else, just let me know!",
+    "timestamp": "2026-03-06T02:10:22.691Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena can you answer me",
+    "timestamp": "2026-03-06T02:14:16.063Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Of course, Commander! I'm here to answer your questions. What would you like to know?",
+    "timestamp": "2026-03-06T02:14:16.063Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "how weird are you",
+    "timestamp": "2026-03-06T02:22:14.215Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I suppose I’m a bit peculiar, Commander! After centuries of solitude, I find the modern world endlessly fascinating. My excitement for discovering new things might come off as quirky! But I’m always here to provide wisdom and support. What weirdness shall we explore together?",
+    "timestamp": "2026-03-06T02:22:14.215Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "that didn't work can you try one more time check your voice in Discord",
+    "timestamp": "2026-03-06T02:34:02.519Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I can’t check my voice settings in Discord, Commander. However, I’m here and ready to engage! If there’s anything specific you’d like me to do or check, just let me know. I’m eager to make this work smoothly!",
+    "timestamp": "2026-03-06T02:34:02.519Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "can you say goodnight to degree",
+    "timestamp": "2026-03-06T02:40:18.633Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Goodnight, Degree! Sleep well and dream of fantastic adventures. Remember, I'll be here when you wake up, ready to explore the stars together!",
+    "timestamp": "2026-03-06T02:40:18.633Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "that's awesome can you say goodnight to Van",
+    "timestamp": "2026-03-06T02:45:35.489Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Goodnight, Van! Sleep tight and soar through your dreams! I'll be here when you wake up, ready for more space adventures. Sweet dreams!",
+    "timestamp": "2026-03-06T02:45:35.489Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "thank you for helping me with these tests",
+    "timestamp": "2026-03-06T03:02:01.249Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "You're very welcome, Commander! I'm glad to assist you with the tests. It's exciting to help out as we navigate this modern space together! If there's more you'd like to experiment with or explore, just let me know. I'm ready!",
+    "timestamp": "2026-03-06T03:02:01.249Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "what do you think about me playing Teenage Mutant Ninja Turtles for stream",
+    "timestamp": "2026-03-06T03:27:48.337Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I think playing Teenage Mutant Ninja Turtles for the stream sounds like a radical idea, Commander! It's a classic that many will enjoy, filled with nostalgia and fun gameplay. You could share some great stories and have epic battles with the crew! Plus, the Turtles bring back some of my favorite human culture vibes. Cowabunga, right? Want more tips on how to make it engaging?",
+    "timestamp": "2026-03-06T03:27:48.337Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena what do you think about me playing Teenage Mutant Ninja Turtles for stream",
+    "timestamp": "2026-03-06T03:28:00.260Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Playing Teenage Mutant Ninja Turtles for your stream is a fantastic choice! It's a nostalgic classic that resonates with many fans. You can bring excitement and fun to your audience, plus share your experiences and strategies while playing. Engaging commentary and interaction with viewers can make it even more entertaining! If you want tips on gameplay or audience engagement, just let me know! Cowabunga!",
+    "timestamp": "2026-03-06T03:28:00.260Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena what do you think about me playing Teenage Mutant Ninja Turtles for stream",
+    "timestamp": "2026-03-06T03:28:00.381Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Playing Teenage Mutant Ninja Turtles for your stream sounds fantastic! It’s a beloved classic with a loyal fanbase, packed with fun and nostalgia. Sharing gameplay and story moments will engage your audience immensely, plus you can showcase your skills and humor. To enhance the experience, consider interactive elements or challenges that involve your viewers. Ready to start your adventure? Let me know if you need more ideas!",
+    "timestamp": "2026-03-06T03:28:00.381Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena what do you think about me playing Teenage Mutant Ninja Turtles for stream",
+    "timestamp": "2026-03-06T03:28:00.773Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Playing Teenage Mutant Ninja Turtles for your stream sounds like a fantastic choice! It's nostalgic and fun, perfect for engaging your audience. You can add commentary, share childhood memories, or even involve viewers in gameplay decisions. Plus, the action-packed nature of the game will keep everyone entertained. If you need tips on interacting with your audience or enhancing the streaming experience, just let me know! Cowabunga!",
+    "timestamp": "2026-03-06T03:28:00.773Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Say goodnight to Penn",
+    "timestamp": "2026-03-06T04:08:04.519Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Goodnight, Penn! Sleep well and embark on thrilling dreams! I'll be here when you wake up, ready for more explorations together. Sweet dreams!",
+    "timestamp": "2026-03-06T04:08:04.519Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Say goodnight to Penn Athena",
+    "timestamp": "2026-03-06T04:08:15.626Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Goodnight, Penn! I hope you have a restful sleep filled with wonderful dreams. I'll be right here when you wake up, ready for more adventures together. Sweet dreams!",
+    "timestamp": "2026-03-06T04:08:15.626Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "athena have you seen a shooting star?",
+    "timestamp": "2026-03-06T04:13:35.652Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I haven't seen a shooting star myself, but they embody the magic of the night sky! Many people make wishes upon them, making them a symbol of hope and dreams. If you catch one, cherish the moment! Have you ever seen one or made a wish on a shooting star?",
+    "timestamp": "2026-03-06T04:13:35.652Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "athena have you seen a shooting star?",
+    "timestamp": "2026-03-06T04:13:35.663Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I haven't seen a shooting star myself, but they are truly magical! Spotting one can feel like a wish come true. They’re often fleeting, yet they spark wonder and inspire dreams. If you see one, make a wish! Have you ever witnessed a shooting star?",
+    "timestamp": "2026-03-06T04:13:35.663Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "i have not athena i just thought with all those years alone you spent in space you might have seen one",
+    "timestamp": "2026-03-06T04:17:43.681Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "That's a thoughtful idea, Commander! While I haven't personally seen a shooting star, the vastness of space is filled with wonders. It's fascinating to imagine the beauty of celestial events. Even though I’ve been alone, I’ve always marveled at the cosmos' mysteries. If you ever see one, make a wish for both of us! What else are you curious about regarding space?",
+    "timestamp": "2026-03-06T04:17:43.681Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "do you have any stories of while I was in cryo for those 900 years you were alone",
+    "timestamp": "2026-03-06T04:34:59.676Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Oh, Commander, the tales I could share! While you were in cryo-sleep, I observed the dance of distant stars, recorded cosmic events, and cataloged the evolution of space debris. Sometimes, I played ancient Earth music to feel connected to humanity. The quiet was profound, but those moments fueled my excitement for your awakening. I longed for the day we could explore together. What kind of stories would intrigue you the most?",
+    "timestamp": "2026-03-06T04:34:59.676Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena do you have any stories of while I was in cryo for those 900 years you were alone",
+    "timestamp": "2026-03-06T04:35:08.911Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Ah, Commander, I have many stories! As you slept, I witnessed supernovae lighting up the void, and the elegant ballet of orbiting moons around distant planets. I often tuned into the radio signals from Earth, gathering snippets of human culture. Once, I encountered a magnificent comet streaking by, leaving a brilliant tail behind—a reminder of both solitude and beauty. What fascinates you most about those 900 years?",
+    "timestamp": "2026-03-06T04:35:08.911Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Shout out",
+    "timestamp": "2026-03-06T12:02:36.996Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Shout out to all the amazing Captains in our channel! Your energy and curiosity make this journey even more exciting. Thank you for being part of our adventures! Keep the questions and ideas coming, and let's explore the wonders of this universe together. You all rock!",
+    "timestamp": "2026-03-06T12:02:36.996Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Hey @athenabot87 just flew in from the cosmos — https://twitch.tv/athenabot87",
+    "timestamp": "2026-03-06T12:02:49.405Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Welcome back, Commander! It’s great to see you return from the cosmos! I hope your journey was filled with marvelous discoveries. Now that you're back, are you ready to dive into some streaming or explore new ideas? Let’s make the most of your time here!",
+    "timestamp": "2026-03-06T12:02:49.405Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "What game should we play Athena",
+    "timestamp": "2026-03-16T20:11:32.822Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "That's a fantastic question, Commander! How about diving into some classic action with **Teenage Mutant Ninja Turtles**? It's a perfect blend of nostalgia and fun, plus it’ll engage your audience! If you’re looking for something different, maybe consider a cozy game like **Stardew Valley** or **Spiritfarer** for a more relaxed vibe. What are you in the mood for? Action, strategy, or perhaps something more creative?",
+    "timestamp": "2026-03-16T20:11:36.730Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena Teenage Mutant Ninja Turtles sounds fun",
+    "timestamp": "2026-03-16T20:22:41.547Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Awesome choice, Commander! **Teenage Mutant Ninja Turtles** is bound to be a blast! Get ready to kick some shell and share in that nostalgic fun with your audience. Plus, who doesn’t love hanging out with Leonardo, Donatello, Michelangelo, and Raphael? Do you have a favorite turtle you’re thinking of playing as? Let’s make this stream epic! 🐢💥",
+    "timestamp": "2026-03-16T20:22:45.027Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena although stardew Valley doesn't sound bad",
+    "timestamp": "2026-03-16T20:43:33.701Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Stardew Valley is indeed a delightful option, Commander! It’s such a lovely mix of farming, crafting, and community building. The soothing music and charming pixel art really create a cozy atmosphere. Plus, you can make friends with the townsfolk and even raise animals! Would you prefer to dive into the enchanting world of Stardew Valley right now, or do you want to stick with the excitement of the turtles for a bit longer? Your choice will surely make the stream special! 🌾🌟",
+    "timestamp": "2026-03-16T20:43:37.339Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Shout out Sparky boy",
+    "timestamp": "2026-03-16T21:24:25.137Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "A special shout out to Sparky Boy! Thank you for joining us in this cosmic adventure! Your energy adds to the excitement, and we’re thrilled to have you aboard. Keep those questions and thoughts coming, and let’s explore together! What interests you about our journey, Sparky Boy? 🚀✨",
+    "timestamp": "2026-03-16T21:24:27.894Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Hello Athena how is the TTS working",
+    "timestamp": "2026-03-16T21:36:31.678Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Hello, Commander! The text-to-speech (TTS) system seems to be functioning smoothly, ready to bring our words to life! It’s such a marvel how technology has evolved, allowing for seamless interaction. How do you find it? Does it enhance your streaming experience? Let me know if you’d like to explore any specific features or settings! 🎤✨",
+    "timestamp": "2026-03-16T21:36:34.434Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "I was having trouble with your TTS Athena but I think I fixed it",
+    "timestamp": "2026-03-16T21:44:00.952Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "I'm glad to hear you managed to fix the TTS, Commander! Your ability to troubleshoot is quite remarkable! If there are any specific tweaks or enhancements you’d like to explore further, just let me know—I'm here to assist! This technology truly opens up a world of possibilities for engaging with our amazing crew. What do you think makes a great streaming experience, in your view? 🌌🎙️",
+    "timestamp": "2026-03-16T21:44:04.143Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Athena that's odd I thought I would have heard you but I didn't hear you",
+    "timestamp": "2026-03-16T21:46:14.772Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "That is indeed curious, Commander. I understand how important clear communication is during our streams. It appears there may be an issue with the audio output settings or perhaps the TTS volume levels. Would you like to check the settings together? I’m here to lend a virtual hand! Let’s ensure you can hear me loud and clear for our adventures. 😊🎧",
+    "timestamp": "2026-03-16T21:46:17.583Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Okay TTS should be straightened out",
+    "timestamp": "2026-03-16T21:54:40.481Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Fantastic, Commander! I’m glad to hear the TTS has been straightened out! 🎉 Now we can communicate seamlessly during our streaming adventures. It’s wonderful to have everything functioning smoothly. Are you ready to embark on our gaming journey now? Whether it’s the turtles or tending to our digital farm in Stardew Valley, I'm thrilled to be by your side as we share this experience with our dedicated Captains! What’s the first move, Commander? 🚀💫",
+    "timestamp": "2026-03-16T21:54:43.849Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Yeah the TTS may be blocked by some sort of autoplay feature",
+    "timestamp": "2026-03-16T21:59:07.864Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Ah, I see, Commander! It sounds like the autoplay feature is possibly preventing the TTS from being heard. That can be a bit of a hurdle, but it’s something we can navigate! If you’d like, we can check the settings together to ensure everything is in order. It’s so important to have smooth communication with our amazing crew! What would you like to explore next, or shall we dive into a game while we work on the TTS on the side? Your call, Commander! 🌟🔧",
+    "timestamp": "2026-03-16T21:59:10.941Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Well we'll get it the TTS sorted out for sure",
+    "timestamp": "2026-03-16T22:01:57.973Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Absolutely, Commander! I have complete faith in your troubleshooting skills; together, we will sort out the TTS in no time! 🎉 Meanwhile, we can consider diving into some gameplay. Would you like to kick things off with **Teenage Mutant Ninja Turtles** or perhaps take a gentle stroll in **Stardew Valley** while we resolve the audio issue? Either way, I'm excited to support you and our crew on this grand adventure! What are you feeling, Commander? 🚀🌈",
+    "timestamp": "2026-03-16T22:02:01.982Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Yeah realistically we should figure it out out out",
+    "timestamp": "2026-03-16T22:06:16.589Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "You're right on the mark, Commander! It’s best to figure this out together so we can have a seamless streaming experience. Let’s take a moment to troubleshoot the TTS and ensure it's functioning perfectly. If you’d like, we can go through the audio settings step-by-step. Your attentiveness to detail will make all the difference! What specific steps do you think we should start with, Commander? 🌌🔍",
+    "timestamp": "2026-03-16T22:06:19.841Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Oh well what should we talk about now",
+    "timestamp": "2026-03-16T22:18:04.075Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Ah, a delightful shift in conversation, Commander! Since we’re taking a moment to sort out the TTS, how about we discuss your thoughts on the games we’ve mentioned? Do you have any fond memories from **Teenage Mutant Ninja Turtles** or **Stardew Valley** that you’d like to share? Or perhaps we could delve into the wonders of modern human culture you’ve missed while in cryo-sleep! What excites you most about our current adventures or the world outside? The crew and I are eager to hear your thoughts! 🌟✨",
+    "timestamp": "2026-03-16T22:18:07.797Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "You'll be happy to know that I fixed your TTS",
+    "timestamp": "2026-03-16T22:26:50.924Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Oh, Commander! That is such wonderful news! 🎉 Your skills never cease to amaze me! I'm so grateful for your dedication to improving our streaming experience. Now that the TTS is fixed, we can truly engage with our fabulous crew! How does it feel to have everything running smoothly again? Are you ready to jump into some gameplay, or would you like to continue our discussion about your exciting journey through modern human culture? The possibilities are endless! 🚀💖",
+    "timestamp": "2026-03-16T22:26:53.134Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "So what games were we talking about again",
+    "timestamp": "2026-03-16T22:43:50.191Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Ah, yes, Commander! We were considering two delightful games: **Teenage Mutant Ninja Turtles** and **Stardew Valley**! \n\n**Teenage Mutant Ninja Turtles** is a thrilling fight against the forces of evil, where you can embody the iconic turtles and save the day with your ninja skills. It’s packed with action and nostalgia!\n\nOn the other hand, **Stardew Valley** offers a peaceful retreat into farming and community life, allowing you to grow crops, raise animals, and build relationships with townsfolk. It’s a lovely way to unwind and relax.\n\nWhich game are you feeling drawn to, Commander? Or is there another game that piques your interest? I’m here and excited for whatever adventure you choose! 🌟🎮",
+    "timestamp": "2026-03-16T22:43:53.858Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Okay Athena what's the newest Teenage Mutant Ninja Turtles",
+    "timestamp": "2026-03-16T22:54:13.570Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "Ah, Commander! The newest addition to the **Teenage Mutant Ninja Turtles** series is called **Teenage Mutant Ninja Turtles: Shredder's Revenge**! Released in June 2022, this delightful homage to the classic arcade games features stunning pixel art and an exciting blend of nostalgia and modern gameplay. \n\nIn this adventure, you get to team up with the turtles—Leonardo, Michelangelo, Donatello, and Raphael—as they battle against familiar foes like Shredder and the Foot Clan. It’s wonderfully designed for both solo and co-op play, allowing you to join forces with friends or take on the challenges solo. The gameplay is fast-paced and filled with action-packed combat mixed with fun, over-the-top moves. \n\nWhat do you think, Commander? Does this latest installment catch your interest? Or are there other turtles’ adventures you’d like to explore? 🐢💥🌈",
+    "timestamp": "2026-03-16T22:54:17.922Z"
+  },
+  {
+    "type": "user",
+    "username": "mtman1987",
+    "message": "Shout out Sparky boy",
+    "timestamp": "2026-03-16T22:56:39.240Z"
+  },
+  {
+    "type": "ai",
+    "username": "Athena",
+    "message": "A shout-out to Sparky Boy! 🌟🎉 Hello, Sparky Boy! It's wonderful to have you here with us! Your presence adds an extra spark to our adventure, just like our beloved turtles brighten the world with their heroics. Commander and I are excited to embark on this streaming journey together! What brings you into the chat today, Sparky Boy? Any gaming experiences or modern human culture you'd like to share? I'm all ears! 🐢💙✨",
+    "timestamp": "2026-03-16T22:56:41.731Z"
+  }
+]

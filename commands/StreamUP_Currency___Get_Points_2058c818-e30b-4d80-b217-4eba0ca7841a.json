@@ -1,0 +1,17 @@
+{
+  "id": "2058c818-e30b-4d80-b217-4eba0ca7841a",
+  "name": "StreamUP Currency • Get Points",
+  "command": "!points",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: StreamUP Currency • Get Points",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "StreamUP Currency",
+  "sources": 1049617,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

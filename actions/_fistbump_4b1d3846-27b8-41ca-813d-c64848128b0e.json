@@ -1,0 +1,18 @@
+{
+  "id": "4b1d3846-27b8-41ca-813d-c64848128b0e",
+  "name": "!fistbump",
+  "description": "Imported from Streamer.bot: !fistbump",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Chat actions",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

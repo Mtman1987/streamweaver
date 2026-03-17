@@ -1,0 +1,18 @@
+{
+  "id": "968ab300-ddbb-4f83-8a59-ddb33a589366",
+  "name": "!emergency",
+  "description": "Imported from Streamer.bot: !emergency",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Mod commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

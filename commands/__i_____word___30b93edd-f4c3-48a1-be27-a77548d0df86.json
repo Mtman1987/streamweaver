@@ -1,0 +1,17 @@
+{
+  "id": "30b93edd-f4c3-48a1-be27-a77548d0df86",
+  "name": "(?i).*@?word.*",
+  "command": "(?i).*@?bird.*",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: (?i).*@?word.*",
+  "cooldown": {
+    "global": 180009,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": true,
+  "group": "secret commands ",
+  "sources": 1041,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

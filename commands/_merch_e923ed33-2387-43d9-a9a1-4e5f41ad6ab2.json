@@ -1,0 +1,17 @@
+{
+  "id": "e923ed33-2387-43d9-a9a1-4e5f41ad6ab2",
+  "name": "!merch",
+  "command": "!merch",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !merch",
+  "cooldown": {
+    "global": 10,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Links",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

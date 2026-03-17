@@ -1,0 +1,17 @@
+{
+  "id": "67e784a0-1559-46f2-8102-8380b596374c",
+  "name": "accept",
+  "command": "!accept",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: accept",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "",
+  "sources": 17,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

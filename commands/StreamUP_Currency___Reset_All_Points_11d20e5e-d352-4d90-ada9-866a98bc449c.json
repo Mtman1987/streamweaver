@@ -1,0 +1,21 @@
+{
+  "id": "11d20e5e-d352-4d90-ada9-866a98bc449c",
+  "name": "StreamUP Currency • Reset All Points",
+  "command": "!resetAllPoints",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: StreamUP Currency • Reset All Points",
+  "permissions": [
+    "moderator",
+    "subscriber"
+  ],
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "StreamUP Currency",
+  "sources": 1041,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

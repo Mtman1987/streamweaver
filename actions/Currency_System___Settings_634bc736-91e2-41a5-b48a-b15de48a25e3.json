@@ -1,0 +1,18 @@
+{
+  "id": "634bc736-91e2-41a5-b48a-b15de48a25e3",
+  "name": "Currency System • Settings",
+  "description": "Imported from Streamer.bot: Currency System • Settings",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "StreamUP Currency • Core System",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

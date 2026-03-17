@@ -1,0 +1,17 @@
+{
+  "id": "a6f8c3f9-51b6-45c8-8035-cdc4b8a691c9",
+  "name": "!stretch",
+  "command": "!stretch",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !stretch",
+  "cooldown": {
+    "global": 120,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Channel point redeems (mod overide)",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

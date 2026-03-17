@@ -1,0 +1,18 @@
+{
+  "id": "ae49f42c-11fd-4419-b204-587811d2f17a",
+  "name": "!hydrate",
+  "description": "Imported from Streamer.bot: !hydrate",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Channel point style redeems",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

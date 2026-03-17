@@ -1,0 +1,18 @@
+{
+  "id": "313770af-a33a-47c2-b99c-e1aaa94bc30f",
+  "name": "!tickle",
+  "description": "Imported from Streamer.bot: !tickle",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Chat actions",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

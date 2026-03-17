@@ -1,0 +1,10 @@
+{
+  "id": "pack_cmd_pokemon",
+  "name": "Open Pokemon Pack",
+  "command": "pack",
+  "enabled": true,
+  "cooldown": 5,
+  "group": "Pokemon TCG",
+  "description": "Open a Pokemon booster pack",
+  "actionId": "pack_action_pokemon"
+}

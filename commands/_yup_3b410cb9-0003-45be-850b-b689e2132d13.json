@@ -1,0 +1,17 @@
+{
+  "id": "3b410cb9-0003-45be-850b-b689e2132d13",
+  "name": "~yup",
+  "command": "!yup",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: ~yup",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "tiktok",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

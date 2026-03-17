@@ -1,0 +1,26 @@
+{
+  "id": "97ef2856-ba34-433c-abd8-519c0f97091e",
+  "name": "Currency System • dance party ",
+  "description": "Imported from Streamer.bot: Currency System • dance party ",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "channel points cost",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

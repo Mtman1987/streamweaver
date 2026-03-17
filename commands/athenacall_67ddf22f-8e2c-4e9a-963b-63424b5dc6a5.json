@@ -1,0 +1,17 @@
+{
+  "id": "67ddf22f-8e2c-4e9a-963b-63424b5dc6a5",
+  "name": "athenacall",
+  "command": "(?i).*@?{{BOT_NAME}}.*",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: athenacall",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": true,
+  "group": "Mustached_Maniac ChatGPT",
+  "sources": 23,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

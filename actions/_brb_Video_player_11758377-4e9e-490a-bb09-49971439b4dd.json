@@ -1,0 +1,18 @@
+{
+  "id": "11758377-4e9e-490a-bb09-49971439b4dd",
+  "name": "!brb Video player",
+  "description": "Imported from Streamer.bot: !brb Video player",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Mod commands",
+  "createdAt": "2025-12-25T08:43:56.720Z",
+  "updatedAt": "2025-12-25T08:43:56.720Z"
+}

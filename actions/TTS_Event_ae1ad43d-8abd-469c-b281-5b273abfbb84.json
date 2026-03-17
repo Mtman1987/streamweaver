@@ -1,0 +1,13 @@
+{
+  "id": "ae1ad43d-8abd-469c-b281-5b273abfbb84",
+  "name": "TTS Event",
+  "description": "Imported from Streamer.bot: TTS Event",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "ChatRD",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

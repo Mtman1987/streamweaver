@@ -1,0 +1,18 @@
+{
+  "id": "2936fced-41e5-4894-bd73-04f70a5d3ce2",
+  "name": "!setso - Set custom shout out",
+  "description": "Imported from Streamer.bot: !setso - Set custom shout out",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Mod commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

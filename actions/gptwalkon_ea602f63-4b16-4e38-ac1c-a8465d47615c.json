@@ -1,0 +1,13 @@
+{
+  "id": "ea602f63-4b16-4e38-ac1c-a8465d47615c",
+  "name": "gptwalkon",
+  "description": "Imported from Streamer.bot: gptwalkon",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Welcome wagon",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

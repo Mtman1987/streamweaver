@@ -1,0 +1,20 @@
+{
+  "id": "3e628948-1694-40d4-b939-ca7b60a3ae8e",
+  "name": "StreamUP Currency • Add To All",
+  "command": "!addToAll",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: StreamUP Currency • Add To All",
+  "permissions": [
+    "moderator"
+  ],
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "StreamUP Currency",
+  "sources": 1047,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

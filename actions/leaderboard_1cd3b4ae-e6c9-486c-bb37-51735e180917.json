@@ -1,0 +1,26 @@
+{
+  "id": "1cd3b4ae-e6c9-486c-bb37-51735e180917",
+  "name": "leaderboard",
+  "description": "Imported from Streamer.bot: leaderboard",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    },
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "leadberboard",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

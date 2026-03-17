@@ -1,0 +1,6 @@
+{
+  "id": "pack_action_pokemon",
+  "name": "Open Pokemon Pack Action",
+  "type": "custom",
+  "handler": "pokemon-pack-open"
+}

@@ -1,0 +1,6 @@
+{
+  "id": "collection_action_pokemon",
+  "name": "View Collection Action",
+  "type": "custom",
+  "handler": "pokemon-collection-view"
+}

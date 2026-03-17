@@ -1,0 +1,18 @@
+{
+  "id": "beee5882-43e6-4797-91c0-bd5d6ed0f8c9",
+  "name": "Currency System •smoke",
+  "description": "Imported from Streamer.bot: Currency System •smoke",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "channel points cost",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

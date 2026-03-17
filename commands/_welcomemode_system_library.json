@@ -1,0 +1,26 @@
+{
+  "id": "welcome-wagon-toggle-command",
+  "name": "Welcome Wagon Toggle",
+  "enabled": true,
+  "command": "!welcomemode",
+  "mode": 0,
+  "regexExplicitCapture": false,
+  "location": 0,
+  "ignoreBotAccount": true,
+  "ignoreInternal": true,
+  "sources": 1,
+  "persistCounter": false,
+  "persistUserCounter": false,
+  "caseSensitive": false,
+  "globalCooldown": 0,
+  "userCooldown": 0,
+  "group": "System",
+  "grantType": 1,
+  "permittedUsers": [],
+  "permittedGroups": ["Moderators", "Broadcaster"],
+  "actions": [
+    {
+      "type": "welcome-wagon-toggle"
+    }
+  ]
+}

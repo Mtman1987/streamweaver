@@ -1,0 +1,13 @@
+{
+  "id": "7b0834f9-7440-4d4d-ae87-48c57895456d",
+  "name": "ChatDispatcher",
+  "description": "Imported from Streamer.bot: ChatDispatcher",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "toolkits",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

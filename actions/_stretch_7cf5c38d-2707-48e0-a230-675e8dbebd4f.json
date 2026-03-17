@@ -1,0 +1,18 @@
+{
+  "id": "7cf5c38d-2707-48e0-a230-675e8dbebd4f",
+  "name": "!stretch",
+  "description": "Imported from Streamer.bot: !stretch",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Channel point style redeems",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

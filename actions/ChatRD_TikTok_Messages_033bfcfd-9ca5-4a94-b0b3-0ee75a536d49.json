@@ -1,0 +1,13 @@
+{
+  "id": "033bfcfd-9ca5-4a94-b0b3-0ee75a536d49",
+  "name": "ChatRD TikTok Messages",
+  "description": "Imported from Streamer.bot: ChatRD TikTok Messages",
+  "triggers": [],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "ChatRD",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

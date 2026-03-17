@@ -1,0 +1,18 @@
+{
+  "id": "67c4531b-f6ea-4ca5-a312-27bc2f84b903",
+  "name": "Random Video from Folder (Set Delay)",
+  "description": "Imported from Streamer.bot: Random Video from Folder (Set Delay)",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "toolkits",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

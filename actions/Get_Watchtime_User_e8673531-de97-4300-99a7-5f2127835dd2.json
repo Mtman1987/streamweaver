@@ -1,0 +1,18 @@
+{
+  "id": "e8673531-de97-4300-99a7-5f2127835dd2",
+  "name": "Get Watchtime User",
+  "description": "Imported from Streamer.bot: Get Watchtime User",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Watchtime",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

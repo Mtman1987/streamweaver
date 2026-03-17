@@ -1,0 +1,18 @@
+{
+  "id": "1ca91c15-f039-46f9-944b-507b5efd6134",
+  "name": "Gift Bomb",
+  "description": "Imported from Streamer.bot: Gift Bomb",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Events",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

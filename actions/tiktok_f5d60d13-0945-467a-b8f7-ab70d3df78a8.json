@@ -1,0 +1,18 @@
+{
+  "id": "f5d60d13-0945-467a-b8f7-ab70d3df78a8",
+  "name": "tiktok",
+  "description": "Imported from Streamer.bot: tiktok",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": false,
+  "concurrent": false,
+  "queue": false,
+  "group": "tiktok",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

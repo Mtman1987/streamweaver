@@ -1,0 +1,18 @@
+{
+  "id": "49cd7054-a039-4bf5-834a-44fe43f6c789",
+  "name": "!uptime",
+  "description": "Imported from Streamer.bot: !uptime",
+  "triggers": [
+    {
+      "type": "Chat Command",
+      "config": {}
+    }
+  ],
+  "subActions": [],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Chat commands",
+  "createdAt": "2025-12-25T08:43:56.721Z",
+  "updatedAt": "2025-12-25T08:43:56.721Z"
+}

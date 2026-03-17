@@ -1,0 +1,17 @@
+{
+  "id": "ab5c6463-68ac-4a7a-b4e6-a5d86f7ff8fe",
+  "name": "!hug",
+  "command": "!hug",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !hug",
+  "cooldown": {
+    "global": 0,
+    "user": 2
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat actions",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

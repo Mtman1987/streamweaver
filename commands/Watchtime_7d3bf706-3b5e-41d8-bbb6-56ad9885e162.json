@@ -1,0 +1,17 @@
+{
+  "id": "7d3bf706-3b5e-41d8-bbb6-56ad9885e162",
+  "name": "Watchtime",
+  "command": "!watchtime",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: Watchtime",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Watchtime",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "0f766f51-c54e-420a-aad2-48a81f472236",
+  "name": "!leader",
+  "command": "!leader",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !leader",
+  "cooldown": {
+    "global": 0,
+    "user": 0
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat commands",
+  "sources": 31,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}

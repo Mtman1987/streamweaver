@@ -1,0 +1,3202 @@
+[
+  {
+    "id": "sample-welcome",
+    "name": "Welcome New Followers",
+    "description": "Automatically welcome new followers with a chat message and sound effect",
+    "triggers": [
+      {
+        "type": "Follow",
+        "config": {}
+      }
+    ],
+    "subActions": [
+      {
+        "id": "welcome-msg",
+        "type": "Send Chat Message",
+        "name": "Welcome Message",
+        "config": {
+          "message": "Welcome to the stream, {user}! Thanks for the follow! 🎉"
+        },
+        "enabled": true,
+        "order": 0
+      },
+      {
+        "id": "welcome-sound",
+        "type": "Play Sound",
+        "name": "Welcome Sound",
+        "config": {
+          "soundFile": "welcome.mp3",
+          "volume": 0.7
+        },
+        "enabled": true,
+        "order": 1
+      }
+    ],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "createdAt": "2024-01-15T10:00:00.000Z",
+    "updatedAt": "2024-01-15T10:00:00.000Z"
+  },
+  {
+    "id": "sample-shoutout",
+    "name": "Shoutout Command",
+    "description": "Give a shoutout to another streamer with multiple effects",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {
+          "command": "!so",
+          "aliases": [
+            "!shoutout"
+          ],
+          "permissions": [
+            "moderator",
+            "broadcaster"
+          ]
+        }
+      }
+    ],
+    "subActions": [
+      {
+        "id": "shoutout-msg",
+        "type": "Send Chat Message",
+        "name": "Shoutout Message",
+        "config": {
+          "message": "Go check out {targetUser} at twitch.tv/{targetUser} - they're awesome! 🚀"
+        },
+        "enabled": true,
+        "order": 0
+      },
+      {
+        "id": "shoutout-overlay",
+        "type": "Show Overlay",
+        "name": "Shoutout Overlay",
+        "config": {
+          "overlayName": "shoutout",
+          "duration": 5000,
+          "data": {
+            "username": "{targetUser}"
+          }
+        },
+        "enabled": true,
+        "order": 1
+      },
+      {
+        "id": "shoutout-sound",
+        "type": "Play Sound",
+        "name": "Shoutout Sound",
+        "config": {
+          "soundFile": "shoutout.mp3",
+          "volume": 0.8
+        },
+        "enabled": true,
+        "order": 2
+      }
+    ],
+    "enabled": true,
+    "concurrent": true,
+    "queue": false,
+    "createdAt": "2024-01-15T11:00:00.000Z",
+    "updatedAt": "2024-01-15T11:00:00.000Z"
+  },
+  {
+    "id": "athena-shoutout",
+    "name": "Athena Voice Shoutout",
+    "description": "Voice-activated shoutout that finds the closest matching username",
+    "trigger": "athena shoutout",
+    "type": "Execute Code",
+    "code": "// Voice shoutout with username matching\nconst targetName = args.join(' ').toLowerCase();\nif (!targetName) {\n  await sendChatMessage('Please specify a username for the shoutout.');\n  return;\n}\n\n// Get recent chatters from Twitch API or use a simple match\nconst recentChatters = ['mtman1987', 'athenabot87']; // This would be populated from actual chat\n\n// Find closest match\nlet bestMatch = null;\nlet bestScore = 0;\n\nfor (const chatter of recentChatters) {\n  const chatterLower = chatter.toLowerCase();\n  if (chatterLower.includes(targetName) || targetName.includes(chatterLower)) {\n    const score = Math.max(targetName.length, chatterLower.length) - Math.abs(targetName.length - chatterLower.length);\n    if (score > bestScore) {\n      bestMatch = chatter;\n      bestScore = score;\n    }\n  }\n}\n\nif (bestMatch) {\n  await sendChatMessage(`!so @${bestMatch}`);\n  console.log(`[Voice Shoutout] Executed !so @${bestMatch} for voice command: ${targetName}`);\n} else {\n  await sendChatMessage(`Could not find a matching user for: ${targetName}`);\n}",
+    "enabled": true,
+    "createdAt": "2025-01-22T10:00:00.000Z",
+    "updatedAt": "2025-01-22T10:00:00.000Z"
+  },
+  {
+    "id": "athena-chat",
+    "name": "Chat with Athena AI",
+    "description": "Talk to Athena, the AI assistant, with voice responses",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "createdAt": "2024-12-14T10:00:00.000Z",
+    "updatedAt": "2024-12-14T10:00:00.000Z"
+  },
+  {
+    "id": "f50e1be9-05d6-4b09-9471-edb1d9191669",
+    "name": "super follow",
+    "description": "this is the real deal",
+    "triggers": [
+      {
+        "type": "Follow",
+        "config": {}
+      }
+    ],
+    "subActions": [
+      {
+        "id": "781db8bd-c233-49fb-b303-71b7031386c3",
+        "type": "Play Sound",
+        "name": "Play Sound",
+        "config": {},
+        "enabled": true,
+        "order": 0
+      },
+      {
+        "id": "84129a6f-e84d-40ee-ab14-fee8f0f1164b",
+        "type": "Execute Code",
+        "name": "Execute Code",
+        "config": {},
+        "enabled": true,
+        "order": 1
+      }
+    ],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "createdAt": "2025-12-14T12:21:14.532Z",
+    "updatedAt": "2025-12-14T12:21:14.532Z"
+  },
+  {
+    "id": "d10577cc-1532-4a0d-a729-e0387d25bef9",
+    "name": "!boop",
+    "description": "Imported from Streamer.bot: !boop",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.719Z",
+    "updatedAt": "2025-12-25T08:43:56.719Z"
+  },
+  {
+    "id": "c5003002-72bc-4bb9-8241-5bffed982b8e",
+    "name": "Error - Not valid user picked",
+    "description": "Imported from Streamer.bot: Error - Not valid user picked",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Errors",
+    "createdAt": "2025-12-25T08:43:56.720Z",
+    "updatedAt": "2025-12-25T08:43:56.720Z"
+  },
+  {
+    "id": "8358fde5-4f90-4d71-8d9c-82cb5e15000d",
+    "name": "Error - No user picked",
+    "description": "Imported from Streamer.bot: Error - No user picked",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Errors",
+    "createdAt": "2025-12-25T08:43:56.720Z",
+    "updatedAt": "2025-12-25T08:43:56.720Z"
+  },
+  {
+    "id": "11758377-4e9e-490a-bb09-49971439b4dd",
+    "name": "!brb Video player",
+    "description": "Imported from Streamer.bot: !brb Video player",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.720Z",
+    "updatedAt": "2025-12-25T08:43:56.720Z"
+  },
+  {
+    "id": "e081c847-adcb-4878-9308-0605dac4ed3c",
+    "name": "!commands",
+    "description": "Imported from Streamer.bot: !commands",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.720Z",
+    "updatedAt": "2025-12-25T08:43:56.720Z"
+  },
+  {
+    "id": "b7c602ac-acc7-4abe-812a-652547f1040e",
+    "name": "!created",
+    "description": "Imported from Streamer.bot: !created",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "66509f1a-b44f-48d6-91b4-7f77f1bd4403",
+    "name": "!cuddle",
+    "description": "Imported from Streamer.bot: !cuddle",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "567d1097-5cee-4d49-bcda-277e45ac4b11",
+    "name": "!dance",
+    "description": "Imported from Streamer.bot: !dance",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "29b4a7ba-088c-49be-8434-3f96e44ed234",
+    "name": "!date",
+    "description": "Imported from Streamer.bot: !date",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1f4bd7d0-166a-430b-84ad-e0794a4316a8",
+    "name": "!discord",
+    "description": "Imported from Streamer.bot: !discord",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Links",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "968ab300-ddbb-4f83-8a59-ddb33a589366",
+    "name": "!emergency",
+    "description": "Imported from Streamer.bot: !emergency",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "bee72af0-4441-41f7-bb50-48d5324459cf",
+    "name": "Welcome",
+    "description": "Imported from Streamer.bot: Welcome",
+    "triggers": [],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "Welcome wagon",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "f405aaac-ef49-457b-91d6-c6f1a9078dbe",
+    "name": "New Follower",
+    "description": "Imported from Streamer.bot: New Follower",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ce5bef60-48d8-4a57-be91-e6b7dcf0f92e",
+    "name": "!emergencyover",
+    "description": "Imported from Streamer.bot: !emergencyover",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "4b1d3846-27b8-41ca-813d-c64848128b0e",
+    "name": "!fistbump",
+    "description": "Imported from Streamer.bot: !fistbump",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2941e0e5-121d-4562-b370-6337a1077f3c",
+    "name": "!followage",
+    "description": "Imported from Streamer.bot: !followage",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "b4b64576-1951-4c6e-b567-6c5a5ff584d0",
+    "name": "Error - You do not follow",
+    "description": "Imported from Streamer.bot: Error - You do not follow",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Errors",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "db80bb77-e35d-47ed-9caa-50941d7bb7eb",
+    "name": "!followed",
+    "description": "Imported from Streamer.bot: !followed",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "0f1dac70-025f-4005-a317-6071755f2ac6",
+    "name": "!followers",
+    "description": "Imported from Streamer.bot: !followers",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "9fff8127-92ec-42c3-a50a-d203a66ff26c",
+    "name": "!headpat",
+    "description": "Imported from Streamer.bot: !headpat",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d16b8e9b-e970-483e-8f64-cdfb70247a9b",
+    "name": "!highfive",
+    "description": "Imported from Streamer.bot: !highfive",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "27874734-e3ed-4c03-9b11-97b3594d41c9",
+    "name": "!hug",
+    "description": "Imported from Streamer.bot: !hug",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ae49f42c-11fd-4419-b204-587811d2f17a",
+    "name": "!hydrate",
+    "description": "Imported from Streamer.bot: !hydrate",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "6a0dd10a-cd2c-4a2a-91df-ebcbfd1a3d47",
+    "name": "!love",
+    "description": "Imported from Streamer.bot: !love",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "f155d6a0-8724-4557-bdbe-014d3e1cdaa6",
+    "name": "!merch",
+    "description": "Imported from Streamer.bot: !merch",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Links",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "054c8dab-34f2-4833-9afe-9f21e2d1ef8a",
+    "name": "!raidmessage",
+    "description": "Imported from Streamer.bot: !raidmessage",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "4d8b4226-4775-4725-8736-89c1efaaed96",
+    "name": "!roll",
+    "description": "Imported from Streamer.bot: !roll",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "6eaa6c1a-9167-42a5-8e8a-89095b6f5fab",
+    "name": "!setgame",
+    "description": "Imported from Streamer.bot: !setgame",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "6ad50cc7-c143-4cb7-8da9-1d2dbadec2eb",
+    "name": "Error - Set game fail",
+    "description": "Imported from Streamer.bot: Error - Set game fail",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Errors",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2936fced-41e5-4894-bd73-04f70a5d3ce2",
+    "name": "!setso - Set custom shout out",
+    "description": "Imported from Streamer.bot: !setso - Set custom shout out",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "4316f5a0-6d1c-4061-9338-afb94c8c07e3",
+    "name": "Error - Failed shout out.",
+    "description": "Imported from Streamer.bot: Error - Failed shout out.",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Errors",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "92373576-4649-41eb-b610-ed57db64a7e8",
+    "name": "!settitle",
+    "description": "Imported from Streamer.bot: !settitle",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "8a6e2cfb-a55b-424c-acdc-f775c74c4758",
+    "name": "!so - Custom Shout out",
+    "description": "Imported from Streamer.bot: !so - Custom Shout out",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "c0b64a26-ba60-411b-88ef-6f6147bcc95e",
+    "name": "!stats",
+    "description": "Imported from Streamer.bot: !stats",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "7cf5c38d-2707-48e0-a230-675e8dbebd4f",
+    "name": "!stretch",
+    "description": "Imported from Streamer.bot: !stretch",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "313770af-a33a-47c2-b99c-e1aaa94bc30f",
+    "name": "!tickle",
+    "description": "Imported from Streamer.bot: !tickle",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "0daf1c8e-4d12-448e-8fa1-12a79b0566e4",
+    "name": "!tiktok",
+    "description": "Imported from Streamer.bot: !tiktok",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Links",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "0e3efa12-74a1-4f30-84e2-c5f08ecbdb83",
+    "name": "!time",
+    "description": "Imported from Streamer.bot: !time",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "8e3b6bf8-0c30-4dd4-9bc6-53586bd37329",
+    "name": "!unlurk",
+    "description": "Imported from Streamer.bot: !unlurk",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "49cd7054-a039-4bf5-834a-44fe43f6c789",
+    "name": "!uptime",
+    "description": "Imported from Streamer.bot: !uptime",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "01f58d95-8f37-4359-8943-ca41be5fe1ae",
+    "name": "!vso - Video Shout out v2",
+    "description": "Imported from Streamer.bot: !vso - Video Shout out v2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Mod commands",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "72073798-50e2-4706-9aeb-6726a50c7459",
+    "name": "Cheer",
+    "description": "Imported from Streamer.bot: Cheer",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "09621067-51e9-4f59-a685-fd4f062a3d54",
+    "name": "Cheer (Anonymous)",
+    "description": "Imported from Streamer.bot: Cheer (Anonymous)",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ab4bc8f3-2403-48ed-a4d3-f93b81b587aa",
+    "name": "Deathcounter",
+    "description": "Imported from Streamer.bot: Deathcounter",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Improved Deathcounter",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "b38bb678-788d-4e8d-accf-1f35a83c94ee",
+    "name": "Deathcounter-(re)Set without changing total",
+    "description": "Imported from Streamer.bot: Deathcounter-(re)Set without changing total",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Improved Deathcounter",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "c06c2f79-2d1f-4b40-8a36-f02b49fa2854",
+    "name": "Deathcounter-Add",
+    "description": "Imported from Streamer.bot: Deathcounter-Add",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Improved Deathcounter",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2952e220-bca9-49cb-897f-c3544bd3b914",
+    "name": "Deathcounter-Rem",
+    "description": "Imported from Streamer.bot: Deathcounter-Rem",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Improved Deathcounter",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "e349a5fe-2bd3-44bf-933d-8f23e9772cf8",
+    "name": "Deathcounter-Reset-Total-Deaths",
+    "description": "Imported from Streamer.bot: Deathcounter-Reset-Total-Deaths",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Improved Deathcounter",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "19ff5fd3-8bf5-4f05-b220-2306a0c299cc",
+    "name": "Deathcounter-Set",
+    "description": "Imported from Streamer.bot: Deathcounter-Set",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Improved Deathcounter",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "c93fa373-5015-45eb-a4c6-9378b7aabdd5",
+    "name": "FightMessage",
+    "description": "Imported from Streamer.bot: FightMessage",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Champion of the Hill",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1ca91c15-f039-46f9-944b-507b5efd6134",
+    "name": "Gift Bomb",
+    "description": "Imported from Streamer.bot: Gift Bomb",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "f10c2b71-18d9-47f6-a42a-46c2c33ebda5",
+    "name": "Gift Sub",
+    "description": "Imported from Streamer.bot: Gift Sub",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "faf6ba97-5b69-4a62-91c5-382321350480",
+    "name": "New Subscriber",
+    "description": "Imported from Streamer.bot: New Subscriber",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d9bdefa5-4962-4b5a-8b84-b3fa99273d52",
+    "name": "Raid",
+    "description": "Imported from Streamer.bot: Raid",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "9cc272c1-6053-4231-8b16-f24792423950",
+    "name": "Resub",
+    "description": "Imported from Streamer.bot: Resub",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Events",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "e4215b5c-3736-4502-81e8-cf8619b8b50e",
+    "name": "SetFightReward",
+    "description": "Imported from Streamer.bot: SetFightReward",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Champion of the Hill",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "845499c7-f692-4525-b694-aad96ea19409",
+    "name": "StartFight",
+    "description": "Imported from Streamer.bot: StartFight",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "f40fe996-1128-4f61-9471-2f2f4e39070c",
+    "name": "VisualLurk",
+    "description": "Imported from Streamer.bot: VisualLurk",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Chat actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d16a6f28-90a0-4d27-9b89-f360640ce659",
+    "name": "VRFlad's FastTrack set up - !setup",
+    "description": "Imported from Streamer.bot: VRFlad's FastTrack set up - !setup",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "toolkits",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "eef25652-3bb1-4a13-81d7-eff5cc81f1a0",
+    "name": "Twitch Clip Scan for New Clips",
+    "description": "Imported from Streamer.bot: Twitch Clip Scan for New Clips",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Twitch Clip",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1bddf228-0d87-4592-bf83-4dcdf677ccb4",
+    "name": "Twitch Clip Last 30 Seconds",
+    "description": "Imported from Streamer.bot: Twitch Clip Last 30 Seconds",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Twitch Clip",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "94ad87ff-7b7f-47ac-87c1-fce5d671785b",
+    "name": "Twitch Clip New Clip Found",
+    "description": "Imported from Streamer.bot: Twitch Clip New Clip Found",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Twitch Clip",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "67c4531b-f6ea-4ca5-a312-27bc2f84b903",
+    "name": "Random Video from Folder (Set Delay)",
+    "description": "Imported from Streamer.bot: Random Video from Folder (Set Delay)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "toolkits",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "faddef1e-5326-466a-8b45-fbfe86277c45",
+    "name": "Auto Add Watchtime",
+    "description": "Imported from Streamer.bot: Auto Add Watchtime",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Watchtime",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "e8673531-de97-4300-99a7-5f2127835dd2",
+    "name": "Get Watchtime User",
+    "description": "Imported from Streamer.bot: Get Watchtime User",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Watchtime",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1de313a9-a737-4f0d-ae2c-b51054e23065",
+    "name": "Currency System • Events",
+    "description": "Imported from Streamer.bot: Currency System • Events",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "634bc736-91e2-41a5-b48a-b15de48a25e3",
+    "name": "Currency System • Settings",
+    "description": "Imported from Streamer.bot: Currency System • Settings",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "712c9268-7197-4b4d-9f5d-103dfeeed198",
+    "name": "Currency System • Commands",
+    "description": "Imported from Streamer.bot: Currency System • Commands",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "3e5d0d01-7db8-43b5-a5ff-61f16b76c249",
+    "name": "StreamUP Tools • Update Checker | Register Currency Core",
+    "description": "Imported from Streamer.bot: StreamUP Tools • Update Checker | Register Currency Core",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "bfb06f6c-e051-4995-994f-de09cd536def",
+    "name": "Currency System • Fail",
+    "description": "Imported from Streamer.bot: Currency System • Fail",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3",
+    "name": "Currency System • Tipping Support",
+    "description": "Imported from Streamer.bot: Currency System • Tipping Support",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "35da0298-ffe0-437a-b943-06a7e8a9ecbd",
+    "name": "Walk-On",
+    "description": "Imported from Streamer.bot: Walk-On",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Welcome wagon",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "70dae80e-f65a-479a-aebc-8fd322097e17",
+    "name": "ChatGPT Shoutouts v2",
+    "description": "Imported from Streamer.bot: ChatGPT Shoutouts v2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "c40af3de-bc07-4336-bafd-88a4e43c92ea",
+    "name": "ChatGPT Answers v2",
+    "description": "Imported from Streamer.bot: ChatGPT Answers v2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "3e947b44-40ac-4c49-b828-7897d97a7f30",
+    "name": "ChatGPT Set-Up UI V2",
+    "description": "Imported from Streamer.bot: ChatGPT Set-Up UI V2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ea602f63-4b16-4e38-ac1c-a8465d47615c",
+    "name": "gptwalkon",
+    "description": "Imported from Streamer.bot: gptwalkon",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Welcome wagon",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "4214f5a2-f12a-482f-b4b7-9066a62a5f8b",
+    "name": "Random Video from Folder (Dynamic Delay)",
+    "description": "Imported from Streamer.bot: Random Video from Folder (Dynamic Delay)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "toolkits",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "5c0cb407-46b0-4ff4-b3c7-54dbe56b3a85",
+    "name": "Partner Check Ins ",
+    "description": "Imported from Streamer.bot: Partner Check Ins ",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "4b46ab5e-2238-46f0-9183-bf0902c5bc73",
+    "name": "PartnerMessage",
+    "description": "Imported from Streamer.bot: PartnerMessage",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1a1f3af0-7159-46ab-8eac-9af9d9b59d2d",
+    "name": "Dance Party",
+    "description": "Imported from Streamer.bot: Dance Party",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "3f7f62c2-44dd-4a9e-b084-024ccc777861",
+    "name": "New Dance Parrty",
+    "description": "Imported from Streamer.bot: New Dance Parrty",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "a12ba66a-f330-4b40-86e2-d7a7e7f1d128",
+    "name": "woop dance party",
+    "description": "Imported from Streamer.bot: woop dance party",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1672ea4b-4808-4a2e-93cf-75aee40a4b0c",
+    "name": "first",
+    "description": "Imported from Streamer.bot: first",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "28485b3a-8633-4feb-8097-97e6946e9166",
+    "name": "drop it",
+    "description": "Imported from Streamer.bot: drop it",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d2b8172e-1759-41a0-bff3-d04d68cceb57",
+    "name": "no cursing",
+    "description": "Imported from Streamer.bot: no cursing",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ed6b21b2-2b4b-481b-9b96-56787dcdeeba",
+    "name": "ban in game action",
+    "description": "Imported from Streamer.bot: ban in game action",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "a799c214-5e95-4f5d-bd2f-5fc85e5ad995",
+    "name": "Currency System • blerps",
+    "description": "Imported from Streamer.bot: Currency System • blerps",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1b3dc208-cb5c-4e62-83e1-eee3f566c330",
+    "name": "Currency System • Unable to Afford",
+    "description": "Imported from Streamer.bot: Currency System • Unable to Afford",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2772f073-af91-4925-94cc-4a33050c35da",
+    "name": "Currency System •sample",
+    "description": "Imported from Streamer.bot: Currency System •sample",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1f502613-a573-4ce7-ae9d-f14deb18cfe2",
+    "name": "Currency System • first",
+    "description": "Imported from Streamer.bot: Currency System • first",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "9b4052e1-117b-4faa-abd1-f5acac25f28f",
+    "name": "Currency System • ban in game item",
+    "description": "Imported from Streamer.bot: Currency System • ban in game item",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "97ef2856-ba34-433c-abd8-519c0f97091e",
+    "name": "Currency System • dance party ",
+    "description": "Imported from Streamer.bot: Currency System • dance party ",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "cae578b8-652e-4c0d-949b-1767f9e07d16",
+    "name": "Currency System • hydrate",
+    "description": "Imported from Streamer.bot: Currency System • hydrate",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "6eb1c49d-eee7-417e-96a6-4e7837ef3751",
+    "name": "Currency System • stretch",
+    "description": "Imported from Streamer.bot: Currency System • stretch",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "3d2f6845-f888-4042-9dd5-25c1f6e92bfa",
+    "name": "Currency System • drop it",
+    "description": "Imported from Streamer.bot: Currency System • drop it",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "4ec62407-e4b1-412a-a365-e3bb55e375e0",
+    "name": "Currency System •no cursing ",
+    "description": "Imported from Streamer.bot: Currency System •no cursing ",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "97104442-4b39-4320-a6ec-875d12024591",
+    "name": "smoke",
+    "description": "Imported from Streamer.bot: smoke",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "beee5882-43e6-4797-91c0-bd5d6ed0f8c9",
+    "name": "Currency System •smoke",
+    "description": "Imported from Streamer.bot: Currency System •smoke",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "5ffa638b-1865-4937-a002-f9e5be3dedb1",
+    "name": "ChatGPT Voice V2",
+    "description": "Imported from Streamer.bot: ChatGPT Voice V2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "1cd3b4ae-e6c9-486c-bb37-51735e180917",
+    "name": "leaderboard",
+    "description": "Imported from Streamer.bot: leaderboard",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "leadberboard",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "a9de7f6c-3e8b-462c-bb7c-4395f997c5fb",
+    "name": "ChatGPT Wipe V2",
+    "description": "Imported from Streamer.bot: ChatGPT Wipe V2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ed16fe6e-93d1-4837-b7bd-09c88dc260de",
+    "name": "walk-onLog ",
+    "description": "Imported from Streamer.bot: walk-onLog ",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Welcome wagon",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "e918f24e-d8d6-432d-b7fe-1a71b494199f",
+    "name": "updateleaderboard",
+    "description": "Imported from Streamer.bot: updateleaderboard",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "leadberboard",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "defa9351-687e-4bc9-a24b-1dc17b1360ba",
+    "name": "[CCG] - Classic Chat Gamble",
+    "description": "Imported from Streamer.bot: [CCG] - Classic Chat Gamble",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "8df1375b-bbcc-4d4a-aa50-07f990e76e77",
+    "name": "[CCG] - Cooldown Message",
+    "description": "Imported from Streamer.bot: [CCG] - Cooldown Message",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "68934301-4099-4270-9732-fd5ea19d6120",
+    "name": "give points",
+    "description": "Imported from Streamer.bot: give points",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "StreamUP Currency • Core System",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "0168ccdf-6d6c-4ebf-b3d9-7cfaec1b0a0d",
+    "name": "sticker",
+    "description": "Imported from Streamer.bot: sticker",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "special actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "7417c5ec-6445-472a-954f-bc1e5ac88713",
+    "name": "retro",
+    "description": "Imported from Streamer.bot: retro",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "special actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "8b1e2aba-cc72-44b1-a020-e76f81434cc1",
+    "name": "wotd",
+    "description": "Imported from Streamer.bot: wotd",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "special actions",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "99ed5b7b-03a5-4fd4-b7c7-f06c43bae7e0",
+    "name": "ChatGPT Whisper V2",
+    "description": "Imported from Streamer.bot: ChatGPT Whisper V2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "7b0834f9-7440-4d4d-ae87-48c57895456d",
+    "name": "ChatDispatcher",
+    "description": "Imported from Streamer.bot: ChatDispatcher",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "toolkits",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "772c85f8-7499-4225-8ddb-d83e0dc8f6a8",
+    "name": "toolbelt",
+    "description": "Imported from Streamer.bot: toolbelt",
+    "triggers": [],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "toolkits",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d4608463-a864-4fe7-af2c-e569aff477d3",
+    "name": "pokecard",
+    "description": "Imported from Streamer.bot: pokecard",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "PokemonTCG",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d4b7a4cb-2346-4d67-9417-e49a1ba800dd",
+    "name": "translation",
+    "description": "Imported from Streamer.bot: translation",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "translation",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "74a97b0c-5e10-4573-9c16-1654cbea3b73",
+    "name": "translation (Copy)",
+    "description": "Imported from Streamer.bot: translation (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "translation",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ff8d9520-8ea7-41fc-a04c-9a859445734f",
+    "name": "duel",
+    "description": "Imported from Streamer.bot: duel",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "9bd57699-f793-4c43-a8e0-866b6163ab23",
+    "name": "menumode",
+    "description": "Imported from Streamer.bot: menumode",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "af5cac58-33ef-4de9-835c-aa103ffe3178",
+    "name": "Menumode2",
+    "description": "Imported from Streamer.bot: Menumode2",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "cdc8dc2e-e866-466f-9a5b-0cce928d98bd",
+    "name": "HideMenuOverlay",
+    "description": "Imported from Streamer.bot: HideMenuOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "5f34c921-902d-4d36-a10c-b506d52af600",
+    "name": "ShowCategoryBlerpsOverlay",
+    "description": "Imported from Streamer.bot: ShowCategoryBlerpsOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "01a4936a-1821-45c0-8530-372397d69dbb",
+    "name": "Play Blerps (Copy)",
+    "description": "Imported from Streamer.bot: Play Blerps (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "f96e499a-4d84-4c4c-81a0-58ea3a56730e",
+    "name": "Play Blerps",
+    "description": "Imported from Streamer.bot: Play Blerps",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "Channel point style redeems",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "7cc3442a-e255-44c7-b8b9-670da8aecb17",
+    "name": "ShowGroupBlerpsOverlay",
+    "description": "Imported from Streamer.bot: ShowGroupBlerpsOverlay",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "0c7bf766-1bde-4680-8b13-0a46178f1807",
+    "name": "ShowGroupCommandsOverlay",
+    "description": "Imported from Streamer.bot: ShowGroupCommandsOverlay",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "a5cb7f4c-7585-4bd9-b6d6-99b565b7cbbd",
+    "name": "ShowGroupShoutoutsOverlay",
+    "description": "Imported from Streamer.bot: ShowGroupShoutoutsOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "da2d0114-06f8-47ab-8a82-3770e7c4d434",
+    "name": "Currency System • ban in game item (Copy)",
+    "description": "Imported from Streamer.bot: Currency System • ban in game item (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "channel points cost",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "a0e686b9-66de-49af-94e2-b9b9c6c83883",
+    "name": "ShowInvalidGroupOverlay",
+    "description": "Imported from Streamer.bot: ShowInvalidGroupOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "3b3a49ea-1e62-4fe5-966f-ad9e7ccc4267",
+    "name": "showHelpOverlay",
+    "description": "Imported from Streamer.bot: showHelpOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "e32fde97-bf56-4f28-881d-c47682cbb3c1",
+    "name": "ShowGroupAllOverlay",
+    "description": "Imported from Streamer.bot: ShowGroupAllOverlay",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "314fd204-a5bf-4e5a-a559-0a6bf3b41733",
+    "name": "EndMenuMode",
+    "description": "Imported from Streamer.bot: EndMenuMode",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "9201b59f-89d9-4eba-8685-23b527ee39f3",
+    "name": "cursorA",
+    "description": "Imported from Streamer.bot: cursorA",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2b4e67ef-edc8-4a40-bb52-5b342a060ed4",
+    "name": "cursorB",
+    "description": "Imported from Streamer.bot: cursorB",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "e5d03be9-a783-4ed9-a940-e9a80dd38ab8",
+    "name": "cursorC",
+    "description": "Imported from Streamer.bot: cursorC",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "fe41f607-adaf-4e1f-abae-caead2affc3f",
+    "name": "cursorD",
+    "description": "Imported from Streamer.bot: cursorD",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "797b21a3-4a2b-402f-9106-70d42b9c7b75",
+    "name": "cursorE",
+    "description": "Imported from Streamer.bot: cursorE",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "91d4028f-de1d-47ad-a7fa-b2f62ae9cb90",
+    "name": "cursorF",
+    "description": "Imported from Streamer.bot: cursorF",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "140fbfc5-f4f7-40fd-a7a5-d7da00213503",
+    "name": "ShowCategoryShoutoutsOverlay",
+    "description": "Imported from Streamer.bot: ShowCategoryShoutoutsOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "98bd43ad-139f-4e45-bdef-84efae157d14",
+    "name": "ShowCategoryCommandsOverlay",
+    "description": "Imported from Streamer.bot: ShowCategoryCommandsOverlay",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Menu Mode",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "6df086bc-06a9-480b-a97c-ec8462827065",
+    "name": "LogPulledCards.cs",
+    "description": "Imported from Streamer.bot: LogPulledCards.cs",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "PokemonTCG",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "920667a6-af98-4d40-b448-e8c2e11c7da7",
+    "name": "poketrade",
+    "description": "Imported from Streamer.bot: poketrade",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "PokemonTCG",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "929f1eca-4c5a-4342-ad34-e1d3af3d8f9f",
+    "name": "poketrade (Copy)",
+    "description": "Imported from Streamer.bot: poketrade (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "PokemonTCG",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "fc30a3ba-2f9c-4646-a51e-3cf34ca98053",
+    "name": "poketrade (Copy 2)",
+    "description": "Imported from Streamer.bot: poketrade (Copy 2)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "PokemonTCG",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "036caf26-c247-43d7-a952-a00e9b8dc5e9",
+    "name": "updateleaderboard (Copy)",
+    "description": "Imported from Streamer.bot: updateleaderboard (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "leadberboard",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "3a785916-1b3d-461f-9964-1b0707577117",
+    "name": "leaderboard (Copy)",
+    "description": "Imported from Streamer.bot: leaderboard (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "leadberboard",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "f5d60d13-0945-467a-b8f7-ab70d3df78a8",
+    "name": "tiktok",
+    "description": "Imported from Streamer.bot: tiktok",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "tiktok",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "584e309f-3c79-452c-bb64-b634db6e90c8",
+    "name": "twitch",
+    "description": "Imported from Streamer.bot: twitch",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "tiktok",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "de9436a5-677d-4d66-8f51-310de7547c83",
+    "name": "duel (Copy)",
+    "description": "Imported from Streamer.bot: duel (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "00274d45-00bf-4cbc-8eb3-12d2ef42411a",
+    "name": "shop",
+    "description": "Imported from Streamer.bot: shop",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "27a7eaab-1593-4a20-9a57-9366b453abf8",
+    "name": "ChatGPT Whisper V2 (Copy)",
+    "description": "Imported from Streamer.bot: ChatGPT Whisper V2 (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "349d5191-ab18-4f59-8442-a7c5b34f8aac",
+    "name": "ChatGPT Answers v2 (Copy)",
+    "description": "Imported from Streamer.bot: ChatGPT Answers v2 (Copy)",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": false,
+    "concurrent": false,
+    "queue": false,
+    "group": "Athenabot87",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "2d8cf571-2f1c-4c50-b76a-80108c1c98fc",
+    "name": "top doner display",
+    "description": "Imported from Streamer.bot: top doner display",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "[CCG] - Classic Chat Gamble",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "0e8ff309-cc65-4903-beb7-cecd6dc8d7b6",
+    "name": "Discord message",
+    "description": "Imported from Streamer.bot: Discord message",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "discord",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "dfff63c7-a4c8-4b47-b1d8-cf9341feef89",
+    "name": "TikTok Events",
+    "description": "Imported from Streamer.bot: TikTok Events",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "fbbc4f2c-71b4-4474-8ee9-bfddcf7fc3b7",
+    "name": "YouTube Custom Emotes",
+    "description": "Imported from Streamer.bot: YouTube Custom Emotes",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "ae1ad43d-8abd-469c-b281-5b273abfbb84",
+    "name": "TTS Event",
+    "description": "Imported from Streamer.bot: TTS Event",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "6d3145b8-b3dc-4891-840f-1bbfe1a9d043",
+    "name": "Kick Events",
+    "description": "Imported from Streamer.bot: Kick Events",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      },
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "23cb41b5-119b-4a2c-a5f5-94f5d20fd194",
+    "name": "ChatRD Messages and Commands",
+    "description": "Imported from Streamer.bot: ChatRD Messages and Commands",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "d19e6eb2-90ab-41a2-980b-9ed160fc885a",
+    "name": "ChatRD Kick Messages",
+    "description": "Imported from Streamer.bot: ChatRD Kick Messages",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "5aba7b13-dded-4bbd-a6ea-3a8342aa334b",
+    "name": "KickBot",
+    "description": "Imported from Streamer.bot: KickBot",
+    "triggers": [
+      {
+        "type": "Chat Command",
+        "config": {}
+      }
+    ],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "Kick",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  },
+  {
+    "id": "033bfcfd-9ca5-4a94-b0b3-0ee75a536d49",
+    "name": "ChatRD TikTok Messages",
+    "description": "Imported from Streamer.bot: ChatRD TikTok Messages",
+    "triggers": [],
+    "subActions": [],
+    "enabled": true,
+    "concurrent": false,
+    "queue": false,
+    "group": "ChatRD",
+    "createdAt": "2025-12-25T08:43:56.721Z",
+    "updatedAt": "2025-12-25T08:43:56.721Z"
+  }
+]

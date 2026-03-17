@@ -1,0 +1,17 @@
+{
+  "id": "0d3a444c-72f0-44f2-bde4-1efd04603c10",
+  "name": "!love",
+  "command": "!love",
+  "enabled": true,
+  "description": "Imported from Streamer.bot: !love",
+  "cooldown": {
+    "global": 0,
+    "user": 2
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Chat actions",
+  "sources": 1,
+  "createdAt": "2025-12-25T08:43:56.728Z",
+  "updatedAt": "2025-12-25T08:43:56.728Z"
+}
