@@ -118,8 +118,8 @@ export default function BotFunctionsPage() {
             const savedInterests = localStorage.getItem("bot_interests");
             const savedType = localStorage.getItem("avatar_type");
 
-            if (savedIdle) setIdleAnimationData(JSON.parse(savedIdle));
-            if (savedTalking) setTalkingAnimationData(JSON.parse(savedTalking));
+            if (savedIdle && savedIdle !== 'undefined') setIdleAnimationData(JSON.parse(savedIdle));
+            if (savedTalking && savedTalking !== 'undefined') setTalkingAnimationData(JSON.parse(savedTalking));
             if (savedVoice) setTtsVoice(savedVoice);
             if (savedName) setBotName(savedName);
             if (savedPersonality) setBotPersonality(savedPersonality);
@@ -133,21 +133,44 @@ export default function BotFunctionsPage() {
             
             // Try to load from server and sync
             try {
-                const [idleRes, talkingRes] = await Promise.all([
-                    fetch('/api/avatars?type=idle'),
-                    fetch('/api/avatars?type=talking')
-                ]);
-                
-                if (idleRes.ok) {
-                    const { data } = await idleRes.json();
-                    setIdleAnimationData(data);
-                    localStorage.setItem("bot_idle_animation", JSON.stringify(data));
-                }
-                
-                if (talkingRes.ok) {
-                    const { data } = await talkingRes.json();
-                    setTalkingAnimationData(data);
-                    localStorage.setItem("bot_talking_animation", JSON.stringify(data));
+                const settingsRes = await fetch('/api/avatars?type=settings');
+                if (settingsRes.ok) {
+                    const payload = await settingsRes.json();
+                    const d = payload?.data;
+                    if (d) {
+                        const serverType = (d.animationType === 'json' ? 'lottie' : d.animationType) as 'lottie' | 'mp4' | 'gif';
+                        if (serverType) setAnimationType(serverType);
+                        if (d.idleFile) {
+                            const url = serverType === 'lottie' ? `/avatars/${d.idleFile}` : `/api/avatars?type=idle&format=${serverType}`;
+                            setIdleUrl(url);
+                            localStorage.setItem('avatar_idle_file', d.idleFile);
+                        }
+                        if (d.talkingFile) {
+                            const url = serverType === 'lottie' ? `/avatars/${d.talkingFile}` : `/api/avatars?type=talking&format=${serverType}`;
+                            setTalkingUrl(url);
+                            localStorage.setItem('avatar_talking_file', d.talkingFile);
+                        }
+                        if (serverType) localStorage.setItem('avatar_type', serverType);
+                        if (d.displayMode) {
+                            setDisplayMode(d.displayMode);
+                            localStorage.setItem('avatar_display_mode', d.displayMode);
+                        }
+                        // Only sync Lottie animation data
+                        if (serverType === 'lottie') {
+                            if (d.idleFile) {
+                                fetch(`/avatars/${d.idleFile}`).then(r => r.json()).then(json => {
+                                    setIdleAnimationData(json);
+                                    localStorage.setItem('bot_idle_animation', JSON.stringify(json));
+                                }).catch(() => {});
+                            }
+                            if (d.talkingFile) {
+                                fetch(`/avatars/${d.talkingFile}`).then(r => r.json()).then(json => {
+                                    setTalkingAnimationData(json);
+                                    localStorage.setItem('bot_talking_animation', JSON.stringify(json));
+                                }).catch(() => {});
+                            }
+                        }
+                    }
                 }
             } catch (error) {
                 console.warn('Failed to sync with server:', error);
@@ -177,7 +200,7 @@ export default function BotFunctionsPage() {
         
         // Set the overlay URL
         if (typeof window !== 'undefined') {
-            setOverlayUrl(`${window.location.origin}/overlay/avatar`);
+            setOverlayUrl(`${window.location.origin}/tts-player`);
         }
     }, []);
 
@@ -494,16 +517,16 @@ export default function BotFunctionsPage() {
 
        <Alert>
         <Bot className="h-4 w-4" />
-        <AlertTitle>Avatar Overlay URL</AlertTitle>
+        <AlertTitle>TTS + Avatar Overlay URL</AlertTitle>
         <AlertDescription>
-            <p className="mb-2">Add this URL as a Browser Source in OBS/Streamlabs to display your bot avatar on stream.</p>
+            <p className="mb-2">Add this URL as a Browser Source in OBS/Streamlabs for TTS audio and bot avatar together.</p>
             <div className="flex items-center gap-2">
-                <Input readOnly value={`${overlayUrl.replace('/overlay/avatar', '')}/overlay/avatar`} className="bg-muted" />
-                <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(`${overlayUrl.replace('/overlay/avatar', '')}/overlay/avatar`)}>
+                <Input readOnly value={overlayUrl} className="bg-muted" />
+                <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(overlayUrl)}>
                     <Copy className="h-4 w-4" />
                 </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Width: 300px, Height: 300px, Position: Bottom-left</p>
+            <p className="text-xs text-muted-foreground mt-2">Width: 1920px, Height: 1080px — click the source once in OBS to unlock autoplay</p>
         </AlertDescription>
       </Alert>
 
