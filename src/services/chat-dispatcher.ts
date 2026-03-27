@@ -1169,6 +1169,30 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        // Handle !eevee command — special Eevee booster for mothermayrien
+        if (actualMessage.toLowerCase() === '!eevee') {
+            if (actualUsername.toLowerCase() !== 'mothermayrien') {
+                await sendChatMessage(`@${actualUsername}, this is mothermayrien's special Eevee pack!`, 'broadcaster').catch(() => {});
+                return;
+            }
+            try {
+                const { openEeveePack } = require('./pokemon-packs');
+                const result = await openEeveePack(actualUsername);
+                if (result) {
+                    const { getUserCards } = require('./pokemon-collection');
+                    const allCards = await getUserCards(actualUsername);
+                    const rareCount = allCards.filter((c: any) => c.rarity?.includes('Rare')).length;
+                    const cardInfo = result.pack.map((c: any) => `${c.name} (${c.rarity})`).join(', ');
+                    await sendChatMessage(`✨ @${actualUsername} opened an Eevee booster! ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
+                } else {
+                    await sendChatMessage(`@${actualUsername}, something went wrong opening the Eevee pack!`, 'broadcaster').catch(() => {});
+                }
+            } catch (e: any) {
+                console.error('[Eevee Pack] Error:', e);
+            }
+            return;
+        }
+
         // Handle !pack command — same flow as PokePack channel point redeem
         if (actualMessage.toLowerCase().startsWith('!pack')) {
             const numArg = actualMessage.substring(5).trim();

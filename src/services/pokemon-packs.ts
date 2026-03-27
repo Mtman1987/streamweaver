@@ -101,3 +101,60 @@ export async function openPack(setNumber: number, username: string, enabledSets?
 
   return { pack, setName: setInfo.name, setCode: setInfo.code, username };
 }
+
+// Eevee family national dex numbers
+const EEVEE_DEX = new Set([133, 134, 135, 136, 196, 197, 470, 471, 700]);
+
+let eeveePoolCache: any[] | null = null;
+
+function loadEeveePool(): any[] {
+  if (eeveePoolCache) return eeveePoolCache;
+  const pool: any[] = [];
+  for (const file of fs.readdirSync(CARDS_DB_DIR).filter((f: string) => f.endsWith('.json'))) {
+    const setCode = file.replace('.json', '');
+    const cards = JSON.parse(fs.readFileSync(path.join(CARDS_DB_DIR, file), 'utf-8'));
+    for (const c of cards) {
+      if ((c.nationalPokedexNumbers || []).some((n: number) => EEVEE_DEX.has(n))) {
+        pool.push({ ...c, _setCode: setCode });
+      }
+    }
+  }
+  eeveePoolCache = pool;
+  return pool;
+}
+
+export async function openEeveePack(username: string) {
+  const pool = loadEeveePool();
+  if (pool.length < 9) return null;
+
+  const common = pool.filter(c => c.rarity === 'Common');
+  const uncommon = pool.filter(c => c.rarity === 'Uncommon');
+  const rare = pool.filter(c => c.rarity && (c.rarity.includes('Rare')));
+  const any = pool;
+
+  let picked: any[];
+  if (common.length >= 4 && uncommon.length >= 3 && rare.length >= 1) {
+    picked = [...pickRandom(common, 4), ...pickRandom(uncommon, 3), ...pickRandom(rare, 2)];
+  } else {
+    picked = pickRandom(any, 9);
+  }
+
+  const pack = picked.map(card => ({
+    name: card.name,
+    number: card.number,
+    setCode: card._setCode,
+    rarity: card.rarity || 'Common',
+    imageUrl: card.images?.large || `https://images.pokemontcg.io/${card._setCode}/${card.number}.png`
+  }));
+
+  console.log(`[Pokemon] ${username} opened an Eevee booster pack`);
+  await addCardsToUser(username, pack);
+
+  if (typeof (global as any).broadcast === 'function') {
+    const payload = { pack, setName: 'Eevee Booster', username };
+    (global as any).broadcast({ type: 'pokemon-pack-open', payload });
+    (global as any).broadcast({ type: 'pokemon-pack-opened', payload });
+  }
+
+  return { pack, setName: 'Eevee Booster', username };
+}

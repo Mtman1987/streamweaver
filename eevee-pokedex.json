@@ -1,0 +1,7026 @@
+{
+  "generated": "2026-03-18T15:08:29.863Z",
+  "totalCards": 377,
+  "summary": {
+    "Eevee": 75,
+    "Lt.": 2,
+    "Eevee-GX": 5,
+    "Radiant": 1,
+    "Vaporeon": 32,
+    "Dark": 6,
+    "Vaporeon-EX": 1,
+    "Light": 3,
+    "Vaporeon-GX": 1,
+    "Jolteon": 33,
+    "Jolteon-EX": 2,
+    "Jolteon-GX": 1,
+    "Flareon": 34,
+    "Flareon-EX": 2,
+    "Flareon-GX": 1,
+    "Espeon": 30,
+    "Espeon-GX": 5,
+    "Espeon-EX": 2,
+    "Umbreon": 37,
+    "Umbreon-GX": 5,
+    "Umbreon-EX": 2,
+    "Gardevoir": 4,
+    "Leafeon": 28,
+    "Leafeon-EX": 1,
+    "Leafeon-GX": 5,
+    "Glaceon": 25,
+    "Glaceon-GX": 5,
+    "Glaceon-EX": 2,
+    "Sylveon-EX": 2,
+    "Sylveon": 20,
+    "Sylveon-GX": 5
+  },
+  "cards": [
+    {
+      "id": "base2-51",
+      "name": "Eevee",
+      "set": "base2",
+      "number": "51",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/51_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "base5-55",
+      "name": "Eevee",
+      "set": "base5",
+      "number": "55",
+      "rarity": "Common",
+      "hp": "40",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/base5/55_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "base6-74",
+      "name": "Eevee",
+      "set": "base6",
+      "number": "74",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base6/74_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "basep-11",
+      "name": "Eevee",
+      "set": "basep",
+      "number": "11",
+      "rarity": "Promo",
+      "hp": "30",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/basep/11_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bw11-RC14",
+      "name": "Eevee",
+      "set": "bw11",
+      "number": "RC14",
+      "rarity": "Uncommon",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/bw11/RC14_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bw5-83",
+      "name": "Eevee",
+      "set": "bw5",
+      "number": "83",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "MAHOU",
+      "image": "https://images.pokemontcg.io/bw5/83_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bw5-84",
+      "name": "Eevee",
+      "set": "bw5",
+      "number": "84",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Sumiyoshi Kizuki",
+      "image": "https://images.pokemontcg.io/bw5/84_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bw9-89",
+      "name": "Eevee",
+      "set": "bw9",
+      "number": "89",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoki Saito",
+      "image": "https://images.pokemontcg.io/bw9/89_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bw9-90",
+      "name": "Eevee",
+      "set": "bw9",
+      "number": "90",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Toyste Beach",
+      "image": "https://images.pokemontcg.io/bw9/90_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bwp-BW94",
+      "name": "Eevee",
+      "set": "bwp",
+      "number": "BW94",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW94_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "bwp-BW97",
+      "name": "Eevee",
+      "set": "bwp",
+      "number": "BW97",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Akira Komayama",
+      "image": "https://images.pokemontcg.io/bwp/BW97_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "col1-56",
+      "name": "Eevee",
+      "set": "col1",
+      "number": "56",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Akira Komayama",
+      "image": "https://images.pokemontcg.io/col1/56_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "dp5-62",
+      "name": "Eevee",
+      "set": "dp5",
+      "number": "62",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ken Sugimori",
+      "image": "https://images.pokemontcg.io/dp5/62_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "dp5-63",
+      "name": "Eevee",
+      "set": "dp5",
+      "number": "63",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/dp5/63_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "ecard2-75",
+      "name": "Eevee",
+      "set": "ecard2",
+      "number": "75",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Midori Harada",
+      "image": "https://images.pokemontcg.io/ecard2/75_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "ecard3-54",
+      "name": "Eevee",
+      "set": "ecard3",
+      "number": "54",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Sumiyoshi Kizuki",
+      "image": "https://images.pokemontcg.io/ecard3/54_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "ex10-55",
+      "name": "Eevee",
+      "set": "ex10",
+      "number": "55",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Miki Tanaka",
+      "image": "https://images.pokemontcg.io/ex10/55_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "ex11-68",
+      "name": "Eevee δ",
+      "set": "ex11",
+      "number": "68",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Metal"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/ex11/68_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "ex11-69",
+      "name": "Eevee",
+      "set": "ex11",
+      "number": "69",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/ex11/69_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "ex2-63",
+      "name": "Eevee",
+      "set": "ex2",
+      "number": "63",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/ex2/63_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "fut20-2",
+      "name": "Eevee on the Ball",
+      "set": "fut20",
+      "number": "2",
+      "rarity": "Unknown",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/fut20/2_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "gym2-51",
+      "name": "Lt. Surge's Eevee",
+      "set": "gym2",
+      "number": "51",
+      "rarity": "Uncommon",
+      "hp": "40",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ken Sugimori",
+      "image": "https://images.pokemontcg.io/gym2/51_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "hgss3-47",
+      "name": "Eevee",
+      "set": "hgss3",
+      "number": "47",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kanako Eo",
+      "image": "https://images.pokemontcg.io/hgss3/47_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "hgss3-48",
+      "name": "Eevee",
+      "set": "hgss3",
+      "number": "48",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Noriko Hotta",
+      "image": "https://images.pokemontcg.io/hgss3/48_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "mcd16-12",
+      "name": "Eevee",
+      "set": "mcd16",
+      "number": "12",
+      "rarity": "Unknown",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/mcd16/12_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "mcd18-11",
+      "name": "Eevee",
+      "set": "mcd18",
+      "number": "11",
+      "rarity": "Unknown",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Shibuzoh.",
+      "image": "https://images.pokemontcg.io/mcd18/11_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "mcd19-12",
+      "name": "Eevee",
+      "set": "mcd19",
+      "number": "12",
+      "rarity": "Unknown",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/mcd19/12_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "neo2-38",
+      "name": "Eevee",
+      "set": "neo2",
+      "number": "38",
+      "rarity": "Uncommon",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Aya Kusube",
+      "image": "https://images.pokemontcg.io/neo2/38_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "pgo-54",
+      "name": "Eevee",
+      "set": "pgo",
+      "number": "54",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "N-DESIGN Inc.",
+      "image": "https://images.pokemontcg.io/pgo/54_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "pl2-59",
+      "name": "Eevee",
+      "set": "pl2",
+      "number": "59",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/pl2/59_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "pop3-13",
+      "name": "Eevee",
+      "set": "pop3",
+      "number": "13",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pop3/13_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm1-101",
+      "name": "Eevee",
+      "set": "sm1",
+      "number": "101",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Shibuzoh.",
+      "image": "https://images.pokemontcg.io/sm1/101_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm1-101a",
+      "name": "Eevee",
+      "set": "sm1",
+      "number": "101a",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Saya Tsuruta",
+      "image": "https://images.pokemontcg.io/sm1/101a_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm115-48",
+      "name": "Eevee",
+      "set": "sm115",
+      "number": "48",
+      "rarity": "Rare Holo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/sm115/48_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm115-49",
+      "name": "Eevee",
+      "set": "sm115",
+      "number": "49",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hitoshi Ariga",
+      "image": "https://images.pokemontcg.io/sm115/49_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm12-166",
+      "name": "Eevee",
+      "set": "sm12",
+      "number": "166",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Motofumi Fujiwara",
+      "image": "https://images.pokemontcg.io/sm12/166_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm12-167",
+      "name": "Eevee",
+      "set": "sm12",
+      "number": "167",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hasuno",
+      "image": "https://images.pokemontcg.io/sm12/167_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm5-104",
+      "name": "Eevee",
+      "set": "sm5",
+      "number": "104",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/sm5/104_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm5-105",
+      "name": "Eevee",
+      "set": "sm5",
+      "number": "105",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hideki Ishikawa",
+      "image": "https://images.pokemontcg.io/sm5/105_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm8-155",
+      "name": "Eevee",
+      "set": "sm8",
+      "number": "155",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Sekio",
+      "image": "https://images.pokemontcg.io/sm8/155_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm9-120",
+      "name": "Eevee & Snorlax-GX",
+      "set": "sm9",
+      "number": "120",
+      "rarity": "Rare Holo GX",
+      "hp": "270",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/sm9/120_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm9-171",
+      "name": "Eevee & Snorlax-GX",
+      "set": "sm9",
+      "number": "171",
+      "rarity": "Rare Ultra",
+      "hp": "270",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm9/171_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sm9-191",
+      "name": "Eevee & Snorlax-GX",
+      "set": "sm9",
+      "number": "191",
+      "rarity": "Rare Rainbow",
+      "hp": "270",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm9/191_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sma-SV41",
+      "name": "Eevee",
+      "set": "sma",
+      "number": "SV41",
+      "rarity": "Rare Shiny",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/sma/SV41_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM169",
+      "name": "Eevee & Snorlax-GX",
+      "set": "smp",
+      "number": "SM169",
+      "rarity": "Promo",
+      "hp": "270",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Tomokazu Komiya",
+      "image": "https://images.pokemontcg.io/smp/SM169_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM174",
+      "name": "Eevee-GX",
+      "set": "smp",
+      "number": "SM174",
+      "rarity": "Promo",
+      "hp": "160",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Otani",
+      "image": "https://images.pokemontcg.io/smp/SM174_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM175",
+      "name": "Eevee-GX",
+      "set": "smp",
+      "number": "SM175",
+      "rarity": "Promo",
+      "hp": "160",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Otani",
+      "image": "https://images.pokemontcg.io/smp/SM175_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM176",
+      "name": "Eevee-GX",
+      "set": "smp",
+      "number": "SM176",
+      "rarity": "Promo",
+      "hp": "160",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Otani",
+      "image": "https://images.pokemontcg.io/smp/SM176_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM184",
+      "name": "Eevee",
+      "set": "smp",
+      "number": "SM184",
+      "rarity": "Promo",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mizue",
+      "image": "https://images.pokemontcg.io/smp/SM184_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM233",
+      "name": "Eevee-GX",
+      "set": "smp",
+      "number": "SM233",
+      "rarity": "Promo",
+      "hp": "160",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Q-rais",
+      "image": "https://images.pokemontcg.io/smp/SM233_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM235",
+      "name": "Eevee",
+      "set": "smp",
+      "number": "SM235",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/smp/SM235_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "smp-SM242",
+      "name": "Eevee-GX",
+      "set": "smp",
+      "number": "SM242",
+      "rarity": "Promo",
+      "hp": "160",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "aky CG Works",
+      "image": "https://images.pokemontcg.io/smp/SM242_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv3-166",
+      "name": "Eevee",
+      "set": "sv3",
+      "number": "166",
+      "rarity": "Common",
+      "hp": "70",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "ryoma uratsuka",
+      "image": "https://images.pokemontcg.io/sv3/166_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv3pt5-133",
+      "name": "Eevee",
+      "set": "sv3pt5",
+      "number": "133",
+      "rarity": "Common",
+      "hp": "70",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Narumi Sato",
+      "image": "https://images.pokemontcg.io/sv3pt5/133_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv6-135",
+      "name": "Eevee",
+      "set": "sv6",
+      "number": "135",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "satoma",
+      "image": "https://images.pokemontcg.io/sv6/135_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv6-188",
+      "name": "Eevee",
+      "set": "sv6",
+      "number": "188",
+      "rarity": "Illustration Rare",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Narumi Sato",
+      "image": "https://images.pokemontcg.io/sv6/188_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv6pt5-50",
+      "name": "Eevee",
+      "set": "sv6pt5",
+      "number": "50",
+      "rarity": "Common",
+      "hp": "70",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Susumu Maeya",
+      "image": "https://images.pokemontcg.io/sv6pt5/50_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv7-113",
+      "name": "Eevee",
+      "set": "sv7",
+      "number": "113",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv7/113_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv8-143",
+      "name": "Eevee",
+      "set": "sv8",
+      "number": "143",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8/143_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv8pt5-74",
+      "name": "Eevee",
+      "set": "sv8pt5",
+      "number": "74",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/74_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv8pt5-75",
+      "name": "Eevee ex",
+      "set": "sv8pt5",
+      "number": "75",
+      "rarity": "Double Rare",
+      "hp": "200",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/75_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "sv8pt5-167",
+      "name": "Eevee ex",
+      "set": "sv8pt5",
+      "number": "167",
+      "rarity": "Special Illustration Rare",
+      "hp": "200",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/167_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "svp-43",
+      "name": "Eevee",
+      "set": "svp",
+      "number": "43",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "saino misaki",
+      "image": "https://images.pokemontcg.io/svp/43_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh10-119",
+      "name": "Eevee",
+      "set": "swsh10",
+      "number": "119",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sowsow",
+      "image": "https://images.pokemontcg.io/swsh10/119_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh12pt5-108",
+      "name": "Eevee V",
+      "set": "swsh12pt5",
+      "number": "108",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "You Iribi",
+      "image": "https://images.pokemontcg.io/swsh12pt5/108_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh4-130",
+      "name": "Eevee",
+      "set": "swsh4",
+      "number": "130",
+      "rarity": "Common",
+      "hp": "70",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Lee HyunJung",
+      "image": "https://images.pokemontcg.io/swsh4/130_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh45-52",
+      "name": "Eevee",
+      "set": "swsh45",
+      "number": "52",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "so-taro",
+      "image": "https://images.pokemontcg.io/swsh45/52_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh7-125",
+      "name": "Eevee",
+      "set": "swsh7",
+      "number": "125",
+      "rarity": "Common",
+      "hp": "70",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsushi Furusawa",
+      "image": "https://images.pokemontcg.io/swsh7/125_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh8-205",
+      "name": "Eevee",
+      "set": "swsh8",
+      "number": "205",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "0313",
+      "image": "https://images.pokemontcg.io/swsh8/205_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swsh9tg-TG11",
+      "name": "Eevee",
+      "set": "swsh9tg",
+      "number": "TG11",
+      "rarity": "Trainer Gallery Rare Holo",
+      "hp": "70",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Souichirou Gunjima",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG11_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH042",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH042",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "You Iribi",
+      "image": "https://images.pokemontcg.io/swshp/SWSH042_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH065",
+      "name": "Eevee V",
+      "set": "swshp",
+      "number": "SWSH065",
+      "rarity": "Promo",
+      "hp": "190",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/swshp/SWSH065_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH087",
+      "name": "Eevee VMAX",
+      "set": "swshp",
+      "number": "SWSH087",
+      "rarity": "Promo",
+      "hp": "300",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Mochizuki",
+      "image": "https://images.pokemontcg.io/swshp/SWSH087_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH095",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH095",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoki Saito",
+      "image": "https://images.pokemontcg.io/swshp/SWSH095_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH118",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH118",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Yuu Nishida",
+      "image": "https://images.pokemontcg.io/swshp/SWSH118_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH127",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH127",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Souichirou Gunjima",
+      "image": "https://images.pokemontcg.io/swshp/SWSH127_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH175",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH175",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Tika Matsuno",
+      "image": "https://images.pokemontcg.io/swshp/SWSH175_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH190",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH190",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "OKACHEKE",
+      "image": "https://images.pokemontcg.io/swshp/SWSH190_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH212",
+      "name": "Eevee",
+      "set": "swshp",
+      "number": "SWSH212",
+      "rarity": "Promo",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mizue",
+      "image": "https://images.pokemontcg.io/swshp/SWSH212_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "swshp-SWSH230",
+      "name": "Radiant Eevee",
+      "set": "swshp",
+      "number": "SWSH230",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic",
+        "Radiant"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Souichirou Gunjima",
+      "image": "https://images.pokemontcg.io/swshp/SWSH230_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "xy3-80",
+      "name": "Eevee",
+      "set": "xy3",
+      "number": "80",
+      "rarity": "Common",
+      "hp": "50",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/xy3/80_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "xy7-63",
+      "name": "Eevee",
+      "set": "xy7",
+      "number": "63",
+      "rarity": "Common",
+      "hp": "60",
+      "types": [
+        "Colorless"
+      ],
+      "subtypes": [
+        "Basic"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/xy7/63_hires.png",
+      "nationalDex": 133
+    },
+    {
+      "id": "base2-12",
+      "name": "Vaporeon",
+      "set": "base2",
+      "number": "12",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/12_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "base2-28",
+      "name": "Vaporeon",
+      "set": "base2",
+      "number": "28",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/28_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "base5-45",
+      "name": "Dark Vaporeon",
+      "set": "base5",
+      "number": "45",
+      "rarity": "Uncommon",
+      "hp": "60",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/base5/45_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "base6-9",
+      "name": "Dark Vaporeon",
+      "set": "base6",
+      "number": "9",
+      "rarity": "Rare Holo",
+      "hp": "60",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/base6/9_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "bw5-25",
+      "name": "Vaporeon",
+      "set": "bw5",
+      "number": "25",
+      "rarity": "Uncommon",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Akira Komayama",
+      "image": "https://images.pokemontcg.io/bw5/25_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "bw9-20",
+      "name": "Vaporeon",
+      "set": "bw9",
+      "number": "20",
+      "rarity": "Uncommon",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/20_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "bwp-BW89",
+      "name": "Vaporeon",
+      "set": "bwp",
+      "number": "BW89",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW89_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "col1-52",
+      "name": "Vaporeon",
+      "set": "col1",
+      "number": "52",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/col1/52_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "dp5-34",
+      "name": "Vaporeon",
+      "set": "dp5",
+      "number": "34",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/dp5/34_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ecard3-33",
+      "name": "Vaporeon",
+      "set": "ecard3",
+      "number": "33",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/ecard3/33_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ecard3-H31",
+      "name": "Vaporeon",
+      "set": "ecard3",
+      "number": "H31",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/ecard3/H31_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ex10-19",
+      "name": "Vaporeon",
+      "set": "ex10",
+      "number": "19",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/ex10/19_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ex11-18",
+      "name": "Vaporeon δ",
+      "set": "ex11",
+      "number": "18",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Water",
+        "Metal"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/ex11/18_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ex11-110",
+      "name": "Vaporeon ex",
+      "set": "ex11",
+      "number": "110",
+      "rarity": "Rare Holo EX",
+      "hp": "120",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hikaru Koike",
+      "image": "https://images.pokemontcg.io/ex11/110_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ex16-102",
+      "name": "Vaporeon ★",
+      "set": "ex16",
+      "number": "102",
+      "rarity": "Rare Holo Star",
+      "hp": "70",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "Star"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/ex16/102_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "ex2-25",
+      "name": "Vaporeon",
+      "set": "ex2",
+      "number": "25",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hajime Kusajima",
+      "image": "https://images.pokemontcg.io/ex2/25_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "g1-24",
+      "name": "Vaporeon-EX",
+      "set": "g1",
+      "number": "24",
+      "rarity": "Rare Holo EX",
+      "hp": "180",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoki Saito",
+      "image": "https://images.pokemontcg.io/g1/24_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "hgss3-41",
+      "name": "Vaporeon",
+      "set": "hgss3",
+      "number": "41",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/hgss3/41_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "neo4-52",
+      "name": "Light Vaporeon",
+      "set": "neo4",
+      "number": "52",
+      "rarity": "Uncommon",
+      "hp": "80",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/neo4/52_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "pl2-34",
+      "name": "Vaporeon",
+      "set": "pl2",
+      "number": "34",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pl2/34_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "pop3-6",
+      "name": "Vaporeon",
+      "set": "pop3",
+      "number": "6",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pop3/6_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "sm115-18",
+      "name": "Vaporeon",
+      "set": "sm115",
+      "number": "18",
+      "rarity": "Rare Holo",
+      "hp": "120",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/sm115/18_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "sm12-42",
+      "name": "Vaporeon",
+      "set": "sm12",
+      "number": "42",
+      "rarity": "Uncommon",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/sm12/42_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "smp-SM172",
+      "name": "Vaporeon-GX",
+      "set": "smp",
+      "number": "SM172",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Otani",
+      "image": "https://images.pokemontcg.io/smp/SM172_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "sv3pt5-134",
+      "name": "Vaporeon",
+      "set": "sv3pt5",
+      "number": "134",
+      "rarity": "Rare",
+      "hp": "130",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/sv3pt5/134_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "sv8pt5-22",
+      "name": "Vaporeon",
+      "set": "sv8pt5",
+      "number": "22",
+      "rarity": "Rare",
+      "hp": "130",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/22_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "sv8pt5-23",
+      "name": "Vaporeon ex",
+      "set": "sv8pt5",
+      "number": "23",
+      "rarity": "Double Rare",
+      "hp": "280",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/23_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "sv8pt5-149",
+      "name": "Vaporeon ex",
+      "set": "sv8pt5",
+      "number": "149",
+      "rarity": "Special Illustration Rare",
+      "hp": "280",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/149_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swsh4-30",
+      "name": "Vaporeon",
+      "set": "swsh4",
+      "number": "30",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kodama",
+      "image": "https://images.pokemontcg.io/swsh4/30_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swsh7-30",
+      "name": "Vaporeon VMAX",
+      "set": "swsh7",
+      "number": "30",
+      "rarity": "Rare Holo VMAX",
+      "hp": "320",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/30_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swsh7-172",
+      "name": "Vaporeon V",
+      "set": "swsh7",
+      "number": "172",
+      "rarity": "Rare Ultra",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/172_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swsh9tg-TG02",
+      "name": "Vaporeon",
+      "set": "swsh9tg",
+      "number": "TG02",
+      "rarity": "Trainer Gallery Rare Holo",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Jiro Sasumo",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG02_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swshp-SWSH072",
+      "name": "Vaporeon",
+      "set": "swshp",
+      "number": "SWSH072",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "so-taro",
+      "image": "https://images.pokemontcg.io/swshp/SWSH072_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swshp-SWSH150",
+      "name": "Vaporeon V",
+      "set": "swshp",
+      "number": "SWSH150",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH150_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swshp-SWSH181",
+      "name": "Vaporeon V",
+      "set": "swshp",
+      "number": "SWSH181",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Tika Matsuno",
+      "image": "https://images.pokemontcg.io/swshp/SWSH181_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "swshp-SWSH182",
+      "name": "Vaporeon VMAX",
+      "set": "swshp",
+      "number": "SWSH182",
+      "rarity": "Promo",
+      "hp": "320",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsushi Furusawa",
+      "image": "https://images.pokemontcg.io/swshp/SWSH182_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "xy7-22",
+      "name": "Vaporeon",
+      "set": "xy7",
+      "number": "22",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/xy7/22_hires.png",
+      "nationalDex": 134
+    },
+    {
+      "id": "base2-4",
+      "name": "Jolteon",
+      "set": "base2",
+      "number": "4",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/4_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "base2-20",
+      "name": "Jolteon",
+      "set": "base2",
+      "number": "20",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/20_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "base5-38",
+      "name": "Dark Jolteon",
+      "set": "base5",
+      "number": "38",
+      "rarity": "Uncommon",
+      "hp": "50",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/base5/38_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "base6-14",
+      "name": "Jolteon",
+      "set": "base6",
+      "number": "14",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base6/14_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "bw5-37",
+      "name": "Jolteon",
+      "set": "bw5",
+      "number": "37",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Sumiyoshi Kizuki",
+      "image": "https://images.pokemontcg.io/bw5/37_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "bw9-34",
+      "name": "Jolteon",
+      "set": "bw9",
+      "number": "34",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/34_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "bwp-BW91",
+      "name": "Jolteon",
+      "set": "bwp",
+      "number": "BW91",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW91_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "col1-45",
+      "name": "Jolteon",
+      "set": "col1",
+      "number": "45",
+      "rarity": "Uncommon",
+      "hp": "80",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Shin Nagasawa",
+      "image": "https://images.pokemontcg.io/col1/45_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "dp5-23",
+      "name": "Jolteon",
+      "set": "dp5",
+      "number": "23",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Midori Harada",
+      "image": "https://images.pokemontcg.io/dp5/23_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ecard3-13",
+      "name": "Jolteon",
+      "set": "ecard3",
+      "number": "13",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hikaru Koike",
+      "image": "https://images.pokemontcg.io/ecard3/13_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ecard3-H12",
+      "name": "Jolteon",
+      "set": "ecard3",
+      "number": "H12",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hikaru Koike",
+      "image": "https://images.pokemontcg.io/ecard3/H12_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ex10-8",
+      "name": "Jolteon",
+      "set": "ex10",
+      "number": "8",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/ex10/8_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ex11-7",
+      "name": "Jolteon δ",
+      "set": "ex11",
+      "number": "7",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Lightning",
+        "Metal"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/ex11/7_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ex11-109",
+      "name": "Jolteon ex",
+      "set": "ex11",
+      "number": "109",
+      "rarity": "Rare Holo EX",
+      "hp": "100",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/ex11/109_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ex16-101",
+      "name": "Jolteon ★",
+      "set": "ex16",
+      "number": "101",
+      "rarity": "Rare Holo Star",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Basic",
+        "Star"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/ex16/101_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "ex2-6",
+      "name": "Jolteon",
+      "set": "ex2",
+      "number": "6",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/ex2/6_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "g1-28",
+      "name": "Jolteon-EX",
+      "set": "g1",
+      "number": "28",
+      "rarity": "Rare Holo EX",
+      "hp": "160",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoki Saito",
+      "image": "https://images.pokemontcg.io/g1/28_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "g1-28a",
+      "name": "Jolteon-EX",
+      "set": "g1",
+      "number": "28a",
+      "rarity": "Rare Ultra",
+      "hp": "160",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/g1/28a_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "gym2-28",
+      "name": "Lt. Surge's Jolteon",
+      "set": "gym2",
+      "number": "28",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ken Sugimori",
+      "image": "https://images.pokemontcg.io/gym2/28_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "hgss3-28",
+      "name": "Jolteon",
+      "set": "hgss3",
+      "number": "28",
+      "rarity": "Uncommon",
+      "hp": "80",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Shin Nagasawa",
+      "image": "https://images.pokemontcg.io/hgss3/28_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "neo4-48",
+      "name": "Light Jolteon",
+      "set": "neo4",
+      "number": "48",
+      "rarity": "Uncommon",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/neo4/48_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "pl2-26",
+      "name": "Jolteon",
+      "set": "pl2",
+      "number": "26",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hajime Kusajima",
+      "image": "https://images.pokemontcg.io/pl2/26_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "pop3-3",
+      "name": "Jolteon",
+      "set": "pop3",
+      "number": "3",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pop3/3_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "sm115-23",
+      "name": "Jolteon",
+      "set": "sm115",
+      "number": "23",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/sm115/23_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "sm12-70",
+      "name": "Jolteon",
+      "set": "sm12",
+      "number": "70",
+      "rarity": "Uncommon",
+      "hp": "100",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Uta",
+      "image": "https://images.pokemontcg.io/sm12/70_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "smp-SM173",
+      "name": "Jolteon-GX",
+      "set": "smp",
+      "number": "SM173",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Otani",
+      "image": "https://images.pokemontcg.io/smp/SM173_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "sv3pt5-135",
+      "name": "Jolteon",
+      "set": "sv3pt5",
+      "number": "135",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/sv3pt5/135_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "sv8pt5-29",
+      "name": "Jolteon",
+      "set": "sv8pt5",
+      "number": "29",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/29_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "sv8pt5-30",
+      "name": "Jolteon ex",
+      "set": "sv8pt5",
+      "number": "30",
+      "rarity": "Double Rare",
+      "hp": "260",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/30_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "sv8pt5-153",
+      "name": "Jolteon ex",
+      "set": "sv8pt5",
+      "number": "153",
+      "rarity": "Special Illustration Rare",
+      "hp": "260",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/153_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swsh4-47",
+      "name": "Jolteon",
+      "set": "swsh4",
+      "number": "47",
+      "rarity": "Rare",
+      "hp": "100",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mizue",
+      "image": "https://images.pokemontcg.io/swsh4/47_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swsh7-51",
+      "name": "Jolteon VMAX",
+      "set": "swsh7",
+      "number": "51",
+      "rarity": "Rare Holo VMAX",
+      "hp": "300",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/51_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swsh7-177",
+      "name": "Jolteon V",
+      "set": "swsh7",
+      "number": "177",
+      "rarity": "Rare Ultra",
+      "hp": "190",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/177_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swsh9tg-TG04",
+      "name": "Jolteon",
+      "set": "swsh9tg",
+      "number": "TG04",
+      "rarity": "Trainer Gallery Rare Holo",
+      "hp": "100",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "DOM",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG04_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swshp-SWSH094",
+      "name": "Jolteon",
+      "set": "swshp",
+      "number": "SWSH094",
+      "rarity": "Promo",
+      "hp": "100",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Yuu Nishida",
+      "image": "https://images.pokemontcg.io/swshp/SWSH094_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swshp-SWSH151",
+      "name": "Jolteon V",
+      "set": "swshp",
+      "number": "SWSH151",
+      "rarity": "Promo",
+      "hp": "190",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH151_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swshp-SWSH183",
+      "name": "Jolteon V",
+      "set": "swshp",
+      "number": "SWSH183",
+      "rarity": "Promo",
+      "hp": "190",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "nagimiso",
+      "image": "https://images.pokemontcg.io/swshp/SWSH183_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "swshp-SWSH184",
+      "name": "Jolteon VMAX",
+      "set": "swshp",
+      "number": "SWSH184",
+      "rarity": "Promo",
+      "hp": "300",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hasuno",
+      "image": "https://images.pokemontcg.io/swshp/SWSH184_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "xy7-26",
+      "name": "Jolteon",
+      "set": "xy7",
+      "number": "26",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Lightning"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Sanosuke Sakuma",
+      "image": "https://images.pokemontcg.io/xy7/26_hires.png",
+      "nationalDex": 135
+    },
+    {
+      "id": "base2-3",
+      "name": "Flareon",
+      "set": "base2",
+      "number": "3",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/3_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "base2-19",
+      "name": "Flareon",
+      "set": "base2",
+      "number": "19",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base2/19_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "base5-35",
+      "name": "Dark Flareon",
+      "set": "base5",
+      "number": "35",
+      "rarity": "Uncommon",
+      "hp": "50",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/base5/35_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "base6-10",
+      "name": "Flareon",
+      "set": "base6",
+      "number": "10",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/base6/10_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "bw5-12",
+      "name": "Flareon",
+      "set": "bw5",
+      "number": "12",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Suwama Chiaki",
+      "image": "https://images.pokemontcg.io/bw5/12_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "bw9-12",
+      "name": "Flareon",
+      "set": "bw9",
+      "number": "12",
+      "rarity": "Uncommon",
+      "hp": "100",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/12_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "bwp-BW88",
+      "name": "Flareon",
+      "set": "bwp",
+      "number": "BW88",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW88_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "col1-44",
+      "name": "Flareon",
+      "set": "col1",
+      "number": "44",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kawayoo",
+      "image": "https://images.pokemontcg.io/col1/44_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "dp5-19",
+      "name": "Flareon",
+      "set": "dp5",
+      "number": "19",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/dp5/19_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ecard3-8",
+      "name": "Flareon",
+      "set": "ecard3",
+      "number": "8",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kyoko Umemoto",
+      "image": "https://images.pokemontcg.io/ecard3/8_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ecard3-H7",
+      "name": "Flareon",
+      "set": "ecard3",
+      "number": "H7",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kyoko Umemoto",
+      "image": "https://images.pokemontcg.io/ecard3/H7_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ex10-5",
+      "name": "Flareon",
+      "set": "ex10",
+      "number": "5",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/ex10/5_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ex11-5",
+      "name": "Flareon δ",
+      "set": "ex11",
+      "number": "5",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Fire",
+        "Metal"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/ex11/5_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ex11-108",
+      "name": "Flareon ex",
+      "set": "ex11",
+      "number": "108",
+      "rarity": "Rare Holo EX",
+      "hp": "110",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/ex11/108_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ex16-100",
+      "name": "Flareon ★",
+      "set": "ex16",
+      "number": "100",
+      "rarity": "Rare Holo Star",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "Star"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/ex16/100_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "ex2-5",
+      "name": "Flareon",
+      "set": "ex2",
+      "number": "5",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Midori Harada",
+      "image": "https://images.pokemontcg.io/ex2/5_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "g1-RC6",
+      "name": "Flareon-EX",
+      "set": "g1",
+      "number": "RC6",
+      "rarity": "Rare Holo EX",
+      "hp": "170",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/g1/RC6_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "g1-RC28",
+      "name": "Flareon-EX",
+      "set": "g1",
+      "number": "RC28",
+      "rarity": "Rare Ultra",
+      "hp": "170",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/g1/RC28_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "hgss3-26",
+      "name": "Flareon",
+      "set": "hgss3",
+      "number": "26",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kawayoo",
+      "image": "https://images.pokemontcg.io/hgss3/26_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "neo4-46",
+      "name": "Light Flareon",
+      "set": "neo4",
+      "number": "46",
+      "rarity": "Uncommon",
+      "hp": "80",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/neo4/46_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "pl2-19",
+      "name": "Flareon",
+      "set": "pl2",
+      "number": "19",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Midori Harada",
+      "image": "https://images.pokemontcg.io/pl2/19_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "pl2-60",
+      "name": "Flareon E4",
+      "set": "pl2",
+      "number": "60",
+      "rarity": "Common",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "SP"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pl2/60_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "pop3-2",
+      "name": "Flareon",
+      "set": "pop3",
+      "number": "2",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pop3/2_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "sm12-25",
+      "name": "Flareon",
+      "set": "sm12",
+      "number": "25",
+      "rarity": "Uncommon",
+      "hp": "110",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "AKIRA EGAWA",
+      "image": "https://images.pokemontcg.io/sm12/25_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "smp-SM171",
+      "name": "Flareon-GX",
+      "set": "smp",
+      "number": "SM171",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Otani",
+      "image": "https://images.pokemontcg.io/smp/SM171_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "smp-SM186",
+      "name": "Flareon",
+      "set": "smp",
+      "number": "SM186",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Shin Nagasawa",
+      "image": "https://images.pokemontcg.io/smp/SM186_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "sv3pt5-136",
+      "name": "Flareon",
+      "set": "sv3pt5",
+      "number": "136",
+      "rarity": "Rare",
+      "hp": "130",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryota Murayama",
+      "image": "https://images.pokemontcg.io/sv3pt5/136_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "sv8pt5-13",
+      "name": "Flareon",
+      "set": "sv8pt5",
+      "number": "13",
+      "rarity": "Rare",
+      "hp": "130",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/13_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "sv8pt5-14",
+      "name": "Flareon ex",
+      "set": "sv8pt5",
+      "number": "14",
+      "rarity": "Double Rare",
+      "hp": "270",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/14_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "sv8pt5-146",
+      "name": "Flareon ex",
+      "set": "sv8pt5",
+      "number": "146",
+      "rarity": "Special Illustration Rare",
+      "hp": "270",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/146_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swsh4-26",
+      "name": "Flareon",
+      "set": "swsh4",
+      "number": "26",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Eri Yamaki",
+      "image": "https://images.pokemontcg.io/swsh4/26_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swsh7-18",
+      "name": "Flareon VMAX",
+      "set": "swsh7",
+      "number": "18",
+      "rarity": "Rare Holo VMAX",
+      "hp": "320",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/18_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swsh7-169",
+      "name": "Flareon V",
+      "set": "swsh7",
+      "number": "169",
+      "rarity": "Rare Ultra",
+      "hp": "210",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/169_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swsh9tg-TG01",
+      "name": "Flareon",
+      "set": "swsh9tg",
+      "number": "TG01",
+      "rarity": "Trainer Gallery Rare Holo",
+      "hp": "110",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "You Iribi",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG01_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swshp-SWSH041",
+      "name": "Flareon",
+      "set": "swshp",
+      "number": "SWSH041",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "You Iribi",
+      "image": "https://images.pokemontcg.io/swshp/SWSH041_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swshp-SWSH149",
+      "name": "Flareon V",
+      "set": "swshp",
+      "number": "SWSH149",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH149_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swshp-SWSH179",
+      "name": "Flareon V",
+      "set": "swshp",
+      "number": "SWSH179",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Souichirou Gunjima",
+      "image": "https://images.pokemontcg.io/swshp/SWSH179_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "swshp-SWSH180",
+      "name": "Flareon VMAX",
+      "set": "swshp",
+      "number": "SWSH180",
+      "rarity": "Promo",
+      "hp": "320",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "OKACHEKE",
+      "image": "https://images.pokemontcg.io/swshp/SWSH180_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "xy7-13",
+      "name": "Flareon",
+      "set": "xy7",
+      "number": "13",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Fire"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/xy7/13_hires.png",
+      "nationalDex": 136
+    },
+    {
+      "id": "bw5-48",
+      "name": "Espeon",
+      "set": "bw5",
+      "number": "48",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mizue",
+      "image": "https://images.pokemontcg.io/bw5/48_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "bw9-48",
+      "name": "Espeon",
+      "set": "bw9",
+      "number": "48",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/48_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "bwp-BW92",
+      "name": "Espeon",
+      "set": "bwp",
+      "number": "BW92",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW92_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "col1-4",
+      "name": "Espeon",
+      "set": "col1",
+      "number": "4",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "match",
+      "image": "https://images.pokemontcg.io/col1/4_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "dp5-18",
+      "name": "Espeon",
+      "set": "dp5",
+      "number": "18",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/dp5/18_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "ecard2-11",
+      "name": "Espeon",
+      "set": "ecard2",
+      "number": "11",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kyoko Umemoto",
+      "image": "https://images.pokemontcg.io/ecard2/11_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "ecard2-H9",
+      "name": "Espeon",
+      "set": "ecard2",
+      "number": "H9",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kyoko Umemoto",
+      "image": "https://images.pokemontcg.io/ecard2/H9_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "ex10-102",
+      "name": "Espeon ex",
+      "set": "ex10",
+      "number": "102",
+      "rarity": "Rare Holo EX",
+      "hp": "110",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/ex10/102_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "ex11-4",
+      "name": "Espeon δ",
+      "set": "ex11",
+      "number": "4",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Psychic",
+        "Metal"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/ex11/4_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "ex2-16",
+      "name": "Espeon",
+      "set": "ex2",
+      "number": "16",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/ex2/16_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "hgss3-2",
+      "name": "Espeon",
+      "set": "hgss3",
+      "number": "2",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "match",
+      "image": "https://images.pokemontcg.io/hgss3/2_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "hgss3-81",
+      "name": "Espeon",
+      "set": "hgss3",
+      "number": "81",
+      "rarity": "Rare Prime",
+      "hp": "100",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Prime"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hideaki Hakozaki",
+      "image": "https://images.pokemontcg.io/hgss3/81_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "neo2-1",
+      "name": "Espeon",
+      "set": "neo2",
+      "number": "1",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/neo2/1_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "neo2-20",
+      "name": "Espeon",
+      "set": "neo2",
+      "number": "20",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/neo2/20_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "neo4-4",
+      "name": "Dark Espeon",
+      "set": "neo4",
+      "number": "4",
+      "rarity": "Rare Holo",
+      "hp": "60",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/neo4/4_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "pl2-18",
+      "name": "Espeon E4",
+      "set": "pl2",
+      "number": "18",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "SP"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/pl2/18_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "pop5-16",
+      "name": "Espeon ★",
+      "set": "pop5",
+      "number": "16",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "Star"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pop5/16_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sm1-61",
+      "name": "Espeon-GX",
+      "set": "sm1",
+      "number": "61",
+      "rarity": "Rare Holo GX",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm1/61_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sm1-140",
+      "name": "Espeon-GX",
+      "set": "sm1",
+      "number": "140",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm1/140_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sm1-152",
+      "name": "Espeon-GX",
+      "set": "sm1",
+      "number": "152",
+      "rarity": "Rare Rainbow",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm1/152_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sm11-72",
+      "name": "Espeon & Deoxys-GX",
+      "set": "sm11",
+      "number": "72",
+      "rarity": "Rare Holo GX",
+      "hp": "260",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/sm11/72_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sm8-89",
+      "name": "Espeon",
+      "set": "sm8",
+      "number": "89",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryota Murayama",
+      "image": "https://images.pokemontcg.io/sm8/89_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sma-SV60",
+      "name": "Espeon-GX",
+      "set": "sma",
+      "number": "SV60",
+      "rarity": "Rare Shiny GX",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sma/SV60_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "smp-SM35",
+      "name": "Espeon-GX",
+      "set": "smp",
+      "number": "SM35",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/smp/SM35_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "smp-SM240",
+      "name": "Espeon & Deoxys-GX",
+      "set": "smp",
+      "number": "SM240",
+      "rarity": "Promo",
+      "hp": "260",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hasuno",
+      "image": "https://images.pokemontcg.io/smp/SM240_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sv3-86",
+      "name": "Espeon",
+      "set": "sv3",
+      "number": "86",
+      "rarity": "Uncommon",
+      "hp": "110",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Cona Nitanda",
+      "image": "https://images.pokemontcg.io/sv3/86_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sv8pt5-33",
+      "name": "Espeon",
+      "set": "sv8pt5",
+      "number": "33",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/33_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sv8pt5-34",
+      "name": "Espeon ex",
+      "set": "sv8pt5",
+      "number": "34",
+      "rarity": "Double Rare",
+      "hp": "270",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/34_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "sv8pt5-155",
+      "name": "Espeon ex",
+      "set": "sv8pt5",
+      "number": "155",
+      "rarity": "Special Illustration Rare",
+      "hp": "270",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/155_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swsh7-64",
+      "name": "Espeon V",
+      "set": "swsh7",
+      "number": "64",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/64_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swsh7-65",
+      "name": "Espeon VMAX",
+      "set": "swsh7",
+      "number": "65",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/65_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swsh7-179",
+      "name": "Espeon V",
+      "set": "swsh7",
+      "number": "179",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/179_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swsh7-180",
+      "name": "Espeon V",
+      "set": "swsh7",
+      "number": "180",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sowsow",
+      "image": "https://images.pokemontcg.io/swsh7/180_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swsh8-270",
+      "name": "Espeon VMAX",
+      "set": "swsh8",
+      "number": "270",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/swsh8/270_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swshp-SWSH174",
+      "name": "Espeon",
+      "set": "swshp",
+      "number": "SWSH174",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Tika Matsuno",
+      "image": "https://images.pokemontcg.io/swshp/SWSH174_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "swshp-SWSH201",
+      "name": "Espeon V",
+      "set": "swshp",
+      "number": "SWSH201",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH201_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "xy9-52",
+      "name": "Espeon-EX",
+      "set": "xy9",
+      "number": "52",
+      "rarity": "Rare Holo EX",
+      "hp": "170",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ayaka Yoshida",
+      "image": "https://images.pokemontcg.io/xy9/52_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "xy9-117",
+      "name": "Espeon-EX",
+      "set": "xy9",
+      "number": "117",
+      "rarity": "Rare Ultra",
+      "hp": "170",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/xy9/117_hires.png",
+      "nationalDex": 196
+    },
+    {
+      "id": "bw5-60",
+      "name": "Umbreon",
+      "set": "bw5",
+      "number": "60",
+      "rarity": "Uncommon",
+      "hp": "100",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "TOKIYA",
+      "image": "https://images.pokemontcg.io/bw5/60_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "bw5-61",
+      "name": "Umbreon",
+      "set": "bw5",
+      "number": "61",
+      "rarity": "Uncommon",
+      "hp": "100",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/bw5/61_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "bw9-64",
+      "name": "Umbreon",
+      "set": "bw9",
+      "number": "64",
+      "rarity": "Rare Holo",
+      "hp": "100",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/64_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "bwp-BW93",
+      "name": "Umbreon",
+      "set": "bwp",
+      "number": "BW93",
+      "rarity": "Promo",
+      "hp": "100",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW93_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "cel25c-17_A",
+      "name": "Umbreon ★",
+      "set": "cel25c",
+      "number": "17",
+      "rarity": "Classic Collection",
+      "hp": "70",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "Star"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/cel25c/17_A_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "col1-22",
+      "name": "Umbreon",
+      "set": "col1",
+      "number": "22",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/col1/22_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "dp5-32",
+      "name": "Umbreon",
+      "set": "dp5",
+      "number": "32",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/dp5/32_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ecard2-41",
+      "name": "Umbreon",
+      "set": "ecard2",
+      "number": "41",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/ecard2/41_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ecard2-H29",
+      "name": "Umbreon",
+      "set": "ecard2",
+      "number": "H29",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/ecard2/H29_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ecard3-32",
+      "name": "Umbreon",
+      "set": "ecard3",
+      "number": "32",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/ecard3/32_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ecard3-H30",
+      "name": "Umbreon",
+      "set": "ecard3",
+      "number": "H30",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/ecard3/H30_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ex10-112",
+      "name": "Umbreon ex",
+      "set": "ex10",
+      "number": "112",
+      "rarity": "Rare Holo EX",
+      "hp": "110",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/ex10/112_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ex11-17",
+      "name": "Umbreon δ",
+      "set": "ex11",
+      "number": "17",
+      "rarity": "Rare Holo",
+      "hp": "70",
+      "types": [
+        "Darkness",
+        "Metal"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/ex11/17_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "ex2-24",
+      "name": "Umbreon",
+      "set": "ex2",
+      "number": "24",
+      "rarity": "Rare",
+      "hp": "80",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/ex2/24_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "hgss3-10",
+      "name": "Umbreon",
+      "set": "hgss3",
+      "number": "10",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/hgss3/10_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "hgss3-86",
+      "name": "Umbreon",
+      "set": "hgss3",
+      "number": "86",
+      "rarity": "Rare Prime",
+      "hp": "100",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Prime"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Hideaki Hakozaki",
+      "image": "https://images.pokemontcg.io/hgss3/86_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "neo2-13",
+      "name": "Umbreon",
+      "set": "neo2",
+      "number": "13",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kimiya Masago",
+      "image": "https://images.pokemontcg.io/neo2/13_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "neo2-32",
+      "name": "Umbreon",
+      "set": "neo2",
+      "number": "32",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/neo2/32_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "pop5-17",
+      "name": "Umbreon ★",
+      "set": "pop5",
+      "number": "17",
+      "rarity": "Rare",
+      "hp": "70",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "Star"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/pop5/17_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sm1-80",
+      "name": "Umbreon-GX",
+      "set": "sm1",
+      "number": "80",
+      "rarity": "Rare Holo GX",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm1/80_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sm1-142",
+      "name": "Umbreon-GX",
+      "set": "sm1",
+      "number": "142",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm1/142_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sm1-154",
+      "name": "Umbreon-GX",
+      "set": "sm1",
+      "number": "154",
+      "rarity": "Rare Rainbow",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm1/154_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sm11-125",
+      "name": "Umbreon & Darkrai-GX",
+      "set": "sm11",
+      "number": "125",
+      "rarity": "Rare Holo GX",
+      "hp": "270",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/sm11/125_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sm8-120",
+      "name": "Umbreon",
+      "set": "sm8",
+      "number": "120",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryota Murayama",
+      "image": "https://images.pokemontcg.io/sm8/120_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sma-SV69",
+      "name": "Umbreon-GX",
+      "set": "sma",
+      "number": "SV69",
+      "rarity": "Rare Shiny GX",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sma/SV69_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "smp-SM36",
+      "name": "Umbreon-GX",
+      "set": "smp",
+      "number": "SM36",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/smp/SM36_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "smp-SM241",
+      "name": "Umbreon & Darkrai-GX",
+      "set": "smp",
+      "number": "SM241",
+      "rarity": "Promo",
+      "hp": "270",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "so-taro",
+      "image": "https://images.pokemontcg.io/smp/SM241_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sv3-130",
+      "name": "Umbreon",
+      "set": "sv3",
+      "number": "130",
+      "rarity": "Uncommon",
+      "hp": "110",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "rika",
+      "image": "https://images.pokemontcg.io/sv3/130_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sv8pt5-59",
+      "name": "Umbreon",
+      "set": "sv8pt5",
+      "number": "59",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/59_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sv8pt5-60",
+      "name": "Umbreon ex",
+      "set": "sv8pt5",
+      "number": "60",
+      "rarity": "Double Rare",
+      "hp": "280",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/60_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sv8pt5-161",
+      "name": "Umbreon ex",
+      "set": "sv8pt5",
+      "number": "161",
+      "rarity": "Special Illustration Rare",
+      "hp": "280",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/161_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh7-94",
+      "name": "Umbreon V",
+      "set": "swsh7",
+      "number": "94",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/94_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh7-95",
+      "name": "Umbreon VMAX",
+      "set": "swsh7",
+      "number": "95",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "AKIRA EGAWA",
+      "image": "https://images.pokemontcg.io/swsh7/95_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh7-188",
+      "name": "Umbreon V",
+      "set": "swsh7",
+      "number": "188",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/188_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh7-189",
+      "name": "Umbreon V",
+      "set": "swsh7",
+      "number": "189",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Teeziro",
+      "image": "https://images.pokemontcg.io/swsh7/189_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh7-214",
+      "name": "Umbreon VMAX",
+      "set": "swsh7",
+      "number": "214",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "AKIRA EGAWA",
+      "image": "https://images.pokemontcg.io/swsh7/214_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh7-215",
+      "name": "Umbreon VMAX",
+      "set": "swsh7",
+      "number": "215",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "KEIICHIRO ITO",
+      "image": "https://images.pokemontcg.io/swsh7/215_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh9tg-TG22",
+      "name": "Umbreon V",
+      "set": "swsh9tg",
+      "number": "TG22",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ligton",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG22_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swsh9tg-TG23",
+      "name": "Umbreon VMAX",
+      "set": "swsh9tg",
+      "number": "TG23",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kawayoo",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG23_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swshp-SWSH129",
+      "name": "Umbreon",
+      "set": "swshp",
+      "number": "SWSH129",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Souichirou Gunjima",
+      "image": "https://images.pokemontcg.io/swshp/SWSH129_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "swshp-SWSH203",
+      "name": "Umbreon V",
+      "set": "swshp",
+      "number": "SWSH203",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Single Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH203_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "xy10-55",
+      "name": "Umbreon-EX",
+      "set": "xy10",
+      "number": "55",
+      "rarity": "Rare Holo EX",
+      "hp": "170",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ayaka Yoshida",
+      "image": "https://images.pokemontcg.io/xy10/55_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "xy10-119",
+      "name": "Umbreon-EX",
+      "set": "xy10",
+      "number": "119",
+      "rarity": "Rare Ultra",
+      "hp": "170",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/xy10/119_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "xyp-XY96",
+      "name": "Umbreon",
+      "set": "xyp",
+      "number": "XY96",
+      "rarity": "Promo",
+      "hp": "100",
+      "types": [
+        "Darkness"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kawayoo",
+      "image": "https://images.pokemontcg.io/xyp/XY96_hires.png",
+      "nationalDex": 197
+    },
+    {
+      "id": "sm10-130",
+      "name": "Gardevoir & Sylveon-GX",
+      "set": "sm10",
+      "number": "130",
+      "rarity": "Rare Holo GX",
+      "hp": "260",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mitsuhiro Arita",
+      "image": "https://images.pokemontcg.io/sm10/130_hires.png",
+      "nationalDex": 282
+    },
+    {
+      "id": "sm10-204",
+      "name": "Gardevoir & Sylveon-GX",
+      "set": "sm10",
+      "number": "204",
+      "rarity": "Rare Ultra",
+      "hp": "260",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm10/204_hires.png",
+      "nationalDex": 282
+    },
+    {
+      "id": "sm10-205",
+      "name": "Gardevoir & Sylveon-GX",
+      "set": "sm10",
+      "number": "205",
+      "rarity": "Rare Ultra",
+      "hp": "260",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/sm10/205_hires.png",
+      "nationalDex": 282
+    },
+    {
+      "id": "sm10-225",
+      "name": "Gardevoir & Sylveon-GX",
+      "set": "sm10",
+      "number": "225",
+      "rarity": "Rare Rainbow",
+      "hp": "260",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Basic",
+        "TAG TEAM",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm10/225_hires.png",
+      "nationalDex": 282
+    },
+    {
+      "id": "bw5-6",
+      "name": "Leafeon",
+      "set": "bw5",
+      "number": "6",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/bw5/6_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "bw9-11",
+      "name": "Leafeon",
+      "set": "bw9",
+      "number": "11",
+      "rarity": "Rare",
+      "hp": "100",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/11_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "bwp-BW87",
+      "name": "Leafeon",
+      "set": "bwp",
+      "number": "BW87",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW87_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "col1-13",
+      "name": "Leafeon",
+      "set": "col1",
+      "number": "13",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "match",
+      "image": "https://images.pokemontcg.io/col1/13_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "dp5-7",
+      "name": "Leafeon",
+      "set": "dp5",
+      "number": "7",
+      "rarity": "Rare Holo",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kouki Saitou",
+      "image": "https://images.pokemontcg.io/dp5/7_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "dp5-24",
+      "name": "Leafeon",
+      "set": "dp5",
+      "number": "24",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/dp5/24_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "dp5-99",
+      "name": "Leafeon LV.X",
+      "set": "dp5",
+      "number": "99",
+      "rarity": "Rare Holo LV.X",
+      "hp": "110",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Level-Up"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/dp5/99_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "g1-10",
+      "name": "Leafeon-EX",
+      "set": "g1",
+      "number": "10",
+      "rarity": "Rare Holo EX",
+      "hp": "170",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoki Saito",
+      "image": "https://images.pokemontcg.io/g1/10_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "hgss3-17",
+      "name": "Leafeon",
+      "set": "hgss3",
+      "number": "17",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Noriko Hotta",
+      "image": "https://images.pokemontcg.io/hgss3/17_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "pl2-45",
+      "name": "Leafeon",
+      "set": "pl2",
+      "number": "45",
+      "rarity": "Uncommon",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Suwama Chiaki",
+      "image": "https://images.pokemontcg.io/pl2/45_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sm5-13",
+      "name": "Leafeon-GX",
+      "set": "sm5",
+      "number": "13",
+      "rarity": "Rare Holo GX",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm5/13_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sm5-139",
+      "name": "Leafeon-GX",
+      "set": "sm5",
+      "number": "139",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm5/139_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sm5-157",
+      "name": "Leafeon-GX",
+      "set": "sm5",
+      "number": "157",
+      "rarity": "Rare Rainbow",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm5/157_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sma-SV46",
+      "name": "Leafeon-GX",
+      "set": "sma",
+      "number": "SV46",
+      "rarity": "Rare Shiny GX",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sma/SV46_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "smp-SM146",
+      "name": "Leafeon-GX",
+      "set": "smp",
+      "number": "SM146",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/smp/SM146_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "smp-SM237",
+      "name": "Leafeon",
+      "set": "smp",
+      "number": "SM237",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "chibi",
+      "image": "https://images.pokemontcg.io/smp/SM237_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sv6-11",
+      "name": "Leafeon",
+      "set": "sv6",
+      "number": "11",
+      "rarity": "Uncommon",
+      "hp": "120",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kuroimori",
+      "image": "https://images.pokemontcg.io/sv6/11_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sv8pt5-5",
+      "name": "Leafeon",
+      "set": "sv8pt5",
+      "number": "5",
+      "rarity": "Rare",
+      "hp": "120",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/5_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sv8pt5-6",
+      "name": "Leafeon ex",
+      "set": "sv8pt5",
+      "number": "6",
+      "rarity": "Double Rare",
+      "hp": "270",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/6_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "sv8pt5-144",
+      "name": "Leafeon ex",
+      "set": "sv8pt5",
+      "number": "144",
+      "rarity": "Special Illustration Rare",
+      "hp": "270",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/144_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh10-13",
+      "name": "Leafeon",
+      "set": "swsh10",
+      "number": "13",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsushi Furusawa",
+      "image": "https://images.pokemontcg.io/swsh10/13_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh12pt5-13",
+      "name": "Leafeon V",
+      "set": "swsh12pt5",
+      "number": "13",
+      "rarity": "Rare Holo V",
+      "hp": "210",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Mochizuki",
+      "image": "https://images.pokemontcg.io/swsh12pt5/13_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh12pt5-14",
+      "name": "Leafeon VSTAR",
+      "set": "swsh12pt5",
+      "number": "14",
+      "rarity": "Rare Holo VSTAR",
+      "hp": "260",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "VSTAR"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Hiiragi",
+      "image": "https://images.pokemontcg.io/swsh12pt5/14_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh12pt5gg-GG35",
+      "name": "Leafeon VSTAR",
+      "set": "swsh12pt5gg",
+      "number": "GG35",
+      "rarity": "Rare Holo VSTAR",
+      "hp": "260",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "VSTAR"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Jiro Sasumo",
+      "image": "https://images.pokemontcg.io/swsh12pt5gg/GG35_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh7-7",
+      "name": "Leafeon V",
+      "set": "swsh7",
+      "number": "7",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/7_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh7-8",
+      "name": "Leafeon VMAX",
+      "set": "swsh7",
+      "number": "8",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Tsuji",
+      "image": "https://images.pokemontcg.io/swsh7/8_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh7-166",
+      "name": "Leafeon V",
+      "set": "swsh7",
+      "number": "166",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/166_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh7-167",
+      "name": "Leafeon V",
+      "set": "swsh7",
+      "number": "167",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "You Iribi",
+      "image": "https://images.pokemontcg.io/swsh7/167_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh7-204",
+      "name": "Leafeon VMAX",
+      "set": "swsh7",
+      "number": "204",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Tsuji",
+      "image": "https://images.pokemontcg.io/swsh7/204_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swsh7-205",
+      "name": "Leafeon VMAX",
+      "set": "swsh7",
+      "number": "205",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "HYOGONOSUKE",
+      "image": "https://images.pokemontcg.io/swsh7/205_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swshp-SWSH191",
+      "name": "Leafeon",
+      "set": "swshp",
+      "number": "SWSH191",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "OKACHEKE",
+      "image": "https://images.pokemontcg.io/swshp/SWSH191_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swshp-SWSH194",
+      "name": "Leafeon V",
+      "set": "swshp",
+      "number": "SWSH194",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Yamashita",
+      "image": "https://images.pokemontcg.io/swshp/SWSH194_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "swshp-SWSH195",
+      "name": "Leafeon VSTAR",
+      "set": "swshp",
+      "number": "SWSH195",
+      "rarity": "Promo",
+      "hp": "260",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "VSTAR"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH195_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "xy3-7",
+      "name": "Leafeon",
+      "set": "xy3",
+      "number": "7",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Grass"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/xy3/7_hires.png",
+      "nationalDex": 470
+    },
+    {
+      "id": "bw5-30",
+      "name": "Glaceon",
+      "set": "bw5",
+      "number": "30",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/bw5/30_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "bw9-23",
+      "name": "Glaceon",
+      "set": "bw9",
+      "number": "23",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Team Plasma"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/bw9/23_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "bwp-BW90",
+      "name": "Glaceon",
+      "set": "bwp",
+      "number": "BW90",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "The Pokémon Company Art Team",
+      "image": "https://images.pokemontcg.io/bwp/BW90_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "dp5-5",
+      "name": "Glaceon",
+      "set": "dp5",
+      "number": "5",
+      "rarity": "Rare Holo",
+      "hp": "80",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsuko Nishida",
+      "image": "https://images.pokemontcg.io/dp5/5_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "dp5-20",
+      "name": "Glaceon",
+      "set": "dp5",
+      "number": "20",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Masakazu Fukuda",
+      "image": "https://images.pokemontcg.io/dp5/20_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "dp5-98",
+      "name": "Glaceon LV.X",
+      "set": "dp5",
+      "number": "98",
+      "rarity": "Rare Holo LV.X",
+      "hp": "100",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Level-Up"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/dp5/98_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "pl2-41",
+      "name": "Glaceon",
+      "set": "pl2",
+      "number": "41",
+      "rarity": "Uncommon",
+      "hp": "80",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/pl2/41_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sm5-39",
+      "name": "Glaceon-GX",
+      "set": "sm5",
+      "number": "39",
+      "rarity": "Rare Holo GX",
+      "hp": "200",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm5/39_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sm5-141",
+      "name": "Glaceon-GX",
+      "set": "sm5",
+      "number": "141",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm5/141_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sm5-159",
+      "name": "Glaceon-GX",
+      "set": "sm5",
+      "number": "159",
+      "rarity": "Rare Rainbow",
+      "hp": "200",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm5/159_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sma-SV55",
+      "name": "Glaceon-GX",
+      "set": "sma",
+      "number": "SV55",
+      "rarity": "Rare Shiny GX",
+      "hp": "200",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sma/SV55_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "smp-SM147",
+      "name": "Glaceon-GX",
+      "set": "smp",
+      "number": "SM147",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/smp/SM147_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "smp-SM238",
+      "name": "Glaceon",
+      "set": "smp",
+      "number": "SM238",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mizue",
+      "image": "https://images.pokemontcg.io/smp/SM238_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sv6-54",
+      "name": "Glaceon",
+      "set": "sv6",
+      "number": "54",
+      "rarity": "Uncommon",
+      "hp": "120",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "rika",
+      "image": "https://images.pokemontcg.io/sv6/54_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sv8pt5-25",
+      "name": "Glaceon",
+      "set": "sv8pt5",
+      "number": "25",
+      "rarity": "Rare",
+      "hp": "120",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/25_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sv8pt5-26",
+      "name": "Glaceon ex",
+      "set": "sv8pt5",
+      "number": "26",
+      "rarity": "Double Rare",
+      "hp": "270",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/26_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "sv8pt5-150",
+      "name": "Glaceon ex",
+      "set": "sv8pt5",
+      "number": "150",
+      "rarity": "Special Illustration Rare",
+      "hp": "270",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/150_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh10-38",
+      "name": "Glaceon",
+      "set": "swsh10",
+      "number": "38",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "saino misaki",
+      "image": "https://images.pokemontcg.io/swsh10/38_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh12pt5-38",
+      "name": "Glaceon V",
+      "set": "swsh12pt5",
+      "number": "38",
+      "rarity": "Rare Holo V",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Mochizuki",
+      "image": "https://images.pokemontcg.io/swsh12pt5/38_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh12pt5gg-GG40",
+      "name": "Glaceon VSTAR",
+      "set": "swsh12pt5gg",
+      "number": "GG40",
+      "rarity": "Rare Holo VSTAR",
+      "hp": "260",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VSTAR"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Gemi",
+      "image": "https://images.pokemontcg.io/swsh12pt5gg/GG40_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh7-40",
+      "name": "Glaceon V",
+      "set": "swsh7",
+      "number": "40",
+      "rarity": "Rare Holo V",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/40_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh7-41",
+      "name": "Glaceon VMAX",
+      "set": "swsh7",
+      "number": "41",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Tsuji",
+      "image": "https://images.pokemontcg.io/swsh7/41_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh7-174",
+      "name": "Glaceon V",
+      "set": "swsh7",
+      "number": "174",
+      "rarity": "Rare Ultra",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swsh7/174_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh7-175",
+      "name": "Glaceon V",
+      "set": "swsh7",
+      "number": "175",
+      "rarity": "Rare Ultra",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Narumi Sato",
+      "image": "https://images.pokemontcg.io/swsh7/175_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh7-208",
+      "name": "Glaceon VMAX",
+      "set": "swsh7",
+      "number": "208",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Tsuji",
+      "image": "https://images.pokemontcg.io/swsh7/208_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swsh7-209",
+      "name": "Glaceon VMAX",
+      "set": "swsh7",
+      "number": "209",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VMAX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "kirisAki",
+      "image": "https://images.pokemontcg.io/swsh7/209_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swshp-SWSH192",
+      "name": "Glaceon",
+      "set": "swshp",
+      "number": "SWSH192",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "OKACHEKE",
+      "image": "https://images.pokemontcg.io/swshp/SWSH192_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swshp-SWSH196",
+      "name": "Glaceon V",
+      "set": "swshp",
+      "number": "SWSH196",
+      "rarity": "Promo",
+      "hp": "210",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "PLANETA Yamashita",
+      "image": "https://images.pokemontcg.io/swshp/SWSH196_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "swshp-SWSH197",
+      "name": "Glaceon VSTAR",
+      "set": "swshp",
+      "number": "SWSH197",
+      "rarity": "Promo",
+      "hp": "260",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "VSTAR"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/swshp/SWSH197_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "xy10-20",
+      "name": "Glaceon-EX",
+      "set": "xy10",
+      "number": "20",
+      "rarity": "Rare Holo EX",
+      "hp": "170",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ayaka Yoshida",
+      "image": "https://images.pokemontcg.io/xy10/20_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "xy10-116",
+      "name": "Glaceon-EX",
+      "set": "xy10",
+      "number": "116",
+      "rarity": "Rare Ultra",
+      "hp": "170",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryo Ueda",
+      "image": "https://images.pokemontcg.io/xy10/116_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "xy3-19",
+      "name": "Glaceon",
+      "set": "xy3",
+      "number": "19",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Water"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kagemaru Himeno",
+      "image": "https://images.pokemontcg.io/xy3/19_hires.png",
+      "nationalDex": 471
+    },
+    {
+      "id": "g1-RC21",
+      "name": "Sylveon-EX",
+      "set": "g1",
+      "number": "RC21",
+      "rarity": "Rare Holo EX",
+      "hp": "170",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/g1/RC21_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "g1-RC32",
+      "name": "Sylveon-EX",
+      "set": "g1",
+      "number": "RC32",
+      "rarity": "Rare Ultra",
+      "hp": "170",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Basic",
+        "EX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kanako Eo",
+      "image": "https://images.pokemontcg.io/g1/RC32_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "pgo-35",
+      "name": "Sylveon",
+      "set": "pgo",
+      "number": "35",
+      "rarity": "Rare Holo",
+      "hp": "120",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Atsushi Furusawa",
+      "image": "https://images.pokemontcg.io/pgo/35_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sm12-155",
+      "name": "Sylveon",
+      "set": "sm12",
+      "number": "155",
+      "rarity": "Rare",
+      "hp": "110",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Naoyo Kimura",
+      "image": "https://images.pokemontcg.io/sm12/155_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sm2-92",
+      "name": "Sylveon-GX",
+      "set": "sm2",
+      "number": "92",
+      "rarity": "Rare Holo GX",
+      "hp": "200",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm2/92_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sm2-92a",
+      "name": "Sylveon-GX",
+      "set": "sm2",
+      "number": "92a",
+      "rarity": "Rare Holo GX",
+      "hp": "200",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm2/92a_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sm2-140",
+      "name": "Sylveon-GX",
+      "set": "sm2",
+      "number": "140",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm2/140_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sm2-158",
+      "name": "Sylveon-GX",
+      "set": "sm2",
+      "number": "158",
+      "rarity": "Rare Rainbow",
+      "hp": "200",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sm2/158_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sm6-87",
+      "name": "Sylveon",
+      "set": "sm6",
+      "number": "87",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "0313",
+      "image": "https://images.pokemontcg.io/sm6/87_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sma-SV76",
+      "name": "Sylveon-GX",
+      "set": "sma",
+      "number": "SV76",
+      "rarity": "Rare Shiny GX",
+      "hp": "200",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "GX"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/sma/SV76_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sv6pt5-22",
+      "name": "Sylveon",
+      "set": "sv6pt5",
+      "number": "22",
+      "rarity": "Uncommon",
+      "hp": "120",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Kuroimori",
+      "image": "https://images.pokemontcg.io/sv6pt5/22_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sv8-86",
+      "name": "Sylveon ex",
+      "set": "sv8",
+      "number": "86",
+      "rarity": "Double Rare",
+      "hp": "270",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8/86_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sv8pt5-40",
+      "name": "Sylveon",
+      "set": "sv8pt5",
+      "number": "40",
+      "rarity": "Rare",
+      "hp": "120",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/40_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sv8pt5-41",
+      "name": "Sylveon ex",
+      "set": "sv8pt5",
+      "number": "41",
+      "rarity": "Double Rare",
+      "hp": "270",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/41_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "sv8pt5-156",
+      "name": "Sylveon ex",
+      "set": "sv8pt5",
+      "number": "156",
+      "rarity": "Special Illustration Rare",
+      "hp": "270",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1",
+        "Tera",
+        "ex"
+      ],
+      "supertype": "Pokémon",
+      "artist": "",
+      "image": "https://images.pokemontcg.io/sv8pt5/156_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh7-74",
+      "name": "Sylveon V",
+      "set": "swsh7",
+      "number": "74",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "aky CG Works",
+      "image": "https://images.pokemontcg.io/swsh7/74_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh7-75",
+      "name": "Sylveon VMAX",
+      "set": "swsh7",
+      "number": "75",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryota Murayama",
+      "image": "https://images.pokemontcg.io/swsh7/75_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh7-183",
+      "name": "Sylveon V",
+      "set": "swsh7",
+      "number": "183",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "aky CG Works",
+      "image": "https://images.pokemontcg.io/swsh7/183_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh7-184",
+      "name": "Sylveon V",
+      "set": "swsh7",
+      "number": "184",
+      "rarity": "Rare Ultra",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Yuu Nishida",
+      "image": "https://images.pokemontcg.io/swsh7/184_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh7-211",
+      "name": "Sylveon VMAX",
+      "set": "swsh7",
+      "number": "211",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryota Murayama",
+      "image": "https://images.pokemontcg.io/swsh7/211_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh7-212",
+      "name": "Sylveon VMAX",
+      "set": "swsh7",
+      "number": "212",
+      "rarity": "Rare Rainbow",
+      "hp": "310",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Taira Akitsu",
+      "image": "https://images.pokemontcg.io/swsh7/212_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh9tg-TG14",
+      "name": "Sylveon V",
+      "set": "swsh9tg",
+      "number": "TG14",
+      "rarity": "Rare Holo V",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Megumi Mizutani",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG14_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swsh9tg-TG15",
+      "name": "Sylveon VMAX",
+      "set": "swsh9tg",
+      "number": "TG15",
+      "rarity": "Rare Holo VMAX",
+      "hp": "310",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "VMAX",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "sui",
+      "image": "https://images.pokemontcg.io/swsh9tg/TG15_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swshp-SWSH134",
+      "name": "Dark Sylveon V",
+      "set": "swshp",
+      "number": "SWSH134",
+      "rarity": "Promo",
+      "hp": "180",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Ryuta Fuse",
+      "image": "https://images.pokemontcg.io/swshp/SWSH134_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swshp-SWSH202",
+      "name": "Sylveon V",
+      "set": "swshp",
+      "number": "SWSH202",
+      "rarity": "Promo",
+      "hp": "200",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Basic",
+        "V",
+        "Rapid Strike"
+      ],
+      "supertype": "Pokémon",
+      "artist": "aky CG Works",
+      "image": "https://images.pokemontcg.io/swshp/SWSH202_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "swshp-SWSH211",
+      "name": "Sylveon",
+      "set": "swshp",
+      "number": "SWSH211",
+      "rarity": "Promo",
+      "hp": "110",
+      "types": [
+        "Psychic"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "Mizue",
+      "image": "https://images.pokemontcg.io/swshp/SWSH211_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "xy3-72",
+      "name": "Sylveon",
+      "set": "xy3",
+      "number": "72",
+      "rarity": "Rare",
+      "hp": "90",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/xy3/72_hires.png",
+      "nationalDex": 700
+    },
+    {
+      "id": "xyp-XY04",
+      "name": "Sylveon",
+      "set": "xyp",
+      "number": "XY04",
+      "rarity": "Promo",
+      "hp": "90",
+      "types": [
+        "Fairy"
+      ],
+      "subtypes": [
+        "Stage 1"
+      ],
+      "supertype": "Pokémon",
+      "artist": "5ban Graphics",
+      "image": "https://images.pokemontcg.io/xyp/XY04_hires.png",
+      "nationalDex": 700
+    }
+  ]
+}

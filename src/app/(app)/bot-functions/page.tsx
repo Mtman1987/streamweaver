@@ -20,6 +20,10 @@ import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
+function isValidLottie(data: unknown): data is Record<string, unknown> {
+    return !!data && typeof data === 'object' && Array.isArray((data as any).layers);
+}
+
 const availableVoices = [
     // === INWORLD VOICES ===
     { name: 'Ashley', gender: 'Female', description: 'Inworld — warm, friendly' },
@@ -89,7 +93,7 @@ export default function BotFunctionsPage() {
     const [idleAnimationData, setIdleAnimationData] = useState<any>(botAnimation);
     const [talkingAnimationData, setTalkingAnimationData] = useState<any>(null);
     const [isSpeaking, setIsSpeaking] = useState(false);
-    const [animationType, setAnimationType] = useState<'lottie' | 'mp4' | 'gif'>('lottie');
+    const [animationType, setAnimationType] = useState<'lottie' | 'mp4' | 'gif' | null>(null);
     const [idleUrl, setIdleUrl] = useState<string>('');
     const [talkingUrl, setTalkingUrl] = useState<string>('');
     
@@ -118,8 +122,12 @@ export default function BotFunctionsPage() {
             const savedInterests = localStorage.getItem("bot_interests");
             const savedType = localStorage.getItem("avatar_type");
 
-            if (savedIdle && savedIdle !== 'undefined') setIdleAnimationData(JSON.parse(savedIdle));
-            if (savedTalking && savedTalking !== 'undefined') setTalkingAnimationData(JSON.parse(savedTalking));
+            if (savedIdle && savedIdle !== 'undefined') {
+                try { const parsed = JSON.parse(savedIdle); if (isValidLottie(parsed)) setIdleAnimationData(parsed); } catch {}
+            }
+            if (savedTalking && savedTalking !== 'undefined') {
+                try { const parsed = JSON.parse(savedTalking); if (isValidLottie(parsed)) setTalkingAnimationData(parsed); } catch {}
+            }
             if (savedVoice) setTtsVoice(savedVoice);
             if (savedName) setBotName(savedName);
             if (savedPersonality) setBotPersonality(savedPersonality);
@@ -127,6 +135,7 @@ export default function BotFunctionsPage() {
             if (savedIdleFile) setIdleUrl(`/avatars/${savedIdleFile}`);
             if (savedTalkingFile) setTalkingUrl(`/avatars/${savedTalkingFile}`);
             if (savedType) setAnimationType(savedType as 'lottie' | 'mp4' | 'gif');
+            else if (!savedType) setAnimationType('lottie');
             
             const savedDisplayMode = localStorage.getItem('avatar_display_mode');
             if (savedDisplayMode) setDisplayMode(savedDisplayMode);
@@ -702,7 +711,7 @@ export default function BotFunctionsPage() {
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-4">
                     <div className="w-48 h-48 relative">
-                       {animationType === 'lottie' && idleAnimationData && (
+                       {animationType === 'lottie' && isValidLottie(idleAnimationData) && (
                          <Lottie animationData={idleAnimationData} loop={true} autoplay={true} />
                        )}
                        {animationType === 'mp4' && idleUrl && (
@@ -711,7 +720,7 @@ export default function BotFunctionsPage() {
                        {animationType === 'gif' && idleUrl && (
                          <img src={idleUrl} alt="Idle" className="w-full h-full object-contain" />
                        )}
-                       {animationType === 'lottie' && talkingAnimationData && (
+                       {animationType === 'lottie' && isValidLottie(talkingAnimationData) && (
                          <div className={cn("absolute inset-0 transition-opacity", isSpeaking ? 'opacity-100' : 'opacity-0')}>
                             <Lottie animationData={talkingAnimationData} loop={true} autoplay={true} />
                          </div>

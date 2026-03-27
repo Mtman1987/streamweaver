@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function BRBPlayer() {
+function BRBPlayerContent() {
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -90,5 +90,13 @@ export default function BRBPlayer() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function BRBPlayer() {
+  return (
+    <Suspense fallback={<div style={{ width: '100vw', height: '100vh', background: '#0e0e10' }} />}>
+      <BRBPlayerContent />
+    </Suspense>
   );
 }

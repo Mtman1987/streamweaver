@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function ShoutoutPlayer() {
+function ShoutoutPlayerContent() {
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -170,5 +170,13 @@ export default function ShoutoutPlayer() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ShoutoutPlayer() {
+  return (
+    <Suspense fallback={<div style={{ width: '100vw', height: '100vh', background: '#000' }} />}>
+      <ShoutoutPlayerContent />
+    </Suspense>
   );
 }

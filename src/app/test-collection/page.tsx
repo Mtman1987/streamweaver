@@ -79,12 +79,12 @@ export default function TestCollectionPage() {
         if (cards.length) {
           runAnimation(cards, 'mtman1987');
         } else {
-          useDummy();
+          loadDummyData();
         }
       })
-      .catch(() => useDummy());
+      .catch(() => loadDummyData());
 
-    function useDummy() {
+    function loadDummyData() {
       setStatus('Using dummy data');
       const dummy = Array.from({ length: 180 }, (_, i) => ({
         name: `Card ${i}`, number: `${(i % 102) + 1}`, setCode: 'base1',
