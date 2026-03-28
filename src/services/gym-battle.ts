@@ -252,10 +252,6 @@ export async function startNextBattle(): Promise<void> {
     'bot'
   );
 
-  // Give first turn energy
-  const activeCard = activeBattle.challenger.cards[0];
-  activeBattle.challenger.energy.push(activeCard.types[0] || 'Colorless');
-
   await announceActiveCards();
   await sendChatMessage(
     `@${displayName}, your turn! Type !attack or !switch`,
@@ -550,3 +546,4 @@ export async function testGymBattle(): Promise<void> {
 
   await sendChatMessage(`🧪 TestChallenger joined the gym queue! Position: #${pos} | Use !nextchallenger to start the battle.`, 'broadcaster');
 }
+

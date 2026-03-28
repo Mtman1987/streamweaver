@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getOAuthRedirectUri } from '@/lib/runtime-origin';
 import { z } from 'zod';
 
 const discordManualExchangeSchema = z.object({
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const clientId = process.env.DISCORD_CLIENT_ID;
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-    const redirectUri = 'http://localhost:3100/auth/discord/callback';
+    const redirectUri = getOAuthRedirectUri('discord', request.nextUrl.origin);
 
     if (!clientId || !clientSecret) {
       return apiError('Discord credentials not configured', { status: 500, code: 'MISSING_CONFIG' });

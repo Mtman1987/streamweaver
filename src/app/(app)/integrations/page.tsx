@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function IntegrationsPage() {
   const { toast } = useToast();
+  const appOrigin = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_STREAMWEAVE_URL || 'http://localhost:3100');
+  const wsServerUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_URL || `${appOrigin.replace(/^http/, 'ws')}`;
   const twitchConfigured = !!process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
   const [manualCode, setManualCode] = useState('');
   const [manualState, setManualState] = useState('login');
@@ -652,7 +654,7 @@ export default function IntegrationsPage() {
               id="callback-url"
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
-              placeholder="Paste the full callback URL here (http://localhost:3100/auth/twitch/callback?code=...)"
+              placeholder={`Paste the full callback URL here (${appOrigin}/auth/twitch/callback?code=...)`}
             />
           </div>
           <div className="space-y-2">
@@ -736,7 +738,7 @@ export default function IntegrationsPage() {
           <div className="flex items-center justify-between p-4 border rounded">
             <div>
               <div className="font-medium">WebSocket Server</div>
-              <div className="text-sm text-muted-foreground">ws://localhost:8080</div>
+              <div className="text-sm text-muted-foreground">{wsServerUrl}</div>
             </div>
             <div className="flex items-center gap-2">
               <Switch defaultChecked />
@@ -746,7 +748,7 @@ export default function IntegrationsPage() {
           <div className="flex items-center justify-between p-4 border rounded">
             <div>
               <div className="font-medium">HTTP Server</div>
-              <div className="text-sm text-muted-foreground">http://localhost:7474</div>
+              <div className="text-sm text-muted-foreground">{appOrigin}</div>
             </div>
             <div className="flex items-center gap-2">
               <Switch defaultChecked />
@@ -758,3 +760,5 @@ export default function IntegrationsPage() {
     </div>
   );
 }
+
+

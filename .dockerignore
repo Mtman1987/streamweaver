@@ -1,0 +1,86 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/
+
+# Build artifacts
+/dist
+/build
+/.next/
+/out/
+
+# Local Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Never keep env files under public/ (public is web-served)
+/public/.env
+
+# Logs (only the root logs/ directory, not src/components/logs/)
+/logs
+*.log
+!src/components/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS-generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Caches
+.npm
+.yarn-cache
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# IDX / local dev environment metadata
+.idx/
+.launcher-install.json
+
+# Local secrets (never commit)
+firebase-service-account.json
+*.pem
+*.key
+
+# Genkit (local runtime state)
+.genkit/
+
+# Local app data (non-secret but machine-specific)
+/tokens/*
+!/tokens/.gitkeep
+!/tokens/*.example.json
+
+# Runtime data (user-specific, synced via Discord)
+/data/
+/MasterStats/
+/config/
+
+spcmtn-pokemon_assets-prod-main/
+carddb-uploader/
+
+ChatAndConquer/dist/
+ChatAndConquer/node_modules/
+
+ChatAndConquer/dist/
+ChatAndConquer/node_modules/
+
+.next/
+carddb-uploader/cards/database/*.jpg
+*.log
+*.tsbuildinfo

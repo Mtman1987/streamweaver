@@ -5,6 +5,7 @@
 
 import { google, youtube_v3 } from 'googleapis';
 import { EventEmitter } from 'events';
+import { getOAuthRedirectUri } from '@/lib/runtime-origin';
 
 export interface YouTubeMessage {
   id: string;
@@ -30,7 +31,7 @@ export class YouTubeService extends EventEmitter {
     
     const clientId = process.env.YOUTUBE_CLIENT_ID;
     const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
-    const redirectUri = process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3100/auth/youtube/callback';
+    const redirectUri = getOAuthRedirectUri('youtube');
 
     if (!clientId || !clientSecret) {
       console.warn('[YouTube] Client ID or Secret not configured');
@@ -48,9 +49,6 @@ export class YouTubeService extends EventEmitter {
     });
   }
 
-  /**
-   * Set access token for authenticated requests
-   */
   setAccessToken(accessToken: string, refreshToken?: string) {
     this.oauth2Client.setCredentials({
       access_token: accessToken,
@@ -58,9 +56,6 @@ export class YouTubeService extends EventEmitter {
     });
   }
 
-  /**
-   * Get OAuth URL for user authentication
-   */
   getAuthUrl(): string {
     const scopes = [
       'https://www.googleapis.com/auth/youtube.readonly',
@@ -75,18 +70,12 @@ export class YouTubeService extends EventEmitter {
     });
   }
 
-  /**
-   * Exchange authorization code for tokens
-   */
   async getTokensFromCode(code: string): Promise<{ access_token: string; refresh_token?: string }> {
     const { tokens } = await this.oauth2Client.getToken(code);
     this.oauth2Client.setCredentials(tokens);
     return tokens;
   }
 
-  /**
-   * Find the active live broadcast and get its chat ID
-   */
   async connectToLiveChat(): Promise<void> {
     try {
       const response = await this.youtube.liveBroadcasts.list({
@@ -117,26 +106,18 @@ export class YouTubeService extends EventEmitter {
     }
   }
 
-  /**
-   * Start polling for new chat messages
-   */
   private startPolling() {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
     }
 
-    // Initial poll
     this.pollMessages();
 
-    // Poll every 2 seconds (YouTube rate limit)
     this.pollInterval = setInterval(() => {
       this.pollMessages();
     }, 2000);
   }
 
-  /**
-   * Poll for new chat messages
-   */
   private async pollMessages() {
     if (!this.liveChatId) return;
 
@@ -163,9 +144,6 @@ export class YouTubeService extends EventEmitter {
     }
   }
 
-  /**
-   * Parse YouTube API message into our format
-   */
   private parseMessage(item: youtube_v3.Schema$LiveChatMessage): YouTubeMessage | null {
     if (!item.snippet || !item.authorDetails) return null;
 
@@ -188,9 +166,6 @@ export class YouTubeService extends EventEmitter {
     };
   }
 
-  /**
-   * Send a message to YouTube live chat
-   */
   async sendChatMessage(message: string): Promise<void> {
     if (!this.liveChatId) {
       throw new Error('Not connected to live chat');
@@ -217,9 +192,6 @@ export class YouTubeService extends EventEmitter {
     }
   }
 
-  /**
-   * Delete a chat message (moderator action)
-   */
   async deleteChatMessage(messageId: string): Promise<void> {
     try {
       await this.youtube.liveChatMessages.delete({
@@ -233,9 +205,6 @@ export class YouTubeService extends EventEmitter {
     }
   }
 
-  /**
-   * Ban a user from chat
-   */
   async banUser(channelId: string, permanent: boolean = false): Promise<void> {
     if (!this.liveChatId) {
       throw new Error('Not connected to live chat');
@@ -251,7 +220,7 @@ export class YouTubeService extends EventEmitter {
             bannedUserDetails: {
               channelId: channelId
             },
-            banDurationSeconds: permanent ? undefined : '300' // 5 minutes default
+            banDurationSeconds: permanent ? undefined : '300'
           }
         }
       });
@@ -263,9 +232,6 @@ export class YouTubeService extends EventEmitter {
     }
   }
 
-  /**
-   * Disconnect from YouTube live chat
-   */
   disconnect() {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
@@ -279,7 +245,6 @@ export class YouTubeService extends EventEmitter {
   }
 }
 
-// Singleton instance
 let youtubeService: YouTubeService | null = null;
 
 export function getYouTubeService(): YouTubeService {

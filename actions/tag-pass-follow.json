@@ -1,0 +1,61 @@
+{
+  "id": "tag-pass-follow",
+  "name": "Earn Tag Pass - Follow",
+  "description": "Awards a tag pass when someone follows",
+  "triggers": [
+    {
+      "type": 101,
+      "config": {}
+    }
+  ],
+  "subActions": [
+    {
+      "id": "get-current-tag-passes",
+      "type": 1051,
+      "enabled": true,
+      "weight": 1,
+      "index": 0,
+      "userName": "%user%",
+      "variableName": "tagPasses",
+      "defaultValue": "0",
+      "destinationVariable": "currentTagPasses"
+    },
+    {
+      "id": "increment-tag-passes",
+      "type": 1052,
+      "enabled": true,
+      "weight": 2,
+      "index": 1,
+      "operand1": "%currentTagPasses%",
+      "operation": "add",
+      "operand2": "1",
+      "variableName": "newTagPasses"
+    },
+    {
+      "id": "set-new-tag-passes",
+      "type": 1050,
+      "enabled": true,
+      "weight": 3,
+      "index": 2,
+      "userName": "%user%",
+      "variableName": "tagPasses",
+      "value": "%newTagPasses%",
+      "persisted": true
+    },
+    {
+      "id": "send-earn-message",
+      "type": 10,
+      "enabled": true,
+      "weight": 4,
+      "index": 3,
+      "message": "Thanks %user% for following the streamer! You earned a 'free tag' pass! Use !tag @username to tag someone in chat. You now have %newTagPasses% tag passes.",
+      "useBot": true
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Tag Game",
+  "createdAt": "2025-01-27T00:00:00.000Z",
+  "updatedAt": "2025-01-27T00:00:00.000Z"
+}

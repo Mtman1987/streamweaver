@@ -3,6 +3,7 @@ import { SubActionHandlers } from './subactions/SubActionHandlers';
 import { TwitchHandlers } from './subactions/TwitchHandlers';
 import { OBSHandlers } from './subactions/OBSHandlers';
 import { DiscordHandlers, YouTubeHandlers, KickHandlers } from './subactions/PlatformHandlers';
+import { getInternalAppUrl } from '@/lib/runtime-origin';
 
 export interface ExecutionContext {
   user?: string;
@@ -479,7 +480,7 @@ export class SubActionExecutor {
     const username = context.user || context.userName || '';
     
     try {
-      const response = await fetch('http://localhost:3100/api/pokemon/open-pack', {
+      const response = await fetch(`${getInternalAppUrl()}/api/pokemon/open-pack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username })
@@ -512,7 +513,7 @@ export class SubActionExecutor {
     const username = context.user || context.userName || '';
     
     try {
-      const response = await fetch(`http://localhost:3100/api/pokemon/collection?username=${username}`);
+      const response = await fetch(`${getInternalAppUrl()}/api/pokemon/collection?username=${encodeURIComponent(username)}`);
       
       if (!response.ok) {
         return { success: false };
@@ -533,3 +534,4 @@ export class SubActionExecutor {
     }
   }
 }
+

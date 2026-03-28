@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateLocalApiKey } from './service';
+import { isAllowedHost } from '@/lib/runtime-origin';
 
 const MAX_CONTENT_LENGTH_BYTES = 5 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -21,26 +22,6 @@ function pruneRateLimitBuckets(now: number): void {
       rateLimitBuckets.delete(key);
     }
   }
-}
-
-function extractHostname(host: string): string {
-  const trimmed = host.trim().toLowerCase();
-  if (!trimmed) return '';
-
-  if (trimmed.startsWith('[')) {
-    const end = trimmed.indexOf(']');
-    if (end > 0) return trimmed.slice(1, end);
-    return trimmed;
-  }
-
-  const firstColon = trimmed.indexOf(':');
-  if (firstColon === -1) return trimmed;
-  return trimmed.slice(0, firstColon);
-}
-
-function isLoopbackHost(host: string): boolean {
-  const hostname = extractHostname(host);
-  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
 }
 
 function clientAddress(headers: Headers): string {
@@ -114,7 +95,7 @@ export function requestApiKey(request: NextRequest): string {
 
 export async function requireLocalApiAuth(request: NextRequest): Promise<NextResponse | null> {
   const host = request.headers.get('host') || '';
-  if (!isLoopbackHost(host)) {
+  if (!isAllowedHost(host)) {
     return NextResponse.json({ error: 'Forbidden host' }, { status: 403 });
   }
 
@@ -147,7 +128,7 @@ export function requestApiKeyFromRequest(request: Request): string {
 
 export async function requireLocalApiAuthRequest(request: Request): Promise<NextResponse | null> {
   const host = request.headers.get('host') || '';
-  if (!isLoopbackHost(host)) {
+  if (!isAllowedHost(host)) {
     return NextResponse.json({ error: 'Forbidden host' }, { status: 403 });
   }
 

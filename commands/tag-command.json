@@ -1,0 +1,17 @@
+{
+  "id": "tag-command",
+  "name": "!tag",
+  "command": "!tag",
+  "enabled": true,
+  "description": "Use a tag pass to tag another user in chat",
+  "cooldown": {
+    "global": 0,
+    "user": 5
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Tag Game",
+  "sources": 31,
+  "createdAt": "2025-01-27T00:00:00.000Z",
+  "updatedAt": "2025-01-27T00:00:00.000Z"
+}

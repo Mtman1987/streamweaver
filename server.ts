@@ -52,11 +52,11 @@ async function startServer() {
         // Ensure config exists and migrations are applied before services boot.
         await initializeLocalConfig();
         const appConfig = await getConfigSection('app');
-        const serverHost = appConfig.server.host || '127.0.0.1';
+        const isProductionRuntime = process.env.NODE_ENV === 'production';
+        const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig.server.host || '127.0.0.1');
         const uiPort = Number(process.env.PORT || appConfig.server.port || 3100);
         const wsPort = Number(process.env.WS_PORT || appConfig.server.wsPort || 8090);
         const nextPublicPort = String(uiPort);
-        const isProductionRuntime = process.env.NODE_ENV === 'production';
         
         // Validate configuration
         const configResult = validateConfiguration();

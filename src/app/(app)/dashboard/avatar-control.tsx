@@ -16,9 +16,17 @@ export default function AvatarControl() {
     const [talkingUrl, setTalkingUrl] = useState('');
     const [gestureUrl, setGestureUrl] = useState('');
     const [ws, setWs] = useState<WebSocket | null>(null);
+    const [overlayUrl, setOverlayUrl] = useState(
+        process.env.NEXT_PUBLIC_STREAMWEAVE_URL
+            ? `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL}/overlay/avatar`
+            : 'http://localhost:3100/overlay/avatar'
+    );
 
     useEffect(() => {
-        // Connect to WebSocket
+        if (typeof window !== 'undefined') {
+            setOverlayUrl(`${window.location.origin}/overlay/avatar`);
+        }
+
         const connectWebSocket = () => {
             const websocket = new WebSocket(getBrowserWebSocketUrl());
             
@@ -78,9 +86,9 @@ export default function AvatarControl() {
             <CardHeader>
                 <CardTitle>Avatar Control</CardTitle>
                 <CardDescription>
-                    Configure and control your stream avatar. Browser source URL: 
+                    Configure and control your stream avatar. Browser source URL:
                     <code className="ml-2 px-2 py-1 bg-gray-100 rounded">
-                        http://localhost:3100/overlay/avatar
+                        {overlayUrl}
                     </code>
                 </CardDescription>
             </CardHeader>
@@ -140,7 +148,7 @@ export default function AvatarControl() {
                         <li>Choose idle and talking animation files</li>
                         <li>Click "Update Settings" to apply</li>
                         <li>Avatar shows automatically when TTS plays</li>
-                        <li>Add browser source to OBS: <code>http://localhost:3100/overlay/avatar</code></li>
+                        <li>Add browser source to OBS: <code>{overlayUrl}</code></li>
                     </ul>
                 </div>
             </CardContent>

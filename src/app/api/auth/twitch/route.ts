@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getOAuthRedirectUri } from '@/lib/runtime-origin';
 
 export async function GET(request: NextRequest) {
   const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
@@ -9,9 +10,7 @@ export async function GET(request: NextRequest) {
     }, { status: 500 });
   }
 
-  // Always use 127.0.0.1 for app functionality, localhost for OAuth callbacks
-  const origin = 'http://127.0.0.1:3100';
-  const redirectUri = 'http://localhost:3100/auth/twitch/callback';
+  const redirectUri = getOAuthRedirectUri('twitch', request.nextUrl.origin);
 
   const roleParam = new URL(request.url).searchParams.get('role');
   const role = roleParam || 'login';
@@ -35,8 +34,6 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', scope);
   authUrl.searchParams.set('state', role);
-
-  // Force Twitch to show the login prompt so users can switch accounts
   authUrl.searchParams.set('force_verify', 'true');
 
   console.log('[twitch-oauth] authUrl:', authUrl.toString());

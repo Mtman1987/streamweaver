@@ -21,13 +21,11 @@ function extractApiKeyFromRequest(request: http.IncomingMessage): string {
 export function createWebSocketServer(httpServer: http.Server, broadcast: (message: object) => void, cachedChatHistory: any[], channelBadges: any, twitchStatus: string, twitchClient: any) {
     const wss = new WebSocketServer({ server: httpServer });
     
-    // Handle new WebSocket connections
     wss.on('connection', async (ws, request) => {
         console.log('[WebSocket] New client connected');
         const connectionAuthorized = validateLocalApiKeySync(extractApiKeyFromRequest(request));
         (ws as any).__localAuthorized = connectionAuthorized;
         
-        // Reload chat history from Discord on each connection
         try {
             const { loadChatHistory } = require('../services/chat-monitor');
             await loadChatHistory();
@@ -35,7 +33,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             console.warn('[WebSocket] Failed to reload chat history:', e);
         }
         
-        // Send fresh badges to the new client
         try {
             const { getChannelBadges } = require('../services/twitch');
             const badges = await getChannelBadges();
@@ -48,7 +45,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             console.warn('[WebSocket] Failed to load badges for new client:', e);
         }
         
-        // Send chat history to the new client
         cachedChatHistory.forEach(msg => {
             ws.send(JSON.stringify({ 
                 type: 'twitch-message', 
@@ -56,18 +52,22 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             }));
         });
         
-        // Handle incoming messages from client
         ws.on('message', async (data: any) => {
             try {
                 const message = JSON.parse(data.toString());
 
-                // Auth check skipped for local-only app (127.0.0.1 origin enforced at connection level)
+                if (privilegedTypes.has(message.type) && !(ws as any).__localAuthorized) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        payload: { message: `Unauthorized for message type ${message.type}` }
+                    }));
+                    return;
+                }
                 
                 if (message.type === 'send-twitch-message') {
                     const { message: text, as } = message.payload;
                     console.log(`[WebSocket] Received message to send as ${as}: ${text}`);
                     
-                    // Get fresh Twitch client reference
                     const { getTwitchClient } = require('../services/twitch-client');
                     const freshTwitchClient = getTwitchClient(as === 'bot' ? 'bot' : 'broadcaster');
                     
@@ -89,7 +89,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         return;
                     }
                     
-                    // Send message via Twitch IRC
                     await freshTwitchClient.say(channels[0], text);
                     console.log(`[WebSocket] Message sent to Twitch as ${as}: ${text}`);
                 } else if (message.type === 'reconnect-twitch') {
@@ -105,7 +104,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     const { id, name, room } = message.payload;
                     console.log(`[Voice] ${name} joined ${room}`);
                     
-                    // Broadcast to all clients
                     broadcast({
                         type: 'voice-user-joined',
                         payload: { id, name, room, muted: room === 'silent' }
@@ -114,7 +112,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     const { id, name, room } = message.payload;
                     console.log(`[Voice] ${name} left ${room}`);
                     
-                    // Broadcast to all clients
                     broadcast({
                         type: 'voice-user-left',
                         payload: { id, name, room }
@@ -123,7 +120,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     const { id, name, room, muted } = message.payload;
                     console.log(`[Voice] ${name} ${muted ? 'muted' : 'unmuted'}`);
                     
-                    // Broadcast to all clients
                     broadcast({
                         type: 'voice-user-muted',
                         payload: { id, name, room, muted }
@@ -181,7 +177,7 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     }
                 } else if (message.type === 'discord-voice-stream') {
                     const { audioDataUri, text, channelId, guildId, botToken } = message.payload;
-                    console.log(`[WebSocket Server] 🎧 Received Discord voice stream request: \"${text.substring(0, 50)}...\"`);
+                    console.log(`[WebSocket Server] 🎧 Received Discord voice stream request: "${text.substring(0, 50)}..."`);
                     
                     try {
                         const base64Data = audioDataUri.split(',')[1];
@@ -189,13 +185,11 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         
                         console.log(`[Discord Voice] Processing ${Math.round(audioBuffer.length / 1024)}KB audio for channel ${channelId}`);
                         
-                        // Connect to Discord Gateway WebSocket for voice
                         const discordWs = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
                         
                         discordWs.on('open', () => {
                             console.log('[Discord Voice] Connected to Discord Gateway');
                             
-                            // Send identify payload
                             discordWs.send(JSON.stringify({
                                 op: 2,
                                 d: {
@@ -213,10 +207,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         discordWs.on('message', (data) => {
                             const payload = JSON.parse(data.toString());
                             
-                            if (payload.op === 10) { // Hello
+                            if (payload.op === 10) {
                                 console.log('[Discord Voice] Received hello, joining voice channel...');
                                 
-                                // Join voice channel
                                 discordWs.send(JSON.stringify({
                                     op: 4,
                                     d: {
@@ -231,7 +224,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                             if (payload.t === 'VOICE_STATE_UPDATE') {
                                 console.log('[Discord Voice] ✅ Successfully joined voice channel, streaming audio...');
                                 
-                                // Stream audio data
                                 setTimeout(() => {
                                     console.log('[Discord Voice] ✅ Audio playback completed');
                                     discordWs.close();

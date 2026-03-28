@@ -4,21 +4,24 @@ import { getStoredTokens } from '../lib/token-utils.server';
 import { resolve } from 'path';
 import { promises as fs } from 'fs';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
-
-function isAllowedOrigin(origin: string | undefined): boolean {
-    if (!origin) return true;
-    try {
-        const parsed = new URL(origin);
-        return parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
-    } catch {
-        return false;
-    }
-}
+import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
 
 function isAuthorized(headers: http.IncomingHttpHeaders): boolean {
     const key = headers['x-api-key'];
     const apiKey = Array.isArray(key) ? key[0] : key;
     return validateLocalApiKeySync(apiKey || '');
+}
+
+function getStatusWebSocketUrl(): string {
+    const explicitUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_URL;
+    if (explicitUrl) {
+        return explicitUrl;
+    }
+
+    const appUrl = new URL(getConfiguredAppUrl());
+    const wsProtocol = appUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsPort = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || process.env.WS_PORT || '8090';
+    return `${wsProtocol}//${appUrl.hostname}:${wsPort}`;
 }
 
 export function createHttpHandler(broadcast: (message: object) => void): http.RequestListener {
@@ -35,7 +38,7 @@ export function createHttpHandler(broadcast: (message: object) => void): http.Re
         }
         
         if (isAllowedOrigin(origin)) {
-            res.setHeader('Access-Control-Allow-Origin', origin || 'http://127.0.0.1:3100');
+            res.setHeader('Access-Control-Allow-Origin', origin || getConfiguredAppUrl());
         }
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
@@ -120,7 +123,6 @@ export function createHttpHandler(broadcast: (message: object) => void): http.Re
                 return;
             }
             
-            
             if (pathname === '/api/twitch/send-message' && req.method === 'POST') {
                 let body = '';
                 req.on('data', chunk => body += chunk);
@@ -128,7 +130,6 @@ export function createHttpHandler(broadcast: (message: object) => void): http.Re
                     try {
                         const { message, as, targetChannel } = JSON.parse(body);
                         
-                        // Check if this is a Discord bridge message and if bridge is disabled
                         if (message.startsWith('[Discord]')) {
                             const discordChannelsPath = resolve(process.cwd(), 'tokens', 'discord-channels.json');
                             try {
@@ -162,7 +163,6 @@ export function createHttpHandler(broadcast: (message: object) => void): http.Re
                         
                         const channel = targetChannel || process.env.TWITCH_BROADCASTER_USERNAME || 'mtman1987';
                         
-                        // Use shared-chat aware sending
                         await sendWithSharedChatAwareness({
                             client,
                             channel,
@@ -182,26 +182,23 @@ export function createHttpHandler(broadcast: (message: object) => void): http.Re
                 return;
             }
             
-            // Health check endpoint
             if (pathname === '/api/__health' && req.method === 'GET') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'ok' }));
                 return;
             }
             
-            // Root route - server status
             if (pathname === '/' && req.method === 'GET') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 
                     status: 'StreamWeaver Server Running',
                     version: '2.0',
-                    websocket: `ws://localhost:${process.env.WS_PORT || 8090}`,
+                    websocket: getStatusWebSocketUrl(),
                     timestamp: new Date().toISOString()
                 }));
                 return;
             }
             
-            // 404 for unknown endpoints
             res.writeHead(404, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Not found' }));
         } catch (error) {

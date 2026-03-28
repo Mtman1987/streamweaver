@@ -77,7 +77,7 @@ export default function SettingsPage() {
       const status = await statusRes.json();
       if (!status.authorized) {
         setAuthorized(false);
-        toast({ variant: 'destructive', title: 'Invalid local API key' });
+        toast({ variant: 'destructive', title: 'Invalid API key' });
         return;
       }
 
@@ -101,7 +101,7 @@ export default function SettingsPage() {
 
       setAuthorized(true);
       window.localStorage.setItem('streamweaver.localApiKey', nextKey);
-      toast({ title: 'Local settings unlocked' });
+      toast({ title: 'Settings unlocked' });
     } catch (error: any) {
       setAuthorized(false);
       toast({ variant: 'destructive', title: 'Failed to load config', description: String(error?.message || error) });
@@ -164,8 +164,8 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Local Security</CardTitle>
-          <CardDescription>Enter your local API key to manage settings. This app accepts control requests only from 127.0.0.1/localhost.</CardDescription>
+          <CardTitle>App Security</CardTitle>
+          <CardDescription>Enter the app API key to manage settings. Requests must come from approved hosts and include this key.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:max-w-xl">
@@ -175,7 +175,7 @@ export default function SettingsPage() {
               type="password"
               value={apiKey}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder="Paste local API key from config/app.json"
+              placeholder="Paste API key from config/app.json"
             />
           </div>
           <Button onClick={() => loadConfig(apiKey)} disabled={loading || !apiKey.trim()}>
@@ -240,3 +240,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

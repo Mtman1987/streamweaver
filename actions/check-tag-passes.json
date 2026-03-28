@@ -1,0 +1,40 @@
+{
+  "id": "check-tag-passes",
+  "name": "Check Tag Passes",
+  "description": "Shows users how many tag passes they have",
+  "triggers": [
+    {
+      "type": 401,
+      "commandId": "check-tag-passes-command",
+      "config": {}
+    }
+  ],
+  "subActions": [
+    {
+      "id": "get-current-tag-passes",
+      "type": 1051,
+      "enabled": true,
+      "weight": 1,
+      "index": 0,
+      "userName": "%user%",
+      "variableName": "tagPasses",
+      "defaultValue": "0",
+      "destinationVariable": "currentTagPasses"
+    },
+    {
+      "id": "send-tag-passes-message",
+      "type": 10,
+      "enabled": true,
+      "weight": 2,
+      "index": 1,
+      "message": "@%user% you have %currentTagPasses% tag passes! Use !tag @username to tag someone in chat.",
+      "useBot": true
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Tag Game",
+  "createdAt": "2025-01-27T00:00:00.000Z",
+  "updatedAt": "2025-01-27T00:00:00.000Z"
+}

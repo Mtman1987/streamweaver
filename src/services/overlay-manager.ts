@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { setBrowserSource } from './obs';
 import { getAppConfig } from '../lib/app-config';
+import { getConfiguredAppUrl } from '../lib/runtime-origin';
 
 const OVERLAY_DIR = path.resolve(process.cwd(), 'data', 'overlays');
 
@@ -67,8 +68,7 @@ export async function showOverlay(
     await fs.mkdir(OVERLAY_DIR, { recursive: true });
     await fs.writeFile(dataPath, JSON.stringify({ ...data, timestamp: Date.now() }, null, 2));
 
-    // Show overlay in OBS
-    const url = `http://127.0.0.1:3100/overlay/${type}`;
+    const url = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://127.0.0.1:3100'}/overlay/${type}`;
     await setBrowserSource(config.scene, config.source, url);
 
     // Auto-hide after 15 seconds
@@ -101,3 +101,4 @@ export function getOverlayConfig(type: string): OverlayConfig | null {
   };
   return fallback[type] || null;
 }
+

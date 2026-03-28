@@ -1,6 +1,6 @@
 import { readUserConfigSync } from '@/lib/user-config';
 
-export type TTSProvider = 'openai' | 'inworld' | 'google' | 'elevenlabs';
+export type TTSProvider = 'openai' | 'inworld' | 'google' | 'elevenlabs' | 'edenai';
 
 export interface TTSConfig {
   provider: TTSProvider;
@@ -13,7 +13,8 @@ export const TTS_VOICES = {
   openai: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
   inworld: ['Ashley', 'Marcus', 'Sarah', 'David'],
   google: ['en-US-Wavenet-F', 'en-US-Wavenet-M', 'en-GB-Wavenet-F', 'en-GB-Wavenet-M'],
-  elevenlabs: ['Algieba', 'Rachel', 'Bella', 'Antoni', 'Josh', 'Arnold', 'Adam', 'Sam']
+  elevenlabs: ['Algieba', 'Rachel', 'Bella', 'Antoni', 'Josh', 'Arnold', 'Adam', 'Sam'],
+  edenai: ['en-US-Wavenet-F']
 };
 
 export function getTTSConfig(): TTSConfig {
@@ -241,3 +242,4 @@ async function sendToDiscordBridge(audioDataUri: string, text: string, voice: st
     throw error;
   }
 }
+

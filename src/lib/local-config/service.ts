@@ -52,8 +52,14 @@ function generateApiKey(): string {
   return crypto.randomBytes(24).toString('hex');
 }
 
+function parsePort(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65535 ? parsed : fallback;
+}
+
 function migrateFromLegacy(config: LocalConfigMap): LocalConfigMap {
   const legacyUserConfig = readUserConfigSync();
+  const isProductionRuntime = process.env.NODE_ENV === 'production';
 
   const migrated: LocalConfigMap = {
     ...config,
@@ -88,7 +94,10 @@ function migrateFromLegacy(config: LocalConfigMap): LocalConfigMap {
       ...config.app,
       server: {
         ...config.app.server,
-        host: '127.0.0.1',
+        host: config.app.server.host || process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : '127.0.0.1'),
+        port: config.app.server.port || parsePort(process.env.PORT, 3100),
+        wsPort: config.app.server.wsPort || parsePort(process.env.WS_PORT, 8090),
+        openBrowserOnStart: isProductionRuntime ? false : config.app.server.openBrowserOnStart,
       },
       security: {
         ...config.app.security,

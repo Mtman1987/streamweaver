@@ -61,10 +61,8 @@ export default function DashboardPage() {
                         let avatar = "https://placehold.co/40x40.png";
                         let displayName = chatter.user_display_name || chatter.user_login || 'Unknown User';
                         
-                        // Try to get user details from Twitch API
                         try {
-                            const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || 'http://localhost:3100';
-                            const userResponse = await fetch(`${baseUrl}/api/twitch/user?login=${chatter.user_login}`);
+                            const userResponse = await fetch(`/api/twitch/user?login=${chatter.user_login}`);
                             if (userResponse.ok) {
                                 const userData = await userResponse.json();
                                 if (userData.profileImageUrl) {
@@ -176,3 +174,5 @@ export default function DashboardPage() {
         </div>
     );
 }
+
+

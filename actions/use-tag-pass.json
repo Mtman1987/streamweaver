@@ -1,0 +1,95 @@
+{
+  "id": "use-tag-pass",
+  "name": "Use Tag Pass",
+  "description": "Allows users to use their tag passes to tag other users",
+  "triggers": [
+    {
+      "type": 401,
+      "commandId": "tag-command",
+      "config": {}
+    }
+  ],
+  "subActions": [
+    {
+      "id": "get-current-tag-passes",
+      "type": 1051,
+      "enabled": true,
+      "weight": 1,
+      "index": 0,
+      "userName": "%user%",
+      "variableName": "tagPasses",
+      "defaultValue": "0",
+      "destinationVariable": "currentTagPasses"
+    },
+    {
+      "id": "check-has-tag-passes",
+      "type": 120,
+      "enabled": true,
+      "weight": 2,
+      "index": 1,
+      "input": "%currentTagPasses%",
+      "operation": 8,
+      "value": "0",
+      "subActions": [
+        {
+          "id": "decrement-tag-passes",
+          "type": 1052,
+          "enabled": true,
+          "weight": 1,
+          "index": 0,
+          "operand1": "%currentTagPasses%",
+          "operation": "subtract",
+          "operand2": "1",
+          "variableName": "newTagPasses"
+        },
+        {
+          "id": "set-new-tag-passes",
+          "type": 1050,
+          "enabled": true,
+          "weight": 2,
+          "index": 1,
+          "userName": "%user%",
+          "variableName": "tagPasses",
+          "value": "%newTagPasses%",
+          "persisted": true
+        },
+        {
+          "id": "send-tag-message",
+          "type": 10,
+          "enabled": true,
+          "weight": 3,
+          "index": 2,
+          "message": "%user% just used their tag pass and tagged %rawInput%!",
+          "useBot": true
+        }
+      ]
+    },
+    {
+      "id": "check-no-tag-passes",
+      "type": 120,
+      "enabled": true,
+      "weight": 3,
+      "index": 2,
+      "input": "%currentTagPasses%",
+      "operation": 10,
+      "value": "0",
+      "subActions": [
+        {
+          "id": "no-tag-passes-message",
+          "type": 10,
+          "enabled": true,
+          "weight": 1,
+          "index": 0,
+          "message": "@%user% you don't have any tag passes! Support the streamer with bits, subs, follows, or raids to earn some.",
+          "useBot": true
+        }
+      ]
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Tag Game",
+  "createdAt": "2025-01-27T00:00:00.000Z",
+  "updatedAt": "2025-01-27T00:00:00.000Z"
+}

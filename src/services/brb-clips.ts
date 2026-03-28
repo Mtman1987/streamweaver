@@ -147,8 +147,7 @@ export async function startBRB(broadcasterName: string): Promise<void> {
       const clip = clips[Math.floor(Math.random() * clips.length)];
       const embedUrl = clip.embed_url;
       const duration = Math.floor(clip.duration * 1000) + 700;
-      
-      const playerUrl = `${process.env.BRB_PLAYER_URL || 'http://127.0.0.1:3100/brb-player'}?user=${clip.broadcaster_name}&image=${clip.thumbnail_url}&video=${embedUrl}&thumbnail_url=${clip.thumbnail_url}&time=${duration}`;
+      const playerUrl = `${process.env.BRB_PLAYER_URL || `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://127.0.0.1:3100'}/brb-player`}?user=${clip.broadcaster_name}&image=${clip.thumbnail_url}&video=${embedUrl}&thumbnail_url=${clip.thumbnail_url}&time=${duration}`;
       
       console.log(`[BRB] Setting browser source to: ${playerUrl.substring(0, 100)}...`);
       await setBrowserSource(scene, source, 'about:blank');

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { getConfiguredAppUrl, getOAuthRedirectUri } from '@/lib/runtime-origin';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -22,11 +23,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Always redirect back to 127.0.0.1 for app functionality
-    const appOrigin = 'http://127.0.0.1:3100';
-    const redirectUri = 'http://localhost:3100/auth/twitch/callback';
+    const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
+    const redirectUri = getOAuthRedirectUri('twitch', request.nextUrl.origin);
 
-    // Exchange the authorization code for an access token
     const clientId = process.env.TWITCH_CLIENT_ID;
     const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 
@@ -60,30 +59,23 @@ export async function GET(request: NextRequest) {
 
     const tokenData = await tokenResponse.json();
 
-    // Store tokens in a local JSON file instead of Firestore
     const tokensDir = path.join(process.cwd(), 'tokens');
     const tokensFile = path.join(tokensDir, 'twitch-tokens.json');
 
-    // Ensure the tokens directory exists
     try {
       await fs.access(tokensDir);
     } catch {
       await fs.mkdir(tokensDir, { recursive: true });
     }
 
-    // Calculate token expiry time
-    const tokenExpiry = Date.now() + (tokenData.expires_in - 60) * 1000; // Buffer of 1 minute
+    const tokenExpiry = Date.now() + (tokenData.expires_in - 60) * 1000;
 
-    // Read existing tokens if they exist
     let existingTokens = {};
     try {
       const existingData = await fs.readFile(tokensFile, 'utf-8');
       existingTokens = JSON.parse(existingData);
-    } catch (error) {
-      // File doesn't exist, start with empty object
-    }
+    } catch {}
 
-    // Determine role
     const state = searchParams.get('state');
     const isBroadcaster = state === 'broadcaster' || !state;
     const isBot = state === 'bot';
@@ -91,7 +83,6 @@ export async function GET(request: NextRequest) {
     const isGamesUser = state === 'games';
     const isAppLogin = state === 'login';
     
-    // Get user info from Twitch API
     const userResponse = await fetch('https://api.twitch.tv/helix/users', {
       headers: {
         'Authorization': `Bearer ${tokenData.access_token}`,
@@ -105,9 +96,7 @@ export async function GET(request: NextRequest) {
       userInfo = userData.data[0];
     }
 
-    // Handle app login differently
     if (isAppLogin && userInfo) {
-      // Store login tokens in token file
       const tokenStorage = {
         ...existingTokens,
         loginToken: tokenData.access_token,
@@ -130,16 +119,14 @@ export async function GET(request: NextRequest) {
       const response = NextResponse.redirect(`${appOrigin}/?login=success`);
       response.cookies.set('streamweaver-session', JSON.stringify(sessionData), {
         httpOnly: true,
-        secure: false,
+        secure: appOrigin.startsWith('https://'),
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7 // 7 days
+        maxAge: 60 * 60 * 24 * 7
       });
       return response;
     }
 
-    // Handle games user differently
     if (isGamesUser && userInfo) {
-      // Store games user in localStorage via redirect
       const gamesUser = {
         id: userInfo.id,
         username: userInfo.login,
@@ -150,7 +137,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${appOrigin}/games?user=${encodeURIComponent(JSON.stringify(gamesUser))}`);
     }
 
-    // Get username from token validation
     const validateResponse = await fetch('https://id.twitch.tv/oauth2/validate', {
       headers: {
         'Authorization': `Bearer ${tokenData.access_token}`,
@@ -184,10 +170,8 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString()
     };
 
-    // Write tokens to file
     await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
 
-    // Redirect back to integrations page with success message
     return NextResponse.redirect(`${appOrigin}/integrations?success=true`);
 
   } catch (error) {

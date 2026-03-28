@@ -3,7 +3,7 @@ import { getActionById } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { sendDiscordMessage } from './discord';
 import { sendChatMessage } from './twitch';
-import { awardChatPoints } from './points';
+import { addPoints, awardChatPoints } from './points';
 import { givePoints, stealPoints } from './points-transfer';
 import { shouldWelcomeUser, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
@@ -1160,6 +1160,71 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        // Handle !card command - Show personal bingo card (viewer-only, NOT in shared chat)
+        if (actualMessage.toLowerCase() === '!card') {
+            try {
+                const response = await fetch(`http://127.0.0.1:3100/api/bingo/card?personal=true&username=${encodeURIComponent(actualUsername)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.card) {
+                        // Send to user's viewer only (not broadcast to chat)
+                        if (typeof (global as any).broadcast === 'function') {
+                            (global as any).broadcast({
+                                type: 'personal-bingo-card',
+                                username: actualUsername,
+                                payload: {
+                                    card: data.card,
+                                    claimedSquares: data.claimedSquares,
+                                    totalSquares: data.totalSquares,
+                                    onlySeenInYourChat: true,
+                                    message: data.message
+                                }
+                            });
+                        }
+                    } else {
+                        await sendChatMessage(`@${actualUsername}, ${data.message}`, 'bot').catch(() => {});
+                    }
+                } else {
+                    await sendChatMessage(`@${actualUsername}, no bingo game active! Use !newbingo to start one.`, 'bot').catch(() => {});
+                }
+            } catch (error) {
+                console.error('[Dispatcher] Bingo card fetch failed:', error);
+                await sendChatMessage(`@${actualUsername}, failed to load bingo card!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+        
+        // Handle !cardphrases command - Show all phrases on personal card
+        if (actualMessage.toLowerCase() === '!cardphrases') {
+            try {
+                const bingoState = require('fs').existsSync(require('path').join(process.cwd(), 'data', 'bingo-state.json'))
+                    ? JSON.parse(require('fs').readFileSync(require('path').join(process.cwd(), 'data', 'bingo-state.json'), 'utf-8'))
+                    : null;
+
+                if (!bingoState?.active) {
+                    await sendChatMessage(`@${actualUsername}, no bingo game active!`, 'bot').catch(() => {});
+                    return;
+                }
+
+                // Send to user's viewer only - show all phrases
+                if (typeof (global as any).broadcast === 'function') {
+                    (global as any).broadcast({
+                        type: 'personal-bingo-phrases',
+                        username: actualUsername,
+                        payload: {
+                            squares: bingoState.squares || [],
+                            message: `🎲 [Only seen in your chat] Bingo phrases for @${actualUsername}`,
+                            onlySeenInYourChat: true
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('[Dispatcher] Bingo phrases fetch failed:', error);
+                await sendChatMessage(`@${actualUsername}, failed to load bingo phrases!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+        
         // Handle leaderboard commands
         if (['!leader', '!pleader', '!wleader', '!cleader', '!bleader', '!bitsleader'].includes(actualMessage.split(' ')[0].toLowerCase())) {
             const cmd = actualMessage.split(' ')[0].toLowerCase();
@@ -1677,3 +1742,4 @@ export async function handleDiscordMessage(msg: any) {
         await sendChatMessage(twitchMessage, 'bot').catch(e => console.error('[Bridge] Failed:', e));
     }
 }
+

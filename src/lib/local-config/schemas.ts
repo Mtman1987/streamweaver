@@ -4,7 +4,7 @@ const nonEmpty = z.string().trim().min(1);
 
 export const appConfigSchema = z.object({
   server: z.object({
-    host: z.literal('127.0.0.1').default('127.0.0.1'),
+    host: z.string().trim().min(1).default(process.env.SERVER_HOST || '127.0.0.1'),
     port: z.number().int().min(1024).max(65535).default(3100),
     wsPort: z.number().int().min(1024).max(65535).default(8090),
     openBrowserOnStart: z.boolean().default(true),

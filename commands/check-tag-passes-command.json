@@ -1,0 +1,17 @@
+{
+  "id": "check-tag-passes-command",
+  "name": "!tagpasses",
+  "command": "!tagpasses",
+  "enabled": true,
+  "description": "Check how many tag passes you have",
+  "cooldown": {
+    "global": 0,
+    "user": 5
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Tag Game",
+  "sources": 31,
+  "createdAt": "2025-01-27T00:00:00.000Z",
+  "updatedAt": "2025-01-27T00:00:00.000Z"
+}

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getOAuthRedirectUri } from '@/lib/runtime-origin';
 import { z } from 'zod';
 
 const manualExchangeSchema = z.object({
@@ -21,7 +22,6 @@ export async function POST(request: NextRequest) {
 
     const { code, state } = parsed.data;
 
-    // Exchange the authorization code for an access token
     const clientId = process.env.TWITCH_CLIENT_ID;
     const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         client_secret: clientSecret,
         code: code,
         grant_type: 'authorization_code',
-        redirect_uri: 'http://localhost:3100/auth/twitch/callback'
+        redirect_uri: getOAuthRedirectUri('twitch', request.nextUrl.origin)
       })
     });
 
@@ -52,7 +52,6 @@ export async function POST(request: NextRequest) {
 
     const tokenData = await tokenResponse.json();
 
-    // Get user info
     const userResponse = await fetch('https://api.twitch.tv/helix/users', {
       headers: {
         'Authorization': `Bearer ${tokenData.access_token}`,
@@ -66,7 +65,6 @@ export async function POST(request: NextRequest) {
       username = userData.data[0]?.login || '';
     }
 
-    // Store tokens
     const tokensDir = path.join(process.cwd(), 'tokens');
     const tokensFile = path.join(tokensDir, 'twitch-tokens.json');
 
@@ -82,9 +80,7 @@ export async function POST(request: NextRequest) {
     try {
       const existingData = await fs.readFile(tokensFile, 'utf-8');
       existingTokens = JSON.parse(existingData);
-    } catch (error) {
-      // File doesn't exist
-    }
+    } catch {}
 
     const isBroadcaster = state === 'broadcaster';
     const isBot = state === 'bot';
