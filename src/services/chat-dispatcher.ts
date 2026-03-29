@@ -49,6 +49,10 @@ async function getDiscordLogChannelId(): Promise<string | null> {
 export async function handleTwitchMessage(channel: string, tags: any, message: string, self: boolean) {
     const username = tags.username!;
     const displayName = tags['display-name'] || username;
+    const replyChannel = channel.replace(/^#/, '');
+    
+    // Helper: send chat message to the correct channel (shared-chat aware)
+    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => sendChatMessage(msg, as, replyChannel);
     
     // Prevent duplicate processing with more specific ID
     const messageId = `${tags.id || 'no-id'}-${username}-${message.slice(0, 50)}`;
@@ -136,7 +140,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const args = actualMessage.substring(3).trim().split(/\s+/);
         const translated = await handleOneOffTranslation(args);
         if (translated) {
-            await sendChatMessage(translated, 'bot').catch(() => {});
+            await reply(translated, 'bot').catch(() => {});
         }
         return;
     }
@@ -163,7 +167,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.log('[Dispatcher] TTS generated for bot message, USE_TTS_PLAYER:', useTTSPlayer);
                 
                 if (useTTSPlayer) {
-                    await fetch('http://127.0.0.1:3100/api/tts/current', {
+                    await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
@@ -199,7 +203,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (translated) {
             console.log(`[Dispatcher] Auto-translated incoming: ${translated}`);
             // Show translation in chat as bot to prevent loops
-            await sendChatMessage(`[${actualUsername}]: ${translated}`, 'bot').catch(() => {});
+            await reply(`[${actualUsername}]: ${translated}`, 'bot').catch(() => {});
         }
     }
     
@@ -223,7 +227,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const { getUserCollection } = require('./pokemon-storage-discord');
             const cards = await getUserCards(actualUsername);
             if (cards.length === 0) {
-                await sendChatMessage(`@${actualUsername}, you don't have any cards yet! Use !pack to open packs.`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, you don't have any cards yet! Use !pack to open packs.`, 'broadcaster').catch(() => {});
                 return;
             }
             const rareCount = cards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
@@ -285,7 +289,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
 
             const urlPart = pokedexUrl ? ` Pok\u00e9dex: ${pokedexUrl}` : '';
-            await sendChatMessage(`@${actualUsername} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <set-num> <set-num> <set-num>`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <set-num> <set-num> <set-num>`, 'broadcaster').catch(() => {});
 
             if (typeof (global as any).broadcast === 'function') {
                 (global as any).broadcast({
@@ -300,7 +304,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase().startsWith('!show ')) {
           const searchName = actualMessage.substring(6).trim().toLowerCase();
           if (!searchName) {
-            await sendChatMessage(`@${actualUsername}, usage: !show <card name>`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername}, usage: !show <card name>`, 'broadcaster').catch(() => {});
             return;
           }
 
@@ -317,7 +321,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
           }
 
           if (owned.length === 0) {
-            await sendChatMessage(`@${actualUsername}, you don't own any card matching "${searchName}".`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername}, you don't own any card matching "${searchName}".`, 'broadcaster').catch(() => {});
             return;
           }
 
@@ -352,7 +356,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
               `(owned: ${count}x)`
             ].filter(Boolean).join(' | ');
 
-            await sendChatMessage(`@${actualUsername}: ${info}`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername}: ${info}`, 'broadcaster').catch(() => {});
 
             if (typeof (global as any).broadcast === 'function') {
               (global as any).broadcast({
@@ -383,7 +387,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const args = actualMessage.substring(3).trim().split(/\s+/);
             const translated = await handleOneOffTranslation(args);
             if (translated) {
-                await sendChatMessage(translated, 'bot').catch(() => {});
+                await reply(translated, 'bot').catch(() => {});
                 return;
             }
         }
@@ -395,13 +399,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const targetUser = args[0]?.replace('@', '');
                 const amount = parseInt(args[1]);
                 if (!targetUser || isNaN(amount)) {
-                    await sendChatMessage(`@${actualUsername}, usage: !addPoints @user amount`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, usage: !addPoints @user amount`, 'bot').catch(() => {});
                 } else {
                     const result = await addPoints(targetUser, amount, `addpoints by ${actualUsername}`);
-                    await sendChatMessage(`@${targetUser} now has ${result.points} pts (${amount > 0 ? '+' : ''}${amount})`, 'broadcaster').catch(() => {});
+                    await reply(`@${targetUser} now has ${result.points} pts (${amount > 0 ? '+' : ''}${amount})`, 'broadcaster').catch(() => {});
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -413,13 +417,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const targetUser = args[0]?.replace('@', '');
                 const amount = parseInt(args[1]);
                 if (!targetUser || isNaN(amount)) {
-                    await sendChatMessage(`@${actualUsername}, usage: !setPoints @user amount`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, usage: !setPoints @user amount`, 'bot').catch(() => {});
                 } else {
                     const result = await setPoints(targetUser, amount);
-                    await sendChatMessage(`@${targetUser} set to ${result.points} pts`, 'broadcaster').catch(() => {});
+                    await reply(`@${targetUser} set to ${result.points} pts`, 'broadcaster').catch(() => {});
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -429,14 +433,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const amount = parseInt(actualMessage.substring(10).trim());
                 if (isNaN(amount)) {
-                    await sendChatMessage(`@${actualUsername}, usage: !addToAll amount`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, usage: !addToAll amount`, 'bot').catch(() => {});
                 } else {
                     const { addPointsToAll } = require('./points');
                     const count = await addPointsToAll(amount);
-                    await sendChatMessage(`${amount > 0 ? '+' : ''}${amount} pts to ${count} users!`, 'broadcaster').catch(() => {});
+                    await reply(`${amount > 0 ? '+' : ''}${amount} pts to ${count} users!`, 'broadcaster').catch(() => {});
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -446,14 +450,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const amount = parseInt(actualMessage.substring(10).trim());
                 if (isNaN(amount)) {
-                    await sendChatMessage(`@${actualUsername}, usage: !setToAll amount`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, usage: !setToAll amount`, 'bot').catch(() => {});
                 } else {
                     const { setPointsToAll } = require('./points');
                     const count = await setPointsToAll(amount);
-                    await sendChatMessage(`Set ${count} users to ${amount} pts`, 'broadcaster').catch(() => {});
+                    await reply(`Set ${count} users to ${amount} pts`, 'broadcaster').catch(() => {});
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -463,9 +467,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const { resetAllPoints } = require('./points');
                 const count = await resetAllPoints();
-                await sendChatMessage(`Reset points for ${count} users to 0`, 'broadcaster').catch(() => {});
+                await reply(`Reset points for ${count} users to 0`, 'broadcaster').catch(() => {});
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -477,12 +481,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const amount = parseInt(args[1]);
             
             if (!targetUser || isNaN(amount)) {
-                await sendChatMessage(`@${actualUsername}, usage: !givepoints @user amount`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, usage: !givepoints @user amount`, 'bot').catch(() => {});
                 return;
             }
             
             const result = await givePoints(actualUsername, targetUser, amount);
-            await sendChatMessage(result.message, 'bot').catch(() => {});
+            await reply(result.message, 'bot').catch(() => {});
             return;
         }
         
@@ -493,12 +497,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const amount = parseInt(args[1]);
             
             if (!targetUser || isNaN(amount)) {
-                await sendChatMessage(`@${actualUsername}, usage: !stealpoints @user amount`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, usage: !stealpoints @user amount`, 'bot').catch(() => {});
                 return;
             }
             
             const result = await stealPoints(actualUsername, targetUser, amount);
-            await sendChatMessage(result.message, 'bot').catch(() => {});
+            await reply(result.message, 'bot').catch(() => {});
             return;
         }
         
@@ -508,9 +512,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const { toggleGreetingMode, getGreetingMode } = require('./welcome-wagon');
                 await toggleGreetingMode();
                 const mode = await getGreetingMode();
-                await sendChatMessage(`🤖 AI greeting mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
+                await reply(`🤖 AI greeting mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can change greeting mode!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can change greeting mode!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -521,9 +525,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const { toggleWelcomeMode, getWelcomeMode } = require('./welcome-wagon');
                 await toggleWelcomeMode();
                 const mode = await getWelcomeMode();
-                await sendChatMessage(`🎉 Welcome mode: ${mode === 'overlay' ? 'OVERLAY ONLY' : 'CHAT + OVERLAY'}`, 'bot').catch(() => {});
+                await reply(`🎉 Welcome mode: ${mode === 'overlay' ? 'OVERLAY ONLY' : 'CHAT + OVERLAY'}`, 'bot').catch(() => {});
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can change welcome mode!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can change welcome mode!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -553,7 +557,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!pokemode') {
             const { togglePokeMode } = require('./poke-mode');
             const mode = await togglePokeMode();
-            await sendChatMessage(`🃏 Pokemon mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
+            await reply(`🃏 Pokemon mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
             return;
         }
 
@@ -563,10 +567,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const s = getSettings();
             if (s.useOverlay && !s.useBot) {
                 await updateSettings({ useOverlay: false, useBot: true });
-                await sendChatMessage('🎲 Gamble mode: CHAT', 'bot').catch(() => {});
+                await reply('🎲 Gamble mode: CHAT', 'bot').catch(() => {});
             } else {
                 await updateSettings({ useOverlay: true, useBot: false });
-                await sendChatMessage('🎲 Gamble mode: OVERLAY', 'bot').catch(() => {});
+                await reply('🎲 Gamble mode: OVERLAY', 'bot').catch(() => {});
             }
             return;
         }
@@ -589,7 +593,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!double') {
             const doubleState = (global as any).doubleOrNothingState;
             if (!doubleState || doubleState.username !== actualUsername || Date.now() > doubleState.expires) {
-                await sendChatMessage(`@${actualUsername}, no active double-or-nothing available!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, no active double-or-nothing available!`, 'bot').catch(() => {});
                 return;
             }
             
@@ -609,7 +613,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const broadcasterName = broadcasterUsername;
                 startBRB(broadcasterName).catch(err => console.error('[BRB] Error:', err));
-                await sendChatMessage('🎬 Starting BRB clip player...', 'bot').catch(() => {});
+                await reply('🎬 Starting BRB clip player...', 'bot').catch(() => {});
             }
             return;
         }
@@ -618,7 +622,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!back') {
             if (tags.mod || tags.badges?.broadcaster) {
                 stopBRB();
-                await sendChatMessage('👋 Welcome back!', 'bot').catch(() => {});
+                await reply('👋 Welcome back!', 'bot').catch(() => {});
             }
             return;
         }
@@ -628,7 +632,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 await toggleClipMode();
                 const mode = await getClipMode();
-                await sendChatMessage(`🎬 Clip mode: ${mode === 'viewer' ? 'VIEWER CLIPS' : 'MY CLIPS'}`, 'bot').catch(() => {});
+                await reply(`🎬 Clip mode: ${mode === 'viewer' ? 'VIEWER CLIPS' : 'MY CLIPS'}`, 'bot').catch(() => {});
             }
             return;
         }
@@ -638,14 +642,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const { toggleChatMode } = require('./shared-chat');
                 const newMode = await toggleChatMode();
-                await sendChatMessage(
+                await reply(
                     newMode === 'shared'
                         ? '🔗 Chat mode switched to SHARED — bot will respond to mirrored shared-chat messages.'
                         : '🔒 Chat mode switched to SINGLE — bot will only respond to messages from this channel.',
                     'bot'
                 ).catch(() => {});
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can change chat mode!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can change chat mode!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -656,7 +660,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
                 await handleWalkOnShoutout(targetName, targetName, profileImage, true).catch(err => {
                     console.error('[Dispatcher] !so shoutout failed:', err);
-                    sendChatMessage(`@${actualUsername}, shoutout failed: ${err.message}`, 'bot').catch(() => {});
+                    reply(`@${actualUsername}, shoutout failed: ${err.message}`, 'bot').catch(() => {});
                 });
             }
             return;
@@ -673,7 +677,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const pointCost = redeemsConfig.partnerCheckin.pointCost;
 
             if (!guildId || !roleName) {
-                await sendChatMessage(`@${actualUsername}, partner check-ins are not configured yet!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, partner check-ins are not configured yet!`, 'broadcaster').catch(() => {});
                 return;
             }
 
@@ -681,7 +685,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const { getUserPoints } = require('./points');
                 const pts = await getUserPoints(actualUsername);
                 if (pts < pointCost) {
-                    await sendChatMessage(`@${actualUsername}, you need ${pointCost} points for a partner check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, you need ${pointCost} points for a partner check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
                     return;
                 }
             }
@@ -690,7 +694,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const partners = await getAllPartners(guildId, roleName);
             if (partners.length > 0) {
                 const list = partners.map((p: any) => `${p.id}.${p.name}`).join(' ');
-                sendChatMessage(`Partner Check-Ins: ${list}`, 'broadcaster').catch(() => {});
+                reply(`Partner Check-Ins: ${list}`, 'broadcaster').catch(() => {});
             }
 
             const partnerId = parseInt(numArg, 10);
@@ -744,14 +748,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase().startsWith('!swap ')) {
             const parts = actualMessage.substring(6).trim().match(/^@?(\S+)\s+(\d+)\s+for\s+(\d+)$/i);
             if (!parts) {
-                await sendChatMessage(`@${actualUsername}, usage: !swap @user <your card#> for <their card#>`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, usage: !swap @user <your card#> for <their card#>`, 'broadcaster').catch(() => {});
                 return;
             }
             const targetUser = parts[1].replace('@', '');
             const myCard = parseInt(parts[2]);
             const theirCard = parseInt(parts[3]);
             if (targetUser.toLowerCase() === actualUsername.toLowerCase()) {
-                await sendChatMessage(`@${actualUsername}, you can't swap with yourself!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, you can't swap with yourself!`, 'broadcaster').catch(() => {});
                 return;
             }
             const { proposeSwap } = require('./pokemon-swap');
@@ -764,7 +768,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const { getUserCollection } = require('./pokemon-storage-discord');
             const col = await getUserCollection(actualUsername);
             if (!col.deck || !col.deck.cards?.length) {
-                await sendChatMessage(`@${actualUsername}, you don't have a deck yet. Use the Pok\u00e9dex deck builder and !setdeck to save one.`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, you don't have a deck yet. Use the Pok\u00e9dex deck builder and !setdeck to save one.`, 'broadcaster').catch(() => {});
                 return;
             }
             const { getUserCards } = require('./pokemon-collection');
@@ -772,7 +776,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const names = col.deck.cards.slice(0, 8).map((idx: number) => cards[idx - 1]?.name || '?').join(', ');
             const energyStr = Object.entries(col.deck.energy || {}).filter(([, n]) => (n as number) > 0).map(([t, n]) => `${n} ${t}`).join(', ');
             const total = col.deck.cards.length + Object.values(col.deck.energy || {}).reduce((a: number, b: any) => a + Number(b), 0);
-            await sendChatMessage(`@${actualUsername}'s deck (${total}/40): ${names}${col.deck.cards.length > 8 ? '...' : ''}${energyStr ? ' | Energy: ' + energyStr : ''}`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername}'s deck (${total}/40): ${names}${col.deck.cards.length > 8 ? '...' : ''}${energyStr ? ' | Energy: ' + energyStr : ''}`, 'broadcaster').catch(() => {});
             return;
         }
 
@@ -786,20 +790,20 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const energyTotal = Object.values(energy).reduce((a: number, b: any) => a + Number(b), 0);
                 const total = decoded.cards.length + energyTotal;
                 if (total !== 40) {
-                    await sendChatMessage(`@${actualUsername}, deck must be exactly 40 cards (got ${total}).`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, deck must be exactly 40 cards (got ${total}).`, 'broadcaster').catch(() => {});
                     return;
                 }
                 const { getUserCards } = require('./pokemon-collection');
                 const cards = await getUserCards(actualUsername);
                 const invalid = decoded.cards.find((idx: number) => !cards[idx - 1]);
                 if (invalid) {
-                    await sendChatMessage(`@${actualUsername}, card #${invalid} doesn't exist in your collection!`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, card #${invalid} doesn't exist in your collection!`, 'broadcaster').catch(() => {});
                     return;
                 }
                 // Verify all cards are from current season
                 const nonSeason = decoded.cards.find((idx: number) => cards[idx - 1].seasonId !== 'season-1');
                 if (nonSeason) {
-                    await sendChatMessage(`@${actualUsername}, card #${nonSeason} (${cards[nonSeason - 1].name}) is not from the current season!`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, card #${nonSeason} (${cards[nonSeason - 1].name}) is not from the current season!`, 'broadcaster').catch(() => {});
                     return;
                 }
                 const { getUserCollection, saveUserCollection } = require('./pokemon-storage-discord');
@@ -814,9 +818,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         return tcg?.supertype === 'Pok\u00e9mon';
                     } catch { return false; }
                 }).length;
-                await sendChatMessage(`@${actualUsername}, deck saved! ${decoded.cards.length} cards + ${energyTotal} energy (${pokemonCount} Pok\u00e9mon).`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, deck saved! ${decoded.cards.length} cards + ${energyTotal} energy (${pokemonCount} Pok\u00e9mon).`, 'broadcaster').catch(() => {});
             } catch {
-                await sendChatMessage(`@${actualUsername}, invalid deck code. Use the Pok\u00e9dex deck builder to generate one.`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, invalid deck code. Use the Pok\u00e9dex deck builder to generate one.`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -825,7 +829,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase().startsWith('!gymteam')) {
             const args = actualMessage.substring(8).trim().split(/\s+/);
             if (args.length !== 3 || args.some(a => !a.includes('-'))) {
-                await sendChatMessage(`@${actualUsername}, usage: !gymteam <set-num> <set-num> <set-num> (e.g. !gymteam base1-4 base6-3 gym2-15)`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, usage: !gymteam <set-num> <set-num> <set-num> (e.g. !gymteam base1-4 base6-3 gym2-15)`, 'broadcaster').catch(() => {});
                 return;
             }
             const { getUserCards } = require('./pokemon-collection');
@@ -833,7 +837,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const matched = args.map((id: string) => cards.find((c: any) => `${c.setCode}-${c.number}` === id));
             const missing = args.filter((_: string, i: number) => !matched[i]);
             if (missing.length) {
-                await sendChatMessage(`@${actualUsername}, card(s) not found in your collection: ${missing.join(', ')}`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, card(s) not found in your collection: ${missing.join(', ')}`, 'broadcaster').catch(() => {});
                 return;
             }
             // Verify all are Pokemon
@@ -845,7 +849,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const setData = JSON.parse(fs.readFileSync(path.join(CARDS_DIR, `${c.setCode}.json`), 'utf-8'));
                     const tcg = setData.find((t: any) => t.number === c.number);
                     if (tcg && tcg.supertype !== 'Pok\u00e9mon') {
-                        await sendChatMessage(`@${actualUsername}, ${c.name} (${c.setCode}-${c.number}) is not a Pok\u00e9mon!`, 'broadcaster').catch(() => {});
+                        await reply(`@${actualUsername}, ${c.name} (${c.setCode}-${c.number}) is not a Pok\u00e9mon!`, 'broadcaster').catch(() => {});
                         return;
                     }
                 } catch {}
@@ -853,7 +857,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const { setGymTeam } = require('./gym-team');
             await setGymTeam(actualUsername, args);
             const names = matched.map((c: any) => `${c.name} (${c.setCode}-${c.number})`).join(', ');
-            await sendChatMessage(`@${actualUsername}, gym team set: ${names}`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername}, gym team set: ${names}`, 'broadcaster').catch(() => {});
             return;
         }
 
@@ -869,7 +873,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const { importAllFromDiscord } = require('./pokemon-storage-discord');
                 const count = await importAllFromDiscord();
-                await sendChatMessage(`📥 Imported ${count} collections from Discord.`, 'broadcaster').catch(() => {});
+                await reply(`📥 Imported ${count} collections from Discord.`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -901,7 +905,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const { startNextBattle } = require('./gym-battle');
                 await startNextBattle();
             } else {
-                await sendChatMessage(`@${actualUsername}, only the gym leader can start battles!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, only the gym leader can start battles!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -923,12 +927,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !clip command
         if (actualMessage.toLowerCase() === '!clip') {
             try {
-                const response = await fetch('http://127.0.0.1:3100/api/twitch/create-clip', { method: 'POST' });
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/create-clip`, { method: 'POST' });
                 if (response.ok) {
                     const data = await response.json();
-                    await sendChatMessage(`📹 Clip created! ${data.url}`, 'broadcaster').catch(() => {});
+                    await reply(`📹 Clip created! ${data.url}`, 'broadcaster').catch(() => {});
                 } else {
-                    await sendChatMessage(`@${actualUsername}, failed to create clip!`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, failed to create clip!`, 'broadcaster').catch(() => {});
                 }
             } catch (error) {
                 console.error('[Dispatcher] Clip creation failed:', error);
@@ -939,7 +943,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !coinflip command
         if (actualMessage.toLowerCase() === '!coinflip') {
             const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
-            await sendChatMessage(`@${actualUsername} flipped a coin: ${result}! 🪙`, 'broadcaster').catch(() => {});
+            await reply(`@${actualUsername} flipped a coin: ${result}! 🪙`, 'broadcaster').catch(() => {});
             return;
         }
         
@@ -966,12 +970,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     if (months > 0) timeStr += `${months}m `;
                     timeStr += `${remainingDays}d`;
                     
-                    await sendChatMessage(`@${targetUser} has been following for ${timeStr}!`, 'bot').catch(() => {});
+                    await reply(`@${targetUser} has been following for ${timeStr}!`, 'bot').catch(() => {});
                 } else {
-                    await sendChatMessage(`@${targetUser} is not following!`, 'bot').catch(() => {});
+                    await reply(`@${targetUser} is not following!`, 'bot').catch(() => {});
                 }
             } catch (error) {
-                await sendChatMessage(`@${actualUsername}, couldn't fetch follow data!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, couldn't fetch follow data!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -984,12 +988,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 
                 if (user?.followedAt) {
                     const followDate = new Date(user.followedAt);
-                    await sendChatMessage(`@${actualUsername} followed on ${followDate.toLocaleDateString()}!`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername} followed on ${followDate.toLocaleDateString()}!`, 'broadcaster').catch(() => {});
                 } else {
-                    await sendChatMessage(`@${actualUsername}, you're not following!`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, you're not following!`, 'broadcaster').catch(() => {});
                 }
             } catch (error) {
-                await sendChatMessage(`@${actualUsername}, couldn't fetch follow data!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, couldn't fetch follow data!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -997,10 +1001,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !followers command
         if (actualMessage.toLowerCase() === '!followers') {
             try {
-                const response = await fetch('http://127.0.0.1:3100/api/twitch/user');
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/user`);
                 if (response.ok) {
                     const data = await response.json();
-                    await sendChatMessage(`Current followers: ${data.followerCount?.toLocaleString() || 'Unknown'}`, 'broadcaster').catch(() => {});
+                    await reply(`Current followers: ${data.followerCount?.toLocaleString() || 'Unknown'}`, 'broadcaster').catch(() => {});
                 }
             } catch (error) {
                 console.error('[Dispatcher] Followers fetch failed:', error);
@@ -1017,7 +1021,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const est = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
             const utc = now.toLocaleString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
             
-            await sendChatMessage(
+            await reply(
                 `🕐 PST: ${pst} | MST: ${mst} | CST: ${cst} | EST: ${est} | UTC: ${utc}`,
                 'broadcaster'
             ).catch(() => {});
@@ -1027,7 +1031,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !uptime command
         if (actualMessage.toLowerCase() === '!uptime') {
             try {
-                const response = await fetch('http://127.0.0.1:3100/api/twitch/live');
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/live`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.isLive && data.startedAt) {
@@ -1037,9 +1041,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         const hours = Math.floor(diffMs / (1000 * 60 * 60));
                         const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
                         
-                        await sendChatMessage(`Stream uptime: ${hours}h ${minutes}m`, 'broadcaster').catch(() => {});
+                        await reply(`Stream uptime: ${hours}h ${minutes}m`, 'broadcaster').catch(() => {});
                     } else {
-                        await sendChatMessage('Stream is offline!', 'broadcaster').catch(() => {});
+                        await reply('Stream is offline!', 'broadcaster').catch(() => {});
                     }
                 }
             } catch (error) {
@@ -1056,7 +1060,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const hours = Math.floor(user.watchtime / 60);
                 const minutes = user.watchtime % 60;
                 
-                await sendChatMessage(
+                await reply(
                     `@${actualUsername} has watched for ${hours}h ${minutes}m!`,
                     'bot'
                 ).catch(() => {});
@@ -1069,10 +1073,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !stats command
         if (actualMessage.toLowerCase() === '!stats') {
             try {
-                const response = await fetch('http://127.0.0.1:3100/api/twitch/user');
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/user`);
                 if (response.ok) {
                     const data = await response.json();
-                    await sendChatMessage(
+                    await reply(
                         `📊 Followers: ${data.followerCount?.toLocaleString() || 0} | Views: ${data.viewCount?.toLocaleString() || 0}`,
                         'bot'
                     ).catch(() => {});
@@ -1088,22 +1092,22 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const game = actualMessage.substring(9).trim();
                 try {
-                    const response = await fetch('http://127.0.0.1:3100/api/twitch/start', {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/start`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ game })
                     });
                     
                     if (response.ok) {
-                        await sendChatMessage(`🎮 Game set to: ${game}`, 'bot').catch(() => {});
+                        await reply(`🎮 Game set to: ${game}`, 'bot').catch(() => {});
                     } else {
-                        await sendChatMessage(`Failed to set game!`, 'bot').catch(() => {});
+                        await reply(`Failed to set game!`, 'bot').catch(() => {});
                     }
                 } catch (error) {
                     console.error('[Dispatcher] Set game failed:', error);
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can change the game!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, only mods can change the game!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -1113,22 +1117,22 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const title = actualMessage.substring(10).trim();
                 try {
-                    const response = await fetch('http://127.0.0.1:3100/api/twitch/start', {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/start`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ title })
                     });
                     
                     if (response.ok) {
-                        await sendChatMessage(`📝 Title set to: ${title}`, 'bot').catch(() => {});
+                        await reply(`📝 Title set to: ${title}`, 'bot').catch(() => {});
                     } else {
-                        await sendChatMessage(`Failed to set title!`, 'bot').catch(() => {});
+                        await reply(`Failed to set title!`, 'bot').catch(() => {});
                     }
                 } catch (error) {
                     console.error('[Dispatcher] Set title failed:', error);
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can change the title!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, only mods can change the title!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -1143,12 +1147,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const path = require('path');
                     const configPath = path.join(process.cwd(), 'tokens', 'raid-message.json');
                     fs.writeFileSync(configPath, JSON.stringify({ message }, null, 2));
-                    await sendChatMessage(`✅ Raid message set!`, 'broadcaster').catch(() => {});
+                    await reply(`✅ Raid message set!`, 'broadcaster').catch(() => {});
                 } catch (error) {
                     console.error('[Dispatcher] Raid message save failed:', error);
                 }
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can set the raid message!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, only mods can set the raid message!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -1156,18 +1160,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !commands
         if (actualMessage.toLowerCase() === '!commands') {
             const cmdSummary = '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands';
-            await sendChatMessage(cmdSummary, 'broadcaster').catch(() => {});
+            await reply(cmdSummary, 'broadcaster').catch(() => {});
             return;
         }
         
         // Handle !card command - Show personal bingo card (viewer-only, NOT in shared chat)
         if (actualMessage.toLowerCase() === '!card') {
             try {
-                const response = await fetch(`http://127.0.0.1:3100/api/bingo/card?personal=true&username=${encodeURIComponent(actualUsername)}`);
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/bingo/card?personal=true&username=${encodeURIComponent(actualUsername)}`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.card) {
-                        // Send to user's viewer only (not broadcast to chat)
+                        // Send to user`s viewer only (not broadcast to chat)
                         if (typeof (global as any).broadcast === 'function') {
                             (global as any).broadcast({
                                 type: 'personal-bingo-card',
@@ -1182,14 +1186,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             });
                         }
                     } else {
-                        await sendChatMessage(`@${actualUsername}, ${data.message}`, 'bot').catch(() => {});
+                        await reply(`@${actualUsername}, ${data.message}`, 'bot').catch(() => {});
                     }
                 } else {
-                    await sendChatMessage(`@${actualUsername}, no bingo game active! Use !newbingo to start one.`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, no bingo game active! Use !newbingo to start one.`, 'bot').catch(() => {});
                 }
             } catch (error) {
                 console.error('[Dispatcher] Bingo card fetch failed:', error);
-                await sendChatMessage(`@${actualUsername}, failed to load bingo card!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, failed to load bingo card!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -1202,7 +1206,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     : null;
 
                 if (!bingoState?.active) {
-                    await sendChatMessage(`@${actualUsername}, no bingo game active!`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, no bingo game active!`, 'bot').catch(() => {});
                     return;
                 }
 
@@ -1220,7 +1224,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 }
             } catch (error) {
                 console.error('[Dispatcher] Bingo phrases fetch failed:', error);
-                await sendChatMessage(`@${actualUsername}, failed to load bingo phrases!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, failed to load bingo phrases!`, 'bot').catch(() => {});
             }
             return;
         }
@@ -1237,7 +1241,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !eevee command — special Eevee booster for mothermayrien
         if (actualMessage.toLowerCase() === '!eevee') {
             if (actualUsername.toLowerCase() !== 'mothermayrien') {
-                await sendChatMessage(`@${actualUsername}, this is mothermayrien's special Eevee pack!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, this is mothermayrien's special Eevee pack!`, 'broadcaster').catch(() => {});
                 return;
             }
             try {
@@ -1248,9 +1252,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const allCards = await getUserCards(actualUsername);
                     const rareCount = allCards.filter((c: any) => c.rarity?.includes('Rare')).length;
                     const cardInfo = result.pack.map((c: any) => `${c.name} (${c.rarity})`).join(', ');
-                    await sendChatMessage(`✨ @${actualUsername} opened an Eevee booster! ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
+                    await reply(`✨ @${actualUsername} opened an Eevee booster! ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
                 } else {
-                    await sendChatMessage(`@${actualUsername}, something went wrong opening the Eevee pack!`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, something went wrong opening the Eevee pack!`, 'broadcaster').catch(() => {});
                 }
             } catch (e: any) {
                 console.error('[Eevee Pack] Error:', e);
@@ -1269,7 +1273,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const { getUserPoints } = require('./points');
                 const pts = await getUserPoints(actualUsername);
                 if (pts < pointCost) {
-                    await sendChatMessage(`@${actualUsername}, you need ${pointCost} points to open a pack! (You have ${pts})`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername}, you need ${pointCost} points to open a pack! (You have ${pts})`, 'broadcaster').catch(() => {});
                     return;
                 }
             }
@@ -1278,7 +1282,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const enabledSets = redeemsConfig.pokePack.enabledSets || ['base1','base2','base3','base4','base5','gym1'];
             const setMap = getEnabledSetMap(enabledSets);
             const setCount = Object.keys(setMap).length;
-            sendChatMessage(formatSetList(setMap), 'broadcaster').catch(() => {});
+            reply(formatSetList(setMap), 'broadcaster').catch(() => {});
 
             const setNumber = parseInt(numArg, 10);
             if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
@@ -1298,9 +1302,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!admin') {
             if (tags.mod || tags.badges?.broadcaster) {
                 const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !brb, !back';
-                await sendChatMessage(adminSummary, 'broadcaster').catch(() => {});
+                await reply(adminSummary, 'broadcaster').catch(() => {});
             } else {
-                await sendChatMessage(`@${actualUsername}, only mods can view admin commands!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, only mods can view admin commands!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -1320,7 +1324,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             
             // Handle simple response
             if ((command as any).response && !(command as any).actionId && !(command as any).actions) {
-                await sendChatMessage((command as any).response, 'broadcaster').catch(() => {});
+                await reply((command as any).response, 'broadcaster').catch(() => {});
                 return;
             }
             
@@ -1352,7 +1356,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const response = socialCommands[cmdName]
                         .replace('{user}', actualUsername)
                         .replace('{target}', target);
-                    await sendChatMessage(response, 'bot').catch(() => {});
+                    await reply(response, 'bot').catch(() => {});
                     return;
                 }
             }
@@ -1375,7 +1379,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         const userPoints = await getPoints(actualUsername);
                         
                         if (userPoints.points < PACK_COST) {
-                            await sendChatMessage(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.points})`, 'broadcaster').catch(() => {});
+                            await reply(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.points})`, 'broadcaster').catch(() => {});
                             return;
                         }
                         
@@ -1395,7 +1399,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             const allCards = await getUserCards(actualUsername);
                             const rareCount = allCards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
                             
-                            await sendChatMessage(`@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
+                            await reply(`@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
                         }
                     }
                 } else if (action && action.subActions && action.subActions.length > 0) {
@@ -1412,13 +1416,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 
                 if (actionType === 'commands-list-show') {
                     const response = 'Commands: !pack, !collection, !show <card>, !trade <user>, !offer <card>, !accept, !cancel, !challenge, !attack, !switch, !points, !gamble, !roll, !so <user>, !leader, !discord';
-                    await sendChatMessage(response, 'broadcaster').catch(() => {});
+                    await reply(response, 'broadcaster').catch(() => {});
                 } else if (actionType === 'pokemon-pack-open') {
                     const PACK_COST = 1000;
                     const userPoints = await getPoints(actualUsername);
                     
                     if (userPoints.points < PACK_COST) {
-                        await sendChatMessage(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.points})`, 'broadcaster').catch(() => {});
+                        await reply(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.points})`, 'broadcaster').catch(() => {});
                         return;
                     }
                     
@@ -1438,7 +1442,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         const allCards = await getUserCards(actualUsername);
                         const rareCount = allCards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
                         
-                        await sendChatMessage(`@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
+                        await reply(`@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
                     }
                 } else if (actionType === 'pokemon-collection-show') {
                     const { getUserCards } = require('./pokemon-collection');
@@ -1481,7 +1485,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                       downloadUrl = (result.data as any).attachments[0].url;
                     }
                     
-                    await sendChatMessage(`@${actualUsername} has ${cards.length} cards (${rareCount} rare). Download: ${downloadUrl}`, 'broadcaster').catch(() => {});
+                    await reply(`@${actualUsername} has ${cards.length} cards (${rareCount} rare). Download: ${downloadUrl}`, 'broadcaster').catch(() => {});
                     
                     // Show on overlay
                     if (typeof (global as any).broadcast === 'function') {
@@ -1495,7 +1499,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const targetUser = args[0]?.replace('@', '');
                     
                     if (!targetUser) {
-                        await sendChatMessage(`@${actualUsername}, usage: !trade @user`, 'bot').catch(() => {});
+                        await reply(`@${actualUsername}, usage: !trade @user`, 'bot').catch(() => {});
                         return;
                     }
                     
@@ -1549,7 +1553,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (!isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
                 console.log('[Dispatcher] Shoutout command detected');
                 try {
-                    const chattersResponse = await fetch('http://127.0.0.1:3100/api/chat/chatters');
+                    const chattersResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/chat/chatters`);
                     let chatters = [];
                     if (chattersResponse.ok) {
                         const chattersData = await chattersResponse.json();
@@ -1565,7 +1569,7 @@ Find the best matching username from the chatters list and respond with ONLY the
 If no good match, respond with: Could not find matching user`;
                     
                     console.log('[Dispatcher] Calling AI generate for shoutout matching...');
-                    const aiResponse = await fetch('http://127.0.0.1:3100/api/ai/generate', {
+                    const aiResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/generate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1579,11 +1583,11 @@ If no good match, respond with: Could not find matching user`;
                     
                     if (aiResponse.ok) {
                         const aiData = await aiResponse.json();
-                        const reply = aiData?.text?.trim();
-                        console.log('[Dispatcher] AI generate reply:', reply);
+                        const aiShoutoutReply = aiData?.text?.trim();
+                        console.log('[Dispatcher] AI generate reply:', aiShoutoutReply);
                         
-                        if (reply && reply.startsWith('!so @')) {
-                            const targetName = reply.substring(5).trim();
+                        if (aiShoutoutReply && aiShoutoutReply.startsWith('!so @')) {
+                            const targetName = aiShoutoutReply.substring(5).trim();
                             console.log(`[Dispatcher] AI matched shoutout target: ${targetName}`);
                             const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
                             await handleWalkOnShoutout(targetName, targetName, profileImage, true).catch(err => {
@@ -1591,7 +1595,7 @@ If no good match, respond with: Could not find matching user`;
                             });
                         } else {
                             console.log('[Dispatcher] AI did not return valid shoutout command');
-                            await sendChatMessage('Could not find matching user in chat', 'bot').catch(() => {});
+                            await reply('Could not find matching user in chat', 'bot').catch(() => {});
                         }
                     }
                 } catch (error) {
@@ -1654,7 +1658,7 @@ If no good match, respond with: Could not find matching user`;
                         delete (global as any).detectedInterest;
                     }
                     
-                    const response = await fetch('http://127.0.0.1:3100/api/ai/chat-with-memory', {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1667,23 +1671,23 @@ If no good match, respond with: Could not find matching user`;
                     
                     if (response.ok) {
                         const data = await response.json();
-                        const reply = data.response?.trim() || '';
-                        console.log('[Dispatcher] Chat-with-memory reply:', reply);
+                        const aiReply = data.response?.trim() || '';
+                        console.log('[Dispatcher] Chat-with-memory reply:', aiReply);
                         
-                        if (reply) {
+                        if (aiReply) {
                             // Send the chat message
-                            await sendChatMessage(reply, 'bot').catch(() => {});
+                            await reply(aiReply, 'bot').catch(() => {});
                             
                             // Generate TTS for AI response
                             try {
                                 const { textToSpeech } = await import('../ai/flows/text-to-speech');
-                                const ttsResult = await textToSpeech({ text: reply, voice: 'Algieba' });
+                                const ttsResult = await textToSpeech({ text: aiReply, voice: 'Algieba' });
                                 
                                 if (ttsResult.audioDataUri) {
                                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                                     
                                     if (useTTSPlayer) {
-                                        await fetch('http://127.0.0.1:3100/api/tts/current', {
+                                        await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })

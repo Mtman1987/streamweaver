@@ -112,7 +112,7 @@ async function fetchClip(username: string): Promise<TwitchClip | null> {
 async function playClip(clip: TwitchClip, displayName: string, profileImage: string): Promise<void> {
     const embedURL = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
     const delay = 700 + Math.floor(clip.duration * 1000);
-    const playerUrl = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://127.0.0.1:3100'}/shoutout-player?user=${encodeURIComponent(displayName)}&image=${encodeURIComponent(profileImage)}&video=${encodeURIComponent(embedURL)}&thumbnail_url=${encodeURIComponent(clip.thumbnailUrl)}`;
+    const playerUrl = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT||3100}`}/shoutout-player?user=${encodeURIComponent(displayName)}&image=${encodeURIComponent(profileImage)}&video=${encodeURIComponent(embedURL)}&thumbnail_url=${encodeURIComponent(clip.thumbnailUrl)}`;
     
     const cfg = await getAppConfig();
     const sceneName = cfg.shoutoutScene || process.env.SHOUTOUT_SCENE || 'Shoutout';
@@ -283,7 +283,7 @@ async function fireAthenaGreeting(aiGreeting: string): Promise<void> {
             
             if (useTTSPlayer) {
                 // Send to OBS TTS player
-                await fetch('http://127.0.0.1:3100/api/tts/current', {
+                await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })

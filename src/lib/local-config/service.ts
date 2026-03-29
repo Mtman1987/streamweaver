@@ -11,7 +11,7 @@ import {
   type ConfigSectionName,
   type LocalConfigMap,
 } from './schemas';
-import { readUserConfigSync } from '@/lib/user-config';
+import { readUserConfigSync } from '../user-config';
 
 const CONFIG_DIR = path.resolve(process.cwd(), 'config');
 
@@ -222,6 +222,8 @@ export async function isDebugRoutesEnabled(): Promise<boolean> {
 }
 
 export function validateLocalApiKeySync(apiKey?: string | null): boolean {
+  // Skip API key check entirely if disabled via env
+  if (process.env.DISABLE_API_KEY === 'true') return true;
   try {
     const filePath = sectionPath('app');
     if (!fs.existsSync(filePath)) return false;

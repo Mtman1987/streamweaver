@@ -7,7 +7,8 @@ export async function waitForNextJsReady(): Promise<void> {
             attempts++;
             console.log(`[Next.js] Checking readiness... attempt ${attempts}/${maxAttempts}`);
             
-            fetch('http://localhost:3100')
+            const port = process.env.PORT || '3100';
+            fetch(`http://127.0.0.1:${port}`)
                 .then(response => {
                     // 200 = OK, 404 = Not Found (but server running), 307 = Redirect (auth)
                     if (response.status === 200 || response.status === 404 || response.status === 307) {

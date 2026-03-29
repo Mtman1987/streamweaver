@@ -13,7 +13,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cd /d "C:\Users\mtman\Desktop\streamweaver-main"
+cd /d "%~dp0"
 
 echo Deploying streamweaver-new...
 call fly deploy -c fly.toml -a streamweaver-new

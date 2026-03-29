@@ -157,20 +157,36 @@ export async function isChannelInSharedChat(channelLogin: string): Promise<boole
 // Source-only message via Helix API
 // ---------------------------------------------------------------------------
 
+/**
+ * Get a user access token for the bot or broadcaster from stored tokens.
+ * POST /helix/chat/messages requires a user token, NOT an app token.
+ */
+async function getUserToken(as: 'bot' | 'broadcaster'): Promise<string | null> {
+  try {
+    const tokensPath = resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
+    const raw = await fs.readFile(tokensPath, 'utf-8');
+    const tokens = JSON.parse(raw);
+    return as === 'bot' ? (tokens.botToken || tokens.broadcasterToken) : tokens.broadcasterToken;
+  } catch {
+    return null;
+  }
+}
+
 async function sendViaHelixAPI(
   targetChannel: string,
   senderLogin: string,
   message: string,
+  as: 'bot' | 'broadcaster' = 'bot',
   attempt = 0,
 ): Promise<{ success: boolean; reason?: string }> {
   try {
-    const token = await getAppToken();
+    const appToken = await getAppToken();
     const clientId = getClientId();
 
     // Resolve broadcaster ID
     const bRes = await fetch(
       `https://api.twitch.tv/helix/users?login=${encodeURIComponent(targetChannel)}`,
-      { headers: { 'Client-ID': clientId, Authorization: `Bearer ${token}` } },
+      { headers: { 'Client-ID': clientId, Authorization: `Bearer ${appToken}` } },
     );
     const bData = await bRes.json();
     const broadcasterId = bData.data?.[0]?.id;
@@ -179,17 +195,21 @@ async function sendViaHelixAPI(
     // Resolve sender ID
     const sRes = await fetch(
       `https://api.twitch.tv/helix/users?login=${encodeURIComponent(senderLogin)}`,
-      { headers: { 'Client-ID': clientId, Authorization: `Bearer ${token}` } },
+      { headers: { 'Client-ID': clientId, Authorization: `Bearer ${appToken}` } },
     );
     const sData = await sRes.json();
     const senderId = sData.data?.[0]?.id;
     if (!senderId) return { success: false, reason: 'sender-not-found' };
 
+    // Use USER token for sending — Helix chat/messages requires user:write:chat scope
+    const userToken = await getUserToken(as);
+    if (!userToken) return { success: false, reason: 'no-user-token' };
+
     const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
       method: 'POST',
       headers: {
         'Client-ID': clientId,
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${userToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -205,7 +225,6 @@ async function sendViaHelixAPI(
     const errText = await res.text();
     console.warn(`[SharedChat] Helix send failed (${res.status}): ${errText}`);
 
-    // Permission error — don't retry
     const lower = errText.toLowerCase();
     if (
       lower.includes('channel:bot') ||
@@ -215,10 +234,8 @@ async function sendViaHelixAPI(
       return { success: false, reason: 'permission' };
     }
 
-    // Token expired — refresh once
     if (res.status === 401 && attempt < 1) {
-      appAccessToken = null;
-      return sendViaHelixAPI(targetChannel, senderLogin, message, attempt + 1);
+      return sendViaHelixAPI(targetChannel, senderLogin, message, as, attempt + 1);
     }
 
     return { success: false, reason: 'api-error' };
@@ -254,8 +271,15 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
 
   const inShared = await isChannelInSharedChat(normalized);
 
+  // Broadcast shared chat status to UI
+  if (typeof (global as any).broadcast === 'function') {
+    (global as any).broadcast({
+      type: 'shared-chat-status',
+      payload: { channel: normalized, isShared: inShared }
+    });
+  }
+
   if (inShared) {
-    // Determine sender login
     let senderLogin: string;
     if (as === 'bot') {
       senderLogin = (
@@ -272,7 +296,7 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
     }
 
     if (senderLogin) {
-      const result = await sendViaHelixAPI(normalized, senderLogin, message);
+      const result = await sendViaHelixAPI(normalized, senderLogin, message, as);
       if (result.success) {
         console.log(`[SharedChat] Source-only message sent to ${normalized}`);
         return;
@@ -280,7 +304,6 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
 
       console.warn(`[SharedChat] API fallback to IRC for ${normalized} (${result.reason})`);
 
-      // One-time warning about /mod
       if (result.reason === 'permission') {
         const lastWarn = sourceWarnedAt.get(normalized) || 0;
         if (Date.now() - lastWarn > SOURCE_WARN_COOLDOWN) {

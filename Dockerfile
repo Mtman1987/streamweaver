@@ -13,6 +13,12 @@ COPY scripts/bootstrap-runtime.js ./scripts/bootstrap-runtime.js
 RUN npm ci --include=dev
 
 FROM base AS builder
+ARG NEXT_PUBLIC_TWITCH_CLIENT_ID
+ARG NEXT_PUBLIC_STREAMWEAVE_URL
+ARG NEXT_PUBLIC_BASE_URL
+ENV NEXT_PUBLIC_TWITCH_CLIENT_ID=$NEXT_PUBLIC_TWITCH_CLIENT_ID
+ENV NEXT_PUBLIC_STREAMWEAVE_URL=$NEXT_PUBLIC_STREAMWEAVE_URL
+ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p config logs MasterStats data tokens actions commands sb plugin-exports tmp scripts
@@ -43,7 +49,8 @@ COPY --from=builder /app/MasterStats ./MasterStats
 COPY --from=builder /app/tmp ./tmp
 COPY --from=builder /app/scripts/bootstrap-runtime.js ./scripts/bootstrap-runtime.js
 COPY --from=builder /app/docker-entrypoint.js ./docker-entrypoint.js
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
 EXPOSE 3000
 ENTRYPOINT ["node", "docker-entrypoint.js"]
-CMD ["npx", "tsx", "server.ts"]
+CMD ["npx", "tsx", "--tsconfig", "tsconfig.json", "server.ts"]

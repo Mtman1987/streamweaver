@@ -2,8 +2,8 @@ import { promises as fsp } from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { readSbCommandsFile, writeSbCommandsFile } from '@/lib/sb-store';
-import type { Command } from '@/services/automation/types';
+import { readSbCommandsFile, writeSbCommandsFile } from './sb-store';
+import type { Command } from '../services/automation/types';
 
 // Individual commands directory for modular storage
 const COMMANDS_DIR = path.join(process.cwd(), 'commands');

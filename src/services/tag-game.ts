@@ -1,4 +1,4 @@
-treamsimport fs from 'fs';
+import fs from 'fs';
 import path from 'path';
 import { sendChatMessage } from './twitch';
 
@@ -94,15 +94,19 @@ export async function handleTagPlayersCommand(username: string, args: string[]):
   const playerNames = pagePlayers.map(p => p.username).join(', ');
 
   // Count live players (this would need to be implemented based on your live channel tracking)
-  const liveResponse = await fetch('http://localhost:3100/api/twitch/live', {
-  const liveCount = 0; // Placeholder
-  const chattingCount = 0; // Placeholder
-    body: JSON.stringify({ usernames: ['mtman1987'] }) // Community channels from config/API/bot/channels
-  });
-  const liveData = await liveResponse.json();
-  const liveUsernames = liveData.liveUsers.map((u: any) => u.username.toLowerCase());
-  const liveCount = liveUsernames.length;
-  const chattingCount = liveUsernames.length; // Assume active = live for now
+  let liveCount = 0;
+  let chattingCount = 0;
+  try {
+    const liveResponse = await fetch('http://localhost:3100/api/twitch/live', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernames: ['mtman1987'] })
+    });
+    const liveData = await liveResponse.json() as any;
+    const liveUsernames = (liveData.liveUsers || []).map((u: any) => u.username.toLowerCase());
+    liveCount = liveUsernames.length;
+    chattingCount = liveUsernames.length;
+  } catch { /* live check failed, use defaults */ }
 
   let message = `@${username} ${totalPlayers} players`;
   if (liveCount > 0 || chattingCount > 0) {

@@ -10,7 +10,7 @@ export const appConfigSchema = z.object({
     openBrowserOnStart: z.boolean().default(true),
   }).default({}),
   security: z.object({
-    requireApiKey: z.boolean().default(true),
+    requireApiKey: z.boolean().default(false),
     apiKey: z.string().default(''),
     allowDebugRoutes: z.boolean().default(false),
   }).default({}),

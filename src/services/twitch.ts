@@ -56,14 +56,15 @@ async function getTwitchAppAccessToken(): Promise<string> {
  * @param message The message to send.
  * @param as The identity to send the message as ('bot' or 'broadcaster'). Defaults to 'broadcaster'.
  */
-export async function sendChatMessage(message: string, as: 'bot' | 'broadcaster' = 'broadcaster'): Promise<void> {
-  // Send message through WebSocket server
+export async function sendChatMessage(message: string, as: 'bot' | 'broadcaster' = 'broadcaster', targetChannel?: string): Promise<void> {
   try {
-    const wsPort = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || '8090';
+    const wsPort = process.env.WS_PORT || '8090';
+    const body: any = { message, as };
+    if (targetChannel) body.targetChannel = targetChannel.replace(/^#/, '');
     const response = await fetch(`http://localhost:${wsPort}/api/twitch/send-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, as })
+      body: JSON.stringify(body)
     });
     
     if (!response.ok) {
@@ -260,7 +261,7 @@ export async function checkTwitchLiveStatus(): Promise<void> {
  */
 export async function getChatters(): Promise<{ user_id: string; user_login: string; user_display_name: string; }[]> {
     try {
-        const baseUrl = 'http://127.0.0.1:3100';
+        const baseUrl = `http://127.0.0.1:${process.env.PORT||3100}`;
         const response = await fetch(`${baseUrl}/api/chat/chatters`);
         
         if (!response.ok) {
@@ -283,7 +284,7 @@ export async function getChatters(): Promise<{ user_id: string; user_login: stri
  */
 export async function createTwitchClip(): Promise<{ id: string; edit_url: string; } | null> {
     try {
-        const baseUrl = 'http://127.0.0.1:3100';
+        const baseUrl = `http://127.0.0.1:${process.env.PORT||3100}`;
         const response = await fetch(`${baseUrl}/api/twitch/create-clip`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }

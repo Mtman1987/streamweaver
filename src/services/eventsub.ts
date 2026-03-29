@@ -529,7 +529,7 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
             if (ttsResult.audioDataUri) {
                 const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                 if (useTTSPlayer) {
-                    await fetch('http://127.0.0.1:3100/api/tts/current', {
+                    await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
@@ -655,7 +655,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 if (ttsResult.audioDataUri) {
                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                     if (useTTSPlayer) {
-                        await fetch('http://127.0.0.1:3100/api/tts/current', {
+                        await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
