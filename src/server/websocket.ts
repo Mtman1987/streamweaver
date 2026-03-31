@@ -56,6 +56,17 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             try {
                 const message = JSON.parse(data.toString());
 
+                // SECURITY: Require authentication for ALL message types, not just privileged ones
+                if (!(ws as any).__localAuthorized) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        payload: { message: 'Unauthorized: API key required for all operations' }
+                    }));
+                    console.warn('[WebSocket] Unauthorized message attempt:', message.type);
+                    return;
+                }
+                
+                // Additional validation for privileged message types (defense in depth)
                 if (privilegedTypes.has(message.type) && !(ws as any).__localAuthorized) {
                     ws.send(JSON.stringify({
                         type: 'error',
@@ -64,6 +75,7 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     return;
                 }
                 
+                // Process authorized messages
                 if (message.type === 'send-twitch-message') {
                     const { message: text, as } = message.payload;
                     console.log(`[WebSocket] Received message to send as ${as}: ${text}`);

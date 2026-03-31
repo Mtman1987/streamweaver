@@ -48,8 +48,27 @@ export class PortManager {
         
         try {
             await Promise.race([killPromise, timeoutPromise]);
+            
+            // CRITICAL FIX: Verify the port is actually free after killing
+            // Retry up to 5 times with 100ms delays to confirm
+            let portIsFreeSoon = false;
+            for (let attempt = 0; attempt < 5; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const inUse = await this.isPortInUse(port);
+                if (!inUse) {
+                    portIsFreeSoon = true;
+                    console.log(`[PortManager] Port ${port} confirmed free after ${(attempt + 1) * 100}ms`);
+                    break;
+                }
+            }
+            
+            if (!portIsFreeSoon) {
+                throw new Error(`Port ${port} still in use after kill attempt (process may have respawned)`);
+            }
         } catch (error) {
             console.error(`[PortManager] Error killing processes on port ${port}:`, error);
+            // Re-throw to prevent continuing with port still in use
+            throw error;
         }
     }
     
@@ -100,10 +119,16 @@ export class PortManager {
         console.log(`[PortManager] Cleaning up ports: ${ports.join(', ')}`);
         
         for (const port of ports) {
-            if (await this.isPortInUse(port)) {
-                await this.killProcessOnPort(port);
-                // Wait a bit for the port to be released
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                if (await this.isPortInUse(port)) {
+                    await this.killProcessOnPort(port);
+                    // Port is now confirmed free by killProcessOnPort verification
+                    console.log(`[PortManager] Port ${port} cleanup completed successfully`);
+                }
+            } catch (error) {
+                console.error(`[PortManager] Failed to cleanup port ${port}:`, error);
+                // Continue with next port but don't silently ignore
+                throw error;
             }
         }
     }
