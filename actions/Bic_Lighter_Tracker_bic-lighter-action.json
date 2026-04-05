@@ -1,0 +1,105 @@
+{
+  "id": "bic-lighter-action",
+  "name": "Bic Lighter Tracker",
+  "description": "Increments global and per-user lighter stolen counts, sends chat message, updates overlay",
+  "triggers": [
+    {
+      "id": "bic-trigger-cmd",
+      "type": 401,
+      "enabled": true,
+      "exclusions": [],
+      "commandId": "bic-lighter-command"
+    }
+  ],
+  "subActions": [
+    {
+      "id": "bic-get-global",
+      "type": 121,
+      "enabled": true,
+      "weight": 0,
+      "index": 0,
+      "variableName": "bic_total",
+      "defaultValue": "0",
+      "destinationVariable": "bic_total",
+      "persisted": true
+    },
+    {
+      "id": "bic-math-global",
+      "type": 1052,
+      "enabled": true,
+      "weight": 0,
+      "index": 1,
+      "operand1": "%bic_total%",
+      "operand2": "1",
+      "operation": 0,
+      "variableName": "bic_total"
+    },
+    {
+      "id": "bic-set-global",
+      "type": 122,
+      "enabled": true,
+      "weight": 0,
+      "index": 2,
+      "variableName": "bic_total",
+      "value": "%bic_total%",
+      "persisted": true
+    },
+    {
+      "id": "bic-get-user",
+      "type": 1051,
+      "enabled": true,
+      "weight": 0,
+      "index": 3,
+      "userName": "%targetUser%",
+      "variableName": "bic_user_count",
+      "defaultValue": "0",
+      "destinationVariable": "bic_user_count"
+    },
+    {
+      "id": "bic-math-user",
+      "type": 1052,
+      "enabled": true,
+      "weight": 0,
+      "index": 4,
+      "operand1": "%bic_user_count%",
+      "operand2": "1",
+      "operation": 0,
+      "variableName": "bic_user_count"
+    },
+    {
+      "id": "bic-set-user",
+      "type": 1050,
+      "enabled": true,
+      "weight": 0,
+      "index": 5,
+      "userName": "%targetUser%",
+      "variableName": "bic_user_count",
+      "value": "%bic_user_count%"
+    },
+    {
+      "id": "bic-chat-msg",
+      "type": 10,
+      "enabled": true,
+      "weight": 0,
+      "index": 6,
+      "text": "fatkid4ev4 has stolen %bic_total% lighters, of those %bic_user_count% have been %targetUser%'s",
+      "useBot": true
+    },
+    {
+      "id": "bic-write-overlay",
+      "type": 3,
+      "enabled": true,
+      "weight": 0,
+      "index": 7,
+      "file": "data/overlays/bic-counter.json",
+      "text": "{\"total\": %bic_total%, \"lastUser\": \"%targetUser%\", \"lastUserCount\": %bic_user_count%, \"timestamp\": %timestamp%}",
+      "append": false
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Fun Commands",
+  "createdAt": "2025-07-15T00:00:00.000Z",
+  "updatedAt": "2025-07-15T00:00:00.000Z"
+}

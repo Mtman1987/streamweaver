@@ -22,11 +22,18 @@ export class TwitchHandlers {
     const useBot = subAction.useBot !== false;
     
     try {
-      // TODO: Send via Twitch service
       console.log(`[Twitch Chat] ${message} (as bot: ${useBot})`);
       
-      if (this.twitchService) {
-        await this.twitchService.sendMessage(message, useBot);
+      // Always send via HTTP API - reliable path that matches voice/AI commands
+      try {
+        const port = process.env.PORT || 3100;
+        await fetch(`http://127.0.0.1:${port}/api/twitch/send-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, as: useBot ? 'bot' : 'broadcaster' })
+        });
+      } catch (e) {
+        console.error('[Twitch Chat] HTTP send failed:', e);
       }
       
       return { success: true };

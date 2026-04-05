@@ -1,0 +1,12 @@
+{
+  "id": "athena-bic",
+  "name": "Athena Voice Bic",
+  "description": "Voice-activated lighter steal - finds closest matching username like voice shoutout",
+  "trigger": "athena bic",
+  "type": "Execute Code",
+  "code": "// Extract username from voice command\nconst fullCommand = args.join(' ');\nconst targetName = fullCommand.trim();\n\nif (!targetName) {\n  console.log('[Voice Bic] No username provided');\n  return;\n}\n\n// Use same AI matching as voice shoutout\nconst { getChatters } = require('./src/services/twitch');\nconst { findBestUsernameMatch } = require('./src/lib/username-matcher');\n\nconst matched = await findBestUsernameMatch(targetName);\n\nif (!matched) {\n  console.log(`[Voice Bic] No match found for \"${targetName}\"`);\n  return;\n}\n\nconsole.log(`[Voice Bic] Matched \"${targetName}\" to ${matched}`);\n\n// Fire the !bic command programmatically\nconst engine = global.automationEngine;\nif (engine) {\n  await engine.processEvent({\n    type: 'command',\n    platform: 'twitch',\n    user: 'fatkid4ev4',\n    message: `!bic @${matched}`,\n    data: {}\n  });\n}",
+  "enabled": true,
+  "group": "Fun Commands",
+  "createdAt": "2025-07-15T00:00:00.000Z",
+  "updatedAt": "2025-07-15T00:00:00.000Z"
+}

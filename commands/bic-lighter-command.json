@@ -1,0 +1,20 @@
+{
+  "id": "bic-lighter-command",
+  "name": "!bic",
+  "command": "!bic",
+  "enabled": true,
+  "description": "Track stolen lighters - global and per-user counts",
+  "cooldown": {
+    "global": 2,
+    "user": 5
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Fun Commands",
+  "sources": 31,
+  "persistCounter": true,
+  "persistUserCounter": true,
+  "actionId": "bic-lighter-action",
+  "createdAt": "2025-07-15T00:00:00.000Z",
+  "updatedAt": "2025-07-15T00:00:00.000Z"
+}

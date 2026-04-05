@@ -653,6 +653,35 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
+        // Handle !bic command - Lighter theft tracker
+        if (actualMessage.toLowerCase().startsWith('!bic ')) {
+            const targetUser = actualMessage.substring(5).trim().replace('@', '');
+            if (!targetUser) {
+                await reply(`@${actualUsername}, usage: !bic @user`, 'bot').catch(() => {});
+                return;
+            }
+            try {
+                const { setGlobalVariable, setUserVariable } = await import('../lib/automation-variables-store');
+                const vars = await import('../lib/automation-variables-store');
+                const allVars = await vars.readAutomationVariables();
+                const total = (Number(allVars.global?.bic_total) || 0) + 1;
+                const userVars = allVars.users?.[targetUser] || {};
+                const userCount = (Number(userVars.bic_user_count) || 0) + 1;
+                await setGlobalVariable('bic_total', total);
+                await setUserVariable(targetUser, 'bic_user_count', userCount);
+                await reply(`fatkid4ev4 has stolen ${total} lighters, of those ${userCount} have been ${targetUser}'s`, 'bot').catch(() => {});
+                // Write overlay data
+                const fsSync = require('fs');
+                const pathMod = require('path');
+                const overlayDir = pathMod.join(process.cwd(), 'data', 'overlays');
+                if (!fsSync.existsSync(overlayDir)) fsSync.mkdirSync(overlayDir, { recursive: true });
+                fsSync.writeFileSync(pathMod.join(overlayDir, 'bic-counter.json'), JSON.stringify({ total, lastUser: targetUser, lastUserCount: userCount, timestamp: Date.now() }, null, 2));
+            } catch (err) {
+                console.error('[Bic] Error:', err);
+            }
+            return;
+        }
+        
         if (actualMessage.toLowerCase().startsWith('!so ')) {
             const targetName = actualMessage.substring(4).trim().replace('@', '');
             if (targetName) {
@@ -1406,7 +1435,26 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     // Execute subActions using SubActionExecutor
                     const { SubActionExecutor } = await import('./automation/SubActionExecutor');
                     const executor = new SubActionExecutor();
-                    await executor.executeAction(action, { userName: actualUsername, args: {}, variables: {} });
+                    const cmdArgs = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/);
+                    const targetRaw = cmdArgs[0]?.replace('@', '') || '';
+                    const execArgs: Record<string, any> = {};
+                    cmdArgs.forEach((a: string, i: number) => { execArgs[`input${i}`] = a; });
+                    execArgs.rawInput = cmdArgs.join(' ');
+                    await executor.executeAction(action, {
+                        user: actualUsername,
+                        userName: actualUsername,
+                        message: actualMessage,
+                        rawInput: cmdArgs.join(' '),
+                        platform: 'twitch',
+                        args: execArgs,
+                        variables: {
+                            user: actualUsername,
+                            userName: actualUsername,
+                            targetUser: targetRaw,
+                            targetUserName: targetRaw,
+                            rawInput: cmdArgs.join(' '),
+                        },
+                    });
                 }
             }
             
