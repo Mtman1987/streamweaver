@@ -1,7 +1,7 @@
 {
   "id": "bic-lighter-action",
   "name": "Bic Lighter Tracker",
-  "description": "Increments global and per-user lighter stolen counts, sends chat message, updates overlay",
+  "description": "Increments global and per-user lighter stolen counts, sends chat message via HTTP, updates overlay",
   "triggers": [
     {
       "id": "bic-trigger-cmd",
@@ -77,13 +77,19 @@
       "value": "%bic_user_count%"
     },
     {
-      "id": "bic-chat-msg",
-      "type": 10,
+      "id": "bic-send-http",
+      "type": 1007,
       "enabled": true,
       "weight": 0,
       "index": 6,
-      "text": "fatkid4ev4 has stolen %bic_total% lighters, of those %bic_user_count% have been %targetUser%'s",
-      "useBot": true
+      "url": "http://127.0.0.1:3100/api/twitch/send-message",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": "{\"message\": \"fatkid4ev4 has stolen %bic_total% lighters, of those %bic_user_count% have been %targetUser%'s\", \"as\": \"bot\"}",
+      "parseAsJson": false,
+      "variableName": "httpResult"
     },
     {
       "id": "bic-write-overlay",
