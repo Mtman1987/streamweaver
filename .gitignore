@@ -23,7 +23,8 @@
 /public/.env
 
 # Logs (only the root logs/ directory, not src/components/logs/)
-/logs
+/logs/*
+!/logs/.gitkeep
 *.log
 !src/components/logs/
 npm-debug.log*
@@ -67,7 +68,11 @@ firebase-service-account.json
 !/tokens/*.example.json
 
 # Runtime data (user-specific, synced via Discord)
-/data/
+/data/*
+!/data/.gitkeep
+!/data/overlays/
+/data/overlays/*
+!/data/overlays/.gitkeep
 /MasterStats/
 /config/
 

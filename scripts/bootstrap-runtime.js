@@ -10,6 +10,7 @@ const dirs = [
   'tokens',
   'data',
   path.join('data', 'masterstats', 'overlay'),
+  path.join('data', 'overlays'),
   'MasterStats',
   'actions',
   'commands',
