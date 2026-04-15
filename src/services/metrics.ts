@@ -1,7 +1,11 @@
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
+import { tenantPath } from '../lib/tenant';
 
-const METRICS_FILE_PATH = resolve(process.cwd(), 'src', 'data', 'stream-metrics.json');
+function metricsFilePath(tenantId?: string): string {
+    if (tenantId) return tenantPath(tenantId, 'data/stream-metrics.json');
+    return resolve(process.cwd(), 'src', 'data', 'stream-metrics.json');
+}
 
 type Metrics = {
     totalCommands: number;
@@ -17,24 +21,28 @@ let metrics: Metrics = {
     lurkCommands: 0,
 };
 
-export async function loadMetrics(): Promise<void> {
+export async function loadMetrics(tenantId?: string): Promise<void> {
     try {
-        const data = await fs.readFile(METRICS_FILE_PATH, 'utf-8');
+        const data = await fs.readFile(metricsFilePath(tenantId), 'utf-8');
         metrics = JSON.parse(data);
         console.log('[Metrics] Loaded successfully');
     } catch (error: any) {
         if (error.code === 'ENOENT') {
             console.log('[Metrics] No file found, starting fresh');
-            await saveMetrics();
+            await saveMetrics(tenantId);
         } else {
             console.error('[Metrics] Error loading:', error);
         }
     }
 }
 
-export async function saveMetrics(): Promise<void> {
+export async function saveMetrics(tenantId?: string): Promise<void> {
     try {
-        await fs.writeFile(METRICS_FILE_PATH, JSON.stringify(metrics, null, 2));
+        const filePath = metricsFilePath(tenantId);
+        const { mkdir } = await import('fs/promises');
+        const { dirname } = await import('path');
+        await mkdir(dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, JSON.stringify(metrics, null, 2));
     } catch (error) {
         console.error('[Metrics] Error saving:', error);
     }

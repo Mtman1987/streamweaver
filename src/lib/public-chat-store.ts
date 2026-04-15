@@ -60,4 +60,16 @@ export async function appendPublicChatMessages(
   return trimmed;
 }
 
+/**
+ * Clear all chat memory (used when AI content policy violations occur)
+ */
+export async function clearPublicChatMemory(): Promise<void> {
+  try {
+    await fs.writeFile(getPublicChatFilePath(), JSON.stringify([], null, 2));
+    console.log('[Public Chat Store] Memory cleared due to content policy violation');
+  } catch (error) {
+    console.error('[Public Chat Store] Failed to clear memory:', error);
+  }
+}
+
 export { getPublicChatFilePath };

@@ -12,22 +12,25 @@ interface TradeSession {
   expiresAt: number;
 }
 
-const activeTrades = new Map<string, TradeSession>();
+const activeTrades = new Map<string, Map<string, TradeSession>>();
 const TRADE_TIMEOUT = 120000;
 
-function getTradeKey(user1: string, user2: string): string {
-  return [user1, user2].sort().join(':');
+function getTradeKey(user1: string, user2: string, tenantId: string): string {
+  return `${tenantId}:${[user1, user2].sort().join(':')}`;
 }
 
-export async function initiateTrade(initiator: string, target: string): Promise<void> {
-  const key = getTradeKey(initiator, target);
+export async function initiateTrade(initiator: string, target: string, tenantId?: string): Promise<void> {
+  const tid = tenantId || 'global';
+  const key = getTradeKey(initiator, target, tid);
+  const tenantTrades = activeTrades.get(tid) || new Map();
+  activeTrades.set(tid, tenantTrades);
 
-  if (activeTrades.has(key)) {
+  if (tenantTrades.has(key)) {
     await sendChatMessage(`@${initiator}, you already have an active trade with @${target}!`, 'broadcaster');
     return;
   }
 
-  activeTrades.set(key, {
+  tenantTrades.set(key, {
     initiator,
     target,
     initiatorAccepted: false,
@@ -41,8 +44,15 @@ export async function initiateTrade(initiator: string, target: string): Promise<
   );
 }
 
-export async function offerCard(username: string, cardIdentifier: string): Promise<void> {
-  const trade = Array.from(activeTrades.entries()).find(([_, s]) =>
+export async function offerCard(username: string, cardIdentifier: string, tenantId?: string): Promise<void> {
+  const tid = tenantId || 'global';
+  const tenantTrades = activeTrades.get(tid);
+  if (!tenantTrades) {
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    return;
+  }
+
+  const trade = Array.from(tenantTrades.entries()).find(([_, s]) =>
     s.initiator === username || s.target === username
   );
 
@@ -117,13 +127,20 @@ export async function offerCard(username: string, cardIdentifier: string): Promi
         userB: session.target,
         cardA: session.initiatorCard,
         cardB: session.targetCard
-      });
+      }, tid);
     }
   }
 }
 
-export async function acceptTrade(username: string): Promise<void> {
-  const trade = Array.from(activeTrades.entries()).find(([_, s]) =>
+export async function acceptTrade(username: string, tenantId?: string): Promise<void> {
+  const tid = tenantId || 'global';
+  const tenantTrades = activeTrades.get(tid);
+  if (!tenantTrades) {
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    return;
+  }
+
+  const trade = Array.from(tenantTrades.entries()).find(([_, s]) =>
     s.initiator === username || s.target === username
   );
 
@@ -146,12 +163,19 @@ export async function acceptTrade(username: string): Promise<void> {
 
   if (session.initiatorAccepted && session.targetAccepted) {
     await executeTrade(session);
-    activeTrades.delete(key);
+    tenantTrades.delete(key);
   }
 }
 
-export async function cancelTrade(username: string): Promise<void> {
-  const trade = Array.from(activeTrades.entries()).find(([_, s]) =>
+export async function cancelTrade(username: string, tenantId?: string): Promise<void> {
+  const tid = tenantId || 'global';
+  const tenantTrades = activeTrades.get(tid);
+  if (!tenantTrades) {
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    return;
+  }
+
+  const trade = Array.from(tenantTrades.entries()).find(([_, s]) =>
     s.initiator === username || s.target === username
   );
 
@@ -161,7 +185,7 @@ export async function cancelTrade(username: string): Promise<void> {
   }
 
   const [key, session] = trade;
-  activeTrades.delete(key);
+  tenantTrades.delete(key);
   await sendChatMessage(`Trade between @${session.initiator} and @${session.target} cancelled!`, 'broadcaster');
 }
 
@@ -217,13 +241,15 @@ async function executeTrade(session: TradeSession): Promise<void> {
 // Cleanup expired trades
 setInterval(() => {
   const now = Date.now();
-  for (const [key, session] of activeTrades.entries()) {
-    if (session.expiresAt < now) {
-      activeTrades.delete(key);
-      sendChatMessage(
-        `Trade between @${session.initiator} and @${session.target} expired!`,
-        'broadcaster'
-      ).catch(() => {});
+  for (const [tenantId, tenantTrades] of activeTrades.entries()) {
+    for (const [key, session] of tenantTrades.entries()) {
+      if (session.expiresAt < now) {
+        tenantTrades.delete(key);
+        sendChatMessage(
+          `Trade between @${session.initiator} and @${session.target} expired!`,
+          'broadcaster'
+        ).catch(() => {});
+      }
     }
   }
 }, 30000);

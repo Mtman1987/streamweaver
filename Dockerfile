@@ -9,6 +9,7 @@ RUN apt-get update -qq && \
     rm -rf /var/lib/apt/lists/*
 
 COPY .npmrc package-lock.json package.json ./
+COPY patches ./patches
 COPY scripts/bootstrap-runtime.js ./scripts/bootstrap-runtime.js
 RUN npm ci --include=dev
 
@@ -16,12 +17,14 @@ FROM base AS builder
 ARG NEXT_PUBLIC_TWITCH_CLIENT_ID
 ARG NEXT_PUBLIC_STREAMWEAVE_URL
 ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_STREAMWEAVE_WS_URL
 ENV NEXT_PUBLIC_TWITCH_CLIENT_ID=$NEXT_PUBLIC_TWITCH_CLIENT_ID
 ENV NEXT_PUBLIC_STREAMWEAVE_URL=$NEXT_PUBLIC_STREAMWEAVE_URL
 ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
+ENV NEXT_PUBLIC_STREAMWEAVE_WS_URL=$NEXT_PUBLIC_STREAMWEAVE_WS_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN mkdir -p config logs MasterStats data tokens actions commands sb plugin-exports tmp scripts
+RUN mkdir -p config logs MasterStats data/default data/runtime/global data/runtime/tenants tokens actions commands sb plugin-exports tmp scripts
 RUN npm run build:simple
 
 FROM node:20-slim AS runner

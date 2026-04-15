@@ -3,17 +3,20 @@ import { LIMITS } from '../constants';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { handleDiscordMessage } from './chat-dispatcher';
+import { tenantPath } from '../lib/tenant';
 
-let cachedChatHistory: ChatHistoryMessage[] = [];
-let lastDiscordMessageId: string | null = null;
+let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
+let lastDiscordMessageId: Map<string, string | null> = new Map();
 let sentToTwitchIds = new Set<string>();
 let recentlySentMessages = new Set<string>();
-let isLoadingHistory = false;
+let isLoadingHistory: Map<string, boolean> = new Map();
 
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 
-async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId'): Promise<string | null> {
-    const SETTINGS_FILE = resolve(process.cwd(), 'tokens', 'discord-channels.json');
+async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId', tenantId?: string): Promise<string | null> {
+    const SETTINGS_FILE = tenantId 
+        ? tenantPath(tenantId, 'tokens/discord-channels.json')
+        : resolve(process.cwd(), 'tokens', 'discord-channels.json');
     const LEGACY_SETTINGS_FILE = resolve(process.cwd(), 'src', 'data', 'discord-channels.json');
     
     try {
@@ -31,9 +34,10 @@ async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 's
     }
 }
 
-export async function loadChatHistory(): Promise<ChatHistoryMessage[]> {
-    if (isLoadingHistory) return cachedChatHistory;
-    isLoadingHistory = true;
+export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMessage[]> {
+    const key = tenantId || 'global';
+    if (isLoadingHistory.get(key)) return cachedChatHistory.get(key) || [];
+    isLoadingHistory.set(key, true);
 
     try {
         // console.log('[Discord] Checking DISCORD_BOT_TOKEN:', process.env.DISCORD_BOT_TOKEN ? 'set' : 'not set');
@@ -43,19 +47,19 @@ export async function loadChatHistory(): Promise<ChatHistoryMessage[]> {
         }
 
         const { getChannelMessages } = require('./discord');
-        const logChannelId = await getDiscordChannelId('logChannelId');
+        const logChannelId = await getDiscordChannelId('logChannelId', tenantId);
 
         if (!logChannelId) {
-            console.log('[Chat] No Discord log channel configured');
+            console.log(`[Chat:${key}] No Discord log channel configured`);
             return [];
         }
 
-        console.log(`[Discord] Loading chat history from channel ${logChannelId}...`);
+        console.log(`[Discord:${key}] Loading chat history from channel ${logChannelId}...`);
         let messages;
         try {
             messages = await getChannelMessages(logChannelId, 50);
         } catch (error) {
-            console.log('[Discord] Failed to load chat history, continuing without it:', (error as Error).message);
+            console.log(`[Discord:${key}] Failed to load chat history, continuing without it:`, (error as Error).message);
             return [];
         }
         const chatHistory: ChatHistoryMessage[] = [];
@@ -102,27 +106,27 @@ export async function loadChatHistory(): Promise<ChatHistoryMessage[]> {
         if (chatHistory.length > MAX_CHAT_HISTORY) {
             chatHistory.splice(0, chatHistory.length - MAX_CHAT_HISTORY);
         }
-        cachedChatHistory = chatHistory;
+        cachedChatHistory.set(key, chatHistory);
         
         if (messages.length > 0) {
-            lastDiscordMessageId = messages[0].id;
+            lastDiscordMessageId.set(key, messages[0].id);
         }
         
-        console.log(`[Discord] Loaded ${chatHistory.length} chat history messages`);
+        console.log(`[Discord:${key}] Loaded ${chatHistory.length} chat history messages`);
 
         // Broadcast history to connected clients so the UI updates
         if (typeof (global as any).broadcast === 'function') {
             (global as any).broadcast({
                 type: 'chat-history',
                 payload: chatHistory
-            });
+            }, tenantId);
         }
         return chatHistory;
     } catch (error) {
-        console.error('Failed to load chat history from Discord:', error);
+        console.error(`Failed to load chat history from Discord for ${key}:`, error);
         return [];
     } finally {
-        isLoadingHistory = false;
+        isLoadingHistory.set(key, false);
     }
 }
 
@@ -174,7 +178,9 @@ export async function checkChatActivity() {
     }
 }
 
-export function getCachedChatHistory(): ChatHistoryMessage[] {
-    console.log(`[Chat Monitor] getCachedChatHistory called. Items: ${cachedChatHistory.length}`);
-    return cachedChatHistory;
+export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
+    const key = tenantId || 'global';
+    const history = cachedChatHistory.get(key) || [];
+    console.log(`[Chat Monitor:${key}] getCachedChatHistory called. Items: ${history.length}`);
+    return history;
 }

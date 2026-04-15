@@ -17,8 +17,8 @@ export const TTS_VOICES = {
   edenai: ['en-US-Wavenet-F']
 };
 
-export function getTTSConfig(): TTSConfig {
-  const config = readUserConfigSync();
+export function getTTSConfig(tenantId?: string): TTSConfig {
+  const config = readUserConfigSync(tenantId);
   
   const provider = (config.TTS_PROVIDER as TTSProvider) || 'inworld';
   const voice = config.TTS_VOICE || TTS_VOICES[provider][0];
@@ -48,7 +48,7 @@ export function getTTSConfig(): TTSConfig {
 let lastTTSCall = 0;
 const TTS_RATE_LIMIT = 2000; // 2 seconds between TTS calls
 
-export async function generateTTS(text: string, voiceOverride?: string): Promise<string> {
+export async function generateTTS(text: string, voiceOverride?: string, tenantId?: string): Promise<string> {
   console.log('[TTS] generateTTS called | voiceOverride:', voiceOverride ?? '(none)', '| textLength:', text.length);
   
   // Rate limiting to prevent 429 errors
@@ -61,7 +61,7 @@ export async function generateTTS(text: string, voiceOverride?: string): Promise
   }
   lastTTSCall = Date.now();
   
-  const baseConfig = getTTSConfig();
+  const baseConfig = getTTSConfig(tenantId);
   const config: TTSConfig = voiceOverride
     ? { ...baseConfig, voice: voiceOverride }
     : baseConfig;

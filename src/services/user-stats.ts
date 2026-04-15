@@ -59,11 +59,11 @@ export async function getUser(username: string): Promise<UserStats> {
   
   if (!statsCache[username]) {
     const pointsData = await getPointsData(username);
-    // Check Discord for cross-stream gym badges
+    // Check local storage for gym badges
     let badges: string[] = [];
     try {
-      const { getUserBadgesFromDiscord } = require('./badge-storage-discord');
-      badges = await getUserBadgesFromDiscord(username);
+      const { getUserBadges } = require('./badge-storage-discord');
+      badges = await getUserBadges(username);
     } catch {}
     statsCache[username] = {
       user: username,
@@ -179,12 +179,12 @@ export async function awardGymBadge(username: string, badge: string): Promise<vo
     user.badges.push(badge);
     await updateUser(username, { badges: user.badges });
     console.log(`[UserStats] ${username} earned gym badge: ${badge}`);
-    // Persist to Discord for cross-stream sync
+    // Persist locally
     try {
-      const { saveUserBadgesToDiscord } = require('./badge-storage-discord');
-      await saveUserBadgesToDiscord(username, user.badges);
+      const { saveUserBadges } = require('./badge-storage-discord');
+      await saveUserBadges(username, user.badges);
     } catch (err) {
-      console.error('[UserStats] Badge Discord sync failed:', err);
+      console.error('[UserStats] Badge save failed:', err);
     }
   }
 }

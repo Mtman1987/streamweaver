@@ -10,8 +10,8 @@ export interface AIConfig {
   botName: string; // e.g., "Athena", "StreamBot", "Assistant"
 }
 
-export function getAIConfig(): AIConfig {
-  const config = readUserConfigSync();
+export function getAIConfig(tenantId?: string): AIConfig {
+  const config = readUserConfigSync(tenantId);
   
   const provider = (config.AI_PROVIDER as AIProvider) || 'gemini';
   const personalityName = config.AI_PERSONALITY_NAME || 'Commander';
@@ -38,8 +38,8 @@ export function getAIConfig(): AIConfig {
   return { provider, model, apiKey, personalityName, botName };
 }
 
-export async function generateAIResponse(prompt: string, systemPrompt?: string): Promise<string> {
-  const config = getAIConfig();
+export async function generateAIResponse(prompt: string, systemPrompt?: string, tenantId?: string): Promise<string> {
+  const config = getAIConfig(tenantId);
   
   if (!config.apiKey) {
     throw new Error(`No API key configured for ${config.provider}`);

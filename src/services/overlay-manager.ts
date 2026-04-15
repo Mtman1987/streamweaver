@@ -8,8 +8,12 @@ import * as path from 'path';
 import { setBrowserSource } from './obs';
 import { getAppConfig } from '../lib/app-config';
 import { getConfiguredAppUrl } from '../lib/runtime-origin';
+import { tenantPath } from '../lib/tenant';
 
-const OVERLAY_DIR = path.resolve(process.cwd(), 'data', 'overlays');
+function overlayDir(tenantId?: string): string {
+  if (tenantId) return path.join(tenantPath(tenantId, 'data'), 'overlays');
+  return path.resolve(process.cwd(), 'data', 'overlays');
+}
 
 interface OverlayConfig {
   scene: string;
@@ -64,8 +68,8 @@ export async function showOverlay(
 
   try {
     // Write data to JSON file
-    const dataPath = path.join(OVERLAY_DIR, `${type}.json`);
-    await fs.mkdir(OVERLAY_DIR, { recursive: true });
+    const dataPath = path.join(overlayDir(), `${type}.json`);
+    await fs.mkdir(overlayDir(), { recursive: true });
     await fs.writeFile(dataPath, JSON.stringify({ ...data, timestamp: Date.now() }, null, 2));
 
     const url = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT||3100}`}/overlay/${type}`;
@@ -82,14 +86,20 @@ export async function showOverlay(
   }
 }
 
-export async function getOverlayData(type: string): Promise<any> {
+export async function getOverlayData(type: string, tenantId?: string): Promise<any> {
   try {
-    const dataPath = path.join(OVERLAY_DIR, `${type}.json`);
+    const dataPath = path.join(overlayDir(tenantId), `${type}.json`);
     const data = await fs.readFile(dataPath, 'utf-8');
     return JSON.parse(data);
   } catch {
     return null;
   }
+}
+
+export async function writeOverlayData(type: string, data: any, tenantId?: string): Promise<void> {
+  const dir = overlayDir(tenantId);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, `${type}.json`), JSON.stringify({ ...data, timestamp: Date.now() }, null, 2));
 }
 
 export function getOverlayConfig(type: string): OverlayConfig | null {

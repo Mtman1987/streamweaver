@@ -11,6 +11,7 @@
 
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
+import { tenantPath } from '../lib/tenant';
 
 let appAccessToken: string | null = null;
 let appTokenExpiry = 0;
@@ -161,9 +162,11 @@ export async function isChannelInSharedChat(channelLogin: string): Promise<boole
  * Get a user access token for the bot or broadcaster from stored tokens.
  * POST /helix/chat/messages requires a user token, NOT an app token.
  */
-async function getUserToken(as: 'bot' | 'broadcaster'): Promise<string | null> {
+async function getUserToken(as: 'bot' | 'broadcaster', tenantId?: string): Promise<string | null> {
   try {
-    const tokensPath = resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
+    const tokensPath = tenantId
+      ? tenantPath(tenantId, 'tokens/twitch-tokens.json')
+      : resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
     const raw = await fs.readFile(tokensPath, 'utf-8');
     const tokens = JSON.parse(raw);
     return as === 'bot' ? (tokens.botToken || tokens.broadcasterToken) : tokens.broadcasterToken;
@@ -176,7 +179,7 @@ async function sendViaHelixAPI(
   targetChannel: string,
   senderLogin: string,
   message: string,
-  as: 'bot' | 'broadcaster' = 'bot',
+  userToken: string,
   attempt = 0,
 ): Promise<{ success: boolean; reason?: string }> {
   try {
@@ -200,10 +203,6 @@ async function sendViaHelixAPI(
     const sData = await sRes.json();
     const senderId = sData.data?.[0]?.id;
     if (!senderId) return { success: false, reason: 'sender-not-found' };
-
-    // Use USER token for sending — Helix chat/messages requires user:write:chat scope
-    const userToken = await getUserToken(as);
-    if (!userToken) return { success: false, reason: 'no-user-token' };
 
     const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
       method: 'POST',
@@ -235,7 +234,7 @@ async function sendViaHelixAPI(
     }
 
     if (res.status === 401 && attempt < 1) {
-      return sendViaHelixAPI(targetChannel, senderLogin, message, as, attempt + 1);
+      return sendViaHelixAPI(targetChannel, senderLogin, message, userToken, attempt + 1);
     }
 
     return { success: false, reason: 'api-error' };
@@ -258,6 +257,8 @@ export interface SendOptions {
   message: string;
   /** Which identity is sending ('bot' | 'broadcaster') */
   as: 'bot' | 'broadcaster';
+  /** Tenant ID for broadcasting */
+  tenantId?: string;
 }
 
 /**
@@ -266,7 +267,7 @@ export interface SendOptions {
  * Falls back to normal client.say() if API fails or channel is not shared.
  */
 export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<void> {
-  const { client, channel, message, as } = opts;
+  const { client, channel, message, as, tenantId } = opts;
   const normalized = channel.toLowerCase().replace(/^#/, '');
 
   const inShared = await isChannelInSharedChat(normalized);
@@ -276,27 +277,21 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
     (global as any).broadcast({
       type: 'shared-chat-status',
       payload: { channel: normalized, isShared: inShared }
-    });
+    }, tenantId);
   }
 
   if (inShared) {
-    let senderLogin: string;
-    if (as === 'bot') {
-      senderLogin = (
-        process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME ||
-        process.env.TWITCH_BOT_USERNAME ||
-        ''
+    const senderLogin =
+      (typeof client?.getUsername === 'function' ? String(client.getUsername() || '') : '').toLowerCase() ||
+      (
+        as === 'bot'
+          ? (process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME || process.env.TWITCH_BOT_USERNAME || '')
+          : (process.env.TWITCH_BROADCASTER_USERNAME || process.env.NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME || '')
       ).toLowerCase();
-    } else {
-      senderLogin = (
-        process.env.TWITCH_BROADCASTER_USERNAME ||
-        process.env.NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME ||
-        ''
-      ).toLowerCase();
-    }
 
-    if (senderLogin) {
-      const result = await sendViaHelixAPI(normalized, senderLogin, message, as);
+    const userToken = await getUserToken(as, tenantId);
+    if (senderLogin && userToken) {
+      const result = await sendViaHelixAPI(normalized, senderLogin, message, userToken);
       if (result.success) {
         console.log(`[SharedChat] Source-only message sent to ${normalized}`);
         return;

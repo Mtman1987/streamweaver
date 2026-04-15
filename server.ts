@@ -27,47 +27,83 @@ let nextJsProcess: any = null;
 let genkitProcess: any = null;
 let pollingService: any = null;
 
-function broadcast(message: object) {
+function broadcast(message: object, tenantId?: string) {
     if (wss && wss.clients) {
         let count = 0;
         wss.clients.forEach(client => {
             if (client.readyState === 1) { // WebSocket.OPEN
+                const clientTenantId = (client as any).__tenantId;
+                // If tenantId specified, only send to clients with matching tenantId
+                if (tenantId) {
+                    if (!clientTenantId || clientTenantId !== tenantId) {
+                        return;
+                    }
+                }
+                // If no tenantId specified, only send to clients without tenantId (for global messages)
+                else if (clientTenantId) {
+                    return;
+                }
                 client.send(JSON.stringify(message));
                 count++;
             }
         });
-        // console.log(`[WebSocket] Broadcasted message to ${count} clients`);
     }
 }
 
 // Add broadcast to global scope for flows
 (global as any).broadcast = broadcast;
-(global as any).botPersonality = "You are a helpful AI assistant.";
-(global as any).botVoice = "Algieba";
 
 async function startServer() {
     try {
         console.log('[StreamWeaver] Starting unified server...');
+        console.log('[DEBUG] NODE_ENV:', process.env.NODE_ENV);
+        console.log('[DEBUG] PORT:', process.env.PORT);
+        console.log('[DEBUG] WS_PORT:', process.env.WS_PORT);
+        console.log('[DEBUG] SERVER_HOST:', process.env.SERVER_HOST);
 
         // Ensure config exists and migrations are applied before services boot.
-        await initializeLocalConfig();
-        const appConfig = await getConfigSection('app');
+        let appConfig;
+        try {
+            await initializeLocalConfig();
+            appConfig = await getConfigSection('app');
+            console.log('[Config] ✅ Local config initialized successfully');
+        } catch (error) {
+            console.error('[Config] Failed to initialize local config:', error);
+            // Create minimal fallback config
+            appConfig = {
+                server: {
+                    host: '127.0.0.1',
+                    port: 3100,
+                    wsPort: 8090
+                }
+            };
+            console.log('[Config] Using fallback configuration');
+        }
         const isProductionRuntime = process.env.NODE_ENV === 'production';
-        const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig.server.host || '127.0.0.1');
-        const uiPort = Number(process.env.PORT || appConfig.server.port || 3100);
-        const wsPort = Number(process.env.WS_PORT || appConfig.server.wsPort || 8090);
+        const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig?.server?.host || '127.0.0.1');
+        const uiPort = Number(process.env.PORT || appConfig?.server?.port || (isProductionRuntime ? 3000 : 3100));
+        const wsPort = Number(process.env.WS_PORT || appConfig?.server?.wsPort || 8090);
         const nextPublicPort = String(uiPort);
         
-        // Validate configuration
-        const configResult = validateConfiguration();
-        if (!configResult.isValid) {
-            console.error('[Config] Configuration errors found:');
-            configResult.errors.forEach(error => console.error(`  - ${error}`));
-            process.exit(1);
-        }
-        if (configResult.warnings.length > 0) {
-            console.warn('[Config] Configuration warnings:');
-            configResult.warnings.forEach(warning => console.warn(`  - ${warning}`));
+        console.log('[DEBUG] Final config - serverHost:', serverHost, 'uiPort:', uiPort, 'wsPort:', wsPort);
+        
+        // Validate configuration with timeout
+        try {
+            const configResult = validateConfiguration();
+            if (!configResult.isValid) {
+                console.error('[Config] Configuration errors found:');
+                configResult.errors.forEach(error => console.error(`  - ${error}`));
+                // Don't exit in production, just warn
+                if (!isProductionRuntime) {
+                    process.exit(1);
+                }
+            }
+            if (configResult.warnings.length > 0) {
+                console.warn('[Config] Configuration warnings:');
+                configResult.warnings.forEach(warning => console.warn(`  - ${warning}`));
+            }
+        } catch (error) {
+            console.warn('[Config] Configuration validation failed:', error);
         }
         
         // Check if port 8090 is available - try cleanup first if needed
@@ -114,7 +150,7 @@ async function startServer() {
         }
         
         // STEP 1: Start Next.js and wait for it to be ready
-        console.log('[STEP 1] Starting Next.js...');
+        console.log(`[STEP 1] Starting Next.js on ${serverHost}:${uiPort}...`);
         const nextCommand = isProductionRuntime ? 'next' : 'next';
         const nextArgs = isProductionRuntime
             ? ['start', '-p', String(uiPort), '-H', serverHost]
@@ -193,18 +229,14 @@ async function startServer() {
             });
         });
         
-        // STEP 3: Initialize Twitch client
-        console.log('[STEP 3] Initializing Twitch client...');
+        // STEP 3: Initialize Twitch clients for all tenants
+        console.log('[STEP 3] Initializing Twitch clients for all tenants...');
         try {
-            const twitchModule = require('./src/services/twitch-client');
-            const { setupTwitchClient, getTwitchClient } = twitchModule;
-            // Pass broadcast function to Twitch client
-            (global as any).broadcast = broadcast;
-            await setupTwitchClient();
-            twitchClient = getTwitchClient();
-            console.log('[STEP 3] ✅ Twitch client ready');
+            const { setupAllTenants } = require('./src/services/twitch-client');
+            await setupAllTenants();
+            console.log('[STEP 3] ✅ Twitch clients ready');
         } catch (e) {
-            console.warn('[STEP 3] ⚠️ Twitch client failed:', e);
+            console.warn('[STEP 3] ⚠️ Twitch client setup failed:', e);
         }
         
         // Ensure dispatcher module is loaded once during startup.
@@ -220,10 +252,41 @@ async function startServer() {
         const { loadChatHistory } = require('./src/services/chat-monitor');
         const { startEventSub } = require('./src/services/eventsub');
         const { setupObsWebSocket } = require('./src/services/obs');
+        const { loadWelcomeSession } = require('./src/services/welcome-wagon');
+        const { listTenants } = require('./src/lib/tenant');
+
+        // Load welcome session to prevent re-welcoming users after restart
+        try {
+            await loadWelcomeSession();
+            console.log('[STEP 4] ✅ Welcome session loaded');
+        } catch (e) {
+            console.warn('[STEP 4] ⚠️ Welcome session load failed:', e);
+        }
+
+        // Load chat history for all tenants
+        const tenants = await listTenants();
+        console.log(`[STEP 4] Loading chat history for ${tenants.length} tenants...`);
+        for (const tenantId of tenants) {
+            try {
+                await loadChatHistory(tenantId);
+                console.log(`[STEP 4] ✅ Chat history loaded for tenant ${tenantId}`);
+            } catch (e) {
+                console.warn(`[STEP 4] ⚠️ Chat history failed for tenant ${tenantId}:`, e);
+            }
+        }
 
         const services = [
-            { name: 'Chat History', fn: loadChatHistory },
-            { name: 'EventSub', fn: startEventSub },
+            { name: 'EventSub', fn: async () => {
+                // Start EventSub for each tenant
+                for (const tenantId of tenants) {
+                    try {
+                        await startEventSub(tenantId);
+                        console.log(`[STEP 4] ✅ EventSub ready for tenant ${tenantId}`);
+                    } catch (e) {
+                        console.warn(`[STEP 4] ⚠️ EventSub failed for tenant ${tenantId}:`, e);
+                    }
+                }
+            }},
             { name: 'OBS WebSocket', fn: setupObsWebSocket }
         ];
         
@@ -254,11 +317,15 @@ async function startServer() {
             try { const { updateMetrics } = require('./src/services/metrics'); await updateMetrics(); } catch (e) { /* silent */ }
         }, 120000);
         pollingService.addTask('points-sync', async () => {
-            try { const { syncPointsData } = require('./src/services/points'); await syncPointsData(); } catch (e) { /* silent */ }
+            try {
+                const { syncPointsData } = require('./src/services/points');
+                const { listTenants } = require('./src/lib/tenant');
+                const tenantIds = await listTenants();
+                for (const tid of tenantIds) {
+                    await syncPointsData({ tenantId: tid, username: '' }).catch(() => {});
+                }
+            } catch (e) { /* silent */ }
         }, 30000);
-        pollingService.addTask('athena-bingo', async () => {
-            try { const { athenaClaimCheck } = require('./src/services/bingo'); await athenaClaimCheck(); } catch (e) { /* silent */ }
-        }, 5000); // Check every 5 seconds
         pollingService.addTask('watchtime-tracker', async () => {
             try {
                 const resp = await fetch(`http://127.0.0.1:${uiPort}/api/chat/chatters`);

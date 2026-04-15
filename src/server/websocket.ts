@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import * as http from 'http';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
+import { getTenantIdFromSession } from '../lib/tenant';
 
 const privilegedTypes = new Set([
     'send-twitch-message',
@@ -12,13 +13,63 @@ const privilegedTypes = new Set([
     'discord-voice-stream'
 ]);
 
+// Active users tracking
+interface ActiveUser {
+    tenantId: string;
+    username: string;
+    displayName: string;
+    avatar: string;
+    connectedAt: number;
+    lastSeen: number;
+}
+
+const activeUsers = new Map<string, ActiveUser>();
+
+function broadcastActiveUsers(broadcast: (message: object, tenantId?: string) => void, tenantId?: string) {
+    // Only broadcast users for the given tenant
+    const users = Array.from(activeUsers.values()).filter(u => u.tenantId === tenantId);
+    broadcast({ type: 'active-users-update', payload: { users } }, tenantId);
+    // Also broadcast global active users to all clients (for global header)
+    const allUsers = Array.from(activeUsers.values());
+    broadcast({ type: 'global-active-users-update', payload: { users: allUsers } });
+}
+
 function extractApiKeyFromRequest(request: http.IncomingMessage): string {
     const host = request.headers.host || '127.0.0.1';
     const parsed = new URL(request.url || '/', `http://${host}`);
     return parsed.searchParams.get('apiKey') || '';
 }
 
-export function createWebSocketServer(httpServer: http.Server, broadcast: (message: object) => void, cachedChatHistory: any[], channelBadges: any, twitchStatus: string, twitchClient: any) {
+function extractTenantIdFromRequest(request: http.IncomingMessage): string {
+    const host = request.headers.host || '127.0.0.1';
+    const parsed = new URL(request.url || '/', `http://${host}`);
+    return parsed.searchParams.get('tenant') || '';
+}
+
+function extractTenantIdFromCookie(request: http.IncomingMessage): string {
+    const cookieHeader = request.headers.cookie || '';
+    if (!cookieHeader) return '';
+
+    const cookies = cookieHeader.split(';');
+    for (const rawCookie of cookies) {
+        const cookie = rawCookie.trim();
+        if (!cookie.startsWith('streamweaver-session=')) continue;
+
+        const value = cookie.slice('streamweaver-session='.length);
+        if (!value) return '';
+
+        try {
+            const decoded = decodeURIComponent(value);
+            return getTenantIdFromSession(decoded) || '';
+        } catch {
+            return '';
+        }
+    }
+
+    return '';
+}
+
+export function createWebSocketServer(httpServer: http.Server, broadcast: (message: object, tenantId?: string) => void, cachedChatHistory: any[], channelBadges: any, twitchStatus: string, twitchClient: any) {
     const wss = new WebSocketServer({ server: httpServer });
     
     wss.on('connection', async (ws, request) => {
@@ -26,12 +77,20 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
         const connectionAuthorized = validateLocalApiKeySync(extractApiKeyFromRequest(request));
         (ws as any).__localAuthorized = connectionAuthorized;
         
-        try {
-            const { loadChatHistory } = require('../services/chat-monitor');
-            await loadChatHistory();
-        } catch (e) {
-            console.warn('[WebSocket] Failed to reload chat history:', e);
+        // Resolve tenant from URL query param (for overlays) or session cookie (dashboard clients).
+        const urlTenantId = extractTenantIdFromRequest(request);
+        const cookieTenantId = extractTenantIdFromCookie(request);
+        const resolvedTenantId = urlTenantId || cookieTenantId;
+        if (resolvedTenantId) {
+            (ws as any).__tenantId = resolvedTenantId;
+            if (urlTenantId && cookieTenantId && urlTenantId !== cookieTenantId) {
+                console.warn(`[WebSocket] Tenant mismatch (url=${urlTenantId}, cookie=${cookieTenantId}), using URL tenant`);
+            }
+            console.log(`[WebSocket] Client tagged with tenant: ${resolvedTenantId}`);
         }
+        
+        // Do not load global chat history before tenant identification.
+        // This avoids cross-tenant history leakage on initial dashboard load.
         
         try {
             const { getChannelBadges } = require('../services/twitch');
@@ -45,19 +104,73 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             console.warn('[WebSocket] Failed to load badges for new client:', e);
         }
         
-        cachedChatHistory.forEach(msg => {
-            ws.send(JSON.stringify({ 
-                type: 'twitch-message', 
-                payload: msg 
-            }));
-        });
+        // Legacy fallback: only send process-level cached history for non-tenant clients.
+        if (!resolvedTenantId) {
+            cachedChatHistory.forEach(msg => {
+                ws.send(JSON.stringify({
+                    type: 'twitch-message',
+                    payload: msg
+                }));
+            });
+        }
         
         ws.on('message', async (data: any) => {
             try {
                 const message = JSON.parse(data.toString());
 
-                // SECURITY: Require authentication for ALL message types, not just privileged ones
-                if (!(ws as any).__localAuthorized) {
+                // Handle identify message (sets tenantId for this connection)
+                if (message.type === 'identify') {
+                    const tid = message.payload?.tenantId || message.tenantId;
+                    if (tid) {
+                        (ws as any).__tenantId = tid;
+                        console.log(`[WebSocket] Client identified as tenant: ${tid}`);
+
+                        // Send tenant-specific Twitch status after identify.
+                        const { getTwitchStatus } = require('../services/twitch-client');
+                        ws.send(JSON.stringify({
+                            type: 'twitch-status',
+                            payload: { status: getTwitchStatus(tid) }
+                        }));
+
+                        // Refresh tenant-specific chat history now that tenant is known.
+                        const { loadChatHistory } = require('../services/chat-monitor');
+                        loadChatHistory(tid).catch((e: any) => {
+                            console.warn(`[WebSocket] Failed to reload chat history for tenant ${tid}:`, e);
+                        });
+                        
+                        // Add user to active users
+                        const userProfile = message.payload?.userProfile;
+                        if (userProfile) {
+                            activeUsers.set(tid, {
+                                tenantId: tid,
+                                username: userProfile.username || tid,
+                                displayName: userProfile.displayName || userProfile.username || tid,
+                                avatar: userProfile.avatar || '',
+                                connectedAt: Date.now(),
+                                lastSeen: Date.now()
+                            });
+                            console.log(`[WebSocket] Added active user: ${userProfile.displayName || userProfile.username || tid}`);
+                            broadcastActiveUsers(broadcast, tid);
+                        }
+                        
+                        // Send tenant-specific chat history
+                        const { getCachedChatHistory } = require('../services/chat-monitor');
+                        const history = getCachedChatHistory(tid);
+                        if (history && history.length > 0) {
+                            ws.send(JSON.stringify({
+                                type: 'chat-history',
+                                payload: history
+                            }));
+                            console.log(`[WebSocket] Sent ${history.length} cached history items for tenant ${tid}`);
+                        }
+                    }
+                    return;
+                }
+
+                // SECURITY: In cloud mode, tenant-identified connections are authorized.
+                // In local mode, require API key.
+                const isAuthorized = (ws as any).__localAuthorized || !!(ws as any).__tenantId;
+                if (!isAuthorized) {
                     ws.send(JSON.stringify({
                         type: 'error',
                         payload: { message: 'Unauthorized: API key required for all operations' }
@@ -67,7 +180,7 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 }
                 
                 // Additional validation for privileged message types (defense in depth)
-                if (privilegedTypes.has(message.type) && !(ws as any).__localAuthorized) {
+                if (privilegedTypes.has(message.type) && !isAuthorized) {
                     ws.send(JSON.stringify({
                         type: 'error',
                         payload: { message: `Unauthorized for message type ${message.type}` }
@@ -79,9 +192,18 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 if (message.type === 'send-twitch-message') {
                     const { message: text, as } = message.payload;
                     console.log(`[WebSocket] Received message to send as ${as}: ${text}`);
-                    
+
+                    const tenantId = (ws as any).__tenantId;
+                    if (!tenantId) {
+                        ws.send(JSON.stringify({
+                            type: 'error',
+                            payload: { message: 'Missing tenant context for send-twitch-message' }
+                        }));
+                        return;
+                    }
+
                     const { getTwitchClient } = require('../services/twitch-client');
-                    const freshTwitchClient = getTwitchClient(as === 'bot' ? 'bot' : 'broadcaster');
+                    const freshTwitchClient = getTwitchClient(as === 'bot' ? 'bot' : 'broadcaster', tenantId);
                     
                     console.log(`[WebSocket] Twitch client (${as}) exists: ${!!freshTwitchClient}`);
                     console.log(`[WebSocket] Twitch client readyState: ${freshTwitchClient?.readyState?.()}`);
@@ -106,9 +228,17 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 } else if (message.type === 'reconnect-twitch') {
                     console.log('[WebSocket] Received reconnect request for Twitch');
                     try {
+                        const tenantId = (ws as any).__tenantId;
+                        if (!tenantId) {
+                            ws.send(JSON.stringify({
+                                type: 'error',
+                                payload: { message: 'Missing tenant context for reconnect-twitch' }
+                            }));
+                            return;
+                        }
                         const { setupTwitchClient } = require('../services/twitch-client');
-                        await setupTwitchClient();
-                        console.log('[WebSocket] Twitch reconnection attempt completed');
+                        await setupTwitchClient(tenantId);
+                        console.log(`[WebSocket] Twitch reconnection attempt completed for tenant ${tenantId}`);
                     } catch (e) {
                         console.error('[WebSocket] Twitch reconnection failed:', e);
                     }
@@ -119,7 +249,7 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     broadcast({
                         type: 'voice-user-joined',
                         payload: { id, name, room, muted: room === 'silent' }
-                    });
+                    }, (ws as any).__tenantId);
                 } else if (message.type === 'voice-leave') {
                     const { id, name, room } = message.payload;
                     console.log(`[Voice] ${name} left ${room}`);
@@ -127,7 +257,7 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     broadcast({
                         type: 'voice-user-left',
                         payload: { id, name, room }
-                    });
+                    }, (ws as any).__tenantId);
                 } else if (message.type === 'voice-mute') {
                     const { id, name, room, muted } = message.payload;
                     console.log(`[Voice] ${name} ${muted ? 'muted' : 'unmuted'}`);
@@ -135,44 +265,50 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     broadcast({
                         type: 'voice-user-muted',
                         payload: { id, name, room, muted }
-                    });
+                    }, (ws as any).__tenantId);
                 } else if (message.type === 'update-avatar-settings') {
                     const { idleUrl, talkingUrl, gestureUrl, animationType } = message.payload;
                     const { updateAvatarState } = require('../server/avatar');
-                    updateAvatarState({ idleUrl, talkingUrl, gestureUrl, animationType }, broadcast);
+                    updateAvatarState({ idleUrl, talkingUrl, gestureUrl, animationType }, broadcast, (ws as any).__tenantId);
                     console.log('[WebSocket] Updated avatar settings:', message.payload);
                 } else if (message.type === 'show-avatar') {
                     const { showTalkingAvatar } = require('../server/avatar');
-                    showTalkingAvatar(broadcast);
+                    showTalkingAvatar(broadcast, (ws as any).__tenantId);
                     console.log('[WebSocket] Show avatar requested');
                 } else if (message.type === 'hide-avatar') {
                     const { hideAvatarAfterDelay } = require('../server/avatar');
-                    hideAvatarAfterDelay(0, broadcast);
+                    hideAvatarAfterDelay(0, broadcast, (ws as any).__tenantId);
                     console.log('[WebSocket] Hide avatar requested');
                 } else if (message.type === 'update-bot-settings') {
                     const { personality, voice, name, interests } = message.payload;
+                    const { setBotSettings } = require('../lib/bot-settings-store');
+                    const tid = (ws as any).__tenantId;
                     const updates: Record<string, string> = {};
+                    const botUpdates: Record<string, string> = {};
                     if (personality && typeof personality === 'string') {
-                        (global as any).botPersonality = personality;
-                        console.log('[WebSocket] Updated bot personality');
+                        botUpdates.personality = personality;
+                        console.log(`[WebSocket] Updated bot personality for ${tid || 'global'}`);
                     }
                     if (voice && typeof voice === 'string') {
-                        (global as any).botVoice = voice;
+                        botUpdates.voice = voice;
                         updates.TTS_VOICE = voice;
-                        console.log('[WebSocket] Updated bot voice to:', voice);
+                        console.log(`[WebSocket] Updated bot voice to: ${voice}`);
                     }
                     if (name && typeof name === 'string') {
-                        (global as any).botName = name;
+                        botUpdates.name = name;
                         updates.AI_BOT_NAME = name;
-                        console.log('[WebSocket] Updated bot name to:', name);
+                        console.log(`[WebSocket] Updated bot name to: ${name}`);
                     }
                     if (interests && typeof interests === 'string') {
-                        (global as any).botInterests = interests;
-                        console.log('[WebSocket] Updated bot interests');
+                        botUpdates.interests = interests;
+                        console.log(`[WebSocket] Updated bot interests`);
+                    }
+                    if (Object.keys(botUpdates).length > 0) {
+                        setBotSettings(tid, botUpdates);
                     }
                     if (Object.keys(updates).length > 0) {
                         const { writeUserConfig } = require('../lib/user-config');
-                        writeUserConfig(updates).catch((e: any) => console.error('[WebSocket] Failed to persist bot settings:', e));
+                        writeUserConfig(updates, tid).catch((e: any) => console.error('[WebSocket] Failed to persist bot settings:', e));
                     }
                 } else if (message.type === 'voice-command') {
                     const { command } = message.payload;
@@ -253,6 +389,15 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 }
             } catch (error) {
                 console.error('[WebSocket] Error processing client message:', error);
+            }
+        });
+
+        ws.on('close', () => {
+            const tenantId = (ws as any).__tenantId;
+            if (tenantId && activeUsers.has(tenantId)) {
+                activeUsers.delete(tenantId);
+                console.log(`[WebSocket] Removed active user: ${tenantId}`);
+                broadcastActiveUsers(broadcast, tenantId);
             }
         });
     });

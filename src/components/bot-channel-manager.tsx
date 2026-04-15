@@ -403,7 +403,7 @@ export function BotChannelManager() {
     ? allChannels.filter(c => c.name.toLowerCase().includes(searchFilter.toLowerCase()))
     : allChannels;
 
-  const protectedCommands = ['join', 'card', 'bingo', 'tag'];
+  const protectedCommands = ['join', 'card', 'tag'];
 
   return (
     <Card className="bg-card/80 backdrop-blur-sm">

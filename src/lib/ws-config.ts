@@ -24,22 +24,7 @@ const stripProtocol = (protocol: string) =>
   protocol.endsWith(':') ? protocol.slice(0, -1) : protocol;
 
 const appendLocalApiKey = (url: string) => {
-  if (typeof window === 'undefined') {
-    return url;
-  }
-
-  const apiKey = window.localStorage.getItem('streamweaver.localApiKey') || '';
-  if (!apiKey) {
-    return url;
-  }
-
-  try {
-    const parsed = new URL(url);
-    parsed.searchParams.set('apiKey', apiKey);
-    return parsed.toString();
-  } catch {
-    return url;
-  }
+  return url;
 };
 
 export const getStaticWebSocketUrl = () => {
@@ -51,37 +36,41 @@ export const getStaticWebSocketUrl = () => {
   return port ? `ws://${host}:${port}` : `ws://${host}`;
 };
 
-export const getBrowserWebSocketUrl = () => {
+export const getBrowserWebSocketUrl = (tenantId?: string) => {
+  let url = '';
   if (ENV_WS_URL) {
-    return appendLocalApiKey(ENV_WS_URL);
+    url = ENV_WS_URL;
+  } else if (typeof window === 'undefined') {
+    url = getStaticWebSocketUrl();
+  } else {
+    const pageProtocol = stripProtocol(window.location.protocol);
+    const protocol = pageProtocol === 'https' ? 'wss' : 'ws';
+    const hostname = window.location.hostname;
+    const port = sanitizePort(
+      process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || DEFAULT_WS_PORT
+    );
+
+    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
+      url = port
+        ? `${protocol}://127.0.0.1:${port}`
+        : `${protocol}://127.0.0.1`;
+    } else if (hostname.endsWith('.cloudworkstations.dev') && port) {
+      const wsHost = hostname.replace(/^\d+-/, `${port}-`);
+      url = `${protocol}://${wsHost}`;
+    } else if (port) {
+      url = `${protocol}://${hostname}:${port}`;
+    } else {
+      url = `${protocol}://${hostname}`;
+    }
   }
 
-  if (typeof window === 'undefined') {
-    return getStaticWebSocketUrl();
+  // Append tenant ID if provided
+  if (tenantId) {
+    const separator = url.includes('?') ? '&' : '?';
+    url = `${url}${separator}tenant=${encodeURIComponent(tenantId)}`;
   }
 
-  const pageProtocol = stripProtocol(window.location.protocol);
-  const protocol = pageProtocol === 'https' ? 'wss' : 'ws';
-  const hostname = window.location.hostname;
-  const port = sanitizePort(
-    process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || DEFAULT_WS_PORT
-  );
-
-  if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-    return appendLocalApiKey(port
-      ? `${protocol}://127.0.0.1:${port}`
-      : `${protocol}://127.0.0.1`);
-  }
-
-  if (hostname.endsWith('.cloudworkstations.dev') && port) {
-    const wsHost = hostname.replace(/^\d+-/, `${port}-`);
-    return appendLocalApiKey(`${protocol}://${wsHost}`);
-  }
-
-  if (port) {
-    return appendLocalApiKey(`${protocol}://${hostname}:${port}`);
-  }
-  return appendLocalApiKey(`${protocol}://${hostname}`);
+  return appendLocalApiKey(url);
 };
 
 export const STREAMWEAVE_WS_URL = getStaticWebSocketUrl();

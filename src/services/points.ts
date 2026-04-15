@@ -1,5 +1,5 @@
 import path from 'path';
-import { readJsonFile, writeJsonFile } from './storage';
+import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 
 const POINTS_FILE = 'points.json';
 
@@ -18,26 +18,26 @@ function calculateLevel(points: number): number {
   return Math.max(1, Math.floor(points / 100) + 1);
 }
 
-async function loadPoints(): Promise<PointsRecord> {
-  return readJsonFile<PointsRecord>(POINTS_FILE, {});
+async function loadPoints(ctx?: StorageContext): Promise<PointsRecord> {
+  return readJsonFile<PointsRecord>(POINTS_FILE, {}, ctx);
 }
 
-async function savePoints(data: PointsRecord): Promise<void> {
-  await writeJsonFile(POINTS_FILE, data);
+async function savePoints(data: PointsRecord, ctx?: StorageContext): Promise<void> {
+  await writeJsonFile(POINTS_FILE, data, ctx);
 }
 
-export async function getPoints(userId: string): Promise<{ points: number; level: number; totalEarned: number }> {
-  const store = await loadPoints();
+export async function getPoints(userId: string, ctx?: StorageContext): Promise<{ points: number; level: number; totalEarned: number }> {
+  const store = await loadPoints(ctx);
   const entry = store[userId.toLowerCase()];
   return entry ? { points: entry.points, level: entry.level, totalEarned: entry.totalEarned || 0 } : { points: 0, level: 1, totalEarned: 0 };
 }
 
-export async function getAllUsers(): Promise<PointsRecord> {
-  return loadPoints();
+export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {
+  return loadPoints(ctx);
 }
 
-export async function addPointsToAll(amount: number): Promise<number> {
-  const store = await loadPoints();
+export async function addPointsToAll(amount: number, ctx?: StorageContext): Promise<number> {
+  const store = await loadPoints(ctx);
   const now = new Date().toISOString();
   let count = 0;
   
@@ -57,13 +57,13 @@ export async function addPointsToAll(amount: number): Promise<number> {
     count++;
   }
   
-  await savePoints(store);
+  await savePoints(store, ctx);
   console.log(`Added ${amount} points to ${count} users`);
   return count;
 }
 
-export async function setPointsToAll(amount: number): Promise<number> {
-  const store = await loadPoints();
+export async function setPointsToAll(amount: number, ctx?: StorageContext): Promise<number> {
+  const store = await loadPoints(ctx);
   const now = new Date().toISOString();
   const points = Math.max(0, amount);
   const level = calculateLevel(points);
@@ -81,13 +81,13 @@ export async function setPointsToAll(amount: number): Promise<number> {
     count++;
   }
   
-  await savePoints(store);
+  await savePoints(store, ctx);
   console.log(`Set ${count} users to ${amount} points`);
   return count;
 }
 
-export async function resetAllPoints(): Promise<number> {
-  const store = await loadPoints();
+export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
+  const store = await loadPoints(ctx);
   const now = new Date().toISOString();
   let count = 0;
   
@@ -103,7 +103,7 @@ export async function resetAllPoints(): Promise<number> {
     count++;
   }
   
-  await savePoints(store);
+  await savePoints(store, ctx);
   console.log(`Reset points for ${count} users`);
   return count;
 }
@@ -111,9 +111,10 @@ export async function resetAllPoints(): Promise<number> {
 export async function addPoints(
   userId: string,
   amount: number,
-  reason?: string
+  reason?: string,
+  ctx?: StorageContext
 ): Promise<{ points: number; level: number; totalEarned: number }> {
-  const store = await loadPoints();
+  const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date().toISOString();
   const current = store[key] ?? { points: 0, level: 1, updatedAt: now, lastActivity: now, totalEarned: 0 };
@@ -129,16 +130,17 @@ export async function addPoints(
     totalEarned
   };
   
-  await savePoints(store);
+  await savePoints(store, ctx);
   console.log(`Points updated: ${userId} ${amount > 0 ? '+' : ''}${amount} (${reason || 'manual'}) -> ${newPoints} total`);
   return { points: newPoints, level, totalEarned };
 }
 
 export async function setPoints(
   userId: string,
-  value: number
+  value: number,
+  ctx?: StorageContext
 ): Promise<{ points: number; level: number; totalEarned: number }> {
-  const store = await loadPoints();
+  const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date().toISOString();
   const current = store[key] ?? { points: 0, level: 1, updatedAt: now, lastActivity: now, totalEarned: 0 };
@@ -153,12 +155,12 @@ export async function setPoints(
     totalEarned: current.totalEarned
   };
   
-  await savePoints(store);
+  await savePoints(store, ctx);
   return { points, level, totalEarned: current.totalEarned };
 }
 
-export async function getLeaderboard(limit = 10): Promise<Array<{ user: string; points: number; level: number; totalEarned: number }>> {
-  const store = await loadPoints();
+export async function getLeaderboard(limit = 10, ctx?: StorageContext): Promise<Array<{ user: string; points: number; level: number; totalEarned: number }>> {
+  const store = await loadPoints(ctx);
   return Object.entries(store)
     .map(([user, data]) => ({ user, points: data.points, level: data.level, totalEarned: data.totalEarned || 0 }))
     .sort((a, b) => b.points - a.points)
@@ -166,8 +168,8 @@ export async function getLeaderboard(limit = 10): Promise<Array<{ user: string; 
 }
 
 // Award points for follows, subs, etc.
-export async function awardEventPoints(userId: string, event: string, metadata?: any): Promise<void> {
-  const settings = await getPointSettings();
+export async function awardEventPoints(userId: string, event: string, metadata?: any, ctx?: StorageContext): Promise<void> {
+  const settings = await getPointSettings(ctx);
   let points = 0;
   
   switch (event) {
@@ -233,18 +235,18 @@ export async function awardEventPoints(userId: string, event: string, metadata?:
   }
   
   if (points > 0) {
-    await addPoints(userId, points, event);
+    await addPoints(userId, points, event, ctx);
   }
 }
 
 // Auto-award points for chat activity
-export async function awardChatPoints(userId: string): Promise<void> {
-  const store = await loadPoints();
+export async function awardChatPoints(userId: string, ctx?: StorageContext): Promise<void> {
+  const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date();
   const current = store[key];
   
-  const settings = await getPointSettings();
+  const settings = await getPointSettings(ctx);
   const cooldown = settings.chatCooldown || 15;
   
   // Only award if last activity was more than cooldown seconds ago
@@ -259,7 +261,7 @@ export async function awardChatPoints(userId: string): Promise<void> {
   const max = settings.maxChatPoints || 15;
   const points = Math.floor(Math.random() * (max - min + 1)) + min;
   
-  await addPoints(userId, points, 'chat activity');
+  await addPoints(userId, points, 'chat activity', ctx);
 }
 
 // Point settings management
@@ -318,12 +320,12 @@ const defaultSettings: PointSettings = {
   }
 };
 
-export async function getPointSettings(): Promise<PointSettings> {
-  return readJsonFile<PointSettings>(SETTINGS_FILE, defaultSettings);
+export async function getPointSettings(ctx?: StorageContext): Promise<PointSettings> {
+  return readJsonFile<PointSettings>(SETTINGS_FILE, defaultSettings, ctx);
 }
 
-export async function updatePointSettings(settings: Partial<PointSettings> & { eventPoints?: Partial<PointSettings['eventPoints']> }): Promise<void> {
-  const current = await getPointSettings();
+export async function updatePointSettings(settings: Partial<PointSettings> & { eventPoints?: Partial<PointSettings['eventPoints']> }, ctx?: StorageContext): Promise<void> {
+  const current = await getPointSettings(ctx);
   const updated = {
     ...current,
     ...settings,
@@ -332,37 +334,37 @@ export async function updatePointSettings(settings: Partial<PointSettings> & { e
       ...(settings.eventPoints ?? {}),
     },
   };
-  await writeJsonFile(SETTINGS_FILE, updated);
+  await writeJsonFile(SETTINGS_FILE, updated, ctx);
 }
 
-export async function getChannelPointRewards(): Promise<ChannelPointReward[]> {
+export async function getChannelPointRewards(ctx?: StorageContext): Promise<ChannelPointReward[]> {
   return readJsonFile<ChannelPointReward[]>(REWARDS_FILE, [
     { name: 'first', points: 100, message: 'Congrats on being first!' },
     { name: 'hydrate', points: -100, message: 'Stay hydrated! 💧' },
     { name: 'stretch', points: -100, message: 'Time to stretch! 🤸' }
-  ]);
+  ], ctx);
 }
 
-export async function updateChannelPointRewards(rewards: ChannelPointReward[]): Promise<void> {
-  await writeJsonFile(REWARDS_FILE, rewards);
+export async function updateChannelPointRewards(rewards: ChannelPointReward[], ctx?: StorageContext): Promise<void> {
+  await writeJsonFile(REWARDS_FILE, rewards, ctx);
 }
 
-export async function getUserPoints(userId: string): Promise<number> {
-  const data = await getPoints(userId);
+export async function getUserPoints(userId: string, ctx?: StorageContext): Promise<number> {
+  const data = await getPoints(userId, ctx);
   return data.points;
 }
 
-export async function updateUserPoints(userId: string, value: number): Promise<void> {
-  await setPoints(userId, value);
+export async function updateUserPoints(userId: string, value: number, ctx?: StorageContext): Promise<void> {
+  await setPoints(userId, value, ctx);
 }
 
 /**
  * Syncs points data and broadcasts updates to clients
  */
-export async function syncPointsData(): Promise<void> {
+export async function syncPointsData(ctx?: StorageContext): Promise<void> {
   try {
     // Get current leaderboard
-    const leaderboard = await getLeaderboard(10);
+    const leaderboard = await getLeaderboard(10, ctx);
     
     // Broadcast points update to connected clients
     if (typeof (global as any).broadcast === 'function') {

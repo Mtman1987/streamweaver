@@ -15,9 +15,9 @@ type PendingSwap = {
   timestamp: number;
 };
 
-const pendingSwaps = new Map<string, PendingSwap>();
+const pendingSwaps = new Map<string, Map<string, PendingSwap>>();
 
-export async function proposeSwap(fromUser: string, toUser: string, fromCardNum: number, toCardNum: number): Promise<void> {
+export async function proposeSwap(fromUser: string, toUser: string, fromCardNum: number, toCardNum: number, tenantId?: string): Promise<void> {
   const fromCards = await getUserCards(fromUser);
   const toCards = await getUserCards(toUser);
 
@@ -47,7 +47,11 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
     toAvatar = tUser?.profileImageUrl || '';
   } catch {}
 
-  pendingSwaps.set(toUser.toLowerCase(), {
+  const tid = tenantId || 'global';
+  const tenantSwaps = pendingSwaps.get(tid) || new Map();
+  pendingSwaps.set(tid, tenantSwaps);
+
+  tenantSwaps.set(toUser.toLowerCase(), {
     from: fromUser.toLowerCase(),
     to: toUser.toLowerCase(),
     fromIdx,
@@ -61,9 +65,12 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
 
   // Auto-expire after 60 seconds
   setTimeout(() => {
-    const p = pendingSwaps.get(toUser.toLowerCase());
-    if (p && p.from === fromUser.toLowerCase()) {
-      pendingSwaps.delete(toUser.toLowerCase());
+    const tenantSwaps = pendingSwaps.get(tid);
+    if (tenantSwaps) {
+      const p = tenantSwaps.get(toUser.toLowerCase());
+      if (p && p.from === fromUser.toLowerCase()) {
+        tenantSwaps.delete(toUser.toLowerCase());
+      }
     }
   }, 60000);
 
@@ -76,23 +83,27 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
     (global as any).broadcast({
       type: 'pokemon-swap-proposal',
       payload: { from: fromUser, to: toUser, fromCard: fc, toCard: tc },
-    });
+    }, tid);
     (global as any).broadcast({
       type: 'pokemon-trade-preview',
       userA: fromUser, userB: toUser,
       avatarA: fromAvatar, avatarB: toAvatar,
       cardA: { name: fc.name, number: fc.number, setCode: fc.setCode, imageUrl: fc.imageUrl },
       cardB: { name: tc.name, number: tc.number, setCode: tc.setCode, imageUrl: tc.imageUrl },
-    });
+    }, tid);
   }
 }
 
-export async function acceptSwap(username: string): Promise<boolean> {
+export async function acceptSwap(username: string, tenantId?: string): Promise<boolean> {
+  const tid = tenantId || 'global';
+  const tenantSwaps = pendingSwaps.get(tid);
+  if (!tenantSwaps) return false;
+
   const key = username.toLowerCase();
-  const swap = pendingSwaps.get(key);
+  const swap = tenantSwaps.get(key);
   if (!swap) return false;
 
-  pendingSwaps.delete(key);
+  tenantSwaps.delete(key);
 
   // Re-validate cards still exist at those indices
   const fromCards = await getUserCards(swap.from);
@@ -137,35 +148,43 @@ export async function acceptSwap(username: string): Promise<boolean> {
       avatarA: swap.fromAvatar, avatarB: swap.toAvatar,
       cardA: { name: swap.fromCard.name, number: swap.fromCard.number, setCode: swap.fromCard.setCode, imageUrl: swap.fromCard.imageUrl },
       cardB: { name: swap.toCard.name, number: swap.toCard.number, setCode: swap.toCard.setCode, imageUrl: swap.toCard.imageUrl },
-    });
+    }, tid);
   }
 
   return true;
 }
 
-export async function cancelSwap(username: string): Promise<boolean> {
+export async function cancelSwap(username: string, tenantId?: string): Promise<boolean> {
+  const tid = tenantId || 'global';
+  const tenantSwaps = pendingSwaps.get(tid);
+  if (!tenantSwaps) return false;
+
   const key = username.toLowerCase();
-  const swap = pendingSwaps.get(key);
+  const swap = tenantSwaps.get(key);
   if (!swap) {
     // Also check if this user is the proposer
-    for (const [k, s] of pendingSwaps) {
+    for (const [k, s] of tenantSwaps) {
       if (s.from === key) {
-        pendingSwaps.delete(k);
+        tenantSwaps.delete(k);
         await sendChatMessage(`🚫 Swap cancelled by ${username}.`, 'broadcaster').catch(() => {});
         return true;
       }
     }
     return false;
   }
-  pendingSwaps.delete(key);
+  tenantSwaps.delete(key);
   await sendChatMessage(`🚫 Swap declined by ${username}.`, 'broadcaster').catch(() => {});
   return true;
 }
 
-export function hasPendingSwap(username: string): boolean {
+export function hasPendingSwap(username: string, tenantId?: string): boolean {
+  const tid = tenantId || 'global';
+  const tenantSwaps = pendingSwaps.get(tid);
+  if (!tenantSwaps) return false;
+
   const key = username.toLowerCase();
-  if (pendingSwaps.has(key)) return true;
-  for (const s of pendingSwaps.values()) {
+  if (tenantSwaps.has(key)) return true;
+  for (const s of tenantSwaps.values()) {
     if (s.from === key) return true;
   }
   return false;

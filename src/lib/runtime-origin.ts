@@ -61,6 +61,11 @@ export function getOAuthRedirectUri(provider: 'twitch' | 'discord' | 'youtube', 
   const normalizedExplicit = normalizeUrl(explicit);
   if (normalizedExplicit) return normalizedExplicit;
 
+  // Always use the specific StreamWeaver redirect URI for Twitch
+  if (provider === 'twitch') {
+    return 'https://streamweaver-new.fly.dev/auth/twitch/callback';
+  }
+
   return `${getConfiguredAppUrl(fallbackOrigin)}/auth/${provider}/callback`;
 }
 

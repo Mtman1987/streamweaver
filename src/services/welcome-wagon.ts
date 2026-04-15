@@ -85,7 +85,44 @@ export async function resetWelcomeSession(): Promise<void> {
 
 export async function shouldWelcomeUser(username: string): Promise<boolean> {
   const key = username.toLowerCase();
-  return !currentSession.welcomedUsers.has(key);
+  
+  // Check if user was already welcomed in current session
+  if (currentSession.welcomedUsers.has(key)) {
+    return false;
+  }
+  
+  // Additional check: if stream has been live for less than 5 minutes, 
+  // be more conservative about welcoming to avoid spam on restart
+  try {
+    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/live`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.isLive && data.startedAt) {
+        const streamStart = new Date(data.startedAt);
+        const now = new Date();
+        const streamDuration = now.getTime() - streamStart.getTime();
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        // If stream just started (less than 5 minutes), only welcome users who haven't been seen recently
+        if (streamDuration < fiveMinutes) {
+          // Check if this user was welcomed in the last 2 hours
+          const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+          const sessionStart = new Date(currentSession.streamStartTime);
+          
+          // If our session started recently but user was welcomed in a previous recent session, skip
+          if (sessionStart > twoHoursAgo) {
+            console.log(`[Welcome] Stream just started, being conservative about welcoming ${username}`);
+            return false;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    // If we can't check stream status, err on the side of caution
+    console.log(`[Welcome] Could not check stream status, being conservative about welcoming ${username}`);
+  }
+  
+  return true;
 }
 
 export async function markUserWelcomed(username: string): Promise<void> {

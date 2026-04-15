@@ -30,7 +30,7 @@ import {
   Gift
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { UserProfile } from "@/app/(app)/layout"
+import type { UserProfile } from "./app-shell"
 
 // Safe import — falls back to no-op if log panel context is missing
 let useLogPanel = () => ({ visible: false, setVisible: (_v: boolean) => {} });

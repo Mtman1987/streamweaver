@@ -55,12 +55,20 @@ async function getTwitchAppAccessToken(): Promise<string> {
  * Sends a chat message to Twitch via WebSocket server.
  * @param message The message to send.
  * @param as The identity to send the message as ('bot' or 'broadcaster'). Defaults to 'broadcaster'.
+ * @param targetChannel Optional explicit channel login.
+ * @param tenantId Optional tenant context (required for multi-tenant safety when targetChannel is omitted).
  */
-export async function sendChatMessage(message: string, as: 'bot' | 'broadcaster' = 'broadcaster', targetChannel?: string): Promise<void> {
+export async function sendChatMessage(
+  message: string,
+  as: 'bot' | 'broadcaster' = 'broadcaster',
+  targetChannel?: string,
+  tenantId?: string
+): Promise<void> {
   try {
     const wsPort = process.env.WS_PORT || '8090';
     const body: any = { message, as };
     if (targetChannel) body.targetChannel = targetChannel.replace(/^#/, '');
+    if (tenantId) body.tenantId = tenantId;
     const response = await fetch(`http://localhost:${wsPort}/api/twitch/send-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

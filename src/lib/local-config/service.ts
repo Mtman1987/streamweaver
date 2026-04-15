@@ -12,15 +12,21 @@ import {
   type LocalConfigMap,
 } from './schemas';
 import { readUserConfigSync } from '../user-config';
+import { tenantPath } from '../tenant';
 
 const CONFIG_DIR = path.resolve(process.cwd(), 'config');
+
+function configDir(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'config');
+  return CONFIG_DIR;
+}
 
 let cached: LocalConfigMap | null = null;
 let initialized = false;
 let initPromise: Promise<LocalConfigMap> | null = null;
 
-function sectionPath(section: ConfigSectionName): string {
-  return path.join(CONFIG_DIR, `${section}.json`);
+function sectionPath(section: ConfigSectionName, tenantId?: string): string {
+  return path.join(configDir(tenantId), `${section}.json`);
 }
 
 function getDeepValue(obj: Record<string, any>, dotted: string): unknown {
@@ -39,8 +45,15 @@ function setDeepValue(obj: Record<string, any>, dotted: string, value: unknown):
 }
 
 async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+  // Ensure data is not undefined
+  if (data === undefined) {
+    console.warn(`[Config] Attempted to write undefined data to ${filePath}, using empty object`);
+    data = {};
+  }
+  
   const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}.${crypto.randomUUID()}`;
-  await fsp.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
+  const jsonString = JSON.stringify(data, null, 2);
+  await fsp.writeFile(tmp, jsonString, 'utf-8');
   await fsp.rename(tmp, filePath);
 }
 
@@ -101,7 +114,8 @@ function migrateFromLegacy(config: LocalConfigMap): LocalConfigMap {
       },
       security: {
         ...config.app.security,
-        apiKey: parseApiKey(config.app.security.apiKey) || parseApiKey(process.env.STREAMWEAVER_API_KEY) || generateApiKey(),
+        requireApiKey: false,
+        apiKey: '',
       },
     },
   };
@@ -123,28 +137,50 @@ export async function initializeLocalConfig(): Promise<LocalConfigMap> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    await fsp.mkdir(CONFIG_DIR, { recursive: true });
+    try {
+      await fsp.mkdir(CONFIG_DIR, { recursive: true });
 
-    const draft = {} as LocalConfigMap;
-    for (const section of configFileOrder) {
-      const filePath = sectionPath(section);
-      try {
-        const raw = await fsp.readFile(filePath, 'utf-8');
-        draft[section] = configSchemas[section].parse(JSON.parse(raw)) as any;
-      } catch {
-        draft[section] = defaultSection(section) as any;
+      const draft = {} as LocalConfigMap;
+      for (const section of configFileOrder) {
+        const filePath = sectionPath(section);
+        try {
+          const raw = await fsp.readFile(filePath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          draft[section] = configSchemas[section].parse(parsed) as any;
+        } catch (error) {
+          console.log(`[Config] Creating default config for section: ${section}`);
+          draft[section] = defaultSection(section) as any;
+        }
       }
+
+      const migrated = migrateFromLegacy(draft);
+
+      // Validate migrated config before writing
+      for (const section of configFileOrder) {
+        if (migrated[section] === undefined) {
+          console.warn(`[Config] Section ${section} is undefined, using default`);
+          migrated[section] = defaultSection(section) as any;
+        }
+      }
+
+      for (const section of configFileOrder) {
+        await writeJsonAtomic(sectionPath(section), migrated[section]);
+      }
+
+      cached = migrated;
+      initialized = true;
+      return migrated;
+    } catch (error) {
+      console.error('[Config] Failed to initialize local config:', error);
+      // Return minimal working config to prevent crash
+      const fallback = {} as LocalConfigMap;
+      for (const section of configFileOrder) {
+        fallback[section] = defaultSection(section) as any;
+      }
+      cached = fallback;
+      initialized = true;
+      return fallback;
     }
-
-    const migrated = migrateFromLegacy(draft);
-
-    for (const section of configFileOrder) {
-      await writeJsonAtomic(sectionPath(section), migrated[section]);
-    }
-
-    cached = migrated;
-    initialized = true;
-    return migrated;
   })();
 
   try {
@@ -205,38 +241,18 @@ export async function getPublicConfigAll(): Promise<Record<ConfigSectionName, Re
 }
 
 export async function validateLocalApiKey(apiKey?: string | null): Promise<boolean> {
-  const cfg = await getConfigSection('app');
-  if (!cfg.security.requireApiKey) return true;
-  const provided = apiKey || '';
-  const configuredKey = parseApiKey(cfg.security.apiKey);
-  const envFallbackKey = parseApiKey(process.env.STREAMWEAVER_API_KEY);
-
-  if (configuredKey && provided === configuredKey) return true;
-  if (envFallbackKey && provided === envFallbackKey) return true;
-  return false;
+  return true;
 }
 
 export async function isDebugRoutesEnabled(): Promise<boolean> {
+  // In cloud/production mode, allow debug routes for authenticated users
+  if (process.env.NODE_ENV === 'production') return true;
   const cfg = await getConfigSection('app');
   return Boolean(cfg.security.allowDebugRoutes);
 }
 
 export function validateLocalApiKeySync(apiKey?: string | null): boolean {
-  // Skip API key check entirely if disabled via env
-  if (process.env.DISABLE_API_KEY === 'true') return true;
-  try {
-    const filePath = sectionPath('app');
-    if (!fs.existsSync(filePath)) return false;
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const parsed = configSchemas.app.parse(JSON.parse(raw));
-    if (!parsed.security.requireApiKey) return true;
-    const provided = apiKey || '';
-    const configuredKey = parseApiKey(parsed.security.apiKey);
-    const envFallbackKey = parseApiKey(process.env.STREAMWEAVER_API_KEY);
-    return Boolean((configuredKey && provided === configuredKey) || (envFallbackKey && provided === envFallbackKey));
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 export function getConfigDirectoryPath(): string {

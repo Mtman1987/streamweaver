@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
-
-const TOKENS_FILE = resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
+import { tenantPath } from './tenant';
 
 export interface StoredTokens {
     broadcasterToken?: string;
@@ -25,27 +24,29 @@ export interface StoredTokens {
     lastUpdated?: string;
 }
 
-export async function getStoredTokens(): Promise<StoredTokens | null> {
+function tokensFilePath(tenantId?: string): string {
+    if (tenantId) {
+        return tenantPath(tenantId, 'tokens/twitch-tokens.json');
+    }
+    return resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
+}
+
+export async function getStoredTokens(tenantId?: string): Promise<StoredTokens | null> {
     try {
-        const data = await fs.readFile(TOKENS_FILE, 'utf-8');
+        const data = await fs.readFile(tokensFilePath(tenantId), 'utf-8');
         return JSON.parse(data);
     } catch {
         return null;
     }
 }
 
-export async function saveTokens(tokens: StoredTokens): Promise<void> {
-    try {
-        await fs.mkdir(resolve(process.cwd(), 'tokens'), { recursive: true });
-        await fs.writeFile(TOKENS_FILE, JSON.stringify(tokens, null, 2));
-    } catch (error) {
-        console.error('Failed to save tokens:', error);
-        throw error;
-    }
+export async function saveTokens(tokens: StoredTokens, tenantId?: string): Promise<void> {
+    const filePath = tokensFilePath(tenantId);
+    await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(tokens, null, 2));
 }
 
 export async function ensureValidToken(token: string): Promise<string> {
-    // Basic token validation - in a real app you'd validate with Twitch API
     if (!token || token.length < 10) {
         throw new Error('Invalid token');
     }

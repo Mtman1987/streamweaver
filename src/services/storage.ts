@@ -1,101 +1,76 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { tenantPath } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
 
-function getUserDataRoot(): string {
+export interface StorageContext {
+  tenantId: string;
+  username: string;
+}
+
+// Legacy fallback: reads from the old single-user data dir
+function getLegacyDataRoot(): string {
   const config = readUserConfigSync();
   const username = config.TWITCH_BROADCASTER_USERNAME || 'default';
   return path.resolve(process.cwd(), 'data', username);
 }
 
-const ALLOW_FILE_IO = true; // Always enabled
+function resolveDataRoot(ctx?: StorageContext): string {
+  if (ctx?.tenantId) {
+    return path.join(tenantPath(ctx.tenantId, 'data'), ctx.username);
+  }
+  return getLegacyDataRoot();
+}
 
 // Mutex for file writing to prevent race conditions
 const fileLocks: Map<string, Promise<void>> = new Map();
 
-// Debug log to see what's happening
-console.log('[Storage] File IO is always enabled');
-
-async function ensureDataDir() {
-  const dataRoot = getUserDataRoot();
-  await fs.mkdir(dataRoot, { recursive: true });
+async function ensureDir(dir: string) {
+  await fs.mkdir(dir, { recursive: true });
 }
 
-async function checkPermission() {
-  // Always allow file IO
-}
-
-/**
- * Acquires a lock for a specific file to prevent concurrent writes
- * This prevents race conditions when multiple processes try to write to the same file
- */
-async function acquireLock(fileName: string): Promise<() => void> {
-  // Wait for any existing lock to be released
-  while (fileLocks.has(fileName)) {
-    await fileLocks.get(fileName);
+async function acquireLock(key: string): Promise<() => void> {
+  while (fileLocks.has(key)) {
+    await fileLocks.get(key);
   }
-  
-  let releaseLock: (() => void) | undefined;
-  const lockPromise = new Promise<void>((resolve) => {
-    releaseLock = resolve;
-  });
-  
-  fileLocks.set(fileName, lockPromise);
-  
-  return releaseLock!;
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => { release = resolve; });
+  fileLocks.set(key, promise);
+  return release;
 }
 
-/**
- * Releases the lock for a specific file
- */
-function releaseLockForFile(fileName: string, releaseFn: () => void): void {
-  fileLocks.delete(fileName);
-  releaseFn();
+function releaseLock(key: string, release: () => void): void {
+  fileLocks.delete(key);
+  release();
 }
 
-export async function readJsonFile<T = any>(fileName: string, defaultValue: T): Promise<T> {
-  await checkPermission();
-  await ensureDataDir();
-  const dataRoot = getUserDataRoot();
+export async function readJsonFile<T = any>(fileName: string, defaultValue: T, ctx?: StorageContext): Promise<T> {
+  const dataRoot = resolveDataRoot(ctx);
+  await ensureDir(dataRoot);
   const filePath = path.join(dataRoot, fileName);
   try {
     const data = await fs.readFile(filePath, 'utf-8');
     return JSON.parse(data) as T;
   } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return defaultValue;
-    }
+    if (error.code === 'ENOENT') return defaultValue;
     throw error;
   }
 }
 
-export async function writeJsonFile(fileName: string, data: any): Promise<void> {
-  await checkPermission();
-  await ensureDataDir();
-  const dataRoot = getUserDataRoot();
+export async function writeJsonFile(fileName: string, data: any, ctx?: StorageContext): Promise<void> {
+  const dataRoot = resolveDataRoot(ctx);
+  await ensureDir(dataRoot);
   const filePath = path.join(dataRoot, fileName);
-  
-  // Acquire lock to prevent race conditions
-  const release = await acquireLock(fileName);
-  
+
+  const release = await acquireLock(filePath);
   try {
-    // Write to a temporary file first, then rename (atomic write)
     const tempPath = `${filePath}.tmp.${Date.now()}`;
     await fs.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf-8');
-    
-    // Atomic rename - this ensures the file is either fully written or not
     await fs.rename(tempPath, filePath);
   } catch (error) {
-    // Clean up temp file if it exists
-    try {
-      const tempPath = `${filePath}.tmp.${Date.now()}`;
-      await fs.unlink(tempPath);
-    } catch {
-      // Ignore cleanup errors
-    }
+    try { await fs.unlink(`${filePath}.tmp.${Date.now()}`); } catch {}
     throw error;
   } finally {
-    // Always release the lock
-    releaseLockForFile(fileName, release);
+    releaseLock(filePath, release);
   }
 }

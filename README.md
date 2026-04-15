@@ -1,378 +1,207 @@
 # StreamWeaver
 
-StreamWeaver is a local-only streaming control application built as a Node.js automation server plus a browser UI.
+StreamWeaver is a multi-tenant streaming automation platform built with Node.js and Next.js. It runs on Fly.io and provides each streamer with their own isolated environment for Twitch chat bots, AI features, overlays, game systems, and automation flows.
 
-It runs entirely on the user’s machine and is designed for stream operators who need local integrations such as Twitch, Discord, OBS, overlays, game logic, automation flows, AI features, and file-backed state without exposing services to the LAN or requiring code edits.
+## Live App
 
-## Current Architecture
+**URL:** https://streamweaver-new.fly.dev
 
-### Runtime
+## Architecture
 
-- Node.js server orchestrated from `server.ts`
-- Next.js browser UI served locally
-- Local HTTP control APIs under `src/app/api/**`
-- Local WebSocket server for real-time dashboard and overlay updates
+### Cloud Runtime
+- Next.js 15 app served on Fly.io (always-on)
+- Custom WebSocket server for real-time dashboard and overlay updates
+- Per-tenant data isolation on persistent volume (`/data/runtime/tenants/{twitchId}/`)
+- Global shared data for cross-stream features like Pokemon (`/data/runtime/global/`)
 
-### Primary Data Locations
+### Multi-Tenant Model
+- Each user logs in with Twitch OAuth → creates a tenant directory
+- Tokens, config, points, chat history are isolated per tenant
+- Twitch IRC clients boot per-tenant at startup
+- Session cookie (`streamweaver-session`) identifies the tenant on every request
 
-- `config/` user-editable validated configuration
-- `data/` persistent runtime data
-- `logs/` runtime logs and diagnostics
-- `tokens/` legacy local token and migration data
-- `actions/`, `commands/`, `sb/` automation content and imported assets
+### Security
+- Auth middleware protects all dashboard and API routes
+- Overlay URLs are public (no auth needed for OBS browser sources)
+- Session-based auth replaces the old local API key model
 
-### Security Model
+## Getting Started
 
-- Services bind to `127.0.0.1` only
-- Local APIs require `X-API-Key` when enabled in `config/app.json`
-- Secret values are masked in config API responses after storage
-- Debug routes are disabled unless explicitly enabled in config
-- WebSocket privileged commands require local auth
+### For Streamers
 
-## Features
+1. Go to https://streamweaver-new.fly.dev
+2. Click "Sign in with Twitch"
+3. Go to `/integrations` and link your Broadcaster and Bot accounts
+4. The bot connects to your Twitch chat automatically
+5. Configure AI personality, TTS voice, and commands from the dashboard
 
-- Browser-based dashboard and settings UI
-- Twitch integration and token management
-- Discord integration for channels, messages, embeds, avatars, and guild helpers
-- OBS integration via OBS WebSocket
-- Game/economy systems including gamble, points, and Pokemon features
-- AI and automation routes for chat, shoutouts, memory, flow generation, TTS, and speech utilities
-- Local overlays and real-time browser sources powered by WebSocket events
+### What You Get
+- **AI Chat Bot** — responds to mentions in your Twitch chat with configurable personality
+- **TTS** — text-to-speech for bot responses (Inworld, Google, OpenAI providers)
+- **Points System** — per-channel points with chat activity rewards, leaderboards
+- **Pokemon TCG** — global card game shared across all streams
+- **Overlays** — OBS browser sources for TTS, gamble, Pokemon, and more
+- **Voice Commander** — speak commands to control your stream
+- **Shared Chat Aware** — bot messages stay in your channel only (see `docs/SHARED-CHAT.md`)
 
-## Overlays (OBS Browser Sources)
+## Overlay URLs
 
-StreamWeaver provides browser-based overlays that can be added as Browser Sources in OBS, Streamlabs, or any streaming software. All overlays run at `http://127.0.0.1:3100` and communicate via WebSocket for real-time updates.
+All overlays run at `https://streamweaver-new.fly.dev` and connect via WebSocket at `wss://streamweaver-new.fly.dev:8090`. Add these as Browser Sources in OBS.
 
-The scene name and source name in OBS do not matter — only the URL matters.
-
-### TTS Player + Bot Avatar
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/tts-player` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Plays AI text-to-speech audio and displays the bot avatar |
-
-- Polls for new TTS audio and plays it automatically
-- Shows the bot avatar (MP4, GIF, or Lottie) in the bottom-left while speaking
-- Avatar switches between idle and talking animations based on audio playback
-- Avatar stays visible for 30 seconds after audio ends to avoid flickering on back-to-back TTS
-- Display mode (always visible or auto-hide) is configured in Bot Functions
-- **Important**: Click the overlay once after adding it to OBS to unlock browser autoplay
-- Upload avatar files (idle/talking) from the Bot Functions page in the dashboard
-
-### Partner Check-In
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/partner-checkin` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Shows partner check-in animations when a viewer redeems a check-in |
-
-- Two-phase display: pending phase shows broadcaster avatar while choosing, final phase shows the selected partner's Discord avatar
-- Avatars display at 192px in the top-left corner
-- Pending phase lasts 45 seconds, final phase lasts 25 seconds
-- Connects via WebSocket, no API polling
-
-### Pokémon Pack Opening
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/pokemon-pack-overlay` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Animated card pack opening when a viewer redeems a Pokémon pack |
-
-- Cards display face-down with the viewer's Twitch avatar on the card backs
-- Cards flip to reveal one at a time
-- Rarest card is always the final big reveal
-- Connects via WebSocket for real-time triggers
-
-### Pokémon Collection
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/pokemon-collection-overlay` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Scrolling display of a viewer's card collection |
-
-- Triggered by the `!collection` chat command
-- Shows cards in a scrolling strip at the bottom of the screen (10 cards per row, 2 visible rows)
-- Gradient fades at top and bottom edges
-- Info bar shows username, card count, and Pokédex link
-- Always finishes in 18 seconds regardless of collection size (more cards = faster scroll)
-- Fades and viewport only render during the animation — fully transparent when idle
-
-### Pokémon Trade
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/pokemon-trade-overlay` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Animated card trade between two viewers |
-
-- Cards slide in from opposite sides, flash, and swap positions
-- Shows both viewers' Twitch avatars (128px with gold border)
-- Connects via WebSocket
-
-### Gym Battle
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/gym-battle-overlay` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Real-time Pokémon gym battle display |
-
-- Shows challenger vs gym leader cards, HP bars, and energy
-- Updates in real-time as attacks and switches happen via WebSocket
-
-### Gamble (Space Mountain)
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/gamble-overlay` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Displays gamble results with win/loss animations |
-
-### Classic Gamble
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/classic-gamble-overlay` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Classic-style gamble result display |
-
-### Dynamic Overlay
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/overlay/{type}` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Generic overlay that renders based on type parameter |
-
-- Supported types: `notification`, `gamble`, `space-mountain`, `classic-gamble`
-- Polls `/api/overlay/{type}` every 500ms for data
-
-### Leaderboard
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/overlay/leaderboard` |
-| Size | 400×600 (top-right corner) |
-| Purpose | Live points leaderboard showing top 5 viewers |
-
-- Updates every 10 seconds
-- Click to show/hide
-
-### Shoutout Player
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/shoutout-player` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Plays a Twitch clip when a shoutout is triggered |
-
-- Receives clip URL via query parameters
-- Fetches clip video from Twitch and plays it
-
-### BRB Player
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/brb-player` |
-| Size | 1920×1080 (full screen) |
-| Purpose | Plays a Twitch clip as a BRB screen |
-
-### Bot Avatar (Standalone)
-
-| | |
-|---|---|
-| URL | `http://127.0.0.1:3100/overlay/avatar` |
-| Size | 300×300 |
-| Purpose | Standalone bot avatar display without TTS audio |
-
-- Use the TTS Player overlay instead for combined avatar + audio
-- This overlay is available if you need the avatar in a separate source from audio
+| Overlay | URL | Size | Purpose |
+|---------|-----|------|---------|
+| TTS Player + Bot Avatar | `/tts-player` | 1920×1080 | Plays AI TTS audio, shows bot avatar |
+| Partner Check-In | `/partner-checkin` | 1920×1080 | Partner check-in animations |
+| Pokémon Pack Opening | `/pokemon-pack-overlay` | 1920×1080 | Animated card pack opening |
+| Pokémon Collection | `/pokemon-collection-overlay` | 1920×1080 | Scrolling card collection display |
+| Pokémon Trade | `/pokemon-trade-overlay` | 1920×1080 | Animated card trade between viewers |
+| Gym Battle | `/gym-battle-overlay` | 1920×1080 | Real-time Pokémon gym battle |
+| Gamble (Space Mountain) | `/gamble-overlay` | 1920×1080 | Gamble result animations |
+| Classic Gamble | `/classic-gamble-overlay` | 1920×1080 | Classic-style gamble display |
+| Dynamic Overlay | `/overlay/{type}` | 1920×1080 | Generic overlay by type |
+| Leaderboard | `/overlay/leaderboard` | 400×600 | Live points leaderboard |
+| Shoutout Player | `/shoutout-player` | 1920×1080 | Plays Twitch clip on shoutout |
+| BRB Player | `/brb-player` | 1920×1080 | BRB screen with clip playback |
+| Bot Avatar (Standalone) | `/overlay/avatar` | 300×300 | Bot avatar without TTS |
 
 ### Adding Overlays to OBS
+1. Add a new **Browser Source** in OBS
+2. Set URL to `https://streamweaver-new.fly.dev/{overlay-path}`
+3. Set width/height as noted above (1920×1080 for most)
+4. For TTS Player, click the source once to unlock browser autoplay
+5. Scene and source names don't matter — only the URL matters
 
-1. In OBS, add a new **Browser Source**.
-2. Set the URL to the overlay address (e.g. `http://127.0.0.1:3100/tts-player`).
-3. Set width and height as noted above (1920×1080 for most overlays).
-4. For the TTS Player, click the source once after adding to unlock autoplay.
-5. Scene and source names can be anything — only the URL matters.
+## Chat Commands
 
-## Requirements
+### Everyone
+| Command | What |
+|---------|------|
+| `!commands` | List all commands |
+| `!points` | Check your points |
+| `!gamble <amount>` | Gamble points |
+| `!roll <amount>` | Roll dice for points |
+| `!double` | Double or nothing (after !roll) |
+| `!coinflip` | Flip a coin |
+| `!followage` | Check follow duration |
+| `!uptime` | Stream uptime |
+| `!time` | Current time (all US zones + UTC) |
+| `!watchtime` | Your total watch time |
+| `!stats` | Channel stats |
+| `!leader` | Points leaderboard |
+| `!collection` | Your Pokémon card collection |
+| `!pack` | Open a Pokémon card pack |
+| `!show <card>` | Show a card from your collection |
+| `!gymteam <3 cards>` | Set your gym battle team |
+| `!challenge` | Join gym battle queue |
+| `!deck` | View your saved deck |
 
-- Node.js 20 or newer
+### Social
+`!hug`, `!boop`, `!cuddle`, `!dance`, `!highfive`, `!headpat`, `!tickle`, `!love`, `!fistbump`, `!lurk`, `!unlurk`, `!hydrate`, `!stretch`
+
+### Mods/Broadcaster
+| Command | What |
+|---------|------|
+| `!so <user>` | Shoutout a user |
+| `!setgame <game>` | Change stream game |
+| `!settitle <title>` | Change stream title |
+| `!addpoints @user <amount>` | Add points to user |
+| `!setpoints @user <amount>` | Set user's points |
+| `!addtoall <amount>` | Add points to everyone |
+| `!brb` | Start BRB clip player |
+| `!back` | End BRB |
+| `!chatmode` | Toggle shared chat mode |
+| `!clipmode` | Toggle clip source mode |
+| `!greetingmode` | Toggle AI greeting mode |
+| `!welcomemode` | Toggle welcome overlay/chat |
+| `!admin` | List all admin commands |
+
+## Dashboard Pages
+
+| Page | Path | What |
+|------|------|------|
+| Dashboard | `/dashboard` | Main control panel, chat, metrics |
+| Integrations | `/integrations` | Connect Twitch, Discord, OBS, YouTube |
+| Bot Functions | `/bot-functions` | AI personality, TTS voice, avatar |
+| Currency | `/currency` | Points leaderboard, manage user points |
+| Gamble Settings | `/gamble-settings` | Configure gamble game |
+| Commands | `/commands` | View/edit chat commands |
+| Actions | `/actions` | View/edit automation actions |
+| Games | `/games` | Pokemon, gym battles |
+| Redeems | `/redeems` | Channel point redemption config |
+| Settings | `/settings` | Advanced config (local-config sections) |
+| Community | `/community` | Community list and shared content |
+| Live Files | `/debug/data-files` | View live data files (points, chat, etc.) |
+
+## WebSocket
+
+The WebSocket server runs on port 8090 and provides real-time updates:
+
+- **Cloud URL:** `wss://streamweaver-new.fly.dev:8090`
+- **Local URL:** `ws://127.0.0.1:8090`
+
+Events broadcast to connected clients:
+- `twitch-message` — chat messages
+- `twitch-status` — connection status
+- `play-tts` — TTS audio playback
+- `pokemon-*` — card game events
+- `points-leaderboard-update` — leaderboard changes
+- `welcome-overlay` — new viewer welcome
+- `shared-chat-status` — shared chat detection
+
+## Data Isolation
+
+```
+/data/runtime/
+├── global/                    # Shared across all tenants
+│   ├── pokemon-users/         # Pokemon card collections
+│   ├── pokemon-collections/
+│   ├── MasterStats/
+│   └── community-bot-tokens.json
+├── tenants/
+│   └── {twitchId}/            # Per-tenant isolated data
+│       ├── tokens/            # Twitch OAuth tokens
+│       ├── config/            # Tenant-specific config
+│       ├── data/              # Points, chat history, stats
+│       │   └── {username}/    # User-specific data files
+│       ├── actions/           # Custom actions
+│       ├── commands/          # Custom commands
+│       └── logs/
+```
+
+## Development
+
+### Requirements
+- Node.js 20+ (Node 24 has SWC issues — use Docker for builds)
 - npm
-- Windows is the current primary environment, though packaging scripts exist for macOS and Linux as well
 
-## Installation
-
-### Source Install
-
-1. Clone or extract the repository.
-2. Run `setup.bat` on Windows, or manually create `.env`, `config`, `data`, `logs`, and `tokens` if needed.
-3. Install dependencies with `npm install`.
-
-## Running the App
-
-### Recommended local start
-
-Run:
-
-```powershell
-npm start
-```
-
-Or on Windows:
-
-```powershell
-start-streamweaver.bat
-```
-
-By default the app starts:
-
-- UI at `http://127.0.0.1:3100`
-- WebSocket server at `ws://127.0.0.1:8090`
-
-The browser can open automatically depending on `config/app.json`.
-
-### Development mode
-
-Run:
-
-```powershell
+### Local Development
+```bash
+npm install
 npm run dev
 ```
 
-Useful development scripts:
-
-- `npm run dev`
-- `npm run dev:next`
-- `npm run dev:ws`
-- `npm run build`
-- `npm run typecheck`
-- `npm run lint`
-
-## Configuration
-
-The active configuration layer lives in `config/*.json`.
-
-### Config files
-
-- `config/app.json`
-- `config/twitch.json`
-- `config/discord.json`
-- `config/game.json`
-- `config/economy.json`
-- `config/automation.json`
-
-### How config works
-
-- Config files are created and validated at startup
-- Legacy values are migrated from `.env` and `tokens/user-config.json` where possible
-- Config updates are written atomically
-- Secret values are masked when read through the browser UI
-
-### Settings UI
-
-Use the browser Settings page to manage local configuration.
-
-1. Start the app.
-2. Open the browser UI.
-3. Unlock Settings with the API key from `config/app.json`.
-4. Save changes section by section.
-
-## Packaging and Distribution
-
-The app supports local release staging with `pkg`.
-
-### Package commands
-
-- `npm run package:release`
-- `npm run package:win`
-- `npm run package:mac`
-- `npm run package:linux`
-
-Packaged releases are staged into `dist/` with a local-app folder layout that keeps editable files outside the binary:
-
-```text
-dist/
-  StreamWeaver-win/
-    config/
-    data/
-    logs/
-    StreamWeaver.exe
-    README.md
+### Deploy to Fly.io
+```bash
+flyctl deploy --remote-only
 ```
 
-## Runtime Notes
+The Dockerfile handles the build with Node 20 and applies the Next.js patch automatically.
 
-### Twitch
+### Environment Variables
+Set these as Fly.io secrets:
+- `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` — Twitch app credentials
+- `DISCORD_BOT_TOKEN` — Discord bot (shared)
+- `GEMINI_API_KEY` — AI provider
+- `EDENAI_API_KEY` — Alternative AI provider
+- `OPENAI_API_KEY` — Alternative AI provider
 
-- Twitch OAuth and token flows run locally
-- Client credentials may come from `.env` or migrated local config
-- Tokens remain local to the machine
+Build args (in `fly.toml`):
+- `NEXT_PUBLIC_TWITCH_CLIENT_ID`
+- `NEXT_PUBLIC_STREAMWEAVE_URL`
+- `NEXT_PUBLIC_BASE_URL`
+- `NEXT_PUBLIC_STREAMWEAVE_WS_URL`
 
-### Discord
+## Documentation
 
-- Some Discord operations require a bot token stored locally
-- Channel and UI-facing configuration can be managed from the browser UI
-
-### OBS
-
-- OBS control expects a locally reachable OBS WebSocket endpoint
-- This is one reason StreamWeaver stays local-first
-
-## Troubleshooting
-
-### Ports already in use
-
-- Check whether another process is already using `3100` or `8090`
-- Use `stop-streamweaver.bat` before restarting on Windows
-
-### Invalid local API key
-
-- Open `config/app.json`
-- Confirm `security.apiKey`
-- Re-enter it in the Settings UI
-
-### Twitch or Discord failures
-
-- Confirm required credentials are present in local config or `.env`
-- Confirm OAuth redirects and bot membership are correct
-
-### Build issues
-
-- Run `npm run typecheck`
-- Run `npm run lint`
-- Rebuild with `npm run build`
-
-## Development Notes
-
-### Main code areas
-
-- `server.ts` unified local runtime bootstrap
-- `src/app/(app)` browser UI
-- `src/app/api` authenticated local APIs
-- `src/server` custom HTTP and WebSocket server code
-- `src/lib/local-config` validated config layer
-- `scripts/` local packaging and maintenance scripts
-
-### Modernization status
-
-The codebase has been modernized around:
-
-- local config instead of ad hoc setup docs
-- validated request parsing
-- standardized API response envelopes
-- loopback-only local auth for control surfaces
-- removal of dead Electron packaging and obsolete helper docs
-
-## Contributing
-
-1. Keep changes local-first and loopback-only.
-2. Prefer validated config and typed request schemas.
-3. Do not introduce LAN-facing services or plain-text secret responses.
-4. Run `npm run typecheck` and `npm run lint` before shipping changes.
+- `docs/SHARED-CHAT.md` — How shared chat detection and source-only messaging works
+- `TODO-MULTI-TENANT.md` — Migration status and remaining work

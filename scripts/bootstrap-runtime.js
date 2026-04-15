@@ -30,7 +30,6 @@ const files = [
   { file: path.join('tokens', 'chat-memory.json'), value: {} },
   { file: path.join('tokens', 'partners.txt'), value: '' },
   { file: path.join('data', 'discord-last-tag-message.json'), value: {} },
-  { file: path.join('data', 'bingo-state.json'), value: {} },
   { file: path.join('data', 'carmen-state.json'), value: {} },
   { file: path.join('data', 'gamble-settings.json'), value: {} },
   { file: path.join('data', 'user-stats.json'), value: {} },

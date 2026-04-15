@@ -1,14 +1,23 @@
 {
   "id": "11758377-4e9e-490a-bb09-49971439b4dd",
   "name": "!brb Video player",
-  "description": "Imported from Streamer.bot: !brb Video player",
+  "description": "Switches OBS to the streamer's BRB scene (configured in Integrations > OBS Scene Names)",
   "triggers": [
     {
       "type": "Chat Command",
       "config": {}
     }
   ],
-  "subActions": [],
+  "subActions": [
+    {
+      "id": "brb-scene-switch-001",
+      "type": 25,
+      "enabled": true,
+      "weight": 1,
+      "index": 0,
+      "sceneName": "brb"
+    }
+  ],
   "enabled": true,
   "concurrent": false,
   "queue": false,

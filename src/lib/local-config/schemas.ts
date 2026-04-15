@@ -70,6 +70,17 @@ const customRewardSchema = z.object({
   response: z.string().default(''),
 });
 
+export const obsConfigSchema = z.object({
+  scenes: z.object({
+    live: z.string().default(''),
+    brb: z.string().default(''),
+    starting: z.string().default(''),
+    ending: z.string().default(''),
+    chatting: z.string().default(''),
+    gaming: z.string().default(''),
+  }).default({}),
+});
+
 export const redeemsConfigSchema = z.object({
   partnerCheckin: z.object({
     rewardTitle: z.string().default(''),
@@ -92,6 +103,7 @@ export const configSchemas = {
   game: gameConfigSchema,
   economy: economyConfigSchema,
   automation: automationConfigSchema,
+  obs: obsConfigSchema,
   redeems: redeemsConfigSchema,
 };
 
@@ -101,6 +113,7 @@ export type DiscordConfig = z.infer<typeof discordConfigSchema>;
 export type GameConfig = z.infer<typeof gameConfigSchema>;
 export type EconomyConfig = z.infer<typeof economyConfigSchema>;
 export type AutomationConfig = z.infer<typeof automationConfigSchema>;
+export type ObsConfig = z.infer<typeof obsConfigSchema>;
 export type RedeemsConfig = z.infer<typeof redeemsConfigSchema>;
 
 export type ConfigSectionName = keyof typeof configSchemas;
@@ -111,6 +124,7 @@ export type LocalConfigMap = {
   game: GameConfig;
   economy: EconomyConfig;
   automation: AutomationConfig;
+  obs: ObsConfig;
   redeems: RedeemsConfig;
 };
 
@@ -121,6 +135,7 @@ export const secretFields: Record<ConfigSectionName, string[]> = {
   game: [],
   economy: [],
   automation: ['geminiApiKey', 'edenaiApiKey', 'openaiApiKey'],
+  obs: [],
   redeems: [],
 };
 
@@ -131,6 +146,7 @@ export const configFileOrder: ConfigSectionName[] = [
   'game',
   'economy',
   'automation',
+  'obs',
   'redeems',
 ];
 

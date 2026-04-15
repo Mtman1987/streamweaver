@@ -9,15 +9,23 @@ import fetch from 'node-fetch';
 import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 
-let eventSubSocket: WebSocket | null = null;
-let eventSubReconnectTimeout: NodeJS.Timeout | null = null;
+const eventSubSockets = new Map<string, WebSocket>();
+const eventSubReconnectTimeouts = new Map<string, NodeJS.Timeout>();
 const recentChatMessages = new Map<string, { message: string; timestamp: number }>();
 
-async function getBroadcasterAuth(): Promise<{ clientId: string; accessToken: string; broadcasterId: string } | null> {
+function tenantKey(tenantId?: string): string {
+    return tenantId || 'global';
+}
+
+function userMessageKey(username: string, tenantId?: string): string {
+    return `${tenantKey(tenantId)}:${username.toLowerCase()}`;
+}
+
+async function getBroadcasterAuth(tenantId?: string): Promise<{ clientId: string; accessToken: string; broadcasterId: string } | null> {
     // Get tokens from OAuth (not env)
-    const tokens = await getStoredTokens();
+    const tokens = await getStoredTokens(tenantId);
     if (!tokens) {
-        console.warn('[EventSub] No OAuth tokens found - please authenticate via dashboard');
+        console.warn(`[EventSub:${tenantId || 'global'}] No OAuth tokens found - please authenticate via dashboard`);
         return null;
     }
 
@@ -138,9 +146,9 @@ async function createChannelPointSubscription(auth: { clientId: string; accessTo
     console.log('[EventSub] Channel point subscription created:', createdId || '(unknown id)', 'Response:', JSON.stringify(data, null, 2));
 }
 
-export async function logBroadcasterTokenScopes(): Promise<void> {
+export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void> {
     try {
-        const auth = await getBroadcasterAuth();
+        const auth = await getBroadcasterAuth(tenantId);
         if (!auth) return;
         const scopes = await getBroadcasterTokenScopes(auth);
         if (!scopes) {
@@ -153,13 +161,15 @@ export async function logBroadcasterTokenScopes(): Promise<void> {
     }
 }
 
-export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Promise<void> {
-    if (eventSubSocket) {
-        try { eventSubSocket.close(); } catch { /* ignore */ }
-        eventSubSocket = null;
+export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss.twitch.tv/ws'): Promise<void> {
+    const tKey = tenantKey(tenantId);
+    const existingSocket = eventSubSockets.get(tKey);
+    if (existingSocket) {
+        try { existingSocket.close(); } catch { /* ignore */ }
+        eventSubSockets.delete(tKey);
     }
 
-    const auth = await getBroadcasterAuth();
+    const auth = await getBroadcasterAuth(tenantId);
     if (!auth) return;
 
     const scopes = await getBroadcasterTokenScopes(auth);
@@ -174,23 +184,28 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
         return;
     }
 
-    console.log('[EventSub] Connecting:', url);
-    eventSubSocket = new WebSocket(url);
+    console.log(`[EventSub:${tKey}] Connecting:`, url);
+    const socket = new WebSocket(url);
+    eventSubSockets.set(tKey, socket);
 
-    eventSubSocket.on('open', () => {
-        console.log('[EventSub] Socket open');
+    socket.on('open', () => {
+        console.log(`[EventSub:${tKey}] Socket open`);
     });
 
-    eventSubSocket.on('close', (code, reason) => {
-        console.warn('[EventSub] Socket closed:', code, reason?.toString?.() || '');
-        scheduleEventSubReconnect('wss://eventsub.wss.twitch.tv/ws', 3000);
+    socket.on('close', (code, reason) => {
+        console.warn(`[EventSub:${tKey}] Socket closed:`, code, reason?.toString?.() || '');
+        const current = eventSubSockets.get(tKey);
+        if (current === socket) {
+            eventSubSockets.delete(tKey);
+        }
+        scheduleEventSubReconnect('wss://eventsub.wss.twitch.tv/ws', 3000, tenantId);
     });
 
-    eventSubSocket.on('error', (err) => {
-        console.warn('[EventSub] Socket error:', err);
+    socket.on('error', (err) => {
+        console.warn(`[EventSub:${tKey}] Socket error:`, err);
     });
 
-    eventSubSocket.on('message', async (raw) => {
+    socket.on('message', async (raw) => {
         try {
             const msg = JSON.parse(raw.toString());
             const messageType = msg?.metadata?.message_type;
@@ -198,7 +213,7 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
             if (messageType === 'session_welcome') {
                 const sessionId = msg?.payload?.session?.id;
                 if (!sessionId) return;
-                console.log('[EventSub] Session established:', sessionId);
+                console.log(`[EventSub:${tKey}] Session established:`, sessionId);
                 
                 // Clean up old subscriptions and create new one
                 await deleteExistingChannelPointSubscriptions(auth);
@@ -209,8 +224,8 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
             if (messageType === 'session_reconnect') {
                 const reconnectUrl = msg?.payload?.session?.reconnect_url;
                 if (typeof reconnectUrl === 'string' && reconnectUrl.startsWith('wss://')) {
-                    console.log('[EventSub] Reconnect requested');
-                    scheduleEventSubReconnect(reconnectUrl, 500);
+                    console.log(`[EventSub:${tKey}] Reconnect requested`);
+                    scheduleEventSubReconnect(reconnectUrl, 500, tenantId);
                 }
                 return;
             }
@@ -246,7 +261,7 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
                                 const { getUserPoints } = require('./points');
                                 const pts = await getUserPoints(userLogin);
                                 if (pts < checkinPointCost) {
-                                    sendChatMessage(`@${userLogin}, you need ${checkinPointCost} points for a partner check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
+                                    sendChatMessage(`@${userLogin}, you need ${checkinPointCost} points for a partner check-in! (You have ${pts})`, 'broadcaster', undefined, tenantId).catch(() => {});
                                     return;
                                 }
                             }
@@ -257,33 +272,39 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
                             // Post the partner list so the viewer knows the numbers
                             if (partners.length > 0) {
                                 const list = partners.map((p: any) => `${p.id}.${p.name}`).join(' ');
-                                sendChatMessage(`Partner Check-Ins: ${list}`, 'broadcaster').catch(() => {});
+                                sendChatMessage(`Partner Check-Ins: ${list}`, 'broadcaster', undefined, tenantId).catch(() => {});
                             }
 
                             // Check for recent chat message or text input
-                            const recentMsg = recentChatMessages.get(userLogin.toLowerCase());
+                            const recentMsgKey = userMessageKey(userLogin, tenantId);
+                            const recentMsg = recentChatMessages.get(recentMsgKey);
                             const now = Date.now();
                             let squareNum: number | null = null;
 
                             if (recentMsg && (now - recentMsg.timestamp) < 5000) {
                                 squareNum = parseInt(recentMsg.message.trim(), 10);
-                                recentChatMessages.delete(userLogin.toLowerCase());
+                                recentChatMessages.delete(recentMsgKey);
                             } else if (userInput) {
                                 squareNum = parseInt(userInput, 10);
                             }
 
                             if (!squareNum || isNaN(squareNum) || squareNum < 1) {
                                 // No number yet — store pending redemption, wait for chat message
-                                pendingPartnerCheckins.set(userLogin.toLowerCase(), { timestamp: Date.now(), guildId, roleName, pointCost: redeemsConfig.partnerCheckin.pointCost });
+                                let tenantPartnerCheckins = pendingPartnerCheckins.get(tKey);
+                                if (!tenantPartnerCheckins) {
+                                    tenantPartnerCheckins = new Map();
+                                    pendingPartnerCheckins.set(tKey, tenantPartnerCheckins);
+                                }
+                                tenantPartnerCheckins.set(userLogin.toLowerCase(), { timestamp: Date.now(), guildId, roleName, pointCost: redeemsConfig.partnerCheckin.pointCost });
                                 if ((global as any).broadcast) {
-                                    (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username: userLogin } });
+                                    (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username: userLogin } }, tenantId);
                                 }
                                 console.log(`[EventSub] Waiting for ${userLogin} to type a partner number...`);
                                 return;
                             }
 
                             console.log(`[EventSub] Partner check-in: ${userLogin} selected square ${squareNum}`);
-                            handlePartnerCheckin(userLogin, squareNum, guildId, roleName, redeemsConfig.partnerCheckin.pointCost).catch(err => {
+                            handlePartnerCheckin(userLogin, squareNum, guildId, roleName, redeemsConfig.partnerCheckin.pointCost, tenantId).catch(err => {
                                 console.error('[EventSub] Partner check-in handler error:', err);
                             });
                         }
@@ -298,7 +319,7 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
                                 const { getUserPoints } = require('./points');
                                 const pts = await getUserPoints(userLogin);
                                 if (pts < packPointCost) {
-                                    sendChatMessage(`@${userLogin}, you need ${packPointCost} points to open a pack! (You have ${pts})`, 'broadcaster').catch(() => {});
+                                    sendChatMessage(`@${userLogin}, you need ${packPointCost} points to open a pack! (You have ${pts})`, 'broadcaster', undefined, tenantId).catch(() => {});
                                     return;
                                 }
                             }
@@ -306,27 +327,33 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
                             const enabledSets = redeemsConfig.pokePack.enabledSets || ['base1','base2','base3','base4','base5','gym1'];
                             const setMap = getEnabledSetMap(enabledSets);
                             const setCount = Object.keys(setMap).length;
-                            sendChatMessage(formatSetList(setMap), 'broadcaster').catch(err => console.error('[EventSub] Failed to post set list:', err));
+                            sendChatMessage(formatSetList(setMap), 'broadcaster', undefined, tenantId).catch(err => console.error('[EventSub] Failed to post set list:', err));
 
                             // Check for number from recent chat or input
-                            const recentMsg = recentChatMessages.get(userLogin.toLowerCase());
+                            const recentMsgKey = userMessageKey(userLogin, tenantId);
+                            const recentMsg = recentChatMessages.get(recentMsgKey);
                             const now = Date.now();
                             let setNumber: number | null = null;
 
                             if (recentMsg && (now - recentMsg.timestamp) < 5000) {
                                 setNumber = parseInt(recentMsg.message.trim(), 10);
-                                recentChatMessages.delete(userLogin.toLowerCase());
+                                recentChatMessages.delete(recentMsgKey);
                             } else if (userInput) {
                                 setNumber = parseInt(userInput, 10);
                             }
 
                             if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
-                                pendingPackRedeems.set(userLogin.toLowerCase(), { timestamp: Date.now(), pointCost: redeemsConfig.pokePack.pointCost });
+                                let tenantPackRedeems = pendingPackRedeems.get(tKey);
+                                if (!tenantPackRedeems) {
+                                    tenantPackRedeems = new Map();
+                                    pendingPackRedeems.set(tKey, tenantPackRedeems);
+                                }
+                                tenantPackRedeems.set(userLogin.toLowerCase(), { timestamp: Date.now(), pointCost: redeemsConfig.pokePack.pointCost });
                                 console.log(`[EventSub] Waiting for ${userLogin} to pick a pack set...`);
                                 return;
                             }
 
-                            handlePackOpen(userLogin, setNumber, redeemsConfig.pokePack.pointCost).catch(err => {
+                            handlePackOpen(userLogin, setNumber, redeemsConfig.pokePack.pointCost, tenantId).catch(err => {
                                 console.error('[EventSub] Pack open error:', err);
                             });
                             return;
@@ -345,7 +372,7 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
                             if (reward.pointCost > 0) {
                                 const points = await getUserPoints(userLogin);
                                 if (points < reward.pointCost) {
-                                    sendChatMessage(`@${userLogin}, you need ${reward.pointCost} points for that! (You have ${points})`, 'broadcaster').catch(() => {});
+                                    sendChatMessage(`@${userLogin}, you need ${reward.pointCost} points for that! (You have ${points})`, 'broadcaster', undefined, tenantId).catch(() => {});
                                     return;
                                 }
                                 await addPoints(userLogin, -reward.pointCost, `redeem:${matchedTitle}`);
@@ -355,10 +382,10 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
 
                             if (reward.response) {
                                 const msg = reward.response.replace(/{user}/g, userLogin);
-                                sendChatMessage(msg, 'broadcaster').catch(() => {});
+                                sendChatMessage(msg, 'broadcaster', undefined, tenantId).catch(() => {});
                             } else if (reward.pointCost !== 0) {
                                 const newBalance = await getUserPoints(userLogin);
-                                sendChatMessage(`@${userLogin} redeemed ${matchedTitle}! Balance: ${newBalance} pts`, 'broadcaster').catch(() => {});
+                                sendChatMessage(`@${userLogin} redeemed ${matchedTitle}! Balance: ${newBalance} pts`, 'broadcaster', undefined, tenantId).catch(() => {});
                             }
                         }
                     }
@@ -370,36 +397,41 @@ export async function startEventSub(url = 'wss://eventsub.wss.twitch.tv/ws'): Pr
     });
 }
 
-function scheduleEventSubReconnect(url: string, delayMs = 2000) {
-    if (eventSubReconnectTimeout) return;
+function scheduleEventSubReconnect(url: string, delayMs = 2000, tenantId?: string) {
+    const tKey = tenantKey(tenantId);
+    if (eventSubReconnectTimeouts.has(tKey)) return;
     
     // Exponential backoff with max delay
     const maxDelay = TIMEOUTS.RECONNECT_MAX_DELAY;
     const actualDelay = Math.min(delayMs < TIMEOUTS.RECONNECT_MIN_DELAY ? TIMEOUTS.RECONNECT_MIN_DELAY : delayMs, maxDelay);
     
-    eventSubReconnectTimeout = setTimeout(() => {
-        eventSubReconnectTimeout = null;
-        void startEventSub(url);
+    const timer = setTimeout(() => {
+        eventSubReconnectTimeouts.delete(tKey);
+        void startEventSub(tenantId, url);
     }, actualDelay);
+    eventSubReconnectTimeouts.set(tKey, timer);
     
-    console.log(`[EventSub] Scheduled reconnect in ${actualDelay}ms`);
+    console.log(`[EventSub:${tKey}] Scheduled reconnect in ${actualDelay}ms`);
 }
 
 // Pending partner check-ins: viewer redeemed but hasn't typed a number yet
-export const pendingPartnerCheckins = new Map<string, { timestamp: number; guildId: string; roleName: string; pointCost: number }>();
-export const pendingPackRedeems = new Map<string, { timestamp: number; pointCost: number }>();
+export const pendingPartnerCheckins = new Map<string, Map<string, { timestamp: number; guildId: string; roleName: string; pointCost: number }>>();
+export const pendingPackRedeems = new Map<string, Map<string, { timestamp: number; pointCost: number }>>();
 
 // Export function to track chat messages for redemptions
-export function trackChatMessageForRedemption(username: string, message: string): boolean {
+export function trackChatMessageForRedemption(username: string, message: string, tenantId?: string): boolean {
     const key = username.toLowerCase();
+    const tKey = tenantKey(tenantId);
+    const msgKey = userMessageKey(username, tenantId);
 
     // If this user has a pending partner check-in and typed a number, fire it
-    const pending = pendingPartnerCheckins.get(key);
+    const tenantPartnerCheckins = pendingPartnerCheckins.get(tKey) || new Map();
+    const pending = tenantPartnerCheckins.get(key);
     if (pending && Date.now() - pending.timestamp < 30000) {
         const num = parseInt(message.trim(), 10);
         if (num >= 1) {
-            pendingPartnerCheckins.delete(key);
-            handlePartnerCheckin(username, num, pending.guildId, pending.roleName, pending.pointCost).catch(err => {
+            tenantPartnerCheckins.delete(key);
+            handlePartnerCheckin(username, num, pending.guildId, pending.roleName, pending.pointCost, tenantId).catch(err => {
                 console.error('[EventSub] Pending partner check-in error:', err);
             });
             return true;
@@ -407,28 +439,29 @@ export function trackChatMessageForRedemption(username: string, message: string)
     }
 
     // If this user has a pending pack redeem and typed a number, fire it
-    const pendingPack = pendingPackRedeems.get(key);
+    const tenantPackRedeems = pendingPackRedeems.get(tKey) || new Map();
+    const pendingPack = tenantPackRedeems.get(key);
     if (pendingPack && Date.now() - pendingPack.timestamp < 30000) {
         const num = parseInt(message.trim(), 10);
         if (num >= 1) {
-            pendingPackRedeems.delete(key);
-            handlePackOpen(username, num, pendingPack.pointCost).catch(err => {
+            tenantPackRedeems.delete(key);
+            handlePackOpen(username, num, pendingPack.pointCost, tenantId).catch(err => {
                 console.error('[EventSub] Pending pack open error:', err);
             });
             return true;
         }
     }
 
-    recentChatMessages.set(key, {
+    recentChatMessages.set(msgKey, {
         message,
         timestamp: Date.now()
     });
     
     // Clean up old messages after 10 seconds
     setTimeout(() => {
-        const entry = recentChatMessages.get(key);
+        const entry = recentChatMessages.get(msgKey);
         if (entry && Date.now() - entry.timestamp > 10000) {
-            recentChatMessages.delete(key);
+            recentChatMessages.delete(msgKey);
         }
     }, 10000);
 
@@ -437,12 +470,12 @@ export function trackChatMessageForRedemption(username: string, message: string)
 
 // Handle partner check-in with all integrations
 export { handlePartnerCheckin as handlePartnerCheckinCmd };
-async function handlePartnerCheckin(username: string, squareNum: number, guildId: string, roleName: string, pointCost: number): Promise<void> {
+async function handlePartnerCheckin(username: string, squareNum: number, guildId: string, roleName: string, pointCost: number, tenantId?: string): Promise<void> {
     console.log(`[Partner Checkin] START: ${username} -> square ${squareNum}`);
     
     // Immediately show pending state on overlay
     if ((global as any).broadcast) {
-        (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username } });
+        (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username } }, tenantId);
     }
 
     try {
@@ -451,7 +484,7 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
             const { getUserPoints, addPoints: addPts } = require('./points');
             const points = await getUserPoints(username);
             if (points < pointCost) {
-                sendChatMessage(`@${username}, you need ${pointCost} points for a partner check-in! (You have ${points})`, 'broadcaster').catch(() => {});
+                sendChatMessage(`@${username}, you need ${pointCost} points for a partner check-in! (You have ${points})`, 'broadcaster', undefined, tenantId).catch(() => {});
                 return;
             }
             await addPts(username, -pointCost, 'partner-checkin');
@@ -481,11 +514,12 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
             broadcasterMsg += ` | Balance: ${newBalance} pts`;
         }
         console.log('[Partner Checkin] Sending broadcaster message...');
-        await sendChatMessage(broadcasterMsg, 'broadcaster');
+        await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
 
         // 2. Generate AI greeting using bot personality
-        const botName = (global as any).botName || 'StreamWeaver';
-        const botPersonality = (global as any).botPersonality || 'You are a friendly, energetic AI co-host for a live stream.';
+        const { getBotName, getBotPersonality } = require('../lib/bot-settings-store');
+        const botName = getBotName();
+        const botPersonality = getBotPersonality();
         let aiGreeting = `Welcome ${partner.name}! So glad you checked in!`;
 
         const edenaiKey = process.env.EDENAI_API_KEY;
@@ -519,7 +553,7 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
         const { markTtsHandled } = require('./chat-dispatcher');
         markTtsHandled(aiGreeting);
         console.log('[Partner Checkin] Sending bot AI greeting...');
-        await sendChatMessage(aiGreeting, 'bot');
+        await sendChatMessage(aiGreeting, 'bot', undefined, tenantId);
 
         // 4. Generate and send TTS
         console.log('[Partner Checkin] Triggering TTS...');
@@ -529,13 +563,14 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
             if (ttsResult.audioDataUri) {
                 const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                 if (useTTSPlayer) {
-                    await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
+                    const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                    await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
                     }).catch(() => {});
                 } else if ((global as any).broadcast) {
-                    (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } });
+                    (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, tenantId);
                 }
             }
         } catch (error) {
@@ -549,7 +584,7 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: `🎉 **${username}** just checked in under **${partner.name}**'s banner on stream!` }),
-            }).catch(err => console.error('[Partner Checkin] Discord error:', err));
+            }).catch((err: any) => console.error('[Partner Checkin] Discord error:', err));
         }
 
         // 6. Broadcast to overlay via WebSocket
@@ -557,7 +592,7 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
             (global as any).broadcast({
                 type: 'partner-checkin',
                 payload: { username, square: squareNum, partner: { ...partner, imageUrl: partnerImageUrl } },
-            });
+            }, tenantId);
         }
 
         console.log(`[Partner Checkin] COMPLETE: ${partner.name}`);
@@ -567,7 +602,7 @@ async function handlePartnerCheckin(username: string, squareNum: number, guildId
 }
 
 export { handlePackOpen as handlePackOpenCmd };
-async function handlePackOpen(username: string, setNumber: number, pointCost: number): Promise<void> {
+async function handlePackOpen(username: string, setNumber: number, pointCost: number, tenantId?: string): Promise<void> {
     console.log(`[PokePack] ${username} opening set ${setNumber}`);
     try {
         const { openPack } = require('./pokemon-packs');
@@ -576,7 +611,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
         if (pointCost > 0) {
             const points = await getUserPoints(username);
             if (points < pointCost) {
-                sendChatMessage(`@${username}, you need ${pointCost} points to open a pack! (You have ${points})`, 'broadcaster').catch(() => {});
+                sendChatMessage(`@${username}, you need ${pointCost} points to open a pack! (You have ${points})`, 'broadcaster', undefined, tenantId).catch(() => {});
                 return;
             }
             await addPoints(username, -pointCost, 'pokepack');
@@ -589,7 +624,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 await addPoints(username, pointCost, 'pokepack-refund');
                 console.log(`[PokePack] Refunded ${pointCost} to ${username} (pack failed)`);
             }
-            sendChatMessage(`@${username}, couldn't open that pack. Try a different set!`, 'broadcaster').catch(() => {});
+            sendChatMessage(`@${username}, couldn't open that pack. Try a different set!`, 'broadcaster', undefined, tenantId).catch(() => {});
             return;
         }
 
@@ -605,13 +640,14 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
             const { getPokeMode } = require('./poke-mode');
             const pokeMode = getPokeMode();
             if (pokeMode === 'chat') {
-                await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster');
+                await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster', undefined, tenantId);
             }
 
             // 2. AI reaction to the pack
             const rares = result.pack.filter((c: any) => c.rarity === 'Rare' || c.rarity === 'Rare Holo');
-            const botName = (global as any).botName || 'StreamWeaver';
-            const botPersonality = (global as any).botPersonality || 'You are a friendly, energetic AI co-host for a live stream.';
+            const { getBotName: gbn2, getBotPersonality: gbp2 } = require('../lib/bot-settings-store');
+            const botName = gbn2();
+            const botPersonality = gbp2();
             let aiReaction = rares.length > 0
                 ? `Nice pull, ${username}! You got ${rares.map((c: any) => c.name).join(' and ')}!`
                 : `Good pack, ${username}! ${result.setName} cards added to your collection!`;
@@ -645,7 +681,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
             if (pokeMode === 'chat') {
                 const { markTtsHandled } = require('./chat-dispatcher');
                 markTtsHandled(aiReaction);
-                await sendChatMessage(aiReaction, 'bot');
+                await sendChatMessage(aiReaction, 'bot', undefined, tenantId);
             }
 
             if (pokeMode === 'chat') {
@@ -655,16 +691,17 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 if (ttsResult.audioDataUri) {
                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                     if (useTTSPlayer) {
-                        await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
+                        const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                        await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
                         }).catch(() => {});
                     } else if ((global as any).broadcast) {
-                        (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } });
+                        (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, tenantId);
                     }
                 }
-            } catch (err) {
+            } catch (err: unknown) {
                 console.error('[PokePack] TTS error:', err);
             }
             }

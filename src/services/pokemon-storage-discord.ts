@@ -1,8 +1,6 @@
-import { uploadFileToDiscord, getChannelMessages, deleteMessage } from './discord';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const STORAGE_CHANNEL_ID = '1476540488147533895';
 const LOCAL_FILE = path.join(process.cwd(), 'data', 'pokemon-collections.json');
 const LEGACY_COLLECTIONS_FILE = path.join(process.cwd(), 'src', 'data', 'pokemon-collections.json');
 
@@ -29,9 +27,6 @@ type UserCollection = {
 
 // In-memory store, loaded once from disk
 let store: AllCollections | null = null;
-// Track Discord message IDs per user for clean updates
-let discordMessageIds: Record<string, string> = {};
-const DISCORD_IDS_FILE = path.join(process.cwd(), 'data', 'pokemon-discord-ids.json');
 
 function ensureDataDir(): void {
   const dir = path.dirname(LOCAL_FILE);
@@ -85,19 +80,6 @@ function normalizeStore(raw: AllCollections): AllCollections {
   return normalized;
 }
 
-function loadDiscordIds(): void {
-  try {
-    if (fs.existsSync(DISCORD_IDS_FILE)) {
-      discordMessageIds = JSON.parse(fs.readFileSync(DISCORD_IDS_FILE, 'utf-8'));
-    }
-  } catch {}
-}
-
-function saveDiscordIds(): void {
-  ensureDataDir();
-  fs.writeFileSync(DISCORD_IDS_FILE, JSON.stringify(discordMessageIds, null, 2));
-}
-
 function loadLocal(): AllCollections {
   try {
     if (fs.existsSync(LOCAL_FILE)) {
@@ -132,7 +114,6 @@ async function migrateOldFiles(): Promise<AllCollections> {
         if (raw.cards && Array.isArray(raw.cards)) {
           const key = normalizePokemonUsername(username);
           migrated[key] = mergeEntries(migrated[key], { cards: raw.cards, packsOpened: raw.packsOpened || raw.packs || 0, updatedAt: raw.updatedAt || new Date().toISOString() } as UserEntry);
-          if (raw.messageId) discordMessageIds[key] = raw.messageId;
         }
       } catch {}
     }
@@ -178,8 +159,6 @@ async function migrateLegacyCollectionsFile(): Promise<AllCollections> {
 async function init(): Promise<AllCollections> {
   if (store) return store;
 
-  loadDiscordIds();
-
   // Local file is source of truth
   let data = loadLocal();
 
@@ -202,66 +181,6 @@ async function init(): Promise<AllCollections> {
   return store;
 }
 
-// Fetch a user's collection from Discord (cross-stream import)
-async function fetchUserFromDiscord(username: string): Promise<UserEntry | null> {
-  try {
-    const key = normalizePokemonUsername(username);
-    const fileName = `${key}.json`;
-    const messages = await getChannelMessages(STORAGE_CHANNEL_ID, 100);
-    for (const msg of messages) {
-      const att = msg.attachments?.find((a: any) => a.name === fileName);
-      if (att) {
-        const resp = await fetch(att.url);
-        if (resp.ok) {
-          const raw = await resp.json() as any;
-          if (raw.cards && Array.isArray(raw.cards)) {
-            discordMessageIds[key] = msg.id;
-            saveDiscordIds();
-            return {
-              cards: raw.cards,
-              packsOpened: raw.packsOpened || raw.packs || 0,
-              updatedAt: raw.updatedAt || new Date().toISOString(),
-              ...((raw.pendingPacks ?? undefined) !== undefined ? { pendingPacks: raw.pendingPacks } : {}),
-            } as UserEntry;
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error(`[Pokemon Storage] Discord fetch for ${username} failed:`, err);
-  }
-  return null;
-}
-
-// Upload a user's collection to Discord (so other streams can read it)
-async function uploadUserToDiscord(username: string, entry: UserEntry): Promise<void> {
-  try {
-    const key = normalizePokemonUsername(username);
-    const fileName = `${key}.json`;
-
-    // Delete old message
-    const oldId = discordMessageIds[key];
-    if (oldId) {
-      await deleteMessage(STORAGE_CHANNEL_ID, oldId).catch(() => {});
-    }
-
-    const result = await uploadFileToDiscord(
-      STORAGE_CHANNEL_ID,
-      JSON.stringify({ cards: entry.cards, packsOpened: entry.packsOpened, updatedAt: entry.updatedAt, ...(entry as any).pendingPacks !== undefined ? { pendingPacks: (entry as any).pendingPacks } : {} }, null, 2),
-      fileName,
-      `User: ${username} | ${entry.cards.length} cards, ${entry.packsOpened} packs opened`
-    );
-
-    if (result?.data && (result.data as any).id) {
-      discordMessageIds[key] = (result.data as any).id;
-      saveDiscordIds();
-      console.log(`[Pokemon Storage] Uploaded ${username} to Discord: ${entry.cards.length} cards`);
-    }
-  } catch (err) {
-    console.error(`[Pokemon Storage] Discord upload for ${username} failed:`, err);
-  }
-}
-
 export async function getUserCollection(username: string): Promise<UserCollection> {
   const data = await init();
   const key = normalizePokemonUsername(username);
@@ -271,15 +190,6 @@ export async function getUserCollection(username: string): Promise<UserCollectio
     return { cards: data[key].cards, packsOpened: data[key].packsOpened || 0, updatedAt: data[key].updatedAt, deck: data[key].deck };
   }
 
-  // First time seeing this user — check Discord for cross-stream data
-  const remote = await fetchUserFromDiscord(username);
-  if (remote) {
-    data[key] = remote;
-    saveLocal();
-    console.log(`[Pokemon Storage] Imported ${username} from Discord: ${remote.cards.length} cards`);
-    return { cards: remote.cards, packsOpened: remote.packsOpened, updatedAt: remote.updatedAt, ...(remote as any).pendingPacks !== undefined ? { pendingPacks: (remote as any).pendingPacks } : {} };
-  }
-
   return { cards: [], packsOpened: 0, updatedAt: new Date().toISOString() };
 }
 
@@ -287,41 +197,7 @@ export async function getAllCollections(): Promise<AllCollections> {
   return await init();
 }
 
-export async function importAllFromDiscord(): Promise<number> {
-  const data = await init();
-  let imported = 0;
-  try {
-    const messages = await getChannelMessages(STORAGE_CHANNEL_ID, 100);
-    for (const msg of messages) {
-      for (const att of (msg.attachments || [])) {
-        if (!att.name?.endsWith('.json')) continue;
-        const username = att.name.replace('.json', '').toLowerCase();
-        if (data[username]) continue; // already have this user
-        try {
-          const resp = await fetch(att.url);
-          if (!resp.ok) continue;
-          const raw = await resp.json() as any;
-          if (!raw.cards || !Array.isArray(raw.cards)) continue;
-          data[username] = {
-            cards: raw.cards,
-            packsOpened: raw.packsOpened || raw.packs || 0,
-            updatedAt: raw.updatedAt || new Date().toISOString(),
-          };
-          discordMessageIds[username] = msg.id;
-          imported++;
-          console.log(`[Pokemon Storage] Imported ${username} from Discord: ${raw.cards.length} cards`);
-        } catch {}
-      }
-    }
-    if (imported > 0) {
-      saveLocal();
-      saveDiscordIds();
-    }
-  } catch (err) {
-    console.error('[Pokemon Storage] importAllFromDiscord failed:', err);
-  }
-  return imported;
-}
+
 
 export async function saveUserCollection(username: string, collection: UserCollection): Promise<void> {
   const data = await init();
@@ -337,52 +213,6 @@ export async function saveUserCollection(username: string, collection: UserColle
   data[key] = entry;
   saveLocal();
   console.log(`[Pokemon Storage] Saved ${username}: ${collection.cards.length} cards, ${collection.packsOpened} packs opened`);
-
-  // Upload to Discord so other streams can see the updated collection
-  uploadUserToDiscord(username, entry).catch(err =>
-    console.error(`[Pokemon Storage] Background Discord upload failed for ${username}:`, err)
-  );
 }
 
-export async function importByMessageId(username: string, messageId: string): Promise<boolean> {
-  const data = await init();
-  const key = normalizePokemonUsername(username);
-  try {
-    const { getDiscordMessage } = await import('./discord');
-    const msg: any = await getDiscordMessage(STORAGE_CHANNEL_ID, messageId);
-    if (!msg?.attachments?.length) {
-      console.error(`[Pokemon Storage] No attachments on message ${messageId}`);
-      return false;
-    }
-    const att = msg.attachments.find((a: any) => a.name?.endsWith('.json'));
-    if (!att) return false;
-    const resp = await fetch(att.url);
-    if (!resp.ok) return false;
-    const raw = await resp.json() as any;
-    const cards = raw.cards || raw;
-    if (!Array.isArray(cards)) return false;
-    // Normalize cards — old format might have different fields
-    const normalized = cards.map((c: any) => ({
-      name: c.name || 'Unknown',
-      number: c.number || c.id || '',
-      setCode: c.setCode || c.set || '',
-      rarity: c.rarity || 'Common',
-      imageUrl: c.imageUrl || c.image || '',
-      seasonId: c.seasonId || 'imported',
-      openedAt: c.openedAt || '',
-    }));
-    data[key] = {
-      cards: normalized,
-      packsOpened: raw.packsOpened || raw.packs || 0,
-      updatedAt: raw.updatedAt || new Date().toISOString(),
-    };
-    discordMessageIds[key] = messageId;
-    saveLocal();
-    saveDiscordIds();
-    console.log(`[Pokemon Storage] Imported ${username} from message ${messageId}: ${normalized.length} cards`);
-    return true;
-  } catch (err) {
-    console.error(`[Pokemon Storage] importByMessageId failed for ${username}:`, err);
-    return false;
-  }
-}
+

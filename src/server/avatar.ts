@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
+import { tenantPath } from '../lib/tenant';
 
 type AvatarState = {
     isVisible: boolean;
@@ -11,78 +12,99 @@ type AvatarState = {
     animationType: 'lottie' | 'gif' | 'mp4';
 };
 
-let avatarState: AvatarState = {
+// Per-tenant avatar state
+const tenantAvatarState = new Map<string, AvatarState>();
+const tenantHideTimers = new Map<string, NodeJS.Timeout>();
+
+const DEFAULT_STATE: AvatarState = {
     isVisible: false,
     isTalking: false,
     currentAnimation: 'idle',
     animationType: 'lottie'
 };
 
-let avatarHideTimer: NodeJS.Timeout | null = null;
+function settingsPath(tenantId?: string): string {
+    if (tenantId) return tenantPath(tenantId, 'tokens/avatar-settings.json');
+    return resolve(process.cwd(), 'tokens', 'avatar-settings.json');
+}
 
-export async function loadAvatarSettings() {
+function getState(tenantId?: string): AvatarState {
+    const key = tenantId || '__global';
+    if (!tenantAvatarState.has(key)) {
+        tenantAvatarState.set(key, { ...DEFAULT_STATE });
+    }
+    return tenantAvatarState.get(key)!;
+}
+
+function setState(state: AvatarState, tenantId?: string): void {
+    const key = tenantId || '__global';
+    tenantAvatarState.set(key, state);
+}
+
+export async function loadAvatarSettings(tenantId?: string) {
     try {
-        const settingsFile = resolve(process.cwd(), 'tokens', 'avatar-settings.json');
-        const data = await fs.readFile(settingsFile, 'utf-8');
+        const data = await fs.readFile(settingsPath(tenantId), 'utf-8');
         const settings = JSON.parse(data);
-        avatarState = { ...avatarState, ...settings };
-        console.log('[Avatar] Settings loaded:', avatarState);
-    } catch (error) {
-        console.log('[Avatar] No settings file found, using defaults');
+        setState({ ...getState(tenantId), ...settings }, tenantId);
+        console.log(`[Avatar] Settings loaded for ${tenantId || 'global'}`);
+    } catch {
+        console.log(`[Avatar] No settings file found for ${tenantId || 'global'}, using defaults`);
     }
 }
 
-export async function saveAvatarSettings() {
+export async function saveAvatarSettings(tenantId?: string) {
     try {
-        const settingsFile = resolve(process.cwd(), 'tokens', 'avatar-settings.json');
-        await fs.writeFile(settingsFile, JSON.stringify(avatarState, null, 2));
+        const dir = resolve(settingsPath(tenantId), '..');
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(settingsPath(tenantId), JSON.stringify(getState(tenantId), null, 2));
     } catch (error) {
         console.error('[Avatar] Failed to save settings:', error);
     }
 }
 
-export function updateAvatarState(updates: Partial<AvatarState>, broadcast: (message: object) => void) {
-    avatarState = { ...avatarState, ...updates };
+export function updateAvatarState(updates: Partial<AvatarState>, broadcast: (message: object, tenantId?: string) => void, tenantId?: string) {
+    const state = { ...getState(tenantId), ...updates };
+    setState(state, tenantId);
     broadcast({
         type: 'avatar-state-update',
-        payload: avatarState
-    });
-    saveAvatarSettings();
+        payload: state
+    }, tenantId);
+    saveAvatarSettings(tenantId);
 }
 
-export function showTalkingAvatar(broadcast: (message: object) => void) {
-    if (avatarHideTimer) {
-        clearTimeout(avatarHideTimer);
-        avatarHideTimer = null;
+export function showTalkingAvatar(broadcast: (message: object, tenantId?: string) => void, tenantId?: string) {
+    const key = tenantId || '__global';
+    const timer = tenantHideTimers.get(key);
+    if (timer) {
+        clearTimeout(timer);
+        tenantHideTimers.delete(key);
     }
     
     updateAvatarState({
         isVisible: true,
         isTalking: true,
         currentAnimation: 'talking'
-    }, broadcast);
-    
-    console.log('[Avatar] Switched to talking animation');
+    }, broadcast, tenantId);
 }
 
-export function hideAvatarAfterDelay(delayMs: number = 45000, broadcast: (message: object) => void) {
+export function hideAvatarAfterDelay(delayMs: number = 45000, broadcast: (message: object, tenantId?: string) => void, tenantId?: string) {
+    const key = tenantId || '__global';
+    
     updateAvatarState({
         isTalking: false,
         currentAnimation: 'idle'
-    }, broadcast);
+    }, broadcast, tenantId);
     
-    if (avatarHideTimer) {
-        clearTimeout(avatarHideTimer);
-    }
+    const existing = tenantHideTimers.get(key);
+    if (existing) clearTimeout(existing);
     
-    avatarHideTimer = setTimeout(() => {
+    const timer = setTimeout(() => {
         updateAvatarState({
             isVisible: false,
             currentAnimation: 'idle'
-        }, broadcast);
-        console.log('[Avatar] Hidden after delay');
-        avatarHideTimer = null;
+        }, broadcast, tenantId);
+        tenantHideTimers.delete(key);
     }, delayMs);
     
-    console.log(`[Avatar] Switched to idle, will hide in ${delayMs}ms`);
+    tenantHideTimers.set(key, timer);
 }

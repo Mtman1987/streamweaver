@@ -67,7 +67,7 @@ Respond with ONLY the exact username from the list that is closest, nothing else
 // MAIN EXECUTION
 // ============================
 
-export async function handleVoiceShoutout(spokenName: string): Promise<void> {
+export async function handleVoiceShoutout(spokenName: string, tenantId?: string): Promise<void> {
     console.log(`[VoiceShoutout] Processing voice shoutout for: "${spokenName}"`);
     
     // Get current chatters
@@ -100,6 +100,6 @@ export async function handleVoiceShoutout(spokenName: string): Promise<void> {
     // Trigger walk-on shoutout flow
     const displayName = chatter.user_display_name || chatter.user_login || matchedUsername;
     const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${matchedUsername}-profile_image-300x300.png`;
-    await handleWalkOnShoutout(matchedUsername, displayName, profileImage, true);
+    await handleWalkOnShoutout(matchedUsername, displayName, profileImage, true, tenantId);
 }
 

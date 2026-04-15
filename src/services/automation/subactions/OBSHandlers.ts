@@ -6,6 +6,25 @@
 import { SubAction } from '../types';
 import { ExecutionContext } from '../SubActionExecutor';
 import { SubActionHandlerResult } from './SubActionHandlers';
+import { getConfigSection, initializeLocalConfig } from '@/lib/local-config/service';
+
+const SCENE_KEYS = ['live', 'brb', 'starting', 'ending', 'chatting', 'gaming'] as const;
+type SceneKey = typeof SCENE_KEYS[number];
+
+async function resolveSceneName(raw: string, context: ExecutionContext): Promise<string> {
+  const name = replaceVariables(raw, context);
+  // If the name matches a known scene key, look it up from config
+  const lower = name.toLowerCase();
+  if (SCENE_KEYS.includes(lower as SceneKey)) {
+    try {
+      await initializeLocalConfig();
+      const obs = await getConfigSection('obs');
+      const mapped = obs.scenes[lower as SceneKey];
+      if (mapped) return mapped;
+    } catch { /* fall through to raw name */ }
+  }
+  return name;
+}
 
 export class OBSHandlers {
   private static obsConnections: Map<string, any> = new Map(); // OBS WebSocket clients
@@ -26,10 +45,14 @@ export class OBSHandlers {
    * Scene Operations
    */
   static async handleOBSSetScene(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
-    const sceneName = replaceVariables(subAction.sceneName || '', context);
     const connectionId = subAction.connectionId;
     
     try {
+      const sceneName = await resolveSceneName(subAction.sceneName || '', context);
+      if (!sceneName) {
+        console.warn('[OBS] Scene name is empty — the streamer may need to set their scene names in Integrations > OBS Scene Names');
+        return { success: false, error: 'OBS scene name not configured. Go to Integrations → OBS Scene Names to set it up.' };
+      }
       console.log(`[OBS] Set scene: ${sceneName}`);
       
       const obs = this.getOBSConnection(connectionId);

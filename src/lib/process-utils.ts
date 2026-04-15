@@ -8,7 +8,7 @@ export async function waitForNextJsReady(): Promise<void> {
             console.log(`[Next.js] Checking readiness... attempt ${attempts}/${maxAttempts}`);
             
             const port = process.env.PORT || '3100';
-            fetch(`http://127.0.0.1:${port}`)
+            fetch(`http://127.0.0.1:${port}/api/__health`)
                 .then(response => {
                     // 200 = OK, 404 = Not Found (but server running), 307 = Redirect (auth)
                     if (response.status === 200 || response.status === 404 || response.status === 307) {
@@ -36,9 +36,13 @@ export async function waitForProcessOutput(process: any, searchText: string, tim
             console.warn(`[Process] Timeout waiting for "${searchText}", continuing anyway...`);
             resolve();
         }, timeout);
+
+        // Accept either a plain string token or a regex pattern string.
+        const matcher = new RegExp(searchText);
         
         const onData = (data: Buffer) => {
-            if (data.toString().includes(searchText)) {
+            const chunk = data.toString();
+            if (chunk.includes(searchText) || matcher.test(chunk)) {
                 clearTimeout(timer);
                 process.stdout?.removeListener('data', onData);
                 process.stderr?.removeListener('data', onData);

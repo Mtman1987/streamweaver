@@ -17,12 +17,12 @@ interface TagStats {
   gameStarted?: number;
 }
 
-let tagStatsCache: TagStats | null = null;
+let tagStatsCache: TagStats = { players: [] };
 let lastCacheTime = 0;
 
 function loadTagStats(): TagStats {
   const now = Date.now();
-  if (tagStatsCache && now - lastCacheTime < 30000) { // Cache for 30 seconds
+  if (now - lastCacheTime < 30000) { // Cache for 30 seconds
     return tagStatsCache;
   }
 

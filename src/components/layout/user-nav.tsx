@@ -13,7 +13,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { UserProfile } from "@/app/(app)/layout"
+import type { UserProfile } from "./app-shell"
 import { Bot, User } from "lucide-react"
 
 interface UserNavProps {

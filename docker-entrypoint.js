@@ -6,7 +6,7 @@ const path = require('node:path')
 
 const env = { ...process.env }
 const PERSIST_ROOT = env.PERSIST_ROOT || '/data/runtime'
-const PERSISTED_DIRS = ['data', 'tokens', 'logs', 'tmp', 'config']
+const PERSISTED_DIRS = ['logs', 'tmp']
 
 ;(async() => {
   ensurePersistentDirs()
@@ -33,6 +33,10 @@ function exec(command) {
 
 function ensurePersistentDirs() {
   fs.mkdirSync(PERSIST_ROOT, { recursive: true })
+  fs.mkdirSync(path.join(PERSIST_ROOT, 'global'), { recursive: true })
+  fs.mkdirSync(path.join(PERSIST_ROOT, 'global', 'pokemon-users'), { recursive: true })
+  fs.mkdirSync(path.join(PERSIST_ROOT, 'global', 'MasterStats'), { recursive: true })
+  fs.mkdirSync(path.join(PERSIST_ROOT, 'tenants'), { recursive: true })
 
   for (const dir of PERSISTED_DIRS) {
     const appPath = path.join(process.cwd(), dir)

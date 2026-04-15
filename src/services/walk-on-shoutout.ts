@@ -4,6 +4,7 @@ import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
 import { canShoutoutUser, recordShoutout } from './welcome-wagon-tracker';
 import { getAppConfig } from '../lib/app-config';
+import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -36,14 +37,14 @@ interface TwitchClip {
 // BROADCASTER WELCOME MESSAGE
 // ============================
 
-async function sendBroadcasterWelcome(displayName: string): Promise<void> {
+async function sendBroadcasterWelcome(displayName: string, tenantId?: string): Promise<void> {
     const cfg = await getAppConfig();
     const template = cfg.shoutoutIntroMessage || 'Shoutout: go check out @{displayName} at https://twitch.tv/{displayName}';
     const msg = template
       .replaceAll('{displayName}', displayName)
       .replaceAll('{username}', displayName.toLowerCase())
       .replaceAll('{url}', `https://twitch.tv/${displayName}`);
-    await sendChatMessage(msg, 'broadcaster');
+    await sendChatMessage(msg, 'broadcaster', undefined, tenantId);
 }
 
 // ============================
@@ -188,17 +189,16 @@ async function buildPersona(username: string, displayName: string, profileImage:
 // AI GREETING GENERATION
 // ============================
 
-async function generateAIGreeting(persona: Persona): Promise<string> {
-    const botName = (global as any).botName || 'StreamWeaver';
+async function generateAIGreeting(persona: Persona, tenantId?: string): Promise<string> {
+    const botName = getBotName(tenantId);
     const fallbackGreeting = `Welcome, @${persona.displayName}! Glad you're here!`;
-    const prompt = buildPrompt(persona);
+    const prompt = buildPrompt(persona, tenantId);
     
     // Try EdenAI
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (edenaiKey) {
         try {
-            const botName = (global as any).botName || 'StreamWeaver';
-            const botPersonality = (global as any).botPersonality || 'You are a friendly, energetic AI co-host for a live stream.';
+            const botPersonality = getBotPersonality(tenantId);
             
             const response = await fetch('https://api.edenai.run/v2/text/chat', {
                 method: 'POST',
@@ -228,9 +228,9 @@ async function generateAIGreeting(persona: Persona): Promise<string> {
     return fallbackGreeting;
 }
 
-function buildPrompt(p: Persona): string {
-    const botName = (global as any).botName || 'StreamWeaver';
-    const botPersonality = (global as any).botPersonality || 'You are a friendly, energetic AI co-host for a live stream.';
+function buildPrompt(p: Persona, tenantId?: string): string {
+    const botName = getBotName(tenantId);
+    const botPersonality = getBotPersonality(tenantId);
     
     const personalData = [];
     if (p.bio) personalData.push(`bio: "${p.bio}"`);
@@ -262,7 +262,7 @@ Rules:
 // ATHENA GREETING OUTPUT
 // ============================
 
-async function fireAthenaGreeting(aiGreeting: string): Promise<void> {
+async function fireAthenaGreeting(aiGreeting: string, tenantId?: string): Promise<void> {
     // Check greeting mode
     const { getGreetingMode } = require('./welcome-wagon');
     const greetingMode = await getGreetingMode();
@@ -272,7 +272,7 @@ async function fireAthenaGreeting(aiGreeting: string): Promise<void> {
         const { markTtsHandled } = require('./chat-dispatcher');
         markTtsHandled(aiGreeting);
         // Send to Twitch chat as bot
-        await sendChatMessage(aiGreeting, 'bot');
+        await sendChatMessage(aiGreeting, 'bot', undefined, tenantId);
     }
     
     // Always send TTS
@@ -283,7 +283,8 @@ async function fireAthenaGreeting(aiGreeting: string): Promise<void> {
             
             if (useTTSPlayer) {
                 // Send to OBS TTS player
-                await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current`, {
+                const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
@@ -294,7 +295,7 @@ async function fireAthenaGreeting(aiGreeting: string): Promise<void> {
                     (global as any).broadcast({
                         type: 'play-tts',
                         payload: { audioDataUri: ttsResult.audioDataUri }
-                    });
+                    }, tenantId);
                 }
             }
         }
@@ -304,7 +305,7 @@ async function fireAthenaGreeting(aiGreeting: string): Promise<void> {
     
     // Send to Discord
     try {
-        const botName = (global as any).botName || 'StreamWeaver';
+        const botName = getBotName(tenantId);
         const discordChannelId = await getDiscordShoutoutChannelId();
         if (discordChannelId) {
             await sendDiscordMessage(discordChannelId, `**${botName}:** ${aiGreeting}`);
@@ -329,7 +330,7 @@ async function getDiscordShoutoutChannelId(): Promise<string | null> {
 // MAIN EXECUTION
 // ============================
 
-export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false): Promise<void> {
+export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false, tenantId?: string): Promise<void> {
     const user = username.toLowerCase();
     
     // 24h safety guard (skip for manual shoutouts)
@@ -341,12 +342,12 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     console.log(`[WalkOn] Processing walk-on shoutout for ${displayName}`);
     
     // Silent broadcaster welcome
-    await sendBroadcasterWelcome(displayName);
+    await sendBroadcasterWelcome(displayName, tenantId);
     
     // Build personalization and generate AI greeting BEFORE clip plays
     const persona = await buildPersona(user, displayName, profileImage);
     console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
-    const aiGreeting = await generateAIGreeting(persona);
+    const aiGreeting = await generateAIGreeting(persona, tenantId);
     console.log(`[WalkOn] AI greeting generated`);
     
     // Fetch and play clip (blocking)
@@ -360,7 +361,7 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     }
     
     // Fire Athena greeting AFTER clip finishes
-    await fireAthenaGreeting(aiGreeting);
+    await fireAthenaGreeting(aiGreeting, tenantId);
     
     // Mark shoutout as done
     if (!skipCooldown) {

@@ -33,15 +33,10 @@ export function DiscordEmbedPoster() {
           channelId: channelId.trim(),
           embed: {
             title: '🎮 StreamWeaver Community Games',
-            description: 'Join the fun! Play Stream Bingo and Tag Game with the community.',
+            description: 'Join the fun! Play Tag Game with the community.',
             url: gameUrl,
             color: 0x9146FF, // Twitch purple
             fields: [
-              {
-                name: '🎯 Stream Bingo',
-                value: 'Play bingo while watching streams! Mark squares when you see these moments happen.',
-                inline: false
-              },
               {
                 name: '🏷️ Tag Game', 
                 value: 'Tag other community members in chat and compete for points!',
