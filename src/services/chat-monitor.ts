@@ -149,15 +149,18 @@ export async function checkChatActivity() {
 
         if (!messages || messages.length === 0) return;
 
+        const globalKey = 'global';
+
         // If we don't have a baseline (first run), set it to the latest message and stop.
-        if (!lastDiscordMessageId) {
-            lastDiscordMessageId = messages[0].id;
+        if (!lastDiscordMessageId.has(globalKey)) {
+            lastDiscordMessageId.set(globalKey, messages[0].id);
             return;
         }
 
+        const lastId = lastDiscordMessageId.get(globalKey);
         const newMessages = [];
         for (const msg of messages) {
-            if (msg.id === lastDiscordMessageId) break;
+            if (msg.id === lastId) break;
             newMessages.push(msg);
         }
         
@@ -169,8 +172,14 @@ export async function checkChatActivity() {
             }
         }
         
-        if (messages.length > 0 && messages[0].id !== lastDiscordMessageId) {
-            lastDiscordMessageId = messages[0].id;
+        if (messages.length > 0 && messages[0].id !== lastId) {
+            lastDiscordMessageId.set(globalKey, messages[0].id);
+        }
+
+        // Prune sentToTwitchIds to prevent unbounded memory growth
+        if (sentToTwitchIds.size > 500) {
+            const idsArray = Array.from(sentToTwitchIds);
+            sentToTwitchIds = new Set(idsArray.slice(idsArray.length - 200));
         }
         
     } catch (error) {

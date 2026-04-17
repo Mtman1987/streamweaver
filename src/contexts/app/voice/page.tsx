@@ -1,6 +1,6 @@
 'use client';
 
-import { VoiceCommander } from "@/app/(app)/dashboard/voice-commander";
+import { VoiceCommander } from "@/contexts/app/(app)/dashboard/voice-commander";
 import { useEffect } from 'react';
 
 export default function VoiceCommanderPage() {

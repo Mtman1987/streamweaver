@@ -59,7 +59,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: replyChannel } : undefined;
     
     // Helper: send chat message to the correct channel (shared-chat aware)
-    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => sendChatMessage(msg, as, replyChannel);
+    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => sendChatMessage(msg, as, replyChannel, tenantId);
     
     // Prevent duplicate processing with more specific ID
     const messageId = `${tags.id || 'no-id'}-${username}-${message.slice(0, 50)}`;
@@ -84,6 +84,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     }
     recentMessages.set(contentKey, now);
     (global as any).recentMessages = recentMessages;
+    
+    // Clean up old recent messages to prevent memory leak
+    if (recentMessages.size > 500) {
+        const entries = Array.from(recentMessages.entries()) as [string, number][];
+        entries.sort((a, b) => a[1] - b[1]);
+        for (let i = 0; i < entries.length - 200; i++) {
+            recentMessages.delete(entries[i][0]);
+        }
+    }
     
     // Clean up old message IDs (keep last 100)
     if (processedMessages.size > 100) {
@@ -237,7 +246,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
                 console.log(`[Dispatcher] Processing partner checkin ${partnerId} for ${actualUsername}`);
                 const { handlePartnerCheckinCmd } = require('./eventsub');
-                await handlePartnerCheckinCmd(actualUsername, partnerId, guildId, roleName, pointCost);
+                await handlePartnerCheckinCmd(actualUsername, partnerId, guildId, roleName, pointCost, tenantId);
             } catch (error) {
                 console.error('[Dispatcher] Partner checkin command failed:', error);
                 await reply(`@${actualUsername}, partner checkin system error! Contact a mod.`, 'broadcaster').catch(() => {});
@@ -300,7 +309,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
                 console.log(`[Dispatcher] Opening pack ${setNumber} for ${actualUsername}`);
                 const { handlePackOpenCmd } = require('./eventsub');
-                await handlePackOpenCmd(actualUsername, setNumber, pointCost);
+                await handlePackOpenCmd(actualUsername, setNumber, pointCost, tenantId);
             } catch (error) {
                 console.error('[Dispatcher] !pack command failed:', error);
                 await reply(`@${actualUsername}, pack system error! Contact a mod.`, 'broadcaster').catch(() => {});
@@ -1070,7 +1079,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             try {
                 const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/create-clip`, { 
                     method: 'POST',
-                    timeout: 10000 // 10 second timeout
+                    signal: AbortSignal.timeout(10000),
                 });
                 if (response.ok) {
                     const data = await response.json();
@@ -1098,11 +1107,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const targetUser = args ? args.replace('@', '') : actualUsername;
             
             try {
-                const { getTwitchUser } = require('./twitch');
-                const user = await getTwitchUser(targetUser, 'login');
+                const { getFollowAge } = require('./twitch');
+                const followData = await getFollowAge(targetUser, tenantId);
                 
-                if (user?.followedAt) {
-                    const followDate = new Date(user.followedAt);
+                if (followData?.followedAt) {
+                    const followDate = new Date(followData.followedAt);
                     const now = new Date();
                     const diffMs = now.getTime() - followDate.getTime();
                     const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -1128,11 +1137,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !followed command
         if (actualMessage.toLowerCase() === '!followed') {
             try {
-                const { getTwitchUser } = require('./twitch');
-                const user = await getTwitchUser(actualUsername, 'login');
+                const { getFollowAge } = require('./twitch');
+                const followData = await getFollowAge(actualUsername, tenantId);
                 
-                if (user?.followedAt) {
-                    const followDate = new Date(user.followedAt);
+                if (followData?.followedAt) {
+                    const followDate = new Date(followData.followedAt);
                     await reply(`@${actualUsername} followed on ${followDate.toLocaleDateString()}!`, 'broadcaster').catch(() => {});
                 } else {
                     await reply(`@${actualUsername}, you're not following!`, 'broadcaster').catch(() => {});
@@ -1146,20 +1155,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !followers command
         if (actualMessage.toLowerCase() === '!followers') {
             try {
-                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/user`, {
-                    timeout: 5000
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    const count = data.followerCount?.toLocaleString() || 'Unknown';
-                    await reply(`Current followers: ${count}`, 'broadcaster').catch(() => {});
+                const { getChannelInfo } = require('./twitch');
+                const info = await getChannelInfo(tenantId);
+                if (info) {
+                    await reply(`Current followers: ${info.followerCount?.toLocaleString() || 'Unknown'}`, 'broadcaster').catch(() => {});
                 } else {
-                    console.error('[Dispatcher] Followers API failed:', response.status);
                     await reply(`@${actualUsername}, couldn't fetch follower count!`, 'broadcaster').catch(() => {});
                 }
             } catch (error) {
                 console.error('[Dispatcher] Followers fetch failed:', error);
-                await reply(`@${actualUsername}, follower count request timed out!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, couldn't fetch follower count!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -1168,29 +1173,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !uptime command
         if (actualMessage.toLowerCase() === '!uptime') {
             try {
-                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/live`, {
-                    timeout: 5000
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.isLive && data.startedAt) {
-                        const start = new Date(data.startedAt);
-                        const now = new Date();
-                        const diffMs = now.getTime() - start.getTime();
-                        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-                        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                        
-                        await reply(`Stream uptime: ${hours}h ${minutes}m`, 'broadcaster').catch(() => {});
-                    } else {
-                        await reply('Stream is offline!', 'broadcaster').catch(() => {});
-                    }
+                const { getStreamUptime } = require('./twitch');
+                const uptime = await getStreamUptime(tenantId);
+                if (uptime) {
+                    await reply(`Stream uptime: ${uptime.hours}h ${uptime.minutes}m`, 'broadcaster').catch(() => {});
                 } else {
-                    console.error('[Dispatcher] Uptime API failed:', response.status);
-                    await reply(`@${actualUsername}, couldn't fetch uptime!`, 'broadcaster').catch(() => {});
+                    await reply('Stream is offline!', 'broadcaster').catch(() => {});
                 }
             } catch (error) {
                 console.error('[Dispatcher] Uptime fetch failed:', error);
-                await reply(`@${actualUsername}, uptime request timed out!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername}, couldn't fetch uptime!`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -1217,17 +1209,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !stats command
         if (actualMessage.toLowerCase() === '!stats') {
             try {
-                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/user`, {
-                    timeout: 5000
-                });
-                if (response.ok) {
-                    const data = await response.json();
+                const { getChannelInfo } = require('./twitch');
+                const info = await getChannelInfo(tenantId);
+                if (info) {
                     await reply(
-                        `📊 Followers: ${data.followerCount?.toLocaleString() || 0} | Views: ${data.viewCount?.toLocaleString() || 0}`,
+                        `📊 Followers: ${info.followerCount?.toLocaleString() || 0} | Views: ${info.viewCount?.toLocaleString() || 0}`,
                         'bot'
                     ).catch(() => {});
                 } else {
-                    console.error('[Dispatcher] Stats API failed:', response.status);
                     await reply(`@${actualUsername}, couldn't fetch stats!`, 'bot').catch(() => {});
                 }
             } catch (error) {
@@ -1242,19 +1231,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const game = actualMessage.substring(9).trim();
                 try {
-                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/start`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ game })
-                    });
-                    
-                    if (response.ok) {
+                    const { updateChannelInfo } = require('./twitch');
+                    const ok = await updateChannelInfo({ game_name: game }, tenantId);
+                    if (ok) {
                         await reply(`🎮 Game set to: ${game}`, 'bot').catch(() => {});
                     } else {
                         await reply(`Failed to set game!`, 'bot').catch(() => {});
                     }
                 } catch (error) {
                     console.error('[Dispatcher] Set game failed:', error);
+                    await reply(`Failed to set game!`, 'bot').catch(() => {});
                 }
             } else {
                 await reply(`@${actualUsername}, only mods can change the game!`, 'broadcaster').catch(() => {});
@@ -1267,19 +1253,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const title = actualMessage.substring(10).trim();
                 try {
-                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/start`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ title })
-                    });
-                    
-                    if (response.ok) {
+                    const { updateChannelInfo } = require('./twitch');
+                    const ok = await updateChannelInfo({ title }, tenantId);
+                    if (ok) {
                         await reply(`📝 Title set to: ${title}`, 'bot').catch(() => {});
                     } else {
                         await reply(`Failed to set title!`, 'bot').catch(() => {});
                     }
                 } catch (error) {
                     console.error('[Dispatcher] Set title failed:', error);
+                    await reply(`Failed to set title!`, 'bot').catch(() => {});
                 }
             } else {
                 await reply(`@${actualUsername}, only mods can change the title!`, 'broadcaster').catch(() => {});

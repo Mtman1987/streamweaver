@@ -229,6 +229,221 @@ export async function getChannelBadges(broadcasterId?: string): Promise<any> {
 
 
 /**
+ * Gets follow age for a user in the broadcaster's channel.
+ * Uses /helix/channels/followers with broadcaster token.
+ */
+export async function getFollowAge(username: string, tenantId?: string): Promise<{ followedAt: string } | null> {
+  try {
+    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = await getStoredTokens(tenantId);
+    if (!tokens) return null;
+
+    const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+
+    // Get broadcaster ID from token
+    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `Bearer ${broadcasterToken}` },
+    });
+    if (!valRes.ok) return null;
+    const valData = await valRes.json();
+    const broadcasterId = valData.user_id;
+    if (!broadcasterId) return null;
+
+    // Get target user ID
+    const user = await getTwitchUser(username, 'login');
+    if (!user?.id) return null;
+
+    const res = await fetch(
+      `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${broadcasterId}&user_id=${user.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${broadcasterToken}`,
+          'Client-ID': clientId,
+        },
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const follow = data.data?.[0];
+    return follow ? { followedAt: follow.followed_at } : null;
+  } catch (error) {
+    console.error('[Twitch] getFollowAge error:', error);
+    return null;
+  }
+}
+
+/**
+ * Gets channel info (follower count, view count) for the authenticated broadcaster.
+ */
+export async function getChannelInfo(tenantId?: string): Promise<{ followerCount: number; viewCount: number; game: string; title: string } | null> {
+  try {
+    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = await getStoredTokens(tenantId);
+    if (!tokens) return null;
+
+    const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+
+    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `Bearer ${broadcasterToken}` },
+    });
+    if (!valRes.ok) return null;
+    const valData = await valRes.json();
+    const broadcasterId = valData.user_id;
+    if (!broadcasterId) return null;
+
+    // Get follower count
+    const followRes = await fetch(
+      `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${broadcasterId}&first=1`,
+      { headers: { Authorization: `Bearer ${broadcasterToken}`, 'Client-ID': clientId } }
+    );
+    let followerCount = 0;
+    if (followRes.ok) {
+      const followData = await followRes.json();
+      followerCount = followData.total || 0;
+    }
+
+    // Get channel info
+    const chanRes = await fetch(
+      `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`,
+      { headers: { Authorization: `Bearer ${broadcasterToken}`, 'Client-ID': clientId } }
+    );
+    let game = '';
+    let title = '';
+    if (chanRes.ok) {
+      const chanData = await chanRes.json();
+      game = chanData.data?.[0]?.game_name || '';
+      title = chanData.data?.[0]?.title || '';
+    }
+
+    // Get user for view count
+    const userRes = await fetch(
+      `https://api.twitch.tv/helix/users?id=${broadcasterId}`,
+      { headers: { Authorization: `Bearer ${broadcasterToken}`, 'Client-ID': clientId } }
+    );
+    let viewCount = 0;
+    if (userRes.ok) {
+      const userData = await userRes.json();
+      viewCount = userData.data?.[0]?.view_count || 0;
+    }
+
+    return { followerCount, viewCount, game, title };
+  } catch (error) {
+    console.error('[Twitch] getChannelInfo error:', error);
+    return null;
+  }
+}
+
+/**
+ * Gets stream uptime if currently live.
+ */
+export async function getStreamUptime(tenantId?: string): Promise<{ hours: number; minutes: number } | null> {
+  try {
+    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = await getStoredTokens(tenantId);
+    if (!tokens) return null;
+
+    const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+
+    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `Bearer ${broadcasterToken}` },
+    });
+    if (!valRes.ok) return null;
+    const broadcasterId = (await valRes.json()).user_id;
+    if (!broadcasterId) return null;
+
+    const res = await fetch(
+      `https://api.twitch.tv/helix/streams?user_id=${broadcasterId}`,
+      { headers: { Authorization: `Bearer ${broadcasterToken}`, 'Client-ID': clientId } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const stream = data.data?.[0];
+    if (!stream) return null;
+
+    const start = new Date(stream.started_at);
+    const diffMs = Date.now() - start.getTime();
+    return {
+      hours: Math.floor(diffMs / (1000 * 60 * 60)),
+      minutes: Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)),
+    };
+  } catch (error) {
+    console.error('[Twitch] getStreamUptime error:', error);
+    return null;
+  }
+}
+
+/**
+ * Updates channel info (game and/or title) via PATCH /helix/channels.
+ * Requires channel:manage:broadcast scope.
+ */
+export async function updateChannelInfo(updates: { game_name?: string; title?: string }, tenantId?: string): Promise<boolean> {
+  try {
+    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return false;
+
+    const tokens = await getStoredTokens(tenantId);
+    if (!tokens) return false;
+
+    const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+
+    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `Bearer ${broadcasterToken}` },
+    });
+    if (!valRes.ok) return false;
+    const broadcasterId = (await valRes.json()).user_id;
+    if (!broadcasterId) return false;
+
+    // If setting game by name, resolve to game_id first
+    const body: Record<string, string> = {};
+    if (updates.title) body.title = updates.title;
+    if (updates.game_name) {
+      const gameRes = await fetch(
+        `https://api.twitch.tv/helix/games?name=${encodeURIComponent(updates.game_name)}`,
+        { headers: { Authorization: `Bearer ${broadcasterToken}`, 'Client-ID': clientId } }
+      );
+      if (gameRes.ok) {
+        const gameData = await gameRes.json();
+        const gameId = gameData.data?.[0]?.id;
+        if (gameId) body.game_id = gameId;
+        else body.game_id = '0'; // Clear game if not found
+      }
+    }
+
+    const res = await fetch(
+      `https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${broadcasterToken}`,
+          'Client-ID': clientId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    return res.ok || res.status === 204;
+  } catch (error) {
+    console.error('[Twitch] updateChannelInfo error:', error);
+    return false;
+  }
+}
+
+
+/**
  * Checks if the broadcaster is currently live
  */
 export async function checkTwitchLiveStatus(): Promise<void> {

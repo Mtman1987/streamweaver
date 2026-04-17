@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addExcludedUser, removeExcludedUser, getExcludedUsers } from '../../../services/welcome-wagon-tracker';
+import { addExcludedUser, removeExcludedUser, getExcludedUsers } from '@/services/welcome-wagon-tracker';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 

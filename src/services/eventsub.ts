@@ -4,7 +4,6 @@ import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import { getPartnerById, getAllPartners } from './partner-checkin';
 import { recordCheckin, getPartnerInviteLink } from './checkin-stats';
 import { sendChatMessage } from './twitch';
-import fetch from 'node-fetch';
 
 import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';

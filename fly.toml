@@ -30,7 +30,7 @@ primary_region = 'iad'
 
   [[services.ports]]
     port = 8090
-    handlers = ['tls', 'http']
+    handlers = ['tls']
 
   # No health checks — WS server starts after Next.js
 

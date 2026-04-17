@@ -127,6 +127,7 @@ function migrateFromLegacy(config: LocalConfigMap): LocalConfigMap {
     game: configSchemas.game.parse(migrated.game),
     economy: configSchemas.economy.parse(migrated.economy),
     automation: configSchemas.automation.parse(migrated.automation),
+    obs: configSchemas.obs.parse(config.obs || {}),
     redeems: configSchemas.redeems.parse(config.redeems || {}),
   };
 }
