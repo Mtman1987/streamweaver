@@ -10,6 +10,7 @@ const PERSISTED_DIRS = ['logs', 'tmp', 'config', 'tokens', 'actions', 'commands'
 
 ;(async() => {
   ensurePersistentDirs()
+  seedTenantDiscordConfig()
 
   if (process.argv.slice(-2).join(' ') === 'node server.js') {
     await exec(`node ${path.join('scripts', 'bootstrap-runtime.js')}`)
@@ -52,6 +53,49 @@ function ensurePersistentDirs() {
     if (!fs.existsSync(appPath)) {
       fs.symlinkSync(persistentPath, appPath, 'junction')
     }
+  }
+}
+
+function seedTenantDiscordConfig() {
+  const tenantId = '94371378'
+  const tenantTokensDir = path.join(PERSIST_ROOT, 'tenants', tenantId, 'tokens')
+  fs.mkdirSync(tenantTokensDir, { recursive: true })
+
+  // Seed discord-channels.json with guildId so Discord messages route to this tenant
+  const discordPath = path.join(tenantTokensDir, 'discord-channels.json')
+  if (!fs.existsSync(discordPath)) {
+    fs.writeFileSync(discordPath, JSON.stringify({
+      logChannelId: '1341946492696526858',
+      aiChatChannelId: '',
+      shoutoutChannelId: '',
+      guildId: '1240832965865635881',
+      discordBridgeEnabled: true
+    }, null, 2))
+    console.log('[entrypoint] Seeded discord-channels.json for tenant', tenantId)
+  } else {
+    // Ensure guildId is set even if file exists
+    try {
+      const existing = JSON.parse(fs.readFileSync(discordPath, 'utf-8'))
+      if (!existing.guildId) {
+        existing.guildId = '1240832965865635881'
+        fs.writeFileSync(discordPath, JSON.stringify(existing, null, 2))
+        console.log('[entrypoint] Added guildId to existing discord-channels.json')
+      }
+    } catch {}
+  }
+
+  // Seed user-config.json so bot name resolves to "Athena"
+  const configPath = path.join(tenantTokensDir, 'user-config.json')
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(configPath, JSON.stringify({
+      TWITCH_BROADCASTER_USERNAME: 'mtman1987',
+      AI_PROVIDER: 'edenai',
+      AI_BOT_NAME: 'Athena',
+      AI_BOT_ALIASES: 'athena,hey athena',
+      TTS_PROVIDER: 'inworld',
+      TTS_VOICE: 'Ashley'
+    }, null, 2))
+    console.log('[entrypoint] Seeded user-config.json for tenant', tenantId)
   }
 }
 
