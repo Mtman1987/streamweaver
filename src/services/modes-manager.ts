@@ -85,8 +85,7 @@ export async function toggleMode(
   const currentIndex = options.indexOf(current);
   next = options[(currentIndex + 1) % options.length];
   
-  modes[modeName] = next as any;
-  await saveModes(modes, tenantId);
+  modes[modeName] = next as any;  await saveModes(modes, tenantId);
   
   // Broadcast to overlays/dashboard
   if (typeof (global as any).broadcast === 'function') {
@@ -109,12 +108,12 @@ export async function toggleMasterChatmode(tenantId?: string): Promise<void> {
   // Toggle all sub-modes to match master
   const subModes = ['gamblemode', 'welcomemode', 'pokemode'] as (keyof StreamWeaverModes)[];
   subModes.forEach(mode => {
-    modes[mode] = nextMaster.includes('overlay') ? 'overlay' : 'chat';
+    (modes as any)[mode] = nextMaster.includes('overlay') ? 'overlay' : 'chat';
   });
   
   // Toggle binary modes
-  modes.greetingmode = nextMaster.includes('overlay') ? 'on' : 'off';
-  modes.clipmode = nextMaster.includes('overlay') ? 'viewer' : 'broadcaster';
+  (modes as any).greetingmode = nextMaster.includes('overlay') ? 'full' : 'chat';
+  (modes as any).clipmode = nextMaster.includes('overlay') ? 'viewer' : 'broadcaster';
   
   await saveModes(modes, tenantId);
   

@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     if (!optimized.includes('\n---\n') && !optimized.includes('\n---')) {
       // Try to find the end of MANDATORY lines and insert delimiter
       const lines = optimized.split('\n');
-      const mandatoryEnd = lines.findIndex((l, i) => i > 0 && !l.includes('(MANDATORY)') && lines[i - 1]?.includes('(MANDATORY)'));
+      const mandatoryEnd = lines.findIndex((l: string, i: number) => i > 0 && !l.includes('(MANDATORY)') && lines[i - 1]?.includes('(MANDATORY)'));
       if (mandatoryEnd > 0) {
         lines.splice(mandatoryEnd, 0, '---');
         optimized = lines.join('\n');
