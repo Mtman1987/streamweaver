@@ -9,7 +9,7 @@ type ObsSettings = {
     password: string;
 };
 
-async function resolveObsSettings(): Promise<ObsSettings | null> {
+async function resolveObsSettings(tenantId?: string): Promise<ObsSettings | null> {
     const envUrl = process.env.OBS_WS_URL?.trim();
     const envPassword = (process.env.OBS_WS_PASSWORD || '').trim();
     if (envUrl) {
@@ -18,7 +18,7 @@ async function resolveObsSettings(): Promise<ObsSettings | null> {
 
     try {
         const { readVault } = await import('../lib/vault-store');
-        const vault = await readVault();
+        const vault = await readVault(tenantId);
         const obs = (vault as any)?.obs || {};
         const explicitUrl = typeof obs.url === 'string' ? obs.url.trim() : '';
         const ip = typeof obs.ip === 'string' ? obs.ip.trim() : '';

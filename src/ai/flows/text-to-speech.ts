@@ -2,7 +2,8 @@ import { generateTTS } from '@/services/tts-provider';
 
 export type TextToSpeechInput = {
   text: string;
-  voice?: string; // Ignored - uses user config
+  voice?: string;
+  tenantId?: string;
 };
 
 export type TextToSpeechOutput = {
@@ -11,9 +12,8 @@ export type TextToSpeechOutput = {
 
 export async function textToSpeech(input: TextToSpeechInput): Promise<TextToSpeechOutput> {
   try {
-    // Preprocess text for better pronunciation
     const processedText = input.text.replace(/\bMt\./g, 'M.T.');
-    const audioDataUri = await generateTTS(processedText);
+    const audioDataUri = await generateTTS(processedText, input.voice, input.tenantId);
     return { audioDataUri };
   } catch (error) {
     console.error('TTS error:', error);

@@ -4,9 +4,15 @@ import { randomUUID } from 'crypto';
 import type { Action, SubAction, Trigger } from '@/services/automation/types';
 import { readSbActionsFile, writeSbActionsFile } from '@/lib/sb-store';
 import { SB_ACTIONS_FILE_PATH } from '@/lib/sb-store';
+import { tenantPath } from '@/lib/tenant';
 
-// Individual actions directory for modular storage
-const ACTIONS_DIR = path.join(process.cwd(), 'actions');
+// Root actions directory (used as template for new tenants)
+const ROOT_ACTIONS_DIR = path.join(process.cwd(), 'actions');
+
+function getActionsDir(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'actions');
+  return ROOT_ACTIONS_DIR;
+}
 
 // Back-compat for API routes that referenced ACTIONS_FILE_PATH.
 export const ACTIONS_FILE_PATH = SB_ACTIONS_FILE_PATH;
@@ -34,41 +40,43 @@ function normalizeAction(raw: any): Action {
 }
 
 // Save action to individual file
-async function saveActionToFile(action: any): Promise<void> {
-  if (!fs.existsSync(ACTIONS_DIR)) {
-    fs.mkdirSync(ACTIONS_DIR, { recursive: true });
+async function saveActionToFile(action: any, tenantId?: string): Promise<void> {
+  const dir = getActionsDir(tenantId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
   
   const filename = `${action.name.replace(/[^a-zA-Z0-9]/g, '_')}_${action.id}.json`;
-  const filepath = path.join(ACTIONS_DIR, filename);
+  const filepath = path.join(dir, filename);
   
   fs.writeFileSync(filepath, JSON.stringify(action, null, 2));
 }
 
 // Export action for sharing
-export async function exportAction(id: string): Promise<string | null> {
-  const action = await getActionById(id);
+export async function exportAction(id: string, tenantId?: string): Promise<string | null> {
+  const action = await getActionById(id, tenantId);
   return action ? JSON.stringify(action, null, 2) : null;
 }
 
 // Import action from JSON
-export async function importAction(actionJson: string): Promise<Action> {
+export async function importAction(actionJson: string, tenantId?: string): Promise<Action> {
   const action = JSON.parse(actionJson);
-  action.id = randomUUID(); // Generate new ID to avoid conflicts
-  await saveActionToFile(action);
+  action.id = randomUUID();
+  await saveActionToFile(action, tenantId);
   return normalizeAction(action);
 }
 
-export async function getAllActions(): Promise<Action[]> {
+export async function getAllActions(tenantId?: string): Promise<Action[]> {
+  const dir = getActionsDir(tenantId);
   // Try individual files first, fall back to monolithic
-  if (fs.existsSync(ACTIONS_DIR)) {
-    const files = fs.readdirSync(ACTIONS_DIR);
+  if (fs.existsSync(dir)) {
+    const files = fs.readdirSync(dir);
     const actions: any[] = [];
     
     for (const file of files) {
       if (file.endsWith('.json') && file !== '_metadata.json') {
         try {
-          const content = fs.readFileSync(path.join(ACTIONS_DIR, file), 'utf8');
+          const content = fs.readFileSync(path.join(dir, file), 'utf8');
           const action = JSON.parse(content);
           actions.push(action);
         } catch (e) {
@@ -86,8 +94,8 @@ export async function getAllActions(): Promise<Action[]> {
   return actions.map(normalizeAction);
 }
 
-export async function getActionById(id: string): Promise<Action | undefined> {
-  const actions = await getAllActions();
+export async function getActionById(id: string, tenantId?: string): Promise<Action | undefined> {
+  const actions = await getAllActions(tenantId);
   return actions.find((a) => a.id === id);
 }
 
@@ -97,7 +105,7 @@ export type CreateActionInput = {
   enabled?: boolean;
 };
 
-export async function createAction(input: CreateActionInput): Promise<Action> {
+export async function createAction(input: CreateActionInput, tenantId?: string): Promise<Action> {
   const now = new Date().toISOString();
   const id = randomUUID();
   const created: any = {
@@ -116,12 +124,12 @@ export async function createAction(input: CreateActionInput): Promise<Action> {
     updatedAt: now,
   };
   
-  await saveActionToFile(created);
+  await saveActionToFile(created, tenantId);
   return normalizeAction(created);
 }
 
-export async function updateAction(id: string, updates: Partial<Action>): Promise<Action | null> {
-  const current = await getActionById(id);
+export async function updateAction(id: string, updates: Partial<Action>, tenantId?: string): Promise<Action | null> {
+  const current = await getActionById(id, tenantId);
   if (!current) return null;
   
   const next = {
@@ -130,16 +138,17 @@ export async function updateAction(id: string, updates: Partial<Action>): Promis
     updatedAt: new Date().toISOString(),
   };
   
-  await saveActionToFile(next);
+  await saveActionToFile(next, tenantId);
   return normalizeAction(next);
 }
 
-export async function deleteAction(id: string): Promise<boolean> {
-  if (fs.existsSync(ACTIONS_DIR)) {
-    const files = fs.readdirSync(ACTIONS_DIR);
+export async function deleteAction(id: string, tenantId?: string): Promise<boolean> {
+  const dir = getActionsDir(tenantId);
+  if (fs.existsSync(dir)) {
+    const files = fs.readdirSync(dir);
     const file = files.find(f => f.includes(id) && f.endsWith('.json'));
     if (file) {
-      fs.unlinkSync(path.join(ACTIONS_DIR, file));
+      fs.unlinkSync(path.join(dir, file));
       return true;
     }
     return false;

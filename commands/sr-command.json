@@ -1,0 +1,18 @@
+{
+  "id": "sr-command",
+  "name": "!sr",
+  "command": "!sr",
+  "enabled": true,
+  "description": "Song request - forwards to HearMeOut",
+  "cooldown": {
+    "global": 2,
+    "user": 5
+  },
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Music Commands",
+  "sources": 31,
+  "actionId": "sr-action",
+  "createdAt": "2025-07-15T00:00:00.000Z",
+  "updatedAt": "2025-07-15T00:00:00.000Z"
+}

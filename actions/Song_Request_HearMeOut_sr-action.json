@@ -1,0 +1,52 @@
+{
+  "id": "sr-action",
+  "name": "Song Request (HearMeOut)",
+  "description": "Forwards !sr song requests to HearMeOut via HTTP and replies in chat",
+  "triggers": [
+    {
+      "id": "sr-trigger-cmd",
+      "type": 401,
+      "enabled": true,
+      "exclusions": [],
+      "commandId": "sr-command"
+    }
+  ],
+  "subActions": [
+    {
+      "id": "sr-http-request",
+      "type": 1007,
+      "enabled": true,
+      "weight": 0,
+      "index": 0,
+      "url": "http://127.0.0.1:3001/api/song-request",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": "{\"song\": \"%rawInput%\", \"requester\": \"%user% (StreamWeaver)\"}",
+      "parseAsJson": true,
+      "variableName": "srResult"
+    },
+    {
+      "id": "sr-send-reply",
+      "type": 1007,
+      "enabled": true,
+      "weight": 0,
+      "index": 1,
+      "url": "http://127.0.0.1:3100/api/twitch/send-message",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": "{\"message\": \"🎵 @%user% %srResult.message%\", \"as\": \"bot\"}",
+      "parseAsJson": false,
+      "variableName": "httpResult"
+    }
+  ],
+  "enabled": true,
+  "concurrent": false,
+  "queue": false,
+  "group": "Music Commands",
+  "createdAt": "2025-07-15T00:00:00.000Z",
+  "updatedAt": "2025-07-15T00:00:00.000Z"
+}

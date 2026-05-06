@@ -22,42 +22,56 @@ let appTokenExpiry = 0;
 // ---------------------------------------------------------------------------
 
 export type ChatMode = 'single' | 'shared';
-let chatMode: ChatMode = 'single';
-const CHAT_MODE_FILE = resolve(process.cwd(), 'data', 'chat-mode.json');
+const chatModeByTenant = new Map<string, ChatMode>();
 
-async function loadChatMode(): Promise<void> {
+function chatModeFilePath(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'data/chat-mode.json');
+  return resolve(process.cwd(), 'data', 'chat-mode.json');
+}
+
+function chatModeKey(tenantId?: string): string {
+  return tenantId || '__global__';
+}
+
+async function loadChatMode(tenantId?: string): Promise<void> {
   try {
-    const raw = await fs.readFile(CHAT_MODE_FILE, 'utf-8');
+    const raw = await fs.readFile(chatModeFilePath(tenantId), 'utf-8');
     const data = JSON.parse(raw);
-    if (data.mode === 'shared' || data.mode === 'single') chatMode = data.mode;
+    if (data.mode === 'shared' || data.mode === 'single') {
+      chatModeByTenant.set(chatModeKey(tenantId), data.mode);
+    }
   } catch {}
 }
 
-async function saveChatMode(): Promise<void> {
+async function saveChatMode(tenantId?: string): Promise<void> {
   try {
-    await fs.mkdir(resolve(process.cwd(), 'data'), { recursive: true });
-    await fs.writeFile(CHAT_MODE_FILE, JSON.stringify({ mode: chatMode }));
+    const filePath = chatModeFilePath(tenantId);
+    await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify({ mode: chatModeByTenant.get(chatModeKey(tenantId)) || 'single' }));
   } catch {}
 }
 
-// Load on module init
+// Load global on module init
 loadChatMode();
 
-export function getChatMode(): ChatMode {
-  return chatMode;
+export function getChatMode(tenantId?: string): ChatMode {
+  return chatModeByTenant.get(chatModeKey(tenantId)) || 'single';
 }
 
-export async function toggleChatMode(): Promise<ChatMode> {
-  chatMode = chatMode === 'single' ? 'shared' : 'single';
-  await saveChatMode();
-  return chatMode;
+export async function toggleChatMode(tenantId?: string): Promise<ChatMode> {
+  const key = chatModeKey(tenantId);
+  const current = chatModeByTenant.get(key) || 'single';
+  const next = current === 'single' ? 'shared' : 'single';
+  chatModeByTenant.set(key, next);
+  await saveChatMode(tenantId);
+  return next;
 }
 
 /**
  * Returns true if a mirrored message should be ignored based on current mode.
  */
-export function shouldIgnoreMirrored(tags: Record<string, any>): boolean {
-  return chatMode === 'single' && isMirroredSharedMessage(tags);
+export function shouldIgnoreMirrored(tags: Record<string, any>, tenantId?: string): boolean {
+  return getChatMode(tenantId) === 'single' && isMirroredSharedMessage(tags);
 }
 
 // Cache shared-chat status per channel (refreshed every 60s)

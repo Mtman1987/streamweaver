@@ -1,8 +1,9 @@
 import * as tmi from 'tmi.js';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
-import { listTenants } from '../lib/tenant';
+import { listTenants, communityBotTokensPath } from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
+import { promises as fsp } from 'fs';
 
 interface TenantClients {
   broadcasterClient: tmi.Client | null;
@@ -19,22 +20,125 @@ const tenantClients = new Map<string, TenantClients>();
 // Reverse lookup: channel name -> tenantId
 const channelToTenant = new Map<string, string>();
 
-const MAX_RETRY_ATTEMPTS = 3;
+const MAX_RETRY_ATTEMPTS = 5;
+const RETRY_COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown resets retry count
 const setupInProgress = new Set<string>();
+const lastRetryReset = new Map<string, number>();
+let communityBotClient: tmi.Client | null = null;
+let communityBotUsername = '';
+const communityBotChannels = new Set<string>();
+let communityBotConnectPromise: Promise<tmi.Client | null> | null = null;
+
+function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
+  return Boolean(client && communityBotClient && client === communityBotClient);
+}
+
+async function getCommunityBotTokens(): Promise<StoredTokens | null> {
+  try {
+    const raw = await fsp.readFile(communityBotTokensPath(), 'utf-8');
+    const parsed = JSON.parse(raw);
+    // Accept either dedicated community keys or legacy bot keys.
+    const normalized: StoredTokens = {
+      communityBotToken: parsed.communityBotToken || parsed.botToken || parsed.access_token,
+      communityBotRefreshToken: parsed.communityBotRefreshToken || parsed.botRefreshToken || parsed.refresh_token,
+      communityBotUsername: parsed.communityBotUsername || parsed.botUsername || parsed.username,
+      communityBotTokenExpiry: parsed.communityBotTokenExpiry || parsed.botTokenExpiry,
+    };
+    if (!normalized.communityBotToken || !normalized.communityBotRefreshToken || !normalized.communityBotUsername) {
+      return null;
+    }
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureCommunityBotForChannel(
+  channel: string,
+  clientId: string,
+  clientSecret: string
+): Promise<tmi.Client | null> {
+  if (!channel) return null;
+
+  if (!communityBotConnectPromise) {
+    communityBotConnectPromise = (async () => {
+      const communityTokens = await getCommunityBotTokens();
+      if (!communityTokens) {
+        return null;
+      }
+
+      communityBotUsername = String(communityTokens.communityBotUsername || '').toLowerCase();
+      if (!communityBotUsername) return null;
+
+      const oauth = await ensureValidToken(clientId, clientSecret, 'community-bot', communityTokens);
+      const client = new tmi.Client({
+        options: { debug: false },
+        identity: {
+          username: communityBotUsername,
+          password: `oauth:${oauth.replace('oauth:', '')}`,
+        },
+        channels: [],
+      });
+
+      client.on('connected', () => {
+        console.log(`[Twitch:community-bot] Connected as ${communityBotUsername}`);
+      });
+      client.on('disconnected', (reason) => {
+        console.log(`[Twitch:community-bot] Disconnected: ${reason}`);
+        communityBotClient = null;
+        communityBotConnectPromise = null;
+        communityBotChannels.clear();
+      });
+
+      await client.connect();
+      communityBotClient = client;
+      return client;
+    })().catch((error) => {
+      console.error('[Twitch:community-bot] Setup failed:', error);
+      communityBotClient = null;
+      communityBotConnectPromise = null;
+      return null;
+    });
+  }
+
+  const client = await communityBotConnectPromise;
+  if (!client) return null;
+
+  const channelLogin = channel.toLowerCase();
+  if (!communityBotChannels.has(channelLogin)) {
+    try {
+      await client.join(channelLogin);
+      communityBotChannels.add(channelLogin);
+      console.log(`[Twitch:community-bot] Joined #${channelLogin}`);
+    } catch (error) {
+      console.error(`[Twitch:community-bot] Failed to join #${channelLogin}:`, error);
+    }
+  }
+
+  return client;
+}
 
 function scheduleRetry(tenantId: string) {
   if (setupInProgress.has(tenantId)) return;
   const tenant = tenantClients.get(tenantId);
   if (tenant && tenant.retryCount >= MAX_RETRY_ATTEMPTS) {
-    console.log(`[Twitch:${tenantId}] Max retries reached, stopping.`);
-    return;
+    const lastReset = lastRetryReset.get(tenantId) || 0;
+    if (Date.now() - lastReset > RETRY_COOLDOWN_MS) {
+      console.log(`[Twitch:${tenantId}] Cooldown elapsed, resetting retry count.`);
+      tenant.retryCount = 0;
+      lastRetryReset.set(tenantId, Date.now());
+    } else {
+      console.log(`[Twitch:${tenantId}] Max retries reached, waiting for cooldown.`);
+      return;
+    }
   }
-  console.log(`[Twitch:${tenantId}] Will retry in 5s...`);
+  const delay = Math.min(5000 * Math.pow(2, tenant?.retryCount || 0), 60000);
+  console.log(`[Twitch:${tenantId}] Will retry in ${delay / 1000}s...`);
   setTimeout(() => {
     setupTwitchClient(tenantId).catch(e =>
       console.error(`[Twitch:${tenantId}] Retry failed:`, e)
     );
-  }, 5000);
+  }, delay);
 }
 
 export async function setupTwitchClient(tenantId: string) {
@@ -75,7 +179,9 @@ export async function setupTwitchClient(tenantId: string) {
     const existing = tenantClients.get(tenantId);
     if (existing) {
       if (existing.botClient) {
-        try { existing.botClient.removeAllListeners(); await existing.botClient.disconnect(); } catch {}
+        if (!isSharedCommunityBotClient(existing.botClient)) {
+          try { existing.botClient.removeAllListeners(); await existing.botClient.disconnect(); } catch {}
+        }
       }
       if (existing.broadcasterClient) {
         try { existing.broadcasterClient.removeAllListeners(); await existing.broadcasterClient.disconnect(); } catch {}
@@ -112,6 +218,13 @@ export async function setupTwitchClient(tenantId: string) {
       });
 
       await tenant.botClient.connect();
+    } else {
+      const sharedBot = await ensureCommunityBotForChannel(broadcasterUsername, clientId, clientSecret);
+      if (sharedBot) {
+        tenant.botClient = sharedBot;
+        tenant.botUsername = communityBotUsername || 'community-bot';
+        console.log(`[Twitch:${tenantId}] Using shared community bot '${tenant.botUsername}'`);
+      }
     }
 
     // Setup broadcaster client
@@ -262,6 +375,34 @@ export function getActiveTenantIds(): string[] {
 }
 
 /**
+ * Return current shared community bot runtime state.
+ */
+export function getCommunityBotRuntimeState(): { connected: boolean; username: string | null; channels: string[] } {
+  return {
+    connected: Boolean(communityBotClient),
+    username: communityBotUsername || null,
+    channels: Array.from(communityBotChannels),
+  };
+}
+
+/**
+ * Reconnect any tenants whose IRC clients have dropped.
+ * Called periodically from the polling service.
+ */
+export async function reconnectDisconnectedTenants(): Promise<void> {
+  for (const [tenantId, tenant] of tenantClients) {
+    if (tenant.status === 'disconnected' && !setupInProgress.has(tenantId)) {
+      console.log(`[Twitch:${tenantId}] Health check: disconnected, reconnecting...`);
+      tenant.retryCount = 0;
+      lastRetryReset.set(tenantId, Date.now());
+      await setupTwitchClient(tenantId).catch(e =>
+        console.error(`[Twitch:${tenantId}] Health-check reconnect failed:`, e)
+      );
+    }
+  }
+}
+
+/**
  * Disconnect a specific tenant's IRC clients.
  */
 export async function disconnectTenant(tenantId: string): Promise<void> {
@@ -269,7 +410,9 @@ export async function disconnectTenant(tenantId: string): Promise<void> {
   if (!tenant) return;
 
   if (tenant.botClient) {
-    try { tenant.botClient.removeAllListeners(); await tenant.botClient.disconnect(); } catch {}
+    if (!isSharedCommunityBotClient(tenant.botClient)) {
+      try { tenant.botClient.removeAllListeners(); await tenant.botClient.disconnect(); } catch {}
+    }
   }
   if (tenant.broadcasterClient) {
     try { tenant.broadcasterClient.removeAllListeners(); await tenant.broadcasterClient.disconnect(); } catch {}

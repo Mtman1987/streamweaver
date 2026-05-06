@@ -1,25 +1,33 @@
 import { promises as fsp } from 'fs';
 import path from 'path';
+import { tenantPath } from './tenant';
 
 type VaultData = Record<string, unknown>;
 
 const TOKENS_DIR = path.resolve(process.cwd(), 'tokens');
-const VAULT_FILE = path.resolve(TOKENS_DIR, 'vault.json');
 
-async function ensureTokensDir(): Promise<void> {
-  await fsp.mkdir(TOKENS_DIR, { recursive: true });
+function vaultFilePath(tenantId?: string): string {
+  if (tenantId) {
+    return tenantPath(tenantId, 'tokens/vault.json');
+  }
+  return path.resolve(TOKENS_DIR, 'vault.json');
 }
 
-async function writeVaultAtomic(data: VaultData): Promise<void> {
-  await ensureTokensDir();
-  const tmpFile = `${VAULT_FILE}.tmp.${process.pid}.${Date.now()}`;
+async function ensureTokensDir(tenantId?: string): Promise<void> {
+  await fsp.mkdir(path.dirname(vaultFilePath(tenantId)), { recursive: true });
+}
+
+async function writeVaultAtomic(data: VaultData, tenantId?: string): Promise<void> {
+  const filePath = vaultFilePath(tenantId);
+  await ensureTokensDir(tenantId);
+  const tmpFile = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   await fsp.writeFile(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
-  await fsp.rename(tmpFile, VAULT_FILE);
+  await fsp.rename(tmpFile, filePath);
 }
 
-export async function readVault(): Promise<VaultData> {
+export async function readVault(tenantId?: string): Promise<VaultData> {
   try {
-    const raw = await fsp.readFile(VAULT_FILE, 'utf-8');
+    const raw = await fsp.readFile(vaultFilePath(tenantId), 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     return parsed as VaultData;
@@ -29,20 +37,20 @@ export async function readVault(): Promise<VaultData> {
   }
 }
 
-export async function writeVault(next: VaultData): Promise<void> {
+export async function writeVault(next: VaultData, tenantId?: string): Promise<void> {
   if (!next || typeof next !== 'object' || Array.isArray(next)) {
     throw new Error('Vault payload must be an object');
   }
-  await writeVaultAtomic(next);
+  await writeVaultAtomic(next, tenantId);
 }
 
-export async function updateVault(patch: Record<string, unknown>): Promise<VaultData> {
+export async function updateVault(patch: Record<string, unknown>, tenantId?: string): Promise<VaultData> {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     throw new Error('Vault patch must be an object');
   }
-  const current = await readVault();
+  const current = await readVault(tenantId);
   const next = { ...current, ...patch };
-  await writeVault(next);
+  await writeVault(next, tenantId);
   return next;
 }
 

@@ -1,4 +1,4 @@
-import { readJsonFile, writeJsonFile } from './storage';
+import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 import { getTwitchUser } from './twitch';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 
@@ -14,85 +14,96 @@ type WelcomeRecord = {
 type WelcomeMode = 'chat' | 'overlay';
 type GreetingMode = 'chat' | 'overlay';
 
-let currentSession: WelcomeRecord = {
-  streamStartTime: new Date().toISOString(),
-  welcomedUsers: new Set()
-};
+// Per-tenant state
+const tenantSessions = new Map<string, WelcomeRecord>();
+const tenantWelcomeMode = new Map<string, WelcomeMode>();
+const tenantGreetingMode = new Map<string, GreetingMode>();
 
-let welcomeMode: WelcomeMode = 'chat';
-let greetingMode: GreetingMode = 'chat';
+function tKey(tenantId?: string): string { return tenantId || '__global__'; }
 
-export async function loadWelcomeSession(): Promise<void> {
+function getSession(tenantId?: string): WelcomeRecord {
+  const key = tKey(tenantId);
+  if (!tenantSessions.has(key)) {
+    tenantSessions.set(key, { streamStartTime: new Date().toISOString(), welcomedUsers: new Set() });
+  }
+  return tenantSessions.get(key)!;
+}
+
+function toCtx(tenantId?: string): StorageContext | undefined {
+  if (!tenantId) return undefined;
+  return { tenantId, username: '' };
+}
+
+export async function loadWelcomeSession(tenantId?: string): Promise<void> {
   try {
+    const ctx = toCtx(tenantId);
     const data = await readJsonFile<{ streamStartTime: string; welcomedUsers: string[] }>(WELCOME_FILE, {
       streamStartTime: new Date().toISOString(),
       welcomedUsers: []
-    });
-    
-    currentSession = {
+    }, ctx);
+
+    const key = tKey(tenantId);
+    tenantSessions.set(key, {
       streamStartTime: data.streamStartTime,
       welcomedUsers: new Set(data.welcomedUsers)
-    };
-    
-    // Load welcome mode
-    const modeData = await readJsonFile<{ mode: WelcomeMode }>(WELCOME_MODE_FILE, { mode: 'chat' });
-    welcomeMode = modeData.mode;
-    
-    // Load greeting mode
-    const greetingData = await readJsonFile<{ mode: GreetingMode }>(GREETING_MODE_FILE, { mode: 'chat' });
-    greetingMode = greetingData.mode;
+    });
+
+    const modeData = await readJsonFile<{ mode: WelcomeMode }>(WELCOME_MODE_FILE, { mode: 'chat' }, ctx);
+    tenantWelcomeMode.set(key, modeData.mode);
+
+    const greetingData = await readJsonFile<{ mode: GreetingMode }>(GREETING_MODE_FILE, { mode: 'chat' }, ctx);
+    tenantGreetingMode.set(key, greetingData.mode);
   } catch (error) {
     console.error('[Welcome] Failed to load session:', error);
   }
 }
 
-export async function toggleGreetingMode(): Promise<void> {
-  greetingMode = greetingMode === 'chat' ? 'overlay' : 'chat';
-  await writeJsonFile(GREETING_MODE_FILE, { mode: greetingMode });
+export async function toggleGreetingMode(tenantId?: string): Promise<void> {
+  const { toggleMode } = await import('./modes-manager');
+  await toggleMode('greetingmode', tenantId);
 }
 
-export async function getGreetingMode(): Promise<GreetingMode> {
-  return greetingMode;
+export async function getGreetingMode(tenantId?: string): Promise<GreetingMode> {
+  const { getMode } = await import('./modes-manager');
+  return await getMode('greetingmode', tenantId) as GreetingMode;
 }
 
-export async function toggleWelcomeMode(): Promise<void> {
-  welcomeMode = welcomeMode === 'chat' ? 'overlay' : 'chat';
-  await writeJsonFile(WELCOME_MODE_FILE, { mode: welcomeMode });
+export async function toggleWelcomeMode(tenantId?: string): Promise<void> {
+  const { toggleMode } = await import('./modes-manager');
+  await toggleMode('welcomemode', tenantId);
 }
 
-export async function getWelcomeMode(): Promise<WelcomeMode> {
-  return welcomeMode;
+export async function getWelcomeMode(tenantId?: string): Promise<WelcomeMode> {
+  const { getMode } = await import('./modes-manager');
+  return await getMode('welcomemode', tenantId) as WelcomeMode;
 }
 
-export async function saveWelcomeSession(): Promise<void> {
+export async function saveWelcomeSession(tenantId?: string): Promise<void> {
   try {
+    const session = getSession(tenantId);
     await writeJsonFile(WELCOME_FILE, {
-      streamStartTime: currentSession.streamStartTime,
-      welcomedUsers: Array.from(currentSession.welcomedUsers)
-    });
+      streamStartTime: session.streamStartTime,
+      welcomedUsers: Array.from(session.welcomedUsers)
+    }, toCtx(tenantId));
   } catch (error) {
     console.error('[Welcome] Failed to save session:', error);
   }
 }
 
-export async function resetWelcomeSession(): Promise<void> {
-  currentSession = {
+export async function resetWelcomeSession(tenantId?: string): Promise<void> {
+  tenantSessions.set(tKey(tenantId), {
     streamStartTime: new Date().toISOString(),
     welcomedUsers: new Set()
-  };
-  await saveWelcomeSession();
+  });
+  await saveWelcomeSession(tenantId);
 }
 
-export async function shouldWelcomeUser(username: string): Promise<boolean> {
+export async function shouldWelcomeUser(username: string, tenantId?: string): Promise<boolean> {
   const key = username.toLowerCase();
-  
-  // Check if user was already welcomed in current session
-  if (currentSession.welcomedUsers.has(key)) {
-    return false;
-  }
-  
-  // Additional check: if stream has been live for less than 5 minutes, 
-  // be more conservative about welcoming to avoid spam on restart
+  const session = getSession(tenantId);
+
+  if (session.welcomedUsers.has(key)) return false;
+
   try {
     const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/live`);
     if (response.ok) {
@@ -101,76 +112,54 @@ export async function shouldWelcomeUser(username: string): Promise<boolean> {
         const streamStart = new Date(data.startedAt);
         const now = new Date();
         const streamDuration = now.getTime() - streamStart.getTime();
-        const fiveMinutes = 5 * 60 * 1000;
-        
-        // If stream just started (less than 5 minutes), only welcome users who haven't been seen recently
-        if (streamDuration < fiveMinutes) {
-          // Check if this user was welcomed in the last 2 hours
-          const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-          const sessionStart = new Date(currentSession.streamStartTime);
-          
-          // If our session started recently but user was welcomed in a previous recent session, skip
-          if (sessionStart > twoHoursAgo) {
-            console.log(`[Welcome] Stream just started, being conservative about welcoming ${username}`);
+        if (streamDuration < 5 * 60 * 1000) {
+          const sessionStart = new Date(session.streamStartTime);
+          if (sessionStart > new Date(now.getTime() - 2 * 60 * 60 * 1000)) {
             return false;
           }
         }
       }
     }
-  } catch (error) {
-    // If we can't check stream status, err on the side of caution
-    console.log(`[Welcome] Could not check stream status, being conservative about welcoming ${username}`);
-  }
-  
+  } catch {}
+
   return true;
 }
 
-export async function markUserWelcomed(username: string): Promise<void> {
-  const key = username.toLowerCase();
-  currentSession.welcomedUsers.add(key);
-  await saveWelcomeSession();
+export async function markUserWelcomed(username: string, tenantId?: string): Promise<void> {
+  const session = getSession(tenantId);
+  session.welcomedUsers.add(username.toLowerCase());
+  await saveWelcomeSession(tenantId);
 }
 
-export async function fetchUserClip(username: string): Promise<{ embedUrl: string; duration: number } | null> {
+export async function fetchUserClip(username: string, tenantId?: string): Promise<{ embedUrl: string; duration: number } | null> {
   try {
     const clientId = process.env.TWITCH_CLIENT_ID;
     const clientSecret = process.env.TWITCH_CLIENT_SECRET;
-    
     if (!clientId || !clientSecret) return null;
-    
-    const tokens = await getStoredTokens();
+
+    const tokens = await getStoredTokens(tenantId);
     if (!tokens) return null;
-    
-    const accessToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens);
+
+    const accessToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
     const user = await getTwitchUser(username, 'login');
-    
     if (!user?.id) return null;
-    
+
     const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days ago
-    
+    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
     const response = await fetch(
-      `https://api.twitch.tv/helix/clips?broadcaster_id=${user.id}&started_at=${startDate}&ended_at=${endDate}&first=1`,
-      {
-        headers: {
-          'Client-ID': clientId,
-          'Authorization': `Bearer ${accessToken.replace('oauth:', '')}`,
-        },
-      }
+      `https://api.twitch.tv/helix/clips?broadcaster_id=${user.id}&started_at=${startDate}&ended_at=${endDate}&first=50`,
+      { headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${accessToken.replace('oauth:', '')}` } }
     );
-    
     if (!response.ok) return null;
-    
+
     const data = await response.json();
     const clips = data.data;
-    
     if (!clips || clips.length === 0) return null;
-    
-    const clip = clips[0];
-    return {
-      embedUrl: clip.embed_url,
-      duration: Math.round(clip.duration)
-    };
+
+    const clip = clips[Math.floor(Math.random() * clips.length)];
+
+    return { embedUrl: clip.embed_url, duration: Math.round(clip.duration) };
   } catch (error) {
     console.error('[Welcome] Failed to fetch clip:', error);
     return null;
@@ -182,32 +171,23 @@ export async function generateWelcomeShoutout(username: string): Promise<{ messa
     const user = await getTwitchUser(username, 'login');
     const displayName = user?.displayName || username;
     const game = user?.lastGame || 'unknown adventures';
-    
-    const aiPrompt = `Generate a fun space-themed welcome message for new chatter ${displayName} who was playing ${game}. Make it cosmic and welcoming!`;
     const twitchUrl = `https://twitch.tv/${username.toLowerCase()}`;
-    
-    return { message: aiPrompt, twitchUrl, useAI: true };
-  } catch (error) {
-    console.error('[Welcome] Failed to generate shoutout:', error);
-    return {
-      message: `🚀 Welcome to the starship, ${username}! Ready for our cosmic adventure?`,
-      twitchUrl: `https://twitch.tv/${username.toLowerCase()}`
-    };
+    return { message: `Generate a fun space-themed welcome message for new chatter ${displayName} who was playing ${game}. Make it cosmic and welcoming!`, twitchUrl, useAI: true };
+  } catch {
+    return { message: `🚀 Welcome to the starship, ${username}! Ready for our cosmic adventure?`, twitchUrl: `https://twitch.tv/${username.toLowerCase()}` };
   }
 }
 
-export async function handleVsoCommand(username: string): Promise<{ success: boolean; message?: string; clipUrl?: string; clipDuration?: number; twitchUrl?: string; useAI?: boolean }> {
+export async function handleVsoCommand(username: string, tenantId?: string): Promise<{ success: boolean; message?: string; clipUrl?: string; clipDuration?: number; twitchUrl?: string; useAI?: boolean }> {
   try {
     const user = await getTwitchUser(username, 'login');
-    if (!user) {
-      return { success: false, message: `User ${username} not found` };
-    }
+    if (!user) return { success: false, message: `User ${username} not found` };
 
     const displayName = user.displayName || username;
     const game = user.lastGame || 'unknown adventures';
-    const clipData = await fetchUserClip(username);
+    const clipData = await fetchUserClip(username, tenantId);
     const twitchUrl = `https://twitch.tv/${username.toLowerCase()}`;
-    
+
     return {
       success: true,
       message: `Generate a fun space-themed shoutout for ${displayName} who was playing ${game}. Make it cosmic and exciting!`,
@@ -215,8 +195,7 @@ export async function handleVsoCommand(username: string): Promise<{ success: boo
       useAI: true,
       ...(clipData && { clipUrl: clipData.embedUrl, clipDuration: clipData.duration })
     };
-  } catch (error) {
-    console.error('[VSO] Failed to handle VSO command:', error);
+  } catch {
     return { success: false, message: 'Failed to process shoutout' };
   }
 }

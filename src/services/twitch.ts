@@ -1,4 +1,3 @@
-import * as tmi from 'tmi.js';
 import axios from 'axios';
 
 // In-memory cache for the app access token
@@ -482,10 +481,13 @@ export async function checkTwitchLiveStatus(): Promise<void> {
  * Fetches the list of chatters from a Twitch channel via API route.
  * @returns A promise that resolves to an array of chatter objects.
  */
-export async function getChatters(): Promise<{ user_id: string; user_login: string; user_display_name: string; }[]> {
+export async function getChatters(tenantId?: string): Promise<{ user_id: string; user_login: string; user_display_name: string; }[]> {
     try {
         const baseUrl = `http://127.0.0.1:${process.env.PORT||3100}`;
-        const response = await fetch(`${baseUrl}/api/chat/chatters`);
+        const url = tenantId 
+            ? `${baseUrl}/api/chat/chatters?tenant=${tenantId}`
+            : `${baseUrl}/api/chat/chatters`;
+        const response = await fetch(url);
         
         if (!response.ok) {
             console.warn(`[getChatters] API returned ${response.status}: ${response.statusText}`);
@@ -498,30 +500,5 @@ export async function getChatters(): Promise<{ user_id: string; user_login: stri
     } catch (error) {
         console.warn('[getChatters] Fetch error:', error);
         return [];
-    }
-}
-
-/**
- * Creates a Twitch clip of the current stream.
- * @returns A promise that resolves to the clip data or null if failed.
- */
-export async function createTwitchClip(): Promise<{ id: string; edit_url: string; } | null> {
-    try {
-        const baseUrl = `http://127.0.0.1:${process.env.PORT||3100}`;
-        const response = await fetch(`${baseUrl}/api/twitch/create-clip`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (!response.ok) {
-            console.warn('Failed to create clip');
-            return null;
-        }
-
-        const data = await response.json();
-        return data.clip || null;
-    } catch (error) {
-        console.warn('Error creating Twitch clip:', error);
-        return null;
     }
 }

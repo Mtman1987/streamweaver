@@ -22,14 +22,13 @@ const DEFAULTS = {
 export function getBotSettings(tenantId?: string) {
   const key = tenantId || '__global';
   if (!tenantBotSettings.has(key)) {
-    // Load from user-config on first access
     try {
       const config = readUserConfigSync(tenantId);
       tenantBotSettings.set(key, {
-        personality: DEFAULTS.personality,
+        personality: config.AI_BOT_PERSONALITY || DEFAULTS.personality,
         name: config.AI_BOT_NAME || DEFAULTS.name,
         voice: config.TTS_VOICE || DEFAULTS.voice,
-        interests: '',
+        interests: config.AI_BOT_INTERESTS || '',
       });
     } catch {
       tenantBotSettings.set(key, { ...DEFAULTS });

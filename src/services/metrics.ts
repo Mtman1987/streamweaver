@@ -4,7 +4,7 @@ import { tenantPath } from '../lib/tenant';
 
 function metricsFilePath(tenantId?: string): string {
     if (tenantId) return tenantPath(tenantId, 'data/stream-metrics.json');
-    return resolve(process.cwd(), 'src', 'data', 'stream-metrics.json');
+    return resolve(process.env.PERSIST_ROOT || resolve(process.cwd(), 'data', 'runtime'), 'global', 'stream-metrics.json');
 }
 
 type Metrics = {

@@ -1,8 +1,11 @@
 import { writeFile, readFile, mkdir } from 'fs/promises';
 import { resolve } from 'path';
+import { tenantPath } from './tenant';
 
-const LTM_DIR = resolve(process.cwd(), 'tokens', 'ltm');
-const LTM_FILE = resolve(LTM_DIR, 'memories.json');
+function ltmFilePath(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'tokens/ltm/memories.json');
+  return resolve(process.cwd(), 'tokens', 'ltm', 'memories.json');
+}
 
 export type LTMEntry = {
   id: string;
@@ -18,27 +21,29 @@ export type LTMStore = {
   messageCount: number; // Track total messages processed
 };
 
-export async function readLTMStore(): Promise<LTMStore> {
+export async function readLTMStore(tenantId?: string): Promise<LTMStore> {
   try {
-    await mkdir(LTM_DIR, { recursive: true });
-    const data = await readFile(LTM_FILE, 'utf-8');
+    const filePath = ltmFilePath(tenantId);
+    await mkdir(resolve(filePath, '..'), { recursive: true });
+    const data = await readFile(filePath, 'utf-8');
     return JSON.parse(data);
   } catch {
     return { memories: [], messageCount: 0 };
   }
 }
 
-export async function writeLTMStore(store: LTMStore): Promise<void> {
+export async function writeLTMStore(store: LTMStore, tenantId?: string): Promise<void> {
   try {
-    await mkdir(LTM_DIR, { recursive: true });
-    await writeFile(LTM_FILE, JSON.stringify(store, null, 2));
+    const filePath = ltmFilePath(tenantId);
+    await mkdir(resolve(filePath, '..'), { recursive: true });
+    await writeFile(filePath, JSON.stringify(store, null, 2));
   } catch (error) {
     console.error('[LTM] Failed to write store:', error);
   }
 }
 
-export async function addLTMEntry(title: string, content: string): Promise<void> {
-  const store = await readLTMStore();
+export async function addLTMEntry(title: string, content: string, tenantId?: string): Promise<void> {
+  const store = await readLTMStore(tenantId);
   
   const entry: LTMEntry = {
     id: Date.now().toString(),
@@ -62,44 +67,44 @@ export async function addLTMEntry(title: string, content: string): Promise<void>
     store.memories = store.memories.slice(0, 50);
   }
   
-  await writeLTMStore(store);
+  await writeLTMStore(store, tenantId);
 }
 
-export async function getLTMTitles(): Promise<string[]> {
-  const store = await readLTMStore();
+export async function getLTMTitles(tenantId?: string): Promise<string[]> {
+  const store = await readLTMStore(tenantId);
   return store.memories.map(m => m.title);
 }
 
-export async function getLTMContent(title: string): Promise<string | null> {
-  const store = await readLTMStore();
+export async function getLTMContent(title: string, tenantId?: string): Promise<string | null> {
+  const store = await readLTMStore(tenantId);
   const memory = store.memories.find(m => m.title === title);
   
   if (memory) {
     // Increment access count
     memory.accessCount++;
     memory.lastAccessedAt = new Date().toISOString();
-    await writeLTMStore(store);
+    await writeLTMStore(store, tenantId);
     return memory.content;
   }
   
   return null;
 }
 
-export async function incrementMessageCount(): Promise<number> {
-  const store = await readLTMStore();
+export async function incrementMessageCount(tenantId?: string): Promise<number> {
+  const store = await readLTMStore(tenantId);
   store.messageCount++;
-  await writeLTMStore(store);
+  await writeLTMStore(store, tenantId);
   return store.messageCount;
 }
 
-export async function getMessageCount(): Promise<number> {
-  const store = await readLTMStore();
+export async function getMessageCount(tenantId?: string): Promise<number> {
+  const store = await readLTMStore(tenantId);
   return store.messageCount;
 }
 
-export async function adjustMessageCount(adjustment: number): Promise<number> {
-  const store = await readLTMStore();
+export async function adjustMessageCount(adjustment: number, tenantId?: string): Promise<number> {
+  const store = await readLTMStore(tenantId);
   store.messageCount += adjustment;
-  await writeLTMStore(store);
+  await writeLTMStore(store, tenantId);
   return store.messageCount;
 }

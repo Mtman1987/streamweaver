@@ -1,5 +1,5 @@
 import { getAllCommands } from '../lib/commands-store';
-import { getActionById } from '../lib/actions-store';
+import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { sendDiscordMessage } from './discord';
 import { sendChatMessage } from './twitch';
@@ -15,6 +15,7 @@ import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from '.
 import { getPoints, setPoints } from './points';
 import { getAIConfig } from './ai-provider';
 import { getTenantIdFromChannel } from './twitch-client';
+import { incrementMetric } from './metrics';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { tenantPath } from '../lib/tenant';
@@ -53,7 +54,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const replyChannel = channel.replace(/^#/, '');
     
     // Resolve tenant from channel
-    const tenantId = getTenantIdFromChannel(replyChannel);
+    let tenantId = getTenantIdFromChannel(replyChannel);
+    
+    // Fallback: resolve tenant from username if channel didn't map
+    if (!tenantId) {
+        try {
+            const { getActiveTenantIds, getTenantIdFromChannel: getTid } = require('./twitch-client');
+            const { getStoredTokens: gst } = require('../lib/token-utils.server');
+            for (const tid of getActiveTenantIds()) {
+                const tokens = await gst(tid);
+                if (tokens?.broadcasterUsername?.toLowerCase() === replyChannel.toLowerCase()) { tenantId = tid; break; }
+            }
+        } catch {}
+    }
     
     // Build storage context for tenant-scoped services
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: replyChannel } : undefined;
@@ -181,75 +194,93 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Handle basic commands that should work regardless of bot status
     if (isCommand) {
         console.log(`[Dispatcher] Command detected: ${actualMessage} from ${actualUsername}`);
+        incrementMetric('totalCommands').catch(() => {});
         
-        // Handle !partner / !checkin command (process early)
-        if (actualMessage.toLowerCase().startsWith('!checkin') || actualMessage.toLowerCase().startsWith('!partner')) {
-            console.log(`[Dispatcher] Processing partner checkin command from ${actualUsername}`);
+        const commands = await getAllCommands(tenantId);
+        const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
+        const configuredCommand = commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName);
+        if (configuredCommand && configuredCommand.enabled === false) {
+            console.log(`[Dispatcher] Command ${cmdName} is disabled; skipping built-in and action handling.`);
+            return;
+        }
+
+        // Handle check-in commands (process early)
+        const lowerMessage = actualMessage.toLowerCase();
+        const checkinCommandKinds: Array<{ triggers: string[]; kind: 'partner' | 'crew' | 'mod' | 'space-mountain' }> = [
+            { triggers: ['!checkin', '!partner'], kind: 'partner' },
+            { triggers: ['!crew', '!crewcheckin'], kind: 'crew' },
+            { triggers: ['!mod', '!modcheckin'], kind: 'mod' },
+            { triggers: ['!spacemountain', '!space', '!spacecheckin'], kind: 'space-mountain' },
+        ];
+        const matchedCheckin = checkinCommandKinds.find((entry) => entry.triggers.some((trigger) => lowerMessage.startsWith(trigger)));
+        if (matchedCheckin) {
+            console.log(`[Dispatcher] Processing ${matchedCheckin.kind} checkin command from ${actualUsername}`);
             const cmd = actualMessage.split(' ')[0];
             const numArg = actualMessage.substring(cmd.length).trim();
             
             try {
-                // Read directly from global config file instead of tenant config
-                const fs = require('fs');
-                const path = require('path');
-                const configPath = path.join(process.cwd(), 'config', 'redeems.json');
-                const redeemsConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-                const guildId = redeemsConfig.partnerCheckin.discordGuildId;
-                const roleName = redeemsConfig.partnerCheckin.discordRoleName;
-                const pointCost = redeemsConfig.partnerCheckin.pointCost;
-                
-                console.log(`[Dispatcher] Partner config - Guild: ${guildId}, Role: ${roleName}, Cost: ${pointCost}`);
-
-                if (!guildId || !roleName) {
-                    await reply(`@${actualUsername}, partner check-ins are not configured yet! Contact a mod.`, 'broadcaster').catch(() => {});
-                    return;
-                }
+                const { getConfigSection } = require('../lib/local-config/service');
+                const { getCheckinSource } = require('./checkin-sources');
+                const { formatCheckinList, createPendingPayload, runCheckin, runBulkCheckin } = require('./checkin-flow');
+                const redeemsConfig = await getConfigSection('redeems', tenantId);
+                const checkinConfigMap: Record<string, any> = {
+                    'partner': redeemsConfig.partnerCheckin,
+                    'crew': redeemsConfig.crewCheckin,
+                    'mod': redeemsConfig.modCheckin,
+                    'space-mountain': redeemsConfig.spaceMountainCheckin,
+                };
+                const pointCost = Number(checkinConfigMap[matchedCheckin.kind]?.pointCost || 0);
 
                 if (pointCost > 0) {
                     const { getUserPoints } = require('./points');
-                    const pts = await getUserPoints(actualUsername);
+                    const pts = await getUserPoints(actualUsername, tenantCtx);
                     if (pts < pointCost) {
-                        await reply(`@${actualUsername}, you need ${pointCost} points for a partner check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
+                        await reply(`@${actualUsername}, you need ${pointCost} points for this check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
                         return;
                     }
                 }
 
-                const { getAllPartners } = require('./partner-checkin');
-                const partners = await getAllPartners(guildId, roleName);
-                console.log(`[Dispatcher] Found ${partners.length} partners`);
+                const source = await getCheckinSource(matchedCheckin.kind, tenantId, actualUsername);
+                console.log(`[Dispatcher] Found ${source.entries.length} ${matchedCheckin.kind} entries`);
                 
-                if (partners.length === 0) {
-                    await reply(`@${actualUsername}, no partners found with role "${roleName}"! Contact a mod.`, 'broadcaster').catch(() => {});
+                if (matchedCheckin.kind === 'space-mountain') {
+                    await runBulkCheckin('space-mountain', actualUsername, pointCost, tenantId);
+                    return;
+                }
+
+                if (source.entries.length === 0) {
+                    await reply(`@${actualUsername}, no ${source.sourceLabel.toLowerCase()} found right now.`, 'broadcaster').catch(() => {});
                     return;
                 }
                 
-                const list = partners.map((p: any) => `${p.id}.${p.name}`).join(' ');
-                const partnerListMessage = `Partner Check-Ins: ${list}`;
-                console.log(`[Dispatcher] Partner list message:`, partnerListMessage);
-                await reply(partnerListMessage, 'broadcaster').catch(() => {});
+                const listMessage = formatCheckinList(matchedCheckin.kind, source.entries);
+                console.log(`[Dispatcher] Check-in list message:`, listMessage);
+                await reply(listMessage, 'broadcaster').catch(() => {});
 
-                const partnerId = parseInt(numArg, 10);
-                if (!partnerId || isNaN(partnerId) || partnerId < 1) {
-                    console.log(`[Dispatcher] Invalid partner ID: ${numArg}, waiting for valid selection`);
-                    const { pendingPartnerCheckins } = require('./eventsub');
-                    if (pendingPartnerCheckins) {
+                const selectionId = parseInt(numArg, 10);
+                if (!selectionId || isNaN(selectionId) || selectionId < 1) {
+                    console.log(`[Dispatcher] Invalid ${matchedCheckin.kind} ID: ${numArg}, waiting for valid selection`);
+                    const { pendingCheckins } = require('./eventsub');
+                    if (pendingCheckins) {
                         const tenantKey = tenantId || 'global';
-                        let tenantPartnerCheckins = pendingPartnerCheckins.get(tenantKey);
-                        if (!tenantPartnerCheckins) {
-                            tenantPartnerCheckins = new Map();
-                            pendingPartnerCheckins.set(tenantKey, tenantPartnerCheckins);
+                        let tenantSelections = pendingCheckins.get(tenantKey);
+                        if (!tenantSelections) {
+                            tenantSelections = new Map();
+                            pendingCheckins.set(tenantKey, tenantSelections);
                         }
-                        tenantPartnerCheckins.set(actualUsername.toLowerCase(), { timestamp: Date.now(), guildId, roleName, pointCost });
+                        tenantSelections.set(actualUsername.toLowerCase(), { timestamp: Date.now(), kind: matchedCheckin.kind, pointCost });
+                        if ((global as any).broadcast) {
+                            (global as any).broadcast({ type: 'checkin-pending', payload: createPendingPayload(matchedCheckin.kind, actualUsername, source.sourceLabel) }, tenantId);
+                        }
                     }
                     return;
                 }
 
-                console.log(`[Dispatcher] Processing partner checkin ${partnerId} for ${actualUsername}`);
-                const { handlePartnerCheckinCmd } = require('./eventsub');
-                await handlePartnerCheckinCmd(actualUsername, partnerId, guildId, roleName, pointCost, tenantId);
+                console.log(`[Dispatcher] Processing ${matchedCheckin.kind} checkin ${selectionId} for ${actualUsername}`);
+                await runCheckin(matchedCheckin.kind, actualUsername, selectionId, pointCost, tenantId);
             } catch (error) {
-                console.error('[Dispatcher] Partner checkin command failed:', error);
-                await reply(`@${actualUsername}, partner checkin system error! Contact a mod.`, 'broadcaster').catch(() => {});
+                console.error('[Dispatcher] Checkin command failed:', error);
+                await reply(`@${actualUsername}, checkin system error! Contact a mod.`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -261,13 +292,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             
             try {
                 const { getConfigSection } = require('../lib/local-config/service');
-                const redeemsConfig = await getConfigSection('redeems');
+                const redeemsConfig = await getConfigSection('redeems', tenantId);
                 const pointCost = redeemsConfig.pokePack.pointCost;
                 console.log(`[Dispatcher] Pack cost: ${pointCost} points`);
 
                 if (pointCost > 0) {
                     const { getUserPoints } = require('./points');
-                    const pts = await getUserPoints(actualUsername);
+                    const pts = await getUserPoints(actualUsername, tenantCtx);
                     if (pts < pointCost) {
                         await reply(`@${actualUsername}, you need ${pointCost} points to open a pack! (You have ${pts})`, 'broadcaster').catch(() => {});
                         return;
@@ -276,7 +307,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
                 const { getEnabledSetMap, formatSetList } = require('./pokemon-packs');
                 const enabledSets = redeemsConfig.pokePack.enabledSets || ['base1','base2','base3','base4','base5','gym1'];
-                console.log(`[Dispatcher] Enabled sets:`, enabledSets);
+                console.log(`[Dispatcher] !pack tenant=${tenantId || 'global'} channel=${replyChannel} enabledSetCount=${enabledSets.length}`, enabledSets);
                 
                 const setMap = getEnabledSetMap(enabledSets);
                 const setCount = Object.keys(setMap).length;
@@ -286,14 +317,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     await reply(`@${actualUsername}, no Pokemon packs are available! Contact a mod.`, 'broadcaster').catch(() => {});
                     return;
                 }
-                
-                const setListMessage = formatSetList(setMap);
-                console.log(`[Dispatcher] Set list message:`, setListMessage);
-                await reply(setListMessage, 'broadcaster').catch(() => {});
 
                 const setNumber = parseInt(numArg, 10);
                 if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
                     console.log(`[Dispatcher] Invalid set number: ${numArg}, waiting for valid selection`);
+                    const setListMessage = formatSetList(setMap);
+                    console.log(`[Dispatcher] Set list message:`, setListMessage);
+                    await reply(setListMessage, 'broadcaster').catch(() => {});
                     const { pendingPackRedeems } = require('./eventsub');
                     if (pendingPackRedeems) {
                         const tenantKey = tenantId || 'global';
@@ -408,60 +438,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             const rareCount = cards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
 
-            // Generate Pokédex HTML, upload to Discord, shorten URL
+            // Generate Pokédex HTML and serve locally
             let pokedexUrl = '';
             try {
                 const { generatePokedexHtml } = require('./pokedex-html');
-                const { uploadFileToDiscord, deleteMessage } = require('./discord');
                 const fsSync = require('fs');
                 const pathMod = require('path');
-                const idsPath = pathMod.join(process.cwd(), 'data', 'pokemon-discord-ids.json');
-                const ids = fsSync.existsSync(idsPath) ? JSON.parse(fsSync.readFileSync(idsPath, 'utf-8')) : {};
+                const { getConfiguredAppUrl } = require('../lib/runtime-origin');
+                const POKEDEX_DIR = pathMod.join(process.env.PERSIST_ROOT || pathMod.join(process.cwd(), 'data', 'runtime'), 'global', 'pokedex');
+                fsSync.mkdirSync(POKEDEX_DIR, { recursive: true });
+
+                const collection = await getUserCollection(actualUsername);
+                const html = await generatePokedexHtml(actualUsername, cards, collection.packsOpened);
                 const key = actualUsername.toLowerCase();
-                const pokedexMsgKey = `pokedex_${key}`;
-                const pokedexUrlKey = `pokedex_url_${key}`;
-                const pokedexCountKey = `pokedex_count_${key}`;
-                const STORAGE_CHANNEL = '1476540488147533895';
+                fsSync.writeFileSync(pathMod.join(POKEDEX_DIR, `${key}.html`), html);
 
-                // Reuse cached short URL if card count hasn't changed
-                if (ids[pokedexUrlKey] && ids[pokedexCountKey] === cards.length) {
-                    pokedexUrl = ids[pokedexUrlKey];
-                } else {
-                    // Delete old Pokédex message
-                    if (ids[pokedexMsgKey]) {
-                        await deleteMessage(STORAGE_CHANNEL, ids[pokedexMsgKey]).catch(() => {});
-                    }
-
-                    const collection = await getUserCollection(actualUsername);
-                    const html = await generatePokedexHtml(actualUsername, cards, collection.packsOpened);
-                    const result = await uploadFileToDiscord(
-                        STORAGE_CHANNEL, html,
-                        `pokedex_${key}.html`,
-                        `${actualUsername}'s Pok\u00e9dex | ${cards.length} cards | ${rareCount} rare`
-                    );
-
-                    if (result?.data && (result.data as any).id) {
-                        ids[pokedexMsgKey] = (result.data as any).id;
-                        const cdnUrl = (result.data as any).attachments?.[0]?.url;
-                        if (cdnUrl) {
-                            // Shorten with TinyURL
-                            try {
-                                const ts = Date.now().toString(36);
-                                const alias = `${key}-pokedex-${ts}`;
-                                const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(cdnUrl)}&alias=${encodeURIComponent(alias)}`);
-                                const short = tinyRes.ok ? (await tinyRes.text()).trim() : '';
-                                pokedexUrl = short && short.startsWith('http') ? short : cdnUrl;
-                            } catch {
-                                pokedexUrl = cdnUrl;
-                            }
-                            ids[pokedexUrlKey] = pokedexUrl;
-                            ids[pokedexCountKey] = cards.length;
-                        }
-                    }
-                    fsSync.writeFileSync(idsPath, JSON.stringify(ids, null, 2));
-                }
+                const baseUrl = getConfiguredAppUrl();
+                pokedexUrl = `${baseUrl}/api/pokedex?user=${encodeURIComponent(key)}`;
             } catch (e) {
-                console.error('[Collection] Pok\u00e9dex upload failed:', e);
+                console.error('[Collection] Pokédex generation failed:', e);
             }
 
             const urlPart = pokedexUrl ? ` Pok\u00e9dex: ${pokedexUrl}` : '';
@@ -471,7 +466,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 (global as any).broadcast({
                     type: 'pokemon-collection-show',
                     payload: { username: actualUsername, cards }
-                });
+                }, tenantId);
             }
             return;
         }
@@ -553,7 +548,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                   username: actualUsername,
                   owned: count
                 }
-              });
+              }, tenantId);
             }
           }
           return;
@@ -662,7 +657,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             
-            const result = await givePoints(actualUsername, targetUser, amount);
+            const result = await givePoints(actualUsername, targetUser, amount, tenantCtx);
             await reply(result.message, 'bot').catch(() => {});
             return;
         }
@@ -678,7 +673,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             
-            const result = await stealPoints(actualUsername, targetUser, amount);
+            const result = await stealPoints(actualUsername, targetUser, amount, tenantCtx);
             await reply(result.message, 'bot').catch(() => {});
             return;
         }
@@ -686,10 +681,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !greetingmode command
         if (actualMessage.toLowerCase() === '!greetingmode') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const { toggleGreetingMode, getGreetingMode } = require('./welcome-wagon');
-                await toggleGreetingMode();
-                const mode = await getGreetingMode();
-                await reply(`🤖 AI greeting mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
+                const { toggleMode } = await import('./modes-manager');
+                const toggled = await toggleMode('greetingmode', tenantId);
+                await reply(`🤖 AI greeting mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
             } else {
                 await reply(`@${actualUsername}, only mods can change greeting mode!`, 'bot').catch(() => {});
             }
@@ -699,12 +693,31 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !welcomemode command
         if (actualMessage.toLowerCase() === '!welcomemode') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const { toggleWelcomeMode, getWelcomeMode } = require('./welcome-wagon');
-                await toggleWelcomeMode();
-                const mode = await getWelcomeMode();
-                await reply(`🎉 Welcome mode: ${mode === 'overlay' ? 'OVERLAY ONLY' : 'CHAT + OVERLAY'}`, 'bot').catch(() => {});
+                const { toggleMode } = await import('./modes-manager');
+                const toggled = await toggleMode('welcomemode', tenantId);
+                await reply(`🎉 Welcome mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
             } else {
                 await reply(`@${actualUsername}, only mods can change welcome mode!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+        
+        // Handle !clipmode command
+        if (actualMessage.toLowerCase() === '!clipmode') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { toggleMode } = await import('./modes-manager');
+                const toggled = await toggleMode('clipmode', tenantId);
+                await reply(`🎬 Clip mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
+            }
+            return;
+        }
+        
+        // Handle !pokemode command
+        if (actualMessage.toLowerCase() === '!pokemode') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { toggleMode } = await import('./modes-manager');
+                const toggled = await toggleMode('pokemode', tenantId);
+                await reply(`🃏 Pokemon mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
             }
             return;
         }
@@ -713,7 +726,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase().startsWith('!gamble ')) {
             const betInput = actualMessage.substring(8).trim();
             const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleClassicGamble(actualUsername, betInput, userPointsData.points);
+            const result = await handleClassicGamble(actualUsername, betInput, userPointsData.points, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
             }
@@ -723,73 +736,56 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !gamble with no args (use default)
         if (actualMessage.toLowerCase() === '!gamble') {
             const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleClassicGamble(actualUsername, '', userPointsData.points);
+            const result = await handleClassicGamble(actualUsername, '', userPointsData.points, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
             }
             return;
         }
         
-        // Handle !pokemode command - toggle between overlay and chat
-        if (actualMessage.toLowerCase() === '!pokemode') {
-            const { togglePokeMode } = require('./poke-mode');
-            const mode = await togglePokeMode();
-            await reply(`🃏 Pokemon mode: ${mode.toUpperCase()}`, 'bot').catch(() => {});
-            return;
-        }
 
-        // Handle !gamblemode command - toggle between overlay and chat
-        if (actualMessage.toLowerCase() === '!gamblemode') {
-            const { getSettings, updateSettings } = require('./gamble/classic-gamble');
-            const s = getSettings();
-            if (s.useOverlay && !s.useBot) {
-                await updateSettings({ useOverlay: false, useBot: true });
-                await reply('🎲 Gamble mode: CHAT', 'bot').catch(() => {});
-            } else {
-                await updateSettings({ useOverlay: true, useBot: false });
-                await reply('🎲 Gamble mode: OVERLAY', 'bot').catch(() => {});
-            }
-            return;
-        }
         
         // Handle !roll command
         if (actualMessage.toLowerCase().startsWith('!roll ')) {
             const betInput = actualMessage.substring(6).trim();
             const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleRoll(actualUsername, betInput, userPointsData.points);
+            const result = await handleRoll(actualUsername, betInput, userPointsData.points, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
                 // Store double-or-nothing state (30 second window)
                 const doubleState = { username: actualUsername, wager: Math.abs(result.change) || parseInt(betInput), expires: Date.now() + 30000 };
-                (global as any).doubleOrNothingState = doubleState;
+                if (!(global as any).doubleOrNothingStates) (global as any).doubleOrNothingStates = new Map();
+                (global as any).doubleOrNothingStates.set(actualUsername.toLowerCase(), doubleState);
             }
             return;
         }
         
         // Handle !double command (double or nothing)
         if (actualMessage.toLowerCase() === '!double') {
-            const doubleState = (global as any).doubleOrNothingState;
-            if (!doubleState || doubleState.username !== actualUsername || Date.now() > doubleState.expires) {
+            const states = (global as any).doubleOrNothingStates as Map<string, any> | undefined;
+            const doubleState = states?.get(actualUsername.toLowerCase());
+            if (!doubleState || Date.now() > doubleState.expires) {
                 await reply(`@${actualUsername}, no active double-or-nothing available!`, 'bot').catch(() => {});
                 return;
             }
             
             const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleDouble(actualUsername, doubleState.wager, userPointsData.points);
+            const result = await handleDouble(actualUsername, doubleState.wager, userPointsData.points, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
             }
             
-            // Clear the double state
-            delete (global as any).doubleOrNothingState;
+            states?.delete(actualUsername.toLowerCase());
             return;
         }
+        
+
         
         // Handle !brb command
         if (actualMessage.toLowerCase().includes('be right back') || actualMessage.toLowerCase() === '!brb') {
             if (tags.mod || tags.badges?.broadcaster) {
                 const broadcasterName = broadcasterUsername;
-                startBRB(broadcasterName).catch(err => console.error('[BRB] Error:', err));
+                startBRB(broadcasterName, tenantId).catch(err => console.error('[BRB] Error:', err));
                 await reply('🎬 Starting BRB clip player...', 'bot').catch(() => {});
             }
             return;
@@ -799,57 +795,112 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!back') {
             if (tags.mod || tags.badges?.broadcaster) {
                 stopBRB();
+                // Immediately stop overlay and switch scene back
+                if (typeof (global as any).broadcast === 'function') {
+                    (global as any).broadcast({ type: 'brb-stop' }, tenantId);
+                    try {
+                        const { getConfigSection: gcs } = require('../lib/local-config/service');
+                        const obsConfig = await gcs('obs', tenantId);
+                        const liveScene = obsConfig?.scenes?.live || 'Live';
+                        (global as any).broadcast({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
+                    } catch {}
+                }
                 await reply('👋 Welcome back!', 'bot').catch(() => {});
             }
             return;
         }
         
-        // Handle !clipmode command
-        if (actualMessage.toLowerCase() === '!clipmode') {
-            if (tags.mod || tags.badges?.broadcaster) {
-                await toggleClipMode();
-                const mode = await getClipMode();
-                await reply(`🎬 Clip mode: ${mode === 'viewer' ? 'VIEWER CLIPS' : 'MY CLIPS'}`, 'bot').catch(() => {});
-            }
-            return;
-        }
+
         
-        // Handle !chatmode command - toggle single/shared chat processing
+        // Handle !chatmode command - now master toggle for ALL modes
         if (actualMessage.toLowerCase() === '!chatmode') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const { toggleChatMode } = require('./shared-chat');
-                const newMode = await toggleChatMode();
+                const { toggleMasterChatmode } = await import('./modes-manager');
+                await toggleMasterChatmode(tenantId);
+                const modes = await (await import('./modes-manager')).getAllModes(tenantId);
                 await reply(
-                    newMode === 'shared'
-                        ? '🔗 Chat mode switched to SHARED — bot will respond to mirrored shared-chat messages.'
-                        : '🔒 Chat mode switched to SINGLE — bot will only respond to messages from this channel.',
+                    `🎛️ MASTER MODE: ${modes.chatmode.toUpperCase()} — All modes synced: Gamble(${modes.gamblemode}), Welcome(${modes.welcomemode}), Greeting(${modes.greetingmode}), Clip(${modes.clipmode})`,
                     'bot'
                 ).catch(() => {});
             } else {
-                await reply(`@${actualUsername}, only mods can change chat mode!`, 'bot').catch(() => {});
+                await reply(`@${actualUsername}, only mods can change master chat mode!`, 'bot').catch(() => {});
             }
             return;
         }
-        // Handle !bic command - Lighter theft tracker
-        if (actualMessage.toLowerCase().startsWith('!bic ')) {
-            const targetUser = actualMessage.substring(5).trim().replace('@', '');
-            if (!targetUser) {
-                await reply(`@${actualUsername}, usage: !bic @user`, 'bot').catch(() => {});
-                return;
-            }
+        // Handle !sr command - Re-send as plain !sr so HearMeOut's Twitch bot picks it up
+        if (actualMessage.toLowerCase().startsWith('!sr ')) {
+            await reply(actualMessage, 'bot').catch(() => {});
+            return;
+        }
+
+        // Handle !bic command - Lighter theft tracker (global across all streams)
+        if (actualMessage.toLowerCase().startsWith('!bic')) {
+            const args = actualMessage.substring(4).trim();
             try {
-                const { setGlobalVariable, setUserVariable } = await import('../lib/automation-variables-store');
-                const vars = await import('../lib/automation-variables-store');
-                const allVars = await vars.readAutomationVariables();
-                const total = (Number(allVars.global?.bic_total) || 0) + 1;
-                const userVars = allVars.users?.[targetUser] || {};
-                const userCount = (Number(userVars.bic_user_count) || 0) + 1;
-                await setGlobalVariable('bic_total', total);
-                await setUserVariable(targetUser, 'bic_user_count', userCount);
+                const { getBicData, stealLighter, removeLighter, getVictimList, isBlacklisted, addToBlacklist, removeFromBlacklist } = require('./bic-storage');
+
+                // !bic (no args) or !bic list [page] = show paginated leaderboard
+                if (!args || args.toLowerCase().startsWith('list')) {
+                    const data = getBicData();
+                    const victims = getVictimList();
+                    if (victims.length === 0) { await reply(`No lighters have been stolen yet!`, 'bot').catch(() => {}); return; }
+                    const PAGE_SIZE = 10;
+                    const pageArg = args ? parseInt(args.replace(/^list\s*/i, '')) : 1;
+                    const page = (isNaN(pageArg) || pageArg < 1) ? 1 : pageArg;
+                    const totalPages = Math.ceil(victims.length / PAGE_SIZE);
+                    const pageVictims = victims.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+                    const list = pageVictims.map((v: { name: string; count: number }) => `${v.name}: ${v.count}`).join(', ');
+                    let urlPart = '';
+                    try {
+                        const { getConfiguredAppUrl } = require('../lib/runtime-origin');
+                        const fullUrl = `${getConfiguredAppUrl()}/api/bic-list`;
+                        try { const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`, { signal: AbortSignal.timeout(3000) }); if (tinyRes.ok) { const short = await tinyRes.text(); if (short.startsWith('http')) urlPart = ` | Full list: ${short}`; } } catch {}
+                        if (!urlPart) urlPart = ` | Full list: ${fullUrl}`;
+                    } catch {}
+                    const pagePart = totalPages > 1 ? ` (pg ${page}/${totalPages} — !bic list ${page + 1})` : '';
+                    await reply(`🔥 ${data.total} lighters stolen! Victims: ${list}${pagePart}${urlPart}`, 'bot').catch(() => {});
+                    return;
+                }
+                // !bic remove @user
+                if (args.toLowerCase().startsWith('remove ')) {
+                    if (!(tags.mod || tags.badges?.broadcaster)) { await reply(`@${actualUsername}, only mods can remove bic entries!`, 'bot').catch(() => {}); return; }
+                    const removeTarget = args.substring(7).trim().replace('@', '').toLowerCase();
+                    if (!removeTarget) { await reply(`@${actualUsername}, usage: !bic remove @user`, 'bot').catch(() => {}); return; }
+                    const { total, userCount } = removeLighter(removeTarget);
+                    await reply(`Removed 1 lighter from ${removeTarget}. Total: ${total}, ${removeTarget}: ${userCount}`, 'bot').catch(() => {});
+                    const { publishBicOverlay } = require('./bic-service');
+                    await publishBicOverlay({ total, lastUser: removeTarget, lastUserCount: userCount });
+                    return;
+                }
+                // !bic blacklist @user
+                if (args.toLowerCase().startsWith('blacklist ')) {
+                    if (!(tags.mod || tags.badges?.broadcaster)) { await reply(`@${actualUsername}, only mods can manage the bic blacklist!`, 'bot').catch(() => {}); return; }
+                    const blTarget = args.substring(10).trim().replace('@', '').toLowerCase();
+                    if (!blTarget) { await reply(`@${actualUsername}, usage: !bic blacklist @user`, 'bot').catch(() => {}); return; }
+                    if (addToBlacklist(blTarget)) await reply(`${blTarget} added to bic blacklist`, 'bot').catch(() => {});
+                    else await reply(`${blTarget} is already blacklisted`, 'bot').catch(() => {});
+                    return;
+                }
+                // !bic unblacklist @user
+                if (args.toLowerCase().startsWith('unblacklist ')) {
+                    if (!(tags.mod || tags.badges?.broadcaster)) { await reply(`@${actualUsername}, only mods can manage the bic blacklist!`, 'bot').catch(() => {}); return; }
+                    const ublTarget = args.substring(12).trim().replace('@', '').toLowerCase();
+                    if (!ublTarget) { await reply(`@${actualUsername}, usage: !bic unblacklist @user`, 'bot').catch(() => {}); return; }
+                    if (removeFromBlacklist(ublTarget)) await reply(`${ublTarget} removed from bic blacklist`, 'bot').catch(() => {});
+                    else await reply(`${ublTarget} is not blacklisted`, 'bot').catch(() => {});
+                    return;
+                }
+                // !bic @user = steal a lighter
+                const targetUser = args.replace('@', '').toLowerCase();
+                if (isBlacklisted(targetUser)) { await reply(`@${actualUsername}, ${targetUser} is protected from lighter theft!`, 'bot').catch(() => {}); return; }
+                const { total, userCount } = stealLighter(targetUser);
                 await reply(`fatkid4ev4 has stolen ${total} lighters, of those ${userCount} have been ${targetUser}'s`, 'bot').catch(() => {});
-                // Write overlay data to tenant-scoped path
-                const { writeOverlayData } = require('./overlay-manager');
-                await writeOverlayData('bic-counter', { total, lastUser: targetUser, lastUserCount: userCount }, tenantId);
+                const { publishBicOverlay } = require('./bic-service');
+                await publishBicOverlay({ total, lastUser: targetUser, lastUserCount: userCount });
+                // Notify fatkid's stream about the lighter theft
+                if (tenantId !== '757276653') {
+                    sendChatMessage(`🔥 @${actualUsername} just swiped a lighter from ${targetUser} over in ${replyChannel}'s stream! (${total} total stolen)`, 'bot', undefined, '757276653').catch(() => {});
+                }
             } catch (err) {
                 console.error('[Bic] Error:', err);
             }
@@ -860,6 +911,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const targetName = actualMessage.substring(4).trim().replace('@', '');
             if (targetName) {
                 console.log(`[Dispatcher] Processing !so shoutout for ${targetName}`);
+                incrementMetric('shoutoutsGiven').catch(() => {});
                 const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
                 await handleWalkOnShoutout(targetName, targetName, profileImage, true, tenantId).catch(err => {
                     console.error('[Dispatcher] !so shoutout failed:', err);
@@ -1022,7 +1074,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !challenge command (Gym Battle queue)
         if (actualMessage.toLowerCase() === '!challenge') {
             const { joinQueue } = require('./gym-battle');
-            await joinQueue(actualUsername);
+            await joinQueue(actualUsername, tenantId);
             return;
         }
         
@@ -1044,7 +1096,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!testgym') {
             if (tags.mod || tags.badges?.broadcaster) {
                 const { testGymBattle } = require('./gym-battle');
-                await testGymBattle();
+                await testGymBattle(tenantId);
             }
             return;
         }
@@ -1053,7 +1105,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!nextchallenger') {
             if (tags.mod || tags.badges?.broadcaster) {
                 const { startNextBattle } = require('./gym-battle');
-                await startNextBattle();
+                await startNextBattle(tenantId);
             } else {
                 await reply(`@${actualUsername}, only the gym leader can start battles!`, 'broadcaster').catch(() => {});
             }
@@ -1063,14 +1115,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !attack command (Gym Battle)
         if (actualMessage.toLowerCase() === '!attack') {
             const { battleAttack } = require('./gym-battle');
-            await battleAttack(actualUsername);
+            await battleAttack(actualUsername, tenantId);
             return;
         }
         
         // Handle !switch command (Gym Battle)
         if (actualMessage.toLowerCase() === '!switch') {
             const { battleSwitch } = require('./gym-battle');
-            await battleSwitch(actualUsername);
+            await battleSwitch(actualUsername, tenantId);
             return;
         }
         
@@ -1190,15 +1242,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !watchtime command
         if (actualMessage.toLowerCase() === '!watchtime') {
             try {
-                const { getUser } = require('./user-stats');
+                const { getUser, formatWatchtime } = require('./user-stats');
                 const user = await getUser(actualUsername);
-                const hours = Math.floor(user.watchtime / 60);
-                const minutes = user.watchtime % 60;
-                
-                await reply(
-                    `@${actualUsername} has watched for ${hours}h ${minutes}m!`,
-                    'bot'
-                ).catch(() => {});
+                const msg = formatWatchtime(user);
+                await reply(msg, 'bot').catch(() => {});
             } catch (error) {
                 console.error('[Dispatcher] Watchtime fetch failed:', error);
                 await reply(`@${actualUsername}, couldn't fetch your watchtime!`, 'bot').catch(() => {});
@@ -1276,10 +1323,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const message = actualMessage.substring(13).trim();
                 // Store raid message
                 try {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const configPath = path.join(process.cwd(), 'tokens', 'raid-message.json');
-                    fs.writeFileSync(configPath, JSON.stringify({ message }, null, 2));
+                    const fsSync = require('fs');
+                    const pathMod = require('path');
+                    const configPath = tenantId
+                        ? require('../lib/tenant').tenantPath(tenantId, 'tokens/raid-message.json')
+                        : pathMod.join(process.cwd(), 'tokens', 'raid-message.json');
+                    fsSync.mkdirSync(pathMod.dirname(configPath), { recursive: true });
+                    fsSync.writeFileSync(configPath, JSON.stringify({ message }, null, 2));
                     await reply(`✅ Raid message set!`, 'broadcaster').catch(() => {});
                 } catch (error) {
                     console.error('[Dispatcher] Raid message save failed:', error);
@@ -1302,7 +1352,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const cmd = actualMessage.split(' ')[0].toLowerCase();
             const args = actualMessage.substring(cmd.length).trim();
             const broadcastFn = typeof (global as any).broadcast === 'function' ? (global as any).broadcast : () => {};
-            await handleLeaderboardCommand(cmd, actualUsername, args, broadcastFn);
+            await handleLeaderboardCommand(cmd, actualUsername, args, broadcastFn, tenantId);
             return;
         }
         
@@ -1343,17 +1393,56 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
         
         // 1. Command Handling from JSON files
-        const commands = await getAllCommands();
-        const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
         console.log(`[Dispatcher] Looking for command: ${cmdName}`);
         console.log(`[Dispatcher] Available commands:`, commands.map((c: any) => c.command).join(', '));
         
-        const command = commands.find(c => c.command.toLowerCase().replace(/^!/, '') === cmdName && c.enabled);
+        const command = configuredCommand || commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName && c.enabled);
         
         if (command) {
             console.log(`[Dispatcher] Found command: ${command.name}`);
             console.log(`[Dispatcher] Command has actionId:`, (command as any).actionId);
             console.log(`[Dispatcher] cmdName: ${cmdName}`);
+
+            const cmdArgs = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/).filter(Boolean);
+            const targetRaw = cmdArgs[0]?.replace('@', '') || '';
+            const execArgs: Record<string, any> = {};
+            cmdArgs.forEach((a: string, i: number) => { execArgs[`input${i}`] = a; });
+            execArgs.rawInput = cmdArgs.join(' ');
+            const executionContext = {
+                user: actualUsername,
+                userName: actualUsername,
+                message: actualMessage,
+                rawInput: cmdArgs.join(' '),
+                platform: 'twitch',
+                args: execArgs,
+                variables: {
+                    user: actualUsername,
+                    userName: actualUsername,
+                    targetUser: targetRaw,
+                    targetUserName: targetRaw,
+                    rawInput: cmdArgs.join(' '),
+                },
+            };
+
+            const actionsForCommand = (await getAllActions(tenantId)).filter((action: any) =>
+                action?.enabled &&
+                Array.isArray(action.triggers) &&
+                action.triggers.some((trigger: any) =>
+                    trigger?.enabled !== false &&
+                    Number(trigger?.type) === 401 &&
+                    String(trigger?.commandId || '') === String((command as any).id || '')
+                )
+            );
+
+            if (actionsForCommand.length > 0) {
+                const { SubActionExecutor } = await import('./automation/SubActionExecutor');
+                const executor = new SubActionExecutor();
+                for (const action of actionsForCommand) {
+                    console.log(`[Dispatcher] Executing command-triggered action ${action.id} for ${cmdName}`);
+                    await executor.executeAction(action, executionContext);
+                }
+                return;
+            }
             
             // Handle simple response
             if ((command as any).response && !(command as any).actionId && !(command as any).actions) {
@@ -1399,7 +1488,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             // Execute action if linked
             if ((command as any).actionId) {
                 console.log(`[Dispatcher] Command has actionId: ${(command as any).actionId}`);
-                const action = await getActionById((command as any).actionId);
+                const action = await getActionById((command as any).actionId, tenantId);
                 console.log(`[Dispatcher] Action found:`, action ? 'YES' : 'NO');
                 console.log(`[Dispatcher] Action object:`, JSON.stringify(action));
                 if (action && (action as any).handler) {
@@ -1439,26 +1528,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     // Execute subActions using SubActionExecutor
                     const { SubActionExecutor } = await import('./automation/SubActionExecutor');
                     const executor = new SubActionExecutor();
-                    const cmdArgs = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/);
-                    const targetRaw = cmdArgs[0]?.replace('@', '') || '';
-                    const execArgs: Record<string, any> = {};
-                    cmdArgs.forEach((a: string, i: number) => { execArgs[`input${i}`] = a; });
-                    execArgs.rawInput = cmdArgs.join(' ');
-                    await executor.executeAction(action, {
-                        user: actualUsername,
-                        userName: actualUsername,
-                        message: actualMessage,
-                        rawInput: cmdArgs.join(' '),
-                        platform: 'twitch',
-                        args: execArgs,
-                        variables: {
-                            user: actualUsername,
-                            userName: actualUsername,
-                            targetUser: targetRaw,
-                            targetUserName: targetRaw,
-                            rawInput: cmdArgs.join(' '),
-                        },
-                    });
+                    await executor.executeAction(action, executionContext);
                 }
             }
             
@@ -1544,7 +1614,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                       (global as any).broadcast({
                         type: 'pokemon-collection-show',
                         payload: { username: actualUsername, cards: cards.map((c: any) => `${c.setCode}-${c.number}`) }
-                      });
+                      }, tenantId);
                     }
                 } else if (actionType === 'pokemon-trade-initiate') {
                     const args = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/);
@@ -1572,8 +1642,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase() ||
                                 message.includes('🌟');
             
-            if (!skipWelcome && await shouldWelcomeUser(actualUsername)) {
-                const welcomeMode = await getWelcomeMode();
+            if (!skipWelcome && await shouldWelcomeUser(actualUsername, tenantId)) {
+                const welcomeMode = await getWelcomeMode(tenantId);
                 
                 if (welcomeMode === 'overlay') {
                     // Overlay-only mode: broadcast to overlay without chat message
@@ -1592,7 +1662,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     });
                 }
                 
-                markUserWelcomed(actualUsername).catch(() => {});
+                markUserWelcomed(actualUsername, tenantId).catch(() => {});
             }
         }
         
@@ -1692,6 +1762,7 @@ If no good match, respond with: Could not find matching user`;
             
             if (mentionsBot) {
                 
+                incrementMetric('athenaCommands').catch(() => {});
                 // Use chat-with-memory API for context-aware responses
                 try {
                     console.log('[Dispatcher] Calling chat-with-memory API...');
@@ -1703,7 +1774,8 @@ If no good match, respond with: Could not find matching user`;
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             username: actualUsername,
-                            message: messageToSend
+                            message: messageToSend,
+                            tenantId: tenantId || undefined,
                         })
                     });
                     
@@ -1721,7 +1793,7 @@ If no good match, respond with: Could not find matching user`;
                             // Generate TTS for AI response
                             try {
                                 const { textToSpeech } = await import('../ai/flows/text-to-speech');
-                                const ttsResult = await textToSpeech({ text: aiReply, voice: 'Algieba' });
+                                const ttsResult = await textToSpeech({ text: aiReply, tenantId: tenantId || undefined });
                                 
                                 if (ttsResult.audioDataUri) {
                                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
@@ -1758,9 +1830,9 @@ If no good match, respond with: Could not find matching user`;
     }
 }
 
-export async function handleDiscordMessage(msg: any) {
+export async function handleDiscordMessage(msg: any, tenantId?: string) {
     // Check if Discord bridge is enabled
-    const logChannelId = await getDiscordLogChannelId();
+    const logChannelId = await getDiscordLogChannelId(tenantId);
     if (!logChannelId) return;
     
     const isCommand = msg.content.startsWith('!');
@@ -1782,6 +1854,6 @@ export async function handleDiscordMessage(msg: any) {
         
         // Send all Discord messages as bot with Discord prefix
         const twitchMessage = `[Discord] ${msg.author.username}: ${processedContent}`;
-        await sendChatMessage(twitchMessage, 'bot').catch(e => console.error('[Bridge] Failed:', e));
+        await sendChatMessage(twitchMessage, 'bot', undefined, tenantId).catch(e => console.error('[Bridge] Failed:', e));
     }
 }

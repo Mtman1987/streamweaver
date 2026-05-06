@@ -361,6 +361,8 @@ export function defaultFlowServices(): Services {
       await sendPluginCommand(pluginId, command);
     },
     updatePoints: async ({ user, amount = 0, operation = 'add' }) => {
+      // Note: no tenant context available in default flow services.
+      // When flows are activated, the execution context should carry tenantId.
       switch (operation) {
         case 'set':
           return setPoints(user, amount);

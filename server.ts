@@ -80,6 +80,22 @@ async function startServer() {
             console.log('[Config] Using fallback configuration');
         }
         const isProductionRuntime = process.env.NODE_ENV === 'production';
+
+        // Re-bootstrap all existing tenants (fills missing config/commands/actions)
+        try {
+            const { rebootstrapAllTenants, listTenants: listTenantsForMigration } = require('./src/lib/tenant');
+            await rebootstrapAllTenants();
+            // Migrate bic data from all tenants into global bic storage
+            try {
+                const { migrateFromAutomationVariables } = require('./src/services/bic-storage');
+                const tenantIds = await listTenantsForMigration();
+                for (const tid of tenantIds) await migrateFromAutomationVariables(tid);
+                await migrateFromAutomationVariables(); // also check global
+            } catch (e) { console.warn('[Server] Bic migration skipped:', e); }
+        } catch (e) {
+            console.warn('[Server] Tenant re-bootstrap failed:', e);
+        }
+
         const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig?.server?.host || '127.0.0.1');
         const uiPort = Number(process.env.PORT || appConfig?.server?.port || (isProductionRuntime ? 3000 : 3100));
         const wsPort = Number(process.env.WS_PORT || appConfig?.server?.wsPort || 8090);
@@ -255,16 +271,19 @@ async function startServer() {
         const { loadWelcomeSession } = require('./src/services/welcome-wagon');
         const { listTenants } = require('./src/lib/tenant');
 
-        // Load welcome session to prevent re-welcoming users after restart
-        try {
-            await loadWelcomeSession();
-            console.log('[STEP 4] ✅ Welcome session loaded');
-        } catch (e) {
-            console.warn('[STEP 4] ⚠️ Welcome session load failed:', e);
+        const tenants = await listTenants();
+
+        // Load welcome session for all tenants
+        for (const tenantId of tenants) {
+            try {
+                await loadWelcomeSession(tenantId);
+                console.log(`[STEP 4] ✅ Welcome session loaded for tenant ${tenantId}`);
+            } catch (e) {
+                console.warn(`[STEP 4] ⚠️ Welcome session load failed for tenant ${tenantId}:`, e);
+            }
         }
 
         // Load chat history for all tenants
-        const tenants = await listTenants();
         console.log(`[STEP 4] Loading chat history for ${tenants.length} tenants...`);
         for (const tenantId of tenants) {
             try {
@@ -313,6 +332,12 @@ async function startServer() {
                 await checkTwitchLiveStatus();
             } catch (e) { /* silent */ }
         }, 60000);
+        pollingService.addTask('twitch-reconnect', async () => {
+            try {
+                const { reconnectDisconnectedTenants } = require('./src/services/twitch-client');
+                await reconnectDisconnectedTenants();
+            } catch (e) { /* silent */ }
+        }, 300000); // every 5 minutes
         pollingService.addTask('metrics', async () => {
             try { const { updateMetrics } = require('./src/services/metrics'); await updateMetrics(); } catch (e) { /* silent */ }
         }, 120000);
@@ -320,21 +345,33 @@ async function startServer() {
             try {
                 const { syncPointsData } = require('./src/services/points');
                 const { listTenants } = require('./src/lib/tenant');
+                const { getStoredTokens } = require('./src/lib/token-utils.server');
                 const tenantIds = await listTenants();
                 for (const tid of tenantIds) {
-                    await syncPointsData({ tenantId: tid, username: '' }).catch(() => {});
+                    const tokens = await getStoredTokens(tid);
+                    const username = tokens?.broadcasterUsername || '';
+                    if (!username) continue;
+                    await syncPointsData({ tenantId: tid, username }).catch(() => {});
                 }
             } catch (e) { /* silent */ }
         }, 30000);
         pollingService.addTask('watchtime-tracker', async () => {
             try {
-                const resp = await fetch(`http://127.0.0.1:${uiPort}/api/chat/chatters`);
-                if (resp.ok) {
-                    const data = await resp.json() as any;
-                    const names = (data.chatters || []).map((c: any) => c.user_login || c.user_name).filter(Boolean);
-                    if (names.length > 0) {
-                        const { incrementWatchtime } = require('./src/services/user-stats');
-                        await incrementWatchtime(names);
+                const { listTenants } = require('./src/lib/tenant');
+                const { getStoredTokens } = require('./src/lib/token-utils.server');
+                const tenantIds = await listTenants();
+                for (const tid of tenantIds) {
+                    const tokens = await getStoredTokens(tid);
+                    const broadcasterUsername = tokens?.broadcasterUsername;
+                    if (!broadcasterUsername) continue;
+                    const resp = await fetch(`http://127.0.0.1:${uiPort}/api/chat/chatters?tenant=${tid}`);
+                    if (resp.ok) {
+                        const data = await resp.json() as any;
+                        const names = (data.chatters || []).map((c: any) => c.user_login || c.user_name).filter(Boolean);
+                        if (names.length > 0) {
+                            const { incrementWatchtime } = require('./src/services/user-stats');
+                            await incrementWatchtime(names, broadcasterUsername);
+                        }
                     }
                 }
             } catch (e) { /* silent */ }

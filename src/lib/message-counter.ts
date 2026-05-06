@@ -1,8 +1,13 @@
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
+import { tenantPath } from '../lib/tenant';
 
-const COUNTER_FILE = resolve(process.cwd(), 'src', 'data', 'message-counter.json');
 const MAX_MESSAGES = 50;
+
+function counterFilePath(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'data/message-counter.json');
+  return resolve(process.cwd(), 'src', 'data', 'message-counter.json');
+}
 
 interface ChannelCounter {
   count: number;
@@ -15,25 +20,28 @@ interface CounterData {
 
 let counterData: CounterData = {};
 
-export async function loadCounter(): Promise<void> {
+export async function loadCounter(tenantId?: string): Promise<void> {
   try {
-    const data = await fs.readFile(COUNTER_FILE, 'utf-8');
+    const data = await fs.readFile(counterFilePath(tenantId), 'utf-8');
     counterData = JSON.parse(data);
   } catch (error) {
-    await saveCounter();
+    await saveCounter(tenantId);
   }
 }
 
-export async function saveCounter(): Promise<void> {
+export async function saveCounter(tenantId?: string): Promise<void> {
   try {
-    await fs.writeFile(COUNTER_FILE, JSON.stringify(counterData, null, 2));
+    const filePath = counterFilePath(tenantId);
+    const dir = resolve(filePath, '..');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(counterData, null, 2));
   } catch (error) {
     console.error('Error saving message counter:', error);
   }
 }
 
-export async function getNextMessageNumber(channelId: string): Promise<{ number: number; shouldDelete?: string }> {
-  await loadCounter();
+export async function getNextMessageNumber(channelId: string, tenantId?: string): Promise<{ number: number; shouldDelete?: string }> {
+  await loadCounter(tenantId);
   
   if (!counterData[channelId]) {
     counterData[channelId] = { count: 0, messageIds: [] };
@@ -53,14 +61,14 @@ export async function getNextMessageNumber(channelId: string): Promise<{ number:
     shouldDelete = channel.messageIds[deleteIndex];
   }
   
-  await saveCounter();
+  await saveCounter(tenantId);
   console.log(`[Counter] Generated message number: ${displayNumber} (total: ${channel.count})`);
   
   return { number: displayNumber, shouldDelete };
 }
 
-export async function storeMessageId(channelId: string, messageId: string, displayNumber: number): Promise<void> {
-  await loadCounter();
+export async function storeMessageId(channelId: string, messageId: string, displayNumber: number, tenantId?: string): Promise<void> {
+  await loadCounter(tenantId);
   
   if (!counterData[channelId]) {
     counterData[channelId] = { count: 0, messageIds: [] };
@@ -75,7 +83,7 @@ export async function storeMessageId(channelId: string, messageId: string, displ
   }
   
   channel.messageIds[index] = messageId;
-  await saveCounter();
+  await saveCounter(tenantId);
 }
 
 export async function cleanupOldMessages(channelId: string): Promise<void> {

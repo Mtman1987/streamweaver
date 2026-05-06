@@ -21,9 +21,13 @@ function configDir(tenantId?: string): string {
   return CONFIG_DIR;
 }
 
-let cached: LocalConfigMap | null = null;
-let initialized = false;
-let initPromise: Promise<LocalConfigMap> | null = null;
+const cached = new Map<string, LocalConfigMap>();
+const initialized = new Set<string>();
+const initPromises = new Map<string, Promise<LocalConfigMap>>();
+
+function scopeKey(tenantId?: string): string {
+  return tenantId || '__global__';
+}
 
 function sectionPath(section: ConfigSectionName, tenantId?: string): string {
   return path.join(configDir(tenantId), `${section}.json`);
@@ -70,19 +74,24 @@ function parsePort(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65535 ? parsed : fallback;
 }
 
-function migrateFromLegacy(config: LocalConfigMap): LocalConfigMap {
-  const legacyUserConfig = readUserConfigSync();
+function migrateFromLegacy(config: LocalConfigMap, tenantId?: string): LocalConfigMap {
+  const legacyUserConfig = readUserConfigSync(tenantId);
   const isProductionRuntime = process.env.NODE_ENV === 'production';
+  const legacyBroadcasterUsername = legacyUserConfig.TWITCH_BROADCASTER_USERNAME || '';
+  const legacyBroadcasterId = legacyUserConfig.TWITCH_BROADCASTER_ID || '';
+  const legacyBotUsername = legacyUserConfig.TWITCH_BOT_USERNAME || '';
 
   const migrated: LocalConfigMap = {
     ...config,
     twitch: {
       ...config.twitch,
-      broadcasterUsername: config.twitch.broadcasterUsername || legacyUserConfig.TWITCH_BROADCASTER_USERNAME || '',
-      broadcasterId: config.twitch.broadcasterId || legacyUserConfig.TWITCH_BROADCASTER_ID || '',
+      // Tenant-scoped legacy user-config is source of truth when present.
+      // This prevents a copied global config value from leaking across tenants.
+      broadcasterUsername: legacyBroadcasterUsername || config.twitch.broadcasterUsername || '',
+      broadcasterId: legacyBroadcasterId || config.twitch.broadcasterId || '',
       clientId: config.twitch.clientId || process.env.TWITCH_CLIENT_ID || '',
       clientSecret: config.twitch.clientSecret || process.env.TWITCH_CLIENT_SECRET || '',
-      botUsername: config.twitch.botUsername || process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME || '',
+      botUsername: legacyBotUsername || config.twitch.botUsername || process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME || '',
     },
     discord: {
       ...config.discord,
@@ -132,18 +141,21 @@ function migrateFromLegacy(config: LocalConfigMap): LocalConfigMap {
   };
 }
 
-export async function initializeLocalConfig(): Promise<LocalConfigMap> {
-  if (initialized && cached) return cached;
+export async function initializeLocalConfig(tenantId?: string): Promise<LocalConfigMap> {
+  const key = scopeKey(tenantId);
+  const cachedConfig = cached.get(key);
+  if (initialized.has(key) && cachedConfig) return cachedConfig;
 
-  if (initPromise) return initPromise;
+  const existingPromise = initPromises.get(key);
+  if (existingPromise) return existingPromise;
 
-  initPromise = (async () => {
+  const initPromise = (async () => {
     try {
-      await fsp.mkdir(CONFIG_DIR, { recursive: true });
+      await fsp.mkdir(configDir(tenantId), { recursive: true });
 
       const draft = {} as LocalConfigMap;
       for (const section of configFileOrder) {
-        const filePath = sectionPath(section);
+        const filePath = sectionPath(section, tenantId);
         try {
           const raw = await fsp.readFile(filePath, 'utf-8');
           const parsed = JSON.parse(raw);
@@ -154,7 +166,7 @@ export async function initializeLocalConfig(): Promise<LocalConfigMap> {
         }
       }
 
-      const migrated = migrateFromLegacy(draft);
+      const migrated = migrateFromLegacy(draft, tenantId);
 
       // Validate migrated config before writing
       for (const section of configFileOrder) {
@@ -165,11 +177,11 @@ export async function initializeLocalConfig(): Promise<LocalConfigMap> {
       }
 
       for (const section of configFileOrder) {
-        await writeJsonAtomic(sectionPath(section), migrated[section]);
+        await writeJsonAtomic(sectionPath(section, tenantId), migrated[section]);
       }
 
-      cached = migrated;
-      initialized = true;
+      cached.set(key, migrated);
+      initialized.add(key);
       return migrated;
     } catch (error) {
       console.error('[Config] Failed to initialize local config:', error);
@@ -178,33 +190,35 @@ export async function initializeLocalConfig(): Promise<LocalConfigMap> {
       for (const section of configFileOrder) {
         fallback[section] = defaultSection(section) as any;
       }
-      cached = fallback;
-      initialized = true;
+      cached.set(key, fallback);
+      initialized.add(key);
       return fallback;
     }
   })();
+  initPromises.set(key, initPromise);
 
   try {
     return await initPromise;
   } finally {
-    initPromise = null;
+    initPromises.delete(key);
   }
 }
 
-export async function getAllConfig(): Promise<LocalConfigMap> {
-  return initializeLocalConfig();
+export async function getAllConfig(tenantId?: string): Promise<LocalConfigMap> {
+  return initializeLocalConfig(tenantId);
 }
 
-export async function getConfigSection<K extends ConfigSectionName>(section: K): Promise<LocalConfigMap[K]> {
-  const all = await initializeLocalConfig();
+export async function getConfigSection<K extends ConfigSectionName>(section: K, tenantId?: string): Promise<LocalConfigMap[K]> {
+  const all = await initializeLocalConfig(tenantId);
   return all[section];
 }
 
 export async function updateConfigSection<K extends ConfigSectionName>(
   section: K,
-  updates: Partial<LocalConfigMap[K]>
+  updates: Partial<LocalConfigMap[K]>,
+  tenantId?: string
 ): Promise<LocalConfigMap[K]> {
-  const all = await initializeLocalConfig();
+  const all = await initializeLocalConfig(tenantId);
   const merged = {
     ...all[section],
     ...updates,
@@ -212,13 +226,13 @@ export async function updateConfigSection<K extends ConfigSectionName>(
 
   const parsed = configSchemas[section].parse(merged) as LocalConfigMap[K];
   all[section] = parsed as any;
-  await writeJsonAtomic(sectionPath(section), parsed);
-  cached = all;
+  await writeJsonAtomic(sectionPath(section, tenantId), parsed);
+  cached.set(scopeKey(tenantId), all);
   return parsed;
 }
 
-export async function getPublicConfigSection<K extends ConfigSectionName>(section: K): Promise<Record<string, unknown>> {
-  const full = (await getConfigSection(section)) as Record<string, any>;
+export async function getPublicConfigSection<K extends ConfigSectionName>(section: K, tenantId?: string): Promise<Record<string, unknown>> {
+  const full = (await getConfigSection(section, tenantId)) as Record<string, any>;
   const result = JSON.parse(JSON.stringify(full)) as Record<string, any>;
 
   for (const dottedPath of secretFields[section]) {
@@ -232,11 +246,11 @@ export async function getPublicConfigSection<K extends ConfigSectionName>(sectio
   return result;
 }
 
-export async function getPublicConfigAll(): Promise<Record<ConfigSectionName, Record<string, unknown>>> {
-  await initializeLocalConfig();
+export async function getPublicConfigAll(tenantId?: string): Promise<Record<ConfigSectionName, Record<string, unknown>>> {
+  await initializeLocalConfig(tenantId);
   const out = {} as Record<ConfigSectionName, Record<string, unknown>>;
   for (const section of configFileOrder) {
-    out[section] = await getPublicConfigSection(section);
+    out[section] = await getPublicConfigSection(section, tenantId);
   }
   return out;
 }
@@ -256,6 +270,6 @@ export function validateLocalApiKeySync(apiKey?: string | null): boolean {
   return true;
 }
 
-export function getConfigDirectoryPath(): string {
-  return CONFIG_DIR;
+export function getConfigDirectoryPath(tenantId?: string): string {
+  return configDir(tenantId);
 }

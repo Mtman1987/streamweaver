@@ -70,8 +70,8 @@ Respond with ONLY the exact username from the list that is closest, nothing else
 export async function handleVoiceShoutout(spokenName: string, tenantId?: string): Promise<void> {
     console.log(`[VoiceShoutout] Processing voice shoutout for: "${spokenName}"`);
     
-    // Get current chatters
-    const chattersData = await getChatters();
+    // Get current chatters for this tenant
+    const chattersData = await getChatters(tenantId);
     const chatters = chattersData.map(c => c.user_login.toLowerCase());
     
     if (chatters.length === 0) {

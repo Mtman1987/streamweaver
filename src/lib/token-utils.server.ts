@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
-import { tenantPath } from './tenant';
+import { tenantPath, communityBotTokensPath } from './tenant';
 
 export interface TokenData {
   access_token: string;
@@ -36,6 +36,10 @@ function tokensFilePath(tenantId?: string): string {
     return tenantPath(tenantId, 'tokens/twitch-tokens.json');
   }
   return resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
+}
+
+function communityTokensFilePath(): string {
+  return communityBotTokensPath();
 }
 
 export async function getStoredTokens(tenantId?: string): Promise<StoredTokens | null> {
@@ -130,7 +134,26 @@ export async function ensureValidToken(
       lastUpdated: new Date().toISOString(),
     };
 
-    await storeTokens(updatedTokens, tenantId);
+    // Keep login and broadcaster tokens in sync when they're the same user
+    // to prevent stale refresh tokens from Twitch's single-grant-per-app policy
+    if (tokenType === 'broadcaster' && tokens.loginUsername && tokens.broadcasterUsername &&
+        tokens.loginUsername.toLowerCase() === tokens.broadcasterUsername.toLowerCase()) {
+      updatedTokens.loginToken = newTokenData.access_token;
+      updatedTokens.loginRefreshToken = newTokenData.refresh_token;
+      updatedTokens.loginTokenExpiry = newExpiry;
+    }
+    if (tokenType === 'bot') {
+      // Bot is always a different user, no sync needed
+    }
+
+    if (tokenType === 'community-bot' && !tenantId) {
+      const filePath = communityTokensFilePath();
+      const dir = resolve(filePath, '..');
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify(updatedTokens, null, 2));
+    } else {
+      await storeTokens(updatedTokens, tenantId);
+    }
     console.log(`[Token] Successfully refreshed ${tokenType} token`);
     accessToken = newTokenData.access_token;
   }

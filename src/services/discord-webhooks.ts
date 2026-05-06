@@ -1,7 +1,11 @@
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
+import { tenantPath } from '../lib/tenant';
 
-const WEBHOOKS_FILE = resolve(process.cwd(), 'tokens', 'discord-webhooks.json');
+function webhooksFile(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'tokens/discord-webhooks.json');
+  return resolve(process.cwd(), 'tokens', 'discord-webhooks.json');
+}
 
 interface WebhookData {
   url: string;
@@ -9,17 +13,19 @@ interface WebhookData {
   avatarUrl: string;
 }
 
-async function loadWebhooks(): Promise<Record<string, WebhookData>> {
+async function loadWebhooks(tenantId?: string): Promise<Record<string, WebhookData>> {
   try {
-    const data = await fs.readFile(WEBHOOKS_FILE, 'utf-8');
+    const data = await fs.readFile(webhooksFile(tenantId), 'utf-8');
     return JSON.parse(data);
   } catch {
     return {};
   }
 }
 
-async function saveWebhooks(webhooks: Record<string, WebhookData>): Promise<void> {
-  await fs.writeFile(WEBHOOKS_FILE, JSON.stringify(webhooks, null, 2));
+async function saveWebhooks(webhooks: Record<string, WebhookData>, tenantId?: string): Promise<void> {
+  const filePath = webhooksFile(tenantId);
+  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(webhooks, null, 2));
 }
 
 export async function createWebhookForChannel(channelId: string, username: string, avatarUrl: string): Promise<string> {

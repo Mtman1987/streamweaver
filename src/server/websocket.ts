@@ -280,13 +280,14 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     hideAvatarAfterDelay(0, broadcast, (ws as any).__tenantId);
                     console.log('[WebSocket] Hide avatar requested');
                 } else if (message.type === 'update-bot-settings') {
-                    const { personality, voice, name, interests } = message.payload;
+                    const { personality, voice, name, interests, skipShoutoutOverlay } = message.payload;
                     const { setBotSettings } = require('../lib/bot-settings-store');
                     const tid = (ws as any).__tenantId;
                     const updates: Record<string, string> = {};
                     const botUpdates: Record<string, string> = {};
                     if (personality && typeof personality === 'string') {
                         botUpdates.personality = personality;
+                        updates.AI_BOT_PERSONALITY = personality;
                         console.log(`[WebSocket] Updated bot personality for ${tid || 'global'}`);
                     }
                     if (voice && typeof voice === 'string') {
@@ -301,7 +302,12 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     }
                     if (interests && typeof interests === 'string') {
                         botUpdates.interests = interests;
+                        updates.AI_BOT_INTERESTS = interests;
                         console.log(`[WebSocket] Updated bot interests`);
+                    }
+                    if (typeof skipShoutoutOverlay === 'boolean') {
+                        updates.SKIP_SHOUTOUT_OVERLAY = skipShoutoutOverlay ? 'true' : 'false';
+                        console.log(`[WebSocket] Updated skip shoutout overlay to: ${skipShoutoutOverlay}`);
                     }
                     if (Object.keys(botUpdates).length > 0) {
                         setBotSettings(tid, botUpdates);

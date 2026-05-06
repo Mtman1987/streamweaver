@@ -88,6 +88,19 @@ export const redeemsConfigSchema = z.object({
     discordGuildId: z.string().default(''),
     discordRoleName: z.string().default(''),
   }).default({}),
+  crewCheckin: z.object({
+    rewardTitle: z.string().default(''),
+    pointCost: z.number().int().default(0),
+    apiUrl: z.string().default(''),
+  }).default({}),
+  modCheckin: z.object({
+    rewardTitle: z.string().default(''),
+    pointCost: z.number().int().default(0),
+  }).default({}),
+  spaceMountainCheckin: z.object({
+    rewardTitle: z.string().default(''),
+    pointCost: z.number().int().default(0),
+  }).default({}),
   pokePack: z.object({
     rewardTitle: z.string().default(''),
     pointCost: z.number().int().default(1500),

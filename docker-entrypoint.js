@@ -6,7 +6,7 @@ const path = require('node:path')
 
 const env = { ...process.env }
 const PERSIST_ROOT = env.PERSIST_ROOT || '/data/runtime'
-const PERSISTED_DIRS = ['logs', 'tmp']
+const PERSISTED_DIRS = ['logs', 'tmp', 'config', 'tokens', 'actions', 'commands', 'data', 'MasterStats']
 
 ;(async() => {
   ensurePersistentDirs()

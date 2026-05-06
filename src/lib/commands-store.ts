@@ -3,10 +3,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { readSbCommandsFile, writeSbCommandsFile } from './sb-store';
+import { tenantPath } from './tenant';
 import type { Command } from '../services/automation/types';
 
-// Individual commands directory for modular storage
-const COMMANDS_DIR = path.join(process.cwd(), 'commands');
+// Root commands directory (used as template for new tenants)
+const ROOT_COMMANDS_DIR = path.join(process.cwd(), 'commands');
+
+function getCommandsDir(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'commands');
+  return ROOT_COMMANDS_DIR;
+}
 
 export const COMMANDS_FILE_PATH = path.resolve(process.cwd(), 'src', 'data', 'commands.json');
 
@@ -93,43 +99,44 @@ function normalizeCommand(c: any): CommandDTO {
 }
 
 // Save command to individual file
-async function saveCommandToFile(command: any): Promise<void> {
-  if (!fs.existsSync(COMMANDS_DIR)) {
-    fs.mkdirSync(COMMANDS_DIR, { recursive: true });
+async function saveCommandToFile(command: any, tenantId?: string): Promise<void> {
+  const dir = getCommandsDir(tenantId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
   
   const filename = `${command.command.replace(/[^a-zA-Z0-9]/g, '_')}_${command.id}.json`;
-  const filepath = path.join(COMMANDS_DIR, filename);
+  const filepath = path.join(dir, filename);
   
   fs.writeFileSync(filepath, JSON.stringify(command, null, 2));
 }
 
 // Export command for sharing
-export async function exportCommand(id: string): Promise<string | null> {
-  const command = await getCommandById(id);
+export async function exportCommand(id: string, tenantId?: string): Promise<string | null> {
+  const command = await getCommandById(id, tenantId);
   return command ? JSON.stringify(command, null, 2) : null;
 }
 
 // Import command from JSON
-export async function importCommand(commandJson: string): Promise<Command> {
+export async function importCommand(commandJson: string, tenantId?: string): Promise<Command> {
   const command = JSON.parse(commandJson);
   command.id = randomUUID(); // Generate new ID to avoid conflicts
-  await saveCommandToFile(command);
+  await saveCommandToFile(command, tenantId);
   return command as Command;
 }
 
-export async function getAllCommands(): Promise<CommandDTO[]> {
+export async function getAllCommands(tenantId?: string): Promise<CommandDTO[]> {
+  const dir = getCommandsDir(tenantId);
   // Try individual files first, fall back to monolithic
-  if (fs.existsSync(COMMANDS_DIR)) {
-    const files = fs.readdirSync(COMMANDS_DIR);
+  if (fs.existsSync(dir)) {
+    const files = fs.readdirSync(dir);
     const commands: any[] = [];
     
     for (const file of files) {
       if (file.endsWith('.json') && file !== '_metadata.json') {
         try {
-          const content = fs.readFileSync(path.join(COMMANDS_DIR, file), 'utf8');
+          const content = fs.readFileSync(path.join(dir, file), 'utf8');
           const command = JSON.parse(content);
-          // Preserve all fields including actionId
           commands.push(command);
         } catch (e) {
           console.warn(`Failed to load command file ${file}:`, e);
@@ -158,7 +165,7 @@ export type CreateCommandInput = {
   enabled?: boolean;
 };
 
-export async function createCommand(input: CreateCommandInput): Promise<Command> {
+export async function createCommand(input: CreateCommandInput, tenantId?: string): Promise<Command> {
   const now = new Date().toISOString();
   const id = randomUUID();
   const next: Command = {
@@ -188,12 +195,12 @@ export async function createCommand(input: CreateCommandInput): Promise<Command>
     updatedAt: now,
   };
 
-  await saveCommandToFile(commandWithTimestamps);
+  await saveCommandToFile(commandWithTimestamps, tenantId);
   return next;
 }
 
-export async function updateCommand(id: string, updates: Partial<CreateCommandInput>): Promise<Command | null> {
-  const current = await getCommandById(id);
+export async function updateCommand(id: string, updates: Partial<CreateCommandInput>, tenantId?: string): Promise<Command | null> {
+  const current = await getCommandById(id, tenantId);
   if (!current) return null;
 
   const next = {
@@ -205,17 +212,65 @@ export async function updateCommand(id: string, updates: Partial<CreateCommandIn
     updatedAt: new Date().toISOString(),
   };
 
-  await saveCommandToFile(next);
+  await saveCommandToFile(next, tenantId);
   return next as Command;
 }
 
-export async function getCommandById(id: string): Promise<Command | undefined> {
-  if (fs.existsSync(COMMANDS_DIR)) {
-    const files = fs.readdirSync(COMMANDS_DIR);
+export async function updateAllCommandsEnabled(enabled: boolean, tenantId?: string): Promise<number> {
+  const dir = getCommandsDir(tenantId);
+  if (fs.existsSync(dir)) {
+    const files = fs.readdirSync(dir);
+    let updatedCount = 0;
+
+    for (const file of files) {
+      if (!file.endsWith('.json') || file === '_metadata.json') continue;
+
+      const filepath = path.join(dir, file);
+      try {
+        const content = fs.readFileSync(filepath, 'utf8');
+        const command = JSON.parse(content);
+        if (command?.enabled === enabled) continue;
+
+        const next = {
+          ...command,
+          enabled,
+          updatedAt: new Date().toISOString(),
+        };
+
+        fs.writeFileSync(filepath, JSON.stringify(next, null, 2));
+        updatedCount += 1;
+      } catch (e) {
+        console.warn(`Failed to update command file ${file}:`, e);
+      }
+    }
+
+    return updatedCount;
+  }
+
+  const file = await readSbCommandsFile();
+  const commands = Array.isArray(file.commands) ? (file.commands as any[]) : [];
+  let updatedCount = 0;
+  const next = commands.map((command) => {
+    if (command?.enabled === enabled) return command;
+    updatedCount += 1;
+    return {
+      ...command,
+      enabled,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  await writeSbCommandsFile({ ...file, commands: next });
+  return updatedCount;
+}
+
+export async function getCommandById(id: string, tenantId?: string): Promise<Command | undefined> {
+  const dir = getCommandsDir(tenantId);
+  if (fs.existsSync(dir)) {
+    const files = fs.readdirSync(dir);
     const file = files.find(f => f.includes(id) && f.endsWith('.json'));
     if (file) {
       try {
-        const content = fs.readFileSync(path.join(COMMANDS_DIR, file), 'utf8');
+        const content = fs.readFileSync(path.join(dir, file), 'utf8');
         return JSON.parse(content) as Command;
       } catch (e) {
         console.warn(`Failed to load command file ${file}:`, e);
@@ -231,12 +286,13 @@ export async function getCommandById(id: string): Promise<Command | undefined> {
   return found as Command | undefined;
 }
 
-export async function deleteCommand(id: string): Promise<boolean> {
-  if (fs.existsSync(COMMANDS_DIR)) {
-    const files = fs.readdirSync(COMMANDS_DIR);
+export async function deleteCommand(id: string, tenantId?: string): Promise<boolean> {
+  const dir = getCommandsDir(tenantId);
+  if (fs.existsSync(dir)) {
+    const files = fs.readdirSync(dir);
     const file = files.find(f => f.includes(id) && f.endsWith('.json'));
     if (file) {
-      fs.unlinkSync(path.join(COMMANDS_DIR, file));
+      fs.unlinkSync(path.join(dir, file));
       return true;
     }
     return false;

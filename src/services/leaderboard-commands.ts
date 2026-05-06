@@ -1,33 +1,6 @@
 import { getLeaderboard, getUser, getUserRank } from './user-stats';
 import { sendChatMessage } from './twitch';
-import { getDiscordMessage } from './discord';
-import * as fs from 'fs';
-import * as path from 'path';
-
-const DISCORD_IDS_FILE = path.join(process.cwd(), 'data', 'pokemon-discord-ids.json');
-const STORAGE_CHANNEL_ID = '1476540488147533895';
-
-function loadDiscordIds(): Record<string, string> {
-  try {
-    if (fs.existsSync(DISCORD_IDS_FILE)) return JSON.parse(fs.readFileSync(DISCORD_IDS_FILE, 'utf-8'));
-  } catch {}
-  return {};
-}
-
-async function getCardCountFromDiscord(username: string): Promise<{ total: number; packs: number } | null> {
-  const ids = loadDiscordIds();
-  const msgId = ids[username.toLowerCase()];
-  if (!msgId) return null;
-  try {
-    const msg = await getDiscordMessage(STORAGE_CHANNEL_ID, msgId);
-    if (msg?.content) {
-      // Parse "User: mtman1987 | 63 cards, 7 packs opened"
-      const match = msg.content.match(/(\d+)\s*cards.*?(\d+)\s*packs/);
-      if (match) return { total: parseInt(match[1]), packs: parseInt(match[2]) };
-    }
-  } catch {}
-  return null;
-}
+import { getUserCards } from './pokemon-collection';
 
 const COOLDOWNS = {
   user: new Map<string, number>(),
@@ -51,16 +24,31 @@ export async function handleLeaderboardCommand(
   command: string,
   username: string,
   args: string,
-  broadcast: (message: { type: string; payload: unknown }) => void,
+  broadcast: (message: { type: string; payload: unknown }, tid?: string) => void,
+  tenantId?: string,
 ) {
   if (!checkCooldown(username)) return;
   
-  const user = await getUser(username);
+  const tenantCtx = tenantId ? { tenantId, username: '' } : undefined;
+
+  // Resolve broadcaster username for storage context
+  if (tenantCtx) {
+    try {
+      const { getStoredTokens } = require('../lib/token-utils.server');
+      const tokens = await getStoredTokens(tenantId);
+      if (tokens?.broadcasterUsername) tenantCtx.username = tokens.broadcasterUsername;
+    } catch {}
+  }
+
+  const user = await getUser(username, tenantCtx);
+
+  // Use tenant-scoped points
+  const tenantPoints = user.points;
   
-  // Get real card count from Discord message content
-  const discordCards = await getCardCountFromDiscord(username);
-  const realTotal = discordCards?.total ?? user.totalCards;
-  const realRare = discordCards ? 0 : user.rareCards; // Discord msg doesn't have rare count
+  // Get real card count from local collection
+  const userCards = await getUserCards(username);
+  const realTotal = userCards.length;
+  const realRare = userCards.filter((c: any) => c.rarity?.includes('Rare')).length;
   
   // !leader - show profile
   if (command === '!leader') {
@@ -81,15 +69,26 @@ export async function handleLeaderboardCommand(
     broadcast({
       type: 'leaderboard-profile',
       payload: profile
-    });
+    }, tenantId);
     
     // Send chat response
-    const hours = Math.floor(user.watchtime / 60);
+    const totalHours = Math.floor(user.watchtime / 60);
+    let channelUsername = '';
+    try {
+      const { getStoredTokens: gst } = require('../lib/token-utils.server');
+      const t = await gst(tenantId);
+      if (t?.broadcasterUsername) channelUsername = t.broadcasterUsername.toLowerCase();
+    } catch {}
+    const channelMinutes = channelUsername ? (user.watchtimeByChannel?.[channelUsername] || 0) : 0;
+    const channelHours = Math.floor(channelMinutes / 60);
+    const wtStr = channelUsername && channelMinutes > 0
+      ? `Watchtime: ${channelHours}h (${totalHours}h total)`
+      : `Watchtime: ${totalHours}h`;
     const badgeList = user.badges.length > 0 ? ` | Badges: ${user.badges.join(', ')}` : '';
-    const cardStr = discordCards ? `Cards: ${realTotal} (${discordCards.packs} packs)` : `Cards: ${realTotal}`;
+    const cardStr = `Cards: ${realTotal} (${realRare} rare)`;
     sendChatMessage(
-      `@${username} | Points: ${user.points.toLocaleString()} | Watchtime: ${hours}h | ${cardStr}${badgeList}`,
-      'bot'
+      `@${username} | Points: ${tenantPoints.toLocaleString()} | ${wtStr} | ${cardStr}${badgeList}`,
+      'bot', undefined, tenantId
     ).catch(() => {});
     return;
   }
@@ -123,23 +122,24 @@ export async function handleLeaderboardCommand(
       return;
   }
   
-  const leaderboard = await getLeaderboard(stat, 10);
-  const myRank = await getUserRank(username, stat);
+  const leaderboard = await getLeaderboard(stat, 10, tenantCtx);
+  const myRank = await getUserRank(username, stat, tenantCtx);
   let myValue = stat === 'badges' ? user.badges.length : user[stat];
-  // Use real card count from Discord if available
-  if ((stat === 'totalCards') && discordCards) myValue = discordCards.total;
+  if ((stat === 'totalCards')) {
+    const myCards = await getUserCards(username);
+    myValue = myCards.length;
+  }
   
   // Check for @mention comparison
   const mentionMatch = args.match(/@(\w+)/);
   if (mentionMatch) {
     const target = mentionMatch[1].toLowerCase();
-    const other = await getUser(target);
-    const theirRank = await getUserRank(target, stat);
+    const other = await getUser(target, tenantCtx);
+    const theirRank = await getUserRank(target, stat, tenantCtx);
     let theirValue = stat === 'badges' ? other.badges.length : other[stat];
-    // Use real card count from Discord for target too
     if (stat === 'totalCards') {
-      const targetCards = await getCardCountFromDiscord(target);
-      if (targetCards) theirValue = targetCards.total;
+      const targetCards = await getUserCards(target);
+      theirValue = targetCards.length;
     }
     
     broadcast({
@@ -150,14 +150,14 @@ export async function handleLeaderboardCommand(
         target: { user: target, rank: theirRank, value: theirValue },
         ahead: myRank < theirRank
       }
-    });
+    }, tenantId);
     
     // Send chat response
     const ahead = myRank < theirRank;
     const emoji = ahead ? '🎯' : '💥';
     sendChatMessage(
       `@${username} (#${myRank} - ${myValue}) vs @${target} (#${theirRank} - ${theirValue}) → ${ahead ? 'You\'re ahead!' : 'They\'re ahead!'} ${emoji}`,
-      'bot'
+      'bot', undefined, tenantId
     ).catch(() => {});
   } else {
     broadcast({
@@ -175,13 +175,28 @@ export async function handleLeaderboardCommand(
         })),
         you: { user: username, rank: myRank, value: myValue }
       }
-    });
+    }, tenantId);
     
     // Send chat response
     let chatMsg = `@${username}, you're currently #${myRank} with ${myValue} ${statName.toLowerCase()}!`;
+    if (stat === 'watchtime') {
+      const totalMin = myValue as number;
+      const totalH = Math.floor(totalMin / 60);
+      let channelUsername = '';
+      try {
+        const { getStoredTokens: gst } = require('../lib/token-utils.server');
+        const t = await gst(tenantId);
+        if (t?.broadcasterUsername) channelUsername = t.broadcasterUsername.toLowerCase();
+      } catch {}
+      const chMin = channelUsername ? (user.watchtimeByChannel?.[channelUsername] || 0) : 0;
+      const chH = Math.floor(chMin / 60);
+      chatMsg = chMin > 0
+        ? `@${username}, you're #${myRank} with ${chH}h here (${totalH}h total)!`
+        : `@${username}, you're #${myRank} with ${totalH}h total watchtime!`;
+    }
     if (stat === 'badges' && user.badges.length > 0) {
       chatMsg += ` (${user.badges.join(', ')})`;
     }
-    sendChatMessage(chatMsg, 'bot').catch(() => {});
+    sendChatMessage(chatMsg, 'bot', undefined, tenantId).catch(() => {});
   }
 }

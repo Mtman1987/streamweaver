@@ -2,9 +2,11 @@ import { getTwitchUser } from './twitch';
 import { sendChatMessage } from './twitch';
 import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
+import { tenantPath } from '../lib/tenant';
 import { canShoutoutUser, recordShoutout } from './welcome-wagon-tracker';
 import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
+import { readUserConfigSync } from '../lib/user-config';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -45,6 +47,11 @@ async function sendBroadcasterWelcome(displayName: string, tenantId?: string): P
       .replaceAll('{username}', displayName.toLowerCase())
       .replaceAll('{url}', `https://twitch.tv/${displayName}`);
     await sendChatMessage(msg, 'broadcaster', undefined, tenantId);
+}
+
+function shouldSkipShoutoutOverlay(tenantId?: string): boolean {
+    const cfg = readUserConfigSync(tenantId);
+    return cfg.SKIP_SHOUTOUT_OVERLAY === 'true' || process.env.SKIP_SHOUTOUT_OVERLAY === 'true';
 }
 
 // ============================
@@ -110,7 +117,7 @@ async function fetchClip(username: string): Promise<TwitchClip | null> {
 // CLIP PLAYBACK (NON-BLOCKING)
 // ============================
 
-async function playClip(clip: TwitchClip, displayName: string, profileImage: string): Promise<void> {
+async function playClip(clip: TwitchClip, displayName: string, profileImage: string, tenantId?: string): Promise<void> {
     const embedURL = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
     const delay = 700 + Math.floor(clip.duration * 1000);
     const playerUrl = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT||3100}`}/shoutout-player?user=${encodeURIComponent(displayName)}&image=${encodeURIComponent(profileImage)}&video=${encodeURIComponent(embedURL)}&thumbnail_url=${encodeURIComponent(clip.thumbnailUrl)}`;
@@ -122,6 +129,15 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
     console.log(`[WalkOn] Scene: "${sceneName}", Source: "${sourceName}"`);
     console.log('[WalkOn] Opening shoutout player:', playerUrl);
     
+    // Broadcast clip to overlay via WebSocket (works with remote OBS browser sources)
+    if (typeof (global as any).broadcast === 'function') {
+        (global as any).broadcast({
+            type: 'shoutout-play-clip',
+            payload: { clipUrl: embedURL, thumbnailUrl: clip.thumbnailUrl, user: displayName, profileImage }
+        }, tenantId);
+    }
+    
+    // Also try OBS WebSocket (works when OBS is local)
     const { setBrowserSource } = await import('./obs');
     
     try {
@@ -130,7 +146,7 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
         await setBrowserSource(sceneName, sourceName, playerUrl);
         console.log(`[WalkOn] Updated browser source successfully`);
     } catch (error) {
-        console.error('[WalkOn] Failed to update browser source:', error);
+        console.error('[WalkOn] Failed to update browser source (OBS not connected?):', error);
     }
     
     await new Promise(resolve => setTimeout(resolve, delay + 2000));
@@ -140,13 +156,15 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
 // PERSONALIZATION BUILDER
 // ============================
 
-async function buildPersona(username: string, displayName: string, profileImage: string): Promise<Persona> {
+async function buildPersona(username: string, displayName: string, profileImage: string, tenantId?: string): Promise<Persona> {
     const user = await getTwitchUser(username, 'login');
     
     // Get chat memory from Discord AI channel
     let memory = null;
     try {
-        const memoryPath = resolve(process.cwd(), 'tokens', 'chat-memory.json');
+        const memoryPath = tenantId
+            ? tenantPath(tenantId, 'tokens/chat-memory.json')
+            : resolve(process.cwd(), 'tokens', 'chat-memory.json');
         const memoryData = await fs.readFile(memoryPath, 'utf-8');
         const chatMemory = JSON.parse(memoryData);
         const userMemory = chatMemory[username.toLowerCase()];
@@ -158,7 +176,10 @@ async function buildPersona(username: string, displayName: string, profileImage:
     // Get shoutout count from welcome wagon tracker
     let shoutoutCount = 0;
     try {
-        const welcomeData = JSON.parse(await fs.readFile(resolve(process.cwd(), 'tokens', 'welcome-wagon.json'), 'utf-8'));
+        const wwPath = tenantId
+            ? tenantPath(tenantId, 'tokens/welcome-wagon.json')
+            : resolve(process.cwd(), 'tokens', 'welcome-wagon.json');
+        const welcomeData = JSON.parse(await fs.readFile(wwPath, 'utf-8'));
         shoutoutCount = welcomeData.shoutouts[username.toLowerCase()] ? 1 : 0;
     } catch {}
     
@@ -277,7 +298,7 @@ async function fireAthenaGreeting(aiGreeting: string, tenantId?: string): Promis
     
     // Always send TTS
     try {
-        const ttsResult = await textToSpeech({ text: aiGreeting, voice: 'Ashley' });
+        const ttsResult = await textToSpeech({ text: aiGreeting, tenantId });
         if (ttsResult.audioDataUri) {
             const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
             
@@ -306,7 +327,7 @@ async function fireAthenaGreeting(aiGreeting: string, tenantId?: string): Promis
     // Send to Discord
     try {
         const botName = getBotName(tenantId);
-        const discordChannelId = await getDiscordShoutoutChannelId();
+        const discordChannelId = await getDiscordShoutoutChannelId(tenantId);
         if (discordChannelId) {
             await sendDiscordMessage(discordChannelId, `**${botName}:** ${aiGreeting}`);
         }
@@ -315,9 +336,11 @@ async function fireAthenaGreeting(aiGreeting: string, tenantId?: string): Promis
     }
 }
 
-async function getDiscordShoutoutChannelId(): Promise<string | null> {
+async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | null> {
     try {
-        const p = resolve(process.cwd(), 'tokens', 'discord-channels.json');
+        const p = tenantId
+            ? tenantPath(tenantId, 'tokens/discord-channels.json')
+            : resolve(process.cwd(), 'tokens', 'discord-channels.json');
         const data = await fs.readFile(p, 'utf-8');
         const channels = JSON.parse(data);
         return channels.shoutoutChannelId || channels.logChannelId || null;
@@ -334,27 +357,37 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     const user = username.toLowerCase();
     
     // 24h safety guard (skip for manual shoutouts)
-    if (!skipCooldown && !(await canShoutoutUser(user))) {
+    if (!skipCooldown && !(await canShoutoutUser(user, tenantId))) {
         console.log(`[WalkOn] Skipping shoutout for ${user} — on cooldown or excluded.`);
         return;
     }
     
     console.log(`[WalkOn] Processing walk-on shoutout for ${displayName}`);
-    
-    // Silent broadcaster welcome
-    await sendBroadcasterWelcome(displayName, tenantId);
-    
+
     // Build personalization and generate AI greeting BEFORE clip plays
-    const persona = await buildPersona(user, displayName, profileImage);
+    const persona = await buildPersona(user, displayName, profileImage, tenantId);
     console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
     const aiGreeting = await generateAIGreeting(persona, tenantId);
     console.log(`[WalkOn] AI greeting generated`);
+
+    if (shouldSkipShoutoutOverlay(tenantId)) {
+        const msg = `${aiGreeting} Go check out @${displayName}: https://twitch.tv/${displayName}`;
+        await sendChatMessage(msg, 'bot', undefined, tenantId);
+        if (!skipCooldown) {
+            await recordShoutout(user, tenantId);
+        }
+        console.log(`[WalkOn] Completed streamlined shoutout for ${displayName}`);
+        return;
+    }
+    
+    // Silent broadcaster welcome
+    await sendBroadcasterWelcome(displayName, tenantId);
     
     // Fetch and play clip (blocking)
     const clip = await fetchClip(username);
     if (clip) {
         console.log(`[WalkOn] Playing clip for ${displayName}`);
-        await playClip(clip, displayName, profileImage);
+        await playClip(clip, displayName, profileImage, tenantId);
         console.log(`[WalkOn] Clip finished for ${displayName}`);
     } else {
         console.log(`[WalkOn] No clips found for ${displayName}, skipping video`);
@@ -365,7 +398,7 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     
     // Mark shoutout as done
     if (!skipCooldown) {
-        await recordShoutout(user);
+        await recordShoutout(user, tenantId);
     }
     
     console.log(`[WalkOn] Completed shoutout for ${displayName}`);

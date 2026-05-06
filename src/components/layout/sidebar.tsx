@@ -27,7 +27,8 @@ import {
   Users,
   Mic,
   Coins,
-  Gift
+  Gift,
+  Monitor
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserProfile } from "./app-shell"
@@ -50,6 +51,7 @@ const navItems = [
   { href: "/community", icon: Users, label: "Community", external: false },
   { href: "/debug/data-files", icon: FileText, label: "Live Files", external: false },
   { href: "/integrations", icon: Link2, label: "Integrations", external: false },
+  { href: "/overlay-urls", icon: Monitor, label: "Overlay URLs", external: false },
 ]
 
 interface AppSidebarProps {

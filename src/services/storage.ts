@@ -63,12 +63,12 @@ export async function writeJsonFile(fileName: string, data: any, ctx?: StorageCo
   const filePath = path.join(dataRoot, fileName);
 
   const release = await acquireLock(filePath);
+  const tempPath = `${filePath}.tmp.${Date.now()}`;
   try {
-    const tempPath = `${filePath}.tmp.${Date.now()}`;
     await fs.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf-8');
     await fs.rename(tempPath, filePath);
   } catch (error) {
-    try { await fs.unlink(`${filePath}.tmp.${Date.now()}`); } catch {}
+    try { await fs.unlink(tempPath); } catch {}
     throw error;
   } finally {
     releaseLock(filePath, release);

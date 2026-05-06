@@ -7,6 +7,7 @@ const PUBLIC_PATHS = [
   '/api/__health',
   '/api/session',
   '/overlay/',
+  '/xpn/',
   '/tts-player',
   '/brb-player',
   '/shoutout-player',
@@ -52,6 +53,8 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname === '/api/gamble/overlay-data') return true;
   if (pathname === '/api/classic-gamble/overlay-data') return true;
   if (pathname === '/api/avatars') return true;
+  if (pathname === '/api/bic-list') return true;
+  if (pathname === '/api/bic-counter') return true;
   if (pathname === '/api/tts/current') return true;
   if (pathname === '/api/user-profile' && hasTenant) return true;
   if (pathname === '/api/pokemon/gym' && hasTenant) return true;

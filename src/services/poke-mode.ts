@@ -1,27 +1,25 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { tenantPath } from '../lib/tenant';
 
-const MODE_PATH = path.resolve(process.cwd(), 'data', 'poke-mode.json');
-let mode: 'chat' | 'overlay' = 'chat';
+type PokeMode = 'chat' | 'overlay';
+const modeByTenant = new Map<string, PokeMode>();
 
-async function load() {
-  try {
-    const data = JSON.parse(await fs.readFile(MODE_PATH, 'utf-8'));
-    if (data.mode === 'overlay' || data.mode === 'chat') mode = data.mode;
-  } catch {}
+function key(tenantId?: string): string { return tenantId || '__global__'; }
+
+function modePath(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'data/poke-mode.json');
+  return path.resolve(process.cwd(), 'data', 'poke-mode.json');
 }
 
-async function save() {
-  await fs.mkdir(path.dirname(MODE_PATH), { recursive: true });
-  await fs.writeFile(MODE_PATH, JSON.stringify({ mode }));
+export async function getPokeMode(tenantId?: string): PokeMode {
+  const { getMode } = await import('./modes-manager');
+  const mode = await getMode('pokemode', tenantId);
+  return mode as PokeMode;
 }
 
-load().catch(() => {});
-
-export function getPokeMode(): 'chat' | 'overlay' { return mode; }
-
-export async function togglePokeMode(): Promise<string> {
-  mode = mode === 'chat' ? 'overlay' : 'chat';
-  await save();
-  return mode;
+export async function togglePokeMode(tenantId?: string): Promise<string> {
+  const { toggleMode } = await import('./modes-manager');
+  const toggled = await toggleMode('pokemode', tenantId);
+  return toggled.current;
 }

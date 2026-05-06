@@ -49,6 +49,7 @@ COPY --from=builder /app/commands ./commands
 COPY --from=builder /app/sb ./sb
 COPY --from=builder /app/plugin-exports ./plugin-exports
 COPY --from=builder /app/MasterStats ./MasterStats
+COPY --from=builder /app/pokemon-tcg-data-master ./pokemon-tcg-data-master
 COPY --from=builder /app/tmp ./tmp
 COPY --from=builder /app/scripts/bootstrap-runtime.js ./scripts/bootstrap-runtime.js
 COPY --from=builder /app/docker-entrypoint.js ./docker-entrypoint.js

@@ -1,16 +1,32 @@
 import { TIMEOUTS } from '../constants';
 import { WebSocket } from 'ws';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
-import { getPartnerById, getAllPartners } from './partner-checkin';
-import { recordCheckin, getPartnerInviteLink } from './checkin-stats';
 import { sendChatMessage } from './twitch';
+import { getCheckinSource, type CheckinKind } from './checkin-sources';
+import { formatCheckinList, createPendingPayload, runCheckin, runBulkCheckin } from './checkin-flow';
 
 import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 
 const eventSubSockets = new Map<string, WebSocket>();
+
+async function resolvePointsCtx(tenantId?: string): Promise<{ tenantId: string; username: string } | undefined> {
+    if (!tenantId) return undefined;
+    try {
+        const tokens = await getStoredTokens(tenantId);
+        return { tenantId, username: tokens?.broadcasterUsername || '' };
+    } catch {
+        return { tenantId, username: '' };
+    }
+}
 const eventSubReconnectTimeouts = new Map<string, NodeJS.Timeout>();
 const recentChatMessages = new Map<string, { message: string; timestamp: number }>();
+
+type PendingCheckin = {
+    timestamp: number;
+    kind: CheckinKind;
+    pointCost: number;
+};
 
 function tenantKey(tenantId?: string): string {
     return tenantId || 'global';
@@ -37,7 +53,7 @@ async function getBroadcasterAuth(tenantId?: string): Promise<{ clientId: string
         return null;
     }
 
-    const accessToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens);
+    const accessToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
     
     // Get broadcaster ID from token validation
     const res = await fetch('https://id.twitch.tv/oauth2/validate', {
@@ -245,67 +261,83 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                         // Load redeems config to match reward titles
                         let redeemsConfig;
                         try {
-                            redeemsConfig = await getConfigSection('redeems');
+                            redeemsConfig = await getConfigSection('redeems', tenantId);
                             console.log('[EventSub] Loaded redeems config:', JSON.stringify(redeemsConfig));
                         } catch (cfgErr) {
                             console.error('[EventSub] Failed to load redeems config:', cfgErr);
                             return;
                         }
 
-                        // Handle Partner Check Ins
-                        const partnerTitle = redeemsConfig.partnerCheckin.rewardTitle;
-                        if (partnerTitle && rewardTitle.toLowerCase().includes(partnerTitle.toLowerCase())) {
-                            const checkinPointCost = redeemsConfig.partnerCheckin.pointCost;
-                            if (checkinPointCost > 0) {
-                                const { getUserPoints } = require('./points');
-                                const pts = await getUserPoints(userLogin);
-                                if (pts < checkinPointCost) {
-                                    sendChatMessage(`@${userLogin}, you need ${checkinPointCost} points for a partner check-in! (You have ${pts})`, 'broadcaster', undefined, tenantId).catch(() => {});
+                        const checkinRewardMap: Array<{ kind: CheckinKind; rewardTitle: string; pointCost: number }> = [
+                            { kind: 'partner', rewardTitle: redeemsConfig.partnerCheckin.rewardTitle, pointCost: redeemsConfig.partnerCheckin.pointCost },
+                            { kind: 'crew', rewardTitle: redeemsConfig.crewCheckin.rewardTitle, pointCost: redeemsConfig.crewCheckin.pointCost },
+                            { kind: 'mod', rewardTitle: redeemsConfig.modCheckin.rewardTitle, pointCost: redeemsConfig.modCheckin.pointCost },
+                            { kind: 'space-mountain', rewardTitle: redeemsConfig.spaceMountainCheckin.rewardTitle, pointCost: redeemsConfig.spaceMountainCheckin.pointCost },
+                        ];
+
+                        const matchedCheckin = checkinRewardMap.find((entry) => entry.rewardTitle && rewardTitle.toLowerCase().includes(entry.rewardTitle.toLowerCase()));
+                        if (matchedCheckin) {
+                            try {
+                                const checkinPointCost = matchedCheckin.pointCost;
+                                if (checkinPointCost > 0) {
+                                    const { getUserPoints } = require('./points');
+                                    const pts = await getUserPoints(userLogin, await resolvePointsCtx(tenantId));
+                                    if (pts < checkinPointCost) {
+                                        sendChatMessage(`@${userLogin}, you need ${checkinPointCost} points for this check-in! (You have ${pts})`, 'broadcaster', undefined, tenantId).catch(() => {});
+                                        return;
+                                    }
+                                }
+                                const source = await getCheckinSource(matchedCheckin.kind, tenantId, userLogin);
+
+                                if (matchedCheckin.kind === 'space-mountain') {
+                                    runBulkCheckin('space-mountain', userLogin, matchedCheckin.pointCost, tenantId).catch(err => {
+                                        console.error('[EventSub] Space Mountain check-in error:', err);
+                                        fallbackCheckinCommand('space-mountain', userLogin, tenantId);
+                                    });
                                     return;
                                 }
-                            }
-                            const guildId = redeemsConfig.partnerCheckin.discordGuildId;
-                            const roleName = redeemsConfig.partnerCheckin.discordRoleName;
-                            const partners = await getAllPartners(guildId, roleName);
 
-                            // Post the partner list so the viewer knows the numbers
-                            if (partners.length > 0) {
-                                const list = partners.map((p: any) => `${p.id}.${p.name}`).join(' ');
-                                sendChatMessage(`Partner Check-Ins: ${list}`, 'broadcaster', undefined, tenantId).catch(() => {});
-                            }
-
-                            // Check for recent chat message or text input
-                            const recentMsgKey = userMessageKey(userLogin, tenantId);
-                            const recentMsg = recentChatMessages.get(recentMsgKey);
-                            const now = Date.now();
-                            let squareNum: number | null = null;
-
-                            if (recentMsg && (now - recentMsg.timestamp) < 5000) {
-                                squareNum = parseInt(recentMsg.message.trim(), 10);
-                                recentChatMessages.delete(recentMsgKey);
-                            } else if (userInput) {
-                                squareNum = parseInt(userInput, 10);
-                            }
-
-                            if (!squareNum || isNaN(squareNum) || squareNum < 1) {
-                                // No number yet — store pending redemption, wait for chat message
-                                let tenantPartnerCheckins = pendingPartnerCheckins.get(tKey);
-                                if (!tenantPartnerCheckins) {
-                                    tenantPartnerCheckins = new Map();
-                                    pendingPartnerCheckins.set(tKey, tenantPartnerCheckins);
+                                if (source.entries.length > 0) {
+                                    sendChatMessage(formatCheckinList(matchedCheckin.kind, source.entries), 'broadcaster', undefined, tenantId).catch(() => {});
                                 }
-                                tenantPartnerCheckins.set(userLogin.toLowerCase(), { timestamp: Date.now(), guildId, roleName, pointCost: redeemsConfig.partnerCheckin.pointCost });
-                                if ((global as any).broadcast) {
-                                    (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username: userLogin } }, tenantId);
-                                }
-                                console.log(`[EventSub] Waiting for ${userLogin} to type a partner number...`);
-                                return;
-                            }
 
-                            console.log(`[EventSub] Partner check-in: ${userLogin} selected square ${squareNum}`);
-                            handlePartnerCheckin(userLogin, squareNum, guildId, roleName, redeemsConfig.partnerCheckin.pointCost, tenantId).catch(err => {
-                                console.error('[EventSub] Partner check-in handler error:', err);
-                            });
+                                // Check for recent chat message or text input
+                                const recentMsgKey = userMessageKey(userLogin, tenantId);
+                                const recentMsg = recentChatMessages.get(recentMsgKey);
+                                const now = Date.now();
+                                let squareNum: number | null = null;
+
+                                if (recentMsg && (now - recentMsg.timestamp) < 5000) {
+                                    squareNum = parseInt(recentMsg.message.trim(), 10);
+                                    recentChatMessages.delete(recentMsgKey);
+                                } else if (userInput) {
+                                    squareNum = parseInt(userInput, 10);
+                                }
+
+                                if (!squareNum || isNaN(squareNum) || squareNum < 1) {
+                                    let tenantSelections = pendingCheckins.get(tKey);
+                                    if (!tenantSelections) {
+                                        tenantSelections = new Map();
+                                        pendingCheckins.set(tKey, tenantSelections);
+                                    }
+                                    tenantSelections.set(userLogin.toLowerCase(), { timestamp: Date.now(), kind: matchedCheckin.kind, pointCost: matchedCheckin.pointCost });
+                                    if ((global as any).broadcast) {
+                                        (global as any).broadcast({ type: 'checkin-pending', payload: createPendingPayload(matchedCheckin.kind, userLogin, source.sourceLabel) }, tenantId);
+                                    }
+                                    console.log(`[EventSub] Waiting for ${userLogin} to type a ${matchedCheckin.kind} number...`);
+                                    return;
+                                }
+
+                                console.log(`[EventSub] ${matchedCheckin.kind} check-in: ${userLogin} selected square ${squareNum}`);
+                                runCheckin(matchedCheckin.kind, userLogin, squareNum, matchedCheckin.pointCost, tenantId).catch(err => {
+                                    console.error('[EventSub] Check-in handler error:', err);
+                                    fallbackCheckinCommand(matchedCheckin.kind, userLogin, tenantId);
+                                });
+                            } catch (err) {
+                                console.error(`[EventSub] Checkin handler failed for ${matchedCheckin.kind}, using fallback:`, err);
+                                fallbackCheckinCommand(matchedCheckin.kind, userLogin, tenantId);
+                            }
+                            return;
                         }
                         
                         // Handle Pokemon pack redemptions
@@ -316,7 +348,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                             const packPointCost = redeemsConfig.pokePack.pointCost;
                             if (packPointCost > 0) {
                                 const { getUserPoints } = require('./points');
-                                const pts = await getUserPoints(userLogin);
+                                const pts = await getUserPoints(userLogin, await resolvePointsCtx(tenantId));
                                 if (pts < packPointCost) {
                                     sendChatMessage(`@${userLogin}, you need ${packPointCost} points to open a pack! (You have ${pts})`, 'broadcaster', undefined, tenantId).catch(() => {});
                                     return;
@@ -326,7 +358,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                             const enabledSets = redeemsConfig.pokePack.enabledSets || ['base1','base2','base3','base4','base5','gym1'];
                             const setMap = getEnabledSetMap(enabledSets);
                             const setCount = Object.keys(setMap).length;
-                            sendChatMessage(formatSetList(setMap), 'broadcaster', undefined, tenantId).catch(err => console.error('[EventSub] Failed to post set list:', err));
+                            console.log(`[EventSub] PokePack tenant=${tenantId || 'global'} user=${userLogin} enabledSetCount=${enabledSets.length} availableSetCount=${setCount}`);
 
                             // Check for number from recent chat or input
                             const recentMsgKey = userMessageKey(userLogin, tenantId);
@@ -342,6 +374,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                             }
 
                             if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
+                                sendChatMessage(formatSetList(setMap), 'broadcaster', undefined, tenantId).catch(err => console.error('[EventSub] Failed to post set list:', err));
                                 let tenantPackRedeems = pendingPackRedeems.get(tKey);
                                 if (!tenantPackRedeems) {
                                     tenantPackRedeems = new Map();
@@ -367,23 +400,24 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                             const [matchedTitle, reward] = customMatch;
                             console.log(`[EventSub] Custom reward matched: "${matchedTitle}" (cost: ${reward.pointCost})`);
                             const { getUserPoints, addPoints } = require('./points');
+                            const pointsCtx = await resolvePointsCtx(tenantId);
 
                             if (reward.pointCost > 0) {
-                                const points = await getUserPoints(userLogin);
+                                const points = await getUserPoints(userLogin, pointsCtx);
                                 if (points < reward.pointCost) {
                                     sendChatMessage(`@${userLogin}, you need ${reward.pointCost} points for that! (You have ${points})`, 'broadcaster', undefined, tenantId).catch(() => {});
                                     return;
                                 }
-                                await addPoints(userLogin, -reward.pointCost, `redeem:${matchedTitle}`);
+                                await addPoints(userLogin, -reward.pointCost, `redeem:${matchedTitle}`, pointsCtx);
                             } else if (reward.pointCost < 0) {
-                                await addPoints(userLogin, Math.abs(reward.pointCost), `redeem:${matchedTitle}`);
+                                await addPoints(userLogin, Math.abs(reward.pointCost), `redeem:${matchedTitle}`, pointsCtx);
                             }
 
                             if (reward.response) {
                                 const msg = reward.response.replace(/{user}/g, userLogin);
                                 sendChatMessage(msg, 'broadcaster', undefined, tenantId).catch(() => {});
                             } else if (reward.pointCost !== 0) {
-                                const newBalance = await getUserPoints(userLogin);
+                                const newBalance = await getUserPoints(userLogin, pointsCtx);
                                 sendChatMessage(`@${userLogin} redeemed ${matchedTitle}! Balance: ${newBalance} pts`, 'broadcaster', undefined, tenantId).catch(() => {});
                             }
                         }
@@ -414,7 +448,7 @@ function scheduleEventSubReconnect(url: string, delayMs = 2000, tenantId?: strin
 }
 
 // Pending partner check-ins: viewer redeemed but hasn't typed a number yet
-export const pendingPartnerCheckins = new Map<string, Map<string, { timestamp: number; guildId: string; roleName: string; pointCost: number }>>();
+export const pendingCheckins = new Map<string, Map<string, PendingCheckin>>();
 export const pendingPackRedeems = new Map<string, Map<string, { timestamp: number; pointCost: number }>>();
 
 // Export function to track chat messages for redemptions
@@ -423,15 +457,15 @@ export function trackChatMessageForRedemption(username: string, message: string,
     const tKey = tenantKey(tenantId);
     const msgKey = userMessageKey(username, tenantId);
 
-    // If this user has a pending partner check-in and typed a number, fire it
-    const tenantPartnerCheckins = pendingPartnerCheckins.get(tKey) || new Map();
-    const pending = tenantPartnerCheckins.get(key);
+    // If this user has a pending check-in and typed a number, fire it
+    const tenantCheckins = pendingCheckins.get(tKey) || new Map();
+    const pending = tenantCheckins.get(key);
     if (pending && Date.now() - pending.timestamp < 30000) {
         const num = parseInt(message.trim(), 10);
         if (num >= 1) {
-            tenantPartnerCheckins.delete(key);
-            handlePartnerCheckin(username, num, pending.guildId, pending.roleName, pending.pointCost, tenantId).catch(err => {
-                console.error('[EventSub] Pending partner check-in error:', err);
+            tenantCheckins.delete(key);
+            runCheckin(pending.kind, username, num, pending.pointCost, tenantId).catch(err => {
+                console.error('[EventSub] Pending check-in error:', err);
             });
             return true;
         }
@@ -467,138 +501,27 @@ export function trackChatMessageForRedemption(username: string, message: string,
     return false;
 }
 
-// Handle partner check-in with all integrations
-export { handlePartnerCheckin as handlePartnerCheckinCmd };
-async function handlePartnerCheckin(username: string, squareNum: number, guildId: string, roleName: string, pointCost: number, tenantId?: string): Promise<void> {
-    console.log(`[Partner Checkin] START: ${username} -> square ${squareNum}`);
-    
-    // Immediately show pending state on overlay
-    if ((global as any).broadcast) {
-        (global as any).broadcast({ type: 'partner-checkin-pending', payload: { username } }, tenantId);
-    }
-
-    try {
-        // Check points if cost > 0
-        if (pointCost > 0) {
-            const { getUserPoints, addPoints: addPts } = require('./points');
-            const points = await getUserPoints(username);
-            if (points < pointCost) {
-                sendChatMessage(`@${username}, you need ${pointCost} points for a partner check-in! (You have ${points})`, 'broadcaster', undefined, tenantId).catch(() => {});
-                return;
-            }
-            await addPts(username, -pointCost, 'partner-checkin');
-        }
-
-        const partner = await getPartnerById(squareNum, guildId, roleName);
-        if (!partner) {
-            console.error(`[Partner Checkin] Partner ${squareNum} not found`);
-            return;
-        }
-
-        console.log(`[Partner Checkin] Found partner: ${partner.name}`);
-        const partnerImageUrl = partner.avatarUrl;
-
-        // Record stats
-        const { recordCheckin: doRecord, getPartnerInviteLink: getInvite } = require('./checkin-stats');
-        const stats = doRecord(username, partner.name);
-        const inviteLink = getInvite(partner.discordUserId);
-
-        // 1. Broadcaster announces the check-in with invite link and stats
-        let broadcasterMsg = `@${username} just checked in using ${partner.name}'s check-in!`;
-        if (inviteLink) broadcasterMsg += ` Join their Discord: ${inviteLink}`;
-        broadcasterMsg += ` (${username}: ${stats.userTotal} check-ins | ${partner.name} community: ${stats.partnerTotal} total)`;
-        if (pointCost > 0) {
-            const { getUserPoints: getBalance } = require('./points');
-            const newBalance = await getBalance(username);
-            broadcasterMsg += ` | Balance: ${newBalance} pts`;
-        }
-        console.log('[Partner Checkin] Sending broadcaster message...');
-        await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
-
-        // 2. Generate AI greeting using bot personality
-        const { getBotName, getBotPersonality } = require('../lib/bot-settings-store');
-        const botName = getBotName();
-        const botPersonality = getBotPersonality();
-        let aiGreeting = `Welcome ${partner.name}! So glad you checked in!`;
-
-        const edenaiKey = process.env.EDENAI_API_KEY;
-        if (edenaiKey) {
-            try {
-                const resp = await fetch('https://api.edenai.run/v2/text/chat', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${edenaiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        providers: 'openai',
-                        text: `You are ${botName}. A viewer named ${username} just checked in under stream partner ${partner.name}'s banner — one of our Space Mountain partners in our cosmic alliance. Write a short, heartfelt 1-2 sentence greeting welcoming ${username} and honoring ${partner.name}'s partnership. Use space/cosmic imagery. Stay fully in character.`,
-                        chatbot_global_action: botPersonality,
-                        temperature: 0.8,
-                        max_tokens: 150,
-                    }),
-                });
-                if (resp.ok) {
-                    const data = await resp.json() as any;
-                    const text = data.openai?.generated_text?.trim();
-                    if (text) aiGreeting = text;
-                    else console.warn('[Partner Checkin] AI returned empty text, using fallback');
-                } else {
-                    console.warn('[Partner Checkin] AI request failed:', resp.status, await resp.text().catch(() => ''));
-                }
-            } catch (err) {
-                console.error('[Partner Checkin] AI greeting failed, using fallback:', err);
-            }
-        }
-
-        // 3. Mark TTS handled so dispatcher doesn't double-fire, then post as bot
-        const { markTtsHandled } = require('./chat-dispatcher');
-        markTtsHandled(aiGreeting);
-        console.log('[Partner Checkin] Sending bot AI greeting...');
-        await sendChatMessage(aiGreeting, 'bot', undefined, tenantId);
-
-        // 4. Generate and send TTS
-        console.log('[Partner Checkin] Triggering TTS...');
-        try {
-            const { textToSpeech } = await import('../ai/flows/text-to-speech');
-            const ttsResult = await textToSpeech({ text: aiGreeting });
-            if (ttsResult.audioDataUri) {
-                const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
-                if (useTTSPlayer) {
-                    const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-                    await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
-                    }).catch(() => {});
-                } else if ((global as any).broadcast) {
-                    (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, tenantId);
-                }
-            }
-        } catch (error) {
-            console.error('[Partner Checkin] TTS error:', error);
-        }
-
-        // 5. Send Discord notification
-        const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-        if (webhookUrl) {
-            await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: `🎉 **${username}** just checked in under **${partner.name}**'s banner on stream!` }),
-            }).catch((err: any) => console.error('[Partner Checkin] Discord error:', err));
-        }
-
-        // 6. Broadcast to overlay via WebSocket
-        if ((global as any).broadcast) {
-            (global as any).broadcast({
-                type: 'partner-checkin',
-                payload: { username, square: squareNum, partner: { ...partner, imageUrl: partnerImageUrl } },
-            }, tenantId);
-        }
-
-        console.log(`[Partner Checkin] COMPLETE: ${partner.name}`);
-    } catch (error) {
-        console.error('[Partner Checkin] FATAL ERROR:', error);
-    }
+export function isEventSubConnected(tenantId?: string): boolean {
+    const tKey = tenantKey(tenantId);
+    const socket = eventSubSockets.get(tKey);
+    return socket?.readyState === WebSocket.OPEN;
 }
+
+const CHECKIN_COMMAND_MAP: Record<string, string> = {
+    'partner': '!partner',
+    'crew': '!crew',
+    'mod': '!mod',
+    'space-mountain': '!spacemountain',
+};
+
+export async function fallbackCheckinCommand(kind: string, username: string, tenantId?: string): Promise<void> {
+    const cmd = CHECKIN_COMMAND_MAP[kind];
+    if (!cmd) return;
+    console.log(`[EventSub] Fallback: sending ${cmd} in chat for ${username}`);
+    await sendChatMessage(`${cmd}`, 'broadcaster', undefined, tenantId).catch(() => {});
+}
+
+export { runCheckin as handlePartnerCheckinCmd };
 
 export { handlePackOpen as handlePackOpenCmd };
 async function handlePackOpen(username: string, setNumber: number, pointCost: number, tenantId?: string): Promise<void> {
@@ -606,21 +529,22 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
     try {
         const { openPack } = require('./pokemon-packs');
         const { getUserPoints, addPoints } = require('./points');
+        const pointsCtx = await resolvePointsCtx(tenantId);
 
         if (pointCost > 0) {
-            const points = await getUserPoints(username);
+            const points = await getUserPoints(username, pointsCtx);
             if (points < pointCost) {
                 sendChatMessage(`@${username}, you need ${pointCost} points to open a pack! (You have ${points})`, 'broadcaster', undefined, tenantId).catch(() => {});
                 return;
             }
-            await addPoints(username, -pointCost, 'pokepack');
+            await addPoints(username, -pointCost, 'pokepack', pointsCtx);
         }
 
-        const result = await openPack(setNumber, username);
+        const result = await openPack(setNumber, username, undefined, tenantId);
 
         if (!result) {
             if (pointCost > 0) {
-                await addPoints(username, pointCost, 'pokepack-refund');
+                await addPoints(username, pointCost, 'pokepack-refund', pointsCtx);
                 console.log(`[PokePack] Refunded ${pointCost} to ${username} (pack failed)`);
             }
             sendChatMessage(`@${username}, couldn't open that pack. Try a different set!`, 'broadcaster', undefined, tenantId).catch(() => {});
@@ -633,11 +557,11 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 return `${star}${c.name}`;
             }).join(', ');
             const { getUserPoints: getBalance } = require('./points');
-            const newBalance = await getBalance(username);
+            const newBalance = await getBalance(username, pointsCtx);
 
             // 1. Broadcaster posts the card list + balance (chat mode only)
             const { getPokeMode } = require('./poke-mode');
-            const pokeMode = getPokeMode();
+            const pokeMode = getPokeMode(tenantId);
             if (pokeMode === 'chat') {
                 await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster', undefined, tenantId);
             }
@@ -645,8 +569,8 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
             // 2. AI reaction to the pack
             const rares = result.pack.filter((c: any) => c.rarity === 'Rare' || c.rarity === 'Rare Holo');
             const { getBotName: gbn2, getBotPersonality: gbp2 } = require('../lib/bot-settings-store');
-            const botName = gbn2();
-            const botPersonality = gbp2();
+            const botName = gbn2(tenantId);
+            const botPersonality = gbp2(tenantId);
             let aiReaction = rares.length > 0
                 ? `Nice pull, ${username}! You got ${rares.map((c: any) => c.name).join(' and ')}!`
                 : `Good pack, ${username}! ${result.setName} cards added to your collection!`;
@@ -660,7 +584,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                         headers: { 'Authorization': `Bearer ${edenaiKey}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             providers: 'openai',
-                            text: `You are ${botName}. ${username} just opened a ${result.setName} Pokemon card pack on stream. ${rareList} Write a short, excited 1-2 sentence reaction to their pull. If they got a rare or holo, hype it up! Use space/cosmic imagery. Stay in character.`,
+                            text: `You are ${botName}. ${username} just opened a ${result.setName} Pokemon card pack on stream. ${rareList} Write a short, excited 1-2 sentence reaction to their pull. If they got a rare or holo, hype it up! Stay in character.`,
                             chatbot_global_action: botPersonality,
                             temperature: 0.8,
                             max_tokens: 150,

@@ -42,6 +42,15 @@ export async function updateCommandClient(
   return handleResponse(res);
 }
 
+export async function updateAllCommandsEnabledClient(enabled: boolean): Promise<{ success: boolean; updated: number }> {
+  const res = await fetch('/api/commands', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  return handleResponse(res);
+}
+
 export async function deleteCommandClient(id: string): Promise<void> {
   const res = await fetch(`/api/commands/${encodeURIComponent(id)}`, { method: 'DELETE' });
   await handleResponse(res);

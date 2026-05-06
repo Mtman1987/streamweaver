@@ -23,7 +23,7 @@ function getStatusWebSocketUrl(): string {
     return `${wsProtocol}//${appUrl.hostname}:${wsPort}`;
 }
 
-export function createHttpHandler(broadcast: (message: object) => void): http.RequestListener {
+export function createHttpHandler(broadcast: (message: object, tenantId?: string) => void): http.RequestListener {
     // Import twitch-client at handler creation time (same module instance as server.ts)
     const twitchClientModule = require('../services/twitch-client');
 
@@ -260,6 +260,42 @@ export function createHttpHandler(broadcast: (message: object) => void): http.Re
                 return;
             }
             
+            if (pathname === '/api/brb' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                    try {
+                        const { action, broadcasterUsername, tenantId } = JSON.parse(body);
+                        if (action === 'start') {
+                            const { startBRB } = require('../services/brb-clips');
+                            startBRB(broadcasterUsername, tenantId).catch((err: any) => console.error('[BRB] Error:', err));
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true }));
+                        } else if (action === 'stop') {
+                            const { stopBRB } = require('../services/brb-clips');
+                            stopBRB();
+                            broadcast({ type: 'brb-stop' }, tenantId);
+                            try {
+                                const { getConfigSection } = require('../lib/local-config/service');
+                                const obsConfig = await getConfigSection('obs', tenantId);
+                                const liveScene = obsConfig?.scenes?.live || 'Live';
+                                broadcast({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
+                            } catch {}
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true }));
+                        } else {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Invalid action' }));
+                        }
+                    } catch (e: any) {
+                        console.error('[HTTP /api/brb] Error:', e);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+
             if (pathname === '/' && req.method === 'GET') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 

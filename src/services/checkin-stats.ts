@@ -1,15 +1,24 @@
 import fs from 'fs';
 import path from 'path';
+import { tenantPath } from '../lib/tenant';
 
-const STATS_FILE = path.join(process.cwd(), 'data', 'checkin-stats.json');
-const OVERRIDES_FILE = path.join(process.cwd(), 'data', 'partner-overrides.json');
-
-interface CheckinStats {
-  userCounts: Record<string, number>;       // username -> total check-ins
-  partnerCounts: Record<string, number>;    // partnerName -> total community check-ins
+function statsFile(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'data/checkin-stats.json');
+  return path.join(process.cwd(), 'data', 'checkin-stats.json');
 }
 
-// { discordUserId: { inviteLink: "https://discord.gg/xxx" } }
+function overridesFile(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'data/partner-overrides.json');
+  return path.join(process.cwd(), 'data', 'partner-overrides.json');
+}
+
+interface CheckinStats {
+  userCounts: Record<string, number>;
+  partnerCounts: Record<string, number>;
+  sourceCounts?: Record<string, number>;
+  displayCounts?: Record<string, number>;
+}
+
 type PartnerOverrides = Record<string, { inviteLink?: string }>;
 
 function readJson<T>(file: string, fallback: T): T {
@@ -25,31 +34,54 @@ function writeJson(file: string, data: unknown): void {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-export function recordCheckin(username: string, partnerName: string): { userTotal: number; partnerTotal: number } {
-  const stats = readJson<CheckinStats>(STATS_FILE, { userCounts: {}, partnerCounts: {} });
+export function recordCheckin(username: string, partnerName: string, tenantId?: string): { userTotal: number; partnerTotal: number } {
+  const stats = readJson<CheckinStats>(statsFile(tenantId), { userCounts: {}, partnerCounts: {} });
   const userKey = username.toLowerCase();
   const partnerKey = partnerName.toLowerCase();
-
   stats.userCounts[userKey] = (stats.userCounts[userKey] || 0) + 1;
   stats.partnerCounts[partnerKey] = (stats.partnerCounts[partnerKey] || 0) + 1;
-
-  writeJson(STATS_FILE, stats);
+  writeJson(statsFile(tenantId), stats);
   return { userTotal: stats.userCounts[userKey], partnerTotal: stats.partnerCounts[partnerKey] };
 }
 
-export function getCheckinStats(): CheckinStats {
-  return readJson<CheckinStats>(STATS_FILE, { userCounts: {}, partnerCounts: {} });
+export function recordDetailedCheckin(username: string, entryKey: string, displayName: string, kind: string, tenantId?: string): { userTotal: number; entryTotal: number } {
+  const stats = readJson<CheckinStats>(statsFile(tenantId), { userCounts: {}, partnerCounts: {}, sourceCounts: {}, displayCounts: {} });
+  const userKey = username.toLowerCase();
+  const displayKey = displayName.toLowerCase();
+  const sourceKey = entryKey.toLowerCase();
+
+  stats.userCounts[userKey] = (stats.userCounts[userKey] || 0) + 1;
+  stats.sourceCounts = stats.sourceCounts || {};
+  stats.displayCounts = stats.displayCounts || {};
+  stats.sourceCounts[sourceKey] = (stats.sourceCounts[sourceKey] || 0) + 1;
+  stats.displayCounts[displayKey] = (stats.displayCounts[displayKey] || 0) + 1;
+
+  if (kind === 'partner') {
+    stats.partnerCounts[displayKey] = (stats.partnerCounts[displayKey] || 0) + 1;
+  }
+
+  writeJson(statsFile(tenantId), stats);
+  return { userTotal: stats.userCounts[userKey], entryTotal: stats.sourceCounts[sourceKey] };
 }
 
-export function getPartnerOverrides(): PartnerOverrides {
-  return readJson<PartnerOverrides>(OVERRIDES_FILE, {});
+export function getCheckinStats(tenantId?: string): CheckinStats {
+  return readJson<CheckinStats>(statsFile(tenantId), { userCounts: {}, partnerCounts: {} });
 }
 
-export function setPartnerOverrides(overrides: PartnerOverrides): void {
-  writeJson(OVERRIDES_FILE, overrides);
+export function getPartnerOverrides(tenantId?: string): PartnerOverrides {
+  return readJson<PartnerOverrides>(overridesFile(tenantId), {});
 }
 
-export function getPartnerInviteLink(discordUserId: string): string | undefined {
-  const overrides = getPartnerOverrides();
+export function setPartnerOverrides(overrides: PartnerOverrides, tenantId?: string): void {
+  writeJson(overridesFile(tenantId), overrides);
+}
+
+export function getPartnerInviteLink(discordUserId: string, tenantId?: string): string | undefined {
+  const overrides = getPartnerOverrides(tenantId);
   return overrides[discordUserId]?.inviteLink;
+}
+
+export function getEntryInviteLink(entryKey: string, tenantId?: string): string | undefined {
+  const overrides = getPartnerOverrides(tenantId);
+  return overrides[entryKey]?.inviteLink;
 }

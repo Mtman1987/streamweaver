@@ -2,6 +2,7 @@ export interface BrowserSpeechOptions {
   continuous?: boolean;
   interimResults?: boolean;
   language?: string;
+  silenceTimeoutMs?: number;
 }
 
 export interface SpeechResult {
@@ -14,6 +15,7 @@ class BrowserSpeechRecognition {
   private recognition: any = null;
   private isRecognizing: boolean = false;
   private initialized: boolean = false;
+  private stopRequested: boolean = false;
 
   private ensureInitialized() {
     if (this.initialized) return;
@@ -22,7 +24,6 @@ class BrowserSpeechRecognition {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         this.recognition = new SpeechRecognition();
-        console.log('[BrowserSpeech] SpeechRecognition API initialized');
       }
     }
   }
@@ -32,56 +33,67 @@ class BrowserSpeechRecognition {
     return this.recognition !== null;
   }
 
+  stop(): void {
+    this.stopRequested = true;
+    if (this.recognition && this.isRecognizing) {
+      this.recognition.stop();
+    }
+  }
+
   async startRecognition(options: BrowserSpeechOptions = {}): Promise<SpeechResult[]> {
     this.ensureInitialized();
-    
+
     if (!this.recognition) {
       throw new Error('Speech recognition not supported in this browser');
     }
 
     if (this.isRecognizing) {
-      console.log('[BrowserSpeech] Already recognizing, ignoring start request');
       throw new Error('Speech recognition already in progress');
     }
 
-    console.log('[BrowserSpeech] Starting speech recognition...');
-    
+    this.stopRequested = false;
+    const silenceTimeout = options.silenceTimeoutMs ?? 5000;
+
     return new Promise((resolve, reject) => {
       const results: SpeechResult[] = [];
+      let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 
-      this.recognition.continuous = options.continuous ?? false;
+      const resetSilenceTimer = () => {
+        if (silenceTimer) clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+          if (this.isRecognizing) {
+            this.recognition.stop();
+          }
+        }, silenceTimeout);
+      };
+
+      // Use continuous mode so it doesn't auto-stop on short pauses
+      this.recognition.continuous = true;
       this.recognition.interimResults = options.interimResults ?? true;
       this.recognition.lang = options.language ?? 'en-US';
-      
-      console.log('[BrowserSpeech] Recognition settings:', {
-        continuous: this.recognition.continuous,
-        interimResults: this.recognition.interimResults,
-        lang: this.recognition.lang
-      });
 
       this.recognition.onstart = () => {
-        console.log('[BrowserSpeech] Recognition started');
         this.isRecognizing = true;
+        resetSilenceTimer();
       };
 
       this.recognition.onresult = (event: any) => {
-        console.log('[BrowserSpeech] Recognition result event:', event);
+        resetSilenceTimer();
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
-          const speechResult = {
+          results.push({
             transcription: result[0].transcript,
             confidence: result[0].confidence,
-            isFinal: result.isFinal
-          };
-          console.log('[BrowserSpeech] Result:', speechResult);
-          results.push(speechResult);
+            isFinal: result.isFinal,
+          });
         }
       };
 
       this.recognition.onerror = (event: any) => {
+        if (silenceTimer) clearTimeout(silenceTimer);
         this.isRecognizing = false;
         if (event.error === 'network' || event.error === 'aborted') {
-          resolve([]);
+          resolve(results.length > 0 ? results : []);
           return;
         }
         if (event.error === 'no-speech') {
@@ -92,15 +104,14 @@ class BrowserSpeechRecognition {
       };
 
       this.recognition.onend = () => {
+        if (silenceTimer) clearTimeout(silenceTimer);
         this.isRecognizing = false;
         resolve(results);
       };
 
       try {
         this.recognition.start();
-        console.log('[BrowserSpeech] Recognition.start() called successfully');
       } catch (error) {
-        console.error('[BrowserSpeech] Error calling recognition.start():', error);
         reject(error);
       }
     });

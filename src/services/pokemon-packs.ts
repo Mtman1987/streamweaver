@@ -43,13 +43,13 @@ function pickRandom(arr: any[], count: number): any[] {
   return shuffled.slice(0, count);
 }
 
-export async function openPack(setNumber: number, username: string, enabledSets?: string[]) {
+export async function openPack(setNumber: number, username: string, enabledSets?: string[], tenantId?: string) {
   // Load enabled sets from config if not provided
   let sets = enabledSets;
   if (!sets) {
     try {
       const { getConfigSection } = require('../lib/local-config/service');
-      const cfg = await getConfigSection('redeems');
+      const cfg = await getConfigSection('redeems', tenantId);
       sets = cfg.pokePack.enabledSets;
     } catch {
       sets = ['base1', 'base2', 'base3', 'base4', 'base5', 'gym1'];
@@ -95,8 +95,8 @@ export async function openPack(setNumber: number, username: string, enabledSets?
 
   if (typeof (global as any).broadcast === 'function') {
     const payload = { pack, setName: setInfo.name, username };
-    (global as any).broadcast({ type: 'pokemon-pack-open', payload });
-    (global as any).broadcast({ type: 'pokemon-pack-opened', payload });
+    (global as any).broadcast({ type: 'pokemon-pack-open', payload }, tenantId);
+    (global as any).broadcast({ type: 'pokemon-pack-opened', payload }, tenantId);
   }
 
   return { pack, setName: setInfo.name, setCode: setInfo.code, username };

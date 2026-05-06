@@ -57,7 +57,8 @@ async function getOverlaysConfig(): Promise<Record<string, OverlayConfig>> {
 
 export async function showOverlay(
   type: string,
-  data: any
+  data: any,
+  tenantId?: string
 ): Promise<void> {
   const overlays = await getOverlaysConfig();
   const config = overlays[type];
@@ -68,8 +69,8 @@ export async function showOverlay(
 
   try {
     // Write data to JSON file
-    const dataPath = path.join(overlayDir(), `${type}.json`);
-    await fs.mkdir(overlayDir(), { recursive: true });
+    const dataPath = path.join(overlayDir(tenantId), `${type}.json`);
+    await fs.mkdir(overlayDir(tenantId), { recursive: true });
     await fs.writeFile(dataPath, JSON.stringify({ ...data, timestamp: Date.now() }, null, 2));
 
     const url = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT||3100}`}/overlay/${type}`;

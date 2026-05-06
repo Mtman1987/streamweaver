@@ -7,7 +7,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { sendChatMessage } from '../twitch';
-import { showOverlay } from '../overlay-manager';
 
 // ════════════════════════════════════════════════
 // 🛠️ SETTINGS
@@ -51,7 +50,7 @@ const DEFAULT_SETTINGS: GambleSettings = {
   overlayDisplayMs: 5000
 };
 
-const SETTINGS_PATH = path.resolve(process.cwd(), 'data', 'gamble-settings.json');
+const SETTINGS_PATH = path.resolve(process.env.PERSIST_ROOT || path.join(process.cwd(), 'data', 'runtime'), 'global', 'gamble-settings.json');
 
 let settings: GambleSettings = { ...DEFAULT_SETTINGS };
 
@@ -182,7 +181,7 @@ function parseBetAmount(input: string, currentPoints: number): number {
 }
 
 async function sendOutput(user: string, message: string): Promise<void> {
-  await sendChatMessage(`❌ @${user}, ${message}`, settings.useBot ? 'bot' : 'broadcaster');
+  await sendChatMessage(`❌ @${user}, ${message}`, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
 }
 
 // ════════════════════════════════════════════════
@@ -191,7 +190,8 @@ async function sendOutput(user: string, message: string): Promise<void> {
 export async function handleGamble(
   user: string,
   betInput: string,
-  userPoints: number
+  userPoints: number,
+  tenantId?: string
 ): Promise<GambleResult | null> {
   await loadSettings();
   
@@ -250,12 +250,12 @@ export async function handleGamble(
   
   // Send result message only if chat output is enabled
   if (settings.useBot) {
-    await sendResultMessage(user, result);
+    await sendResultMessage(user, result, tenantId);
   }
   
   // Send to overlay if enabled
   if (settings.useOverlay) {
-    await sendToOverlay(user, result);
+    await sendToOverlay(user, result, tenantId);
   }
   
   console.log(`[ClassicGamble] ${user} ${outcome}: ${change > 0 ? '+' : ''}${change} (new: ${newTotal})`);
@@ -266,7 +266,8 @@ export async function handleGamble(
 export async function handleRoll(
   user: string,
   betInput: string,
-  userPoints: number
+  userPoints: number,
+  tenantId?: string
 ): Promise<RollResult | null> {
   await loadSettings();
   
@@ -293,11 +294,22 @@ export async function handleRoll(
     canDouble: Math.abs(change) > 0 || betAmount > 0
   };
   
-  // Send result message
-  const message = `@${user} rolled a ${roll}! ${outcome} ${change >= 0 ? '+' : ''}${change} points. New total: ${formatNumber(newTotal)} | Type !double to double or nothing!`;
-  await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster');
+  // Check gamble mode - overlay or chat
+  const { getMode } = await import('../modes-manager');
+  const gambleMode = await getMode('gamblemode', tenantId);
   
-  console.log(`[ClassicGamble] ${user} roll ${roll}: ${change > 0 ? '+' : ''}${change} (new: ${newTotal})`);
+  // Send result message only if chat enabled
+  if (gambleMode === 'chat' && settings.useBot) {
+    const message = `@${user} rolled a ${roll}! ${outcome} ${change >= 0 ? '+' : ''}${change} points. New total: ${formatNumber(newTotal)} | Type !double to double or nothing!`;
+    await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
+  }
+  
+// Send to overlay if enabled
+  if (gambleMode === 'overlay') {
+    await sendRollToOverlay(user, result, tenantId);
+  }
+  
+  console.log(`[ClassicGamble] ${user} roll ${roll}: ${change > 0 ? '+' : ''}${change} (new: ${newTotal}) (mode: ${gambleMode})`);
   
   return result;
 }
@@ -305,7 +317,8 @@ export async function handleRoll(
 export async function handleDouble(
   user: string,
   wager: number,
-  userPoints: number
+  userPoints: number,
+  tenantId?: string
 ): Promise<DoubleResult | null> {
   await loadSettings();
   
@@ -327,13 +340,25 @@ export async function handleDouble(
     newTotal
   };
   
-  const message = won 
-    ? `@${user} rolled ${roll}! DOUBLE OR NOTHING WIN! +${formatNumber(wager * 2)} points! New total: ${formatNumber(newTotal)}`
-    : `@${user} rolled ${roll}! Double or nothing failed. -${formatNumber(wager * 2)} points. New total: ${formatNumber(newTotal)}`;
+  // Check gamble mode - overlay or chat
+  const { getMode } = await import('../modes-manager');
+  const gambleMode = await getMode('gamblemode', tenantId);
   
-  await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster');
+  // Send result message only if chat enabled
+  if (gambleMode === 'chat' && settings.useBot) {
+    const message = won 
+      ? `@${user} rolled ${roll}! DOUBLE OR NOTHING WIN! +${formatNumber(wager * 2)} points! New total: ${formatNumber(newTotal)}`
+      : `@${user} rolled ${roll}! Double or nothing failed. -${formatNumber(wager * 2)} points. New total: ${formatNumber(newTotal)}`;
+    
+    await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
+  }
   
-  console.log(`[ClassicGamble] ${user} double ${roll}: ${won ? 'WIN' : 'LOSS'} ${change > 0 ? '+' : ''}${change} (new: ${newTotal})`);
+// Send to overlay if enabled
+  if (gambleMode === 'overlay') {
+    await sendDoubleToOverlay(user, result, wager, tenantId);
+  }
+  
+  console.log(`[ClassicGamble] ${user} double ${roll}: ${won ? 'WIN' : 'LOSS'} ${change > 0 ? '+' : ''}${change} (new: ${newTotal}) (mode: ${gambleMode})`);
   
   return result;
 }
@@ -341,7 +366,7 @@ export async function handleDouble(
 // ════════════════════════════════════════════════
 // 📡 OUTPUT
 // ════════════════════════════════════════════════
-async function sendResultMessage(user: string, result: GambleResult): Promise<void> {
+async function sendResultMessage(user: string, result: GambleResult, tenantId?: string): Promise<void> {
   const { outcome, displayAmount, newTotal } = result;
   
   let message: string;
@@ -359,37 +384,57 @@ async function sendResultMessage(user: string, result: GambleResult): Promise<vo
       break;
   }
   
-  await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster');
+  await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
 }
 
-async function sendToOverlay(user: string, result: GambleResult): Promise<void> {
+async function sendRollToOverlay(user: string, result: RollResult, tenantId?: string): Promise<void> {
   try {
-    // Write to shared gamble.json for unified overlay
-    const overlayPath = path.resolve(process.cwd(), 'data', 'masterstats', 'overlay', 'gamble.json');
-    await fs.mkdir(path.dirname(overlayPath), { recursive: true });
-    
     const overlayData = {
-      type: 'gamble',
-      text: `${user} ${result.outcome === GambleOutcome.Jackpot ? 'JACKPOT!' : result.outcome === GambleOutcome.Win ? 'won!' : 'lost'}`,
+      type: 'roll',
+      text: `${user} rolled a ${result.roll}! ${result.outcome}`,
       payload: {
         user,
+        roll: result.roll,
         outcome: result.outcome,
-        amount: result.displayAmount,
-        newTotal: result.newTotal,
-        currency: settings.currencyName,
-        betAmount: result.betAmount,
         change: result.change,
-        oldTotal: result.newTotal - result.change
+        newTotal: result.newTotal,
+        currency: settings.currencyName
       },
       timestamp: Date.now()
     };
-    
-    await fs.writeFile(overlayPath, JSON.stringify(overlayData, null, 2));
-    
-    // Trigger OBS overlay
-    await showOverlay('gamble', overlayData);
+
+    // Broadcast via WebSocket for overlay
+    if (typeof (global as any).broadcast === 'function') {
+      (global as any).broadcast({ type: 'roll-result', payload: overlayData }, tenantId);
+    }
   } catch (error) {
-    console.error('[ClassicGamble] Overlay error:', error);
+    console.error('[ClassicGamble] Roll overlay error:', error);
+  }
+}
+
+async function sendDoubleToOverlay(user: string, result: DoubleResult, wager: number, tenantId?: string): Promise<void> {
+  try {
+    const overlayData = {
+      type: 'double',
+      text: `${user} double-or-nothing ${result.won ? 'WIN!' : 'FAIL!'}`,
+      payload: {
+        user,
+        roll: result.roll,
+        won: result.won,
+        wager,
+        change: result.change,
+        newTotal: result.newTotal,
+        currency: settings.currencyName
+      },
+      timestamp: Date.now()
+    };
+
+    // Broadcast via WebSocket for overlay
+    if (typeof (global as any).broadcast === 'function') {
+      (global as any).broadcast({ type: 'double-result', payload: overlayData }, tenantId);
+    }
+  } catch (error) {
+    console.error('[ClassicGamble] Double overlay error:', error);
   }
 }
 

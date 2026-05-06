@@ -85,6 +85,32 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
     }
   }
 
+  // Seed user-config with bot personality if missing
+  const userConfigPath = path.join(root, 'tokens', 'user-config.json');
+  try {
+    let userConfig: Record<string, string> = {};
+    if (fs.existsSync(userConfigPath)) {
+      userConfig = JSON.parse(await fsp.readFile(userConfigPath, 'utf-8'));
+    }
+    let changed = false;
+    if (!userConfig.AI_BOT_PERSONALITY) {
+      userConfig.AI_BOT_PERSONALITY = `You are a friendly, witty stream assistant for ${username}. You engage with chat, welcome viewers, and keep the energy positive. Stay in character and keep responses to 1-2 sentences.`;
+      changed = true;
+    }
+    if (!userConfig.AI_BOT_NAME) {
+      userConfig.AI_BOT_NAME = 'AI Bot';
+      changed = true;
+    }
+    if (!userConfig.TWITCH_BROADCASTER_USERNAME) {
+      userConfig.TWITCH_BROADCASTER_USERNAME = username;
+      changed = true;
+    }
+    if (changed) {
+      await fsp.mkdir(path.dirname(userConfigPath), { recursive: true });
+      await fsp.writeFile(userConfigPath, JSON.stringify(userConfig, null, 2));
+    }
+  } catch {}
+
   // Seed default files if they don't exist
   const defaultsDir = path.resolve(process.cwd(), 'data', 'default');
   if (fs.existsSync(defaultsDir)) {
@@ -95,6 +121,76 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
         await fsp.copyFile(path.join(defaultsDir, file), dest);
       }
     }
+  }
+
+  // Copy root commands as starter set for new tenant
+  const rootCommandsDir = path.resolve(process.cwd(), 'commands');
+  const tenantCommandsDir = path.join(root, 'commands');
+  if (fs.existsSync(rootCommandsDir)) {
+    const files = await fsp.readdir(rootCommandsDir);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const dest = path.join(tenantCommandsDir, file);
+      if (!fs.existsSync(dest)) {
+        await fsp.copyFile(path.join(rootCommandsDir, file), dest);
+      }
+    }
+  }
+
+  // Copy root actions as starter set for new tenant
+  const rootActionsDir = path.resolve(process.cwd(), 'actions');
+  const tenantActionsDir = path.join(root, 'actions');
+  if (fs.existsSync(rootActionsDir)) {
+    const files = await fsp.readdir(rootActionsDir);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const dest = path.join(tenantActionsDir, file);
+      if (!fs.existsSync(dest)) {
+        await fsp.copyFile(path.join(rootActionsDir, file), dest);
+      }
+    }
+  }
+
+  // Copy root config files so redeems, OBS, etc. work out of the box
+  const rootConfigDir = path.resolve(process.cwd(), 'config');
+  const tenantConfigDir = path.join(root, 'config');
+  if (fs.existsSync(rootConfigDir)) {
+    const files = await fsp.readdir(rootConfigDir);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const dest = path.join(tenantConfigDir, file);
+      if (!fs.existsSync(dest)) {
+        await fsp.copyFile(path.join(rootConfigDir, file), dest);
+      }
+    }
+  }
+
+  // Ensure tenant twitch config is aligned with this tenant's identity.
+  // Root config templates may contain a different broadcaster username.
+  const twitchConfigPath = path.join(tenantConfigDir, 'twitch.json');
+  try {
+    let twitchConfig: any = {};
+    if (fs.existsSync(twitchConfigPath)) {
+      twitchConfig = JSON.parse(await fsp.readFile(twitchConfigPath, 'utf-8'));
+    }
+
+    let tokenBotUsername = '';
+    const tenantTokensPath = path.join(root, 'tokens', 'twitch-tokens.json');
+    if (fs.existsSync(tenantTokensPath)) {
+      try {
+        const tokenData = JSON.parse(await fsp.readFile(tenantTokensPath, 'utf-8'));
+        tokenBotUsername = tokenData.botUsername || '';
+      } catch {}
+    }
+
+    const nextTwitchConfig = {
+      ...twitchConfig,
+      broadcasterUsername: username,
+      botUsername: tokenBotUsername || twitchConfig.botUsername || '',
+    };
+    await fsp.writeFile(twitchConfigPath, JSON.stringify(nextTwitchConfig, null, 2), 'utf-8');
+  } catch (error) {
+    console.warn(`[Tenant] Failed to normalize twitch config for ${twitchId}:`, error);
   }
 
   // Ensure global directories exist too
@@ -125,5 +221,39 @@ export function getTenantIdFromSession(sessionJson: string | undefined): string 
     return session.id || null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Re-bootstrap all existing tenants on startup.
+ * Fills in missing directories, config, commands, and actions
+ * without overwriting anything that already exists.
+ */
+export async function rebootstrapAllTenants(): Promise<void> {
+  const tenantIds = await listTenants();
+  if (tenantIds.length === 0) return;
+
+  console.log(`[Tenant] Re-bootstrapping ${tenantIds.length} tenant(s)...`);
+  for (const twitchId of tenantIds) {
+    try {
+      // Read username from stored tokens
+      let username = '';
+      const tokensFile = tenantPath(twitchId, 'tokens/twitch-tokens.json');
+      try {
+        const raw = await fsp.readFile(tokensFile, 'utf-8');
+        const tokens = JSON.parse(raw);
+        username = tokens.broadcasterUsername || tokens.loginUsername || '';
+      } catch {}
+
+      if (!username) {
+        console.warn(`[Tenant] Skipping ${twitchId} — no username in tokens`);
+        continue;
+      }
+
+      await bootstrapTenant(twitchId, username);
+      console.log(`[Tenant] ✅ Re-bootstrapped ${twitchId} (${username})`);
+    } catch (err) {
+      console.error(`[Tenant] Failed to re-bootstrap ${twitchId}:`, err);
+    }
   }
 }

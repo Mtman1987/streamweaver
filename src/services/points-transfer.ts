@@ -1,20 +1,20 @@
 import { getPoints, addPoints } from './points';
-import { readJsonFile, writeJsonFile } from './storage';
+import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 
 const COOLDOWN_FILE = 'steal-cooldowns.json';
 const STEAL_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 type CooldownRecord = Record<string, number>;
 
-async function loadCooldowns(): Promise<CooldownRecord> {
-  return readJsonFile<CooldownRecord>(COOLDOWN_FILE, {});
+async function loadCooldowns(ctx?: StorageContext): Promise<CooldownRecord> {
+  return readJsonFile<CooldownRecord>(COOLDOWN_FILE, {}, ctx);
 }
 
-async function saveCooldowns(data: CooldownRecord): Promise<void> {
-  await writeJsonFile(COOLDOWN_FILE, data);
+async function saveCooldowns(data: CooldownRecord, ctx?: StorageContext): Promise<void> {
+  await writeJsonFile(COOLDOWN_FILE, data, ctx);
 }
 
-export async function givePoints(fromUser: string, toUser: string, amount: number): Promise<{ success: boolean; message: string }> {
+export async function givePoints(fromUser: string, toUser: string, amount: number, ctx?: StorageContext): Promise<{ success: boolean; message: string }> {
   const from = fromUser.toLowerCase();
   const to = toUser.toLowerCase();
   
@@ -26,14 +26,14 @@ export async function givePoints(fromUser: string, toUser: string, amount: numbe
     return { success: false, message: `@${fromUser}, amount must be positive!` };
   }
   
-  const fromPoints = await getPoints(from);
+  const fromPoints = await getPoints(from, ctx);
   
   if (fromPoints.points < amount) {
     return { success: false, message: `@${fromUser}, you only have ${fromPoints.points} points!` };
   }
   
-  await addPoints(from, -amount, `gave to ${to}`);
-  await addPoints(to, amount, `received from ${from}`);
+  await addPoints(from, -amount, `gave to ${to}`, ctx);
+  await addPoints(to, amount, `received from ${from}`, ctx);
   
   return { success: true, message: `@${fromUser} gave ${amount} points to @${toUser}! 💝` };
 }
@@ -66,7 +66,7 @@ const HEIST_SCENARIOS = [
   }
 ];
 
-export async function stealPoints(fromUser: string, toUser: string, amount: number): Promise<{ success: boolean; message: string }> {
+export async function stealPoints(fromUser: string, toUser: string, amount: number, ctx?: StorageContext): Promise<{ success: boolean; message: string }> {
   const from = fromUser.toLowerCase();
   const to = toUser.toLowerCase();
   
@@ -79,7 +79,7 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
   }
   
   // Check cooldown
-  const cooldowns = await loadCooldowns();
+  const cooldowns = await loadCooldowns(ctx);
   const lastSteal = cooldowns[from] || 0;
   const now = Date.now();
   
@@ -88,7 +88,7 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     return { success: false, message: `@${fromUser}, you're on cooldown! Wait ${remaining} more minutes.` };
   }
   
-  const targetPoints = await getPoints(to);
+  const targetPoints = await getPoints(to, ctx);
   
   if (targetPoints.points < amount) {
     return { success: false, message: `@${fromUser}, @${toUser} only has ${targetPoints.points} points!` };
@@ -106,15 +106,15 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     // Success - get full amount
     outcome = scenario.success;
     pointsStolen = amount;
-    await addPoints(to, -amount, `stolen by ${from}`);
-    await addPoints(from, amount, `stolen from ${to}`);
+    await addPoints(to, -amount, `stolen by ${from}`, ctx);
+    await addPoints(from, amount, `stolen from ${to}`, ctx);
     message = `@${fromUser} ${outcome}! Stole ${pointsStolen} points from @${toUser}! 💰`;
   } else if (roll < 55) {
     // Partial - get half
     outcome = scenario.partial;
     pointsStolen = Math.floor(amount / 2);
-    await addPoints(to, -pointsStolen, `stolen by ${from}`);
-    await addPoints(from, pointsStolen, `stolen from ${to}`);
+    await addPoints(to, -pointsStolen, `stolen by ${from}`, ctx);
+    await addPoints(from, pointsStolen, `stolen from ${to}`, ctx);
     message = `@${fromUser} ${outcome}! Got ${pointsStolen} points from @${toUser}! 💸`;
   } else if (roll < 80) {
     // Fail - get nothing
@@ -123,26 +123,26 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
   } else if (roll < 95) {
     // Critical fail - lose the amount
     outcome = scenario.fail;
-    const fromPoints = await getPoints(from);
+    const fromPoints = await getPoints(from, ctx);
     const penalty = Math.min(amount, fromPoints.points);
     if (penalty > 0) {
-      await addPoints(from, -penalty, 'heist backfired');
+      await addPoints(from, -penalty, 'heist backfired', ctx);
     }
     message = `@${fromUser} ${outcome}! Lost ${penalty} points in the attempt! 💥`;
   } else {
     // Critical fail - lose double
     outcome = scenario.fail;
-    const fromPoints = await getPoints(from);
+    const fromPoints = await getPoints(from, ctx);
     const penalty = Math.min(amount * 2, fromPoints.points);
     if (penalty > 0) {
-      await addPoints(from, -penalty, 'heist catastrophe');
+      await addPoints(from, -penalty, 'heist catastrophe', ctx);
     }
     message = `@${fromUser} ${outcome}! Lost ${penalty} points in the catastrophic failure! 💀`;
   }
   
   // Set cooldown
   cooldowns[from] = now;
-  await saveCooldowns(cooldowns);
+  await saveCooldowns(cooldowns, ctx);
   
   return { success: true, message };
 }
