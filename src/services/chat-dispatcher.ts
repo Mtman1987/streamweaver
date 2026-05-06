@@ -683,7 +683,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const { toggleMode } = await import('./modes-manager');
                 const toggled = await toggleMode('greetingmode', tenantId);
-                await reply(`🤖 AI greeting mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
+                const labels: Record<string, string> = { full: '🎬 FULL (clip + chat + TTS)', overlay: '📺 OVERLAY (clip + overlay + TTS)', chat: '💬 CHAT (message only, no clip/TTS)' };
+                await reply(`🤖 Greeting mode: ${labels[toggled.current] || toggled.current}`, 'bot').catch(() => {});
             } else {
                 await reply(`@${actualUsername}, only mods can change greeting mode!`, 'bot').catch(() => {});
             }

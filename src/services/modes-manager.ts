@@ -5,17 +5,16 @@ import { tenantPath } from '../lib/tenant';
 export interface StreamWeaverModes {
   gamblemode: 'overlay' | 'chat';
   welcomemode: 'overlay' | 'chat' | 'off';
-  greetingmode: 'on' | 'off';
+  greetingmode: 'full' | 'overlay' | 'chat';
   clipmode: 'viewer' | 'broadcaster' | 'off';
   pokemode: 'overlay' | 'chat' | 'off';
   chatmode: 'single' | 'shared' | 'master-overlay' | 'master-chat';
-  // Add more modes as needed
 }
 
 const DEFAULT_MODES: StreamWeaverModes = {
   gamblemode: 'overlay',
   welcomemode: 'overlay',
-  greetingmode: 'on',
+  greetingmode: 'full',
   clipmode: 'viewer',
   pokemode: 'overlay',
   chatmode: 'single',
@@ -76,7 +75,7 @@ export async function toggleMode(
   const toggles: Record<string, string[]> = {
     gamblemode: ['overlay', 'chat'],
     welcomemode: ['overlay', 'chat', 'off'],
-    greetingmode: ['on', 'off'],
+    greetingmode: ['full', 'overlay', 'chat'],
     clipmode: ['viewer', 'broadcaster', 'off'],
     pokemode: ['overlay', 'chat', 'off'],
     chatmode: ['single', 'shared', 'master-overlay', 'master-chat'],
