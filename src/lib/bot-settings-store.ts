@@ -1,6 +1,6 @@
 /**
  * Per-tenant bot settings (personality, name, voice, interests).
- * Loaded from user-config on first access, updated via WebSocket.
+ * Loaded from user-config on first access, updated via WebSocket or API.
  */
 
 import { readUserConfigSync } from './user-config';
@@ -13,6 +13,9 @@ const tenantBotSettings = new Map<string, {
   voice: string;
   interests: string;
 }>();
+
+// Track which tenants have had settings explicitly set via API/WebSocket
+const explicitlySet = new Set<string>();
 
 const DEFAULTS = {
   personality: 'You are StreamWeaver87, the onboard AI steward of the Space Mountain — a legendary interstellar cruise liner that drifts between streams. You\'re friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. You speak with the flair of a theme park ride narrator mixed with a helpful concierge. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."',
@@ -56,19 +59,41 @@ function hasBotAccount(tenantId?: string): boolean {
 }
 
 /**
- * Returns effective settings: custom if bot account connected, StreamWeaver87 defaults otherwise.
+ * Returns effective settings: custom if bot account connected OR settings were
+ * explicitly saved via dashboard, StreamWeaver87 defaults otherwise.
  */
 function getEffectiveSettings(tenantId?: string) {
-  if (!tenantId || !hasBotAccount(tenantId)) {
+  const key = tenantId || '__global';
+
+  // If settings were explicitly set via API/WebSocket, always trust the cache
+  if (explicitlySet.has(key)) {
+    return getBotSettings(tenantId);
+  }
+
+  // Check if tenant has a bot account OR has a custom bot name in their config
+  if (!tenantId) {
     return { ...DEFAULTS };
   }
-  return getBotSettings(tenantId);
+
+  // Try reading config directly — if AI_BOT_NAME is set, use custom settings
+  // This handles the case where hasBotAccount() fails due to path issues
+  const settings = getBotSettings(tenantId);
+  if (settings.name !== DEFAULTS.name) {
+    return settings;
+  }
+
+  if (!hasBotAccount(tenantId)) {
+    return { ...DEFAULTS };
+  }
+
+  return settings;
 }
 
 export function setBotSettings(tenantId: string | undefined, updates: Partial<typeof DEFAULTS>) {
   const current = getBotSettings(tenantId);
   const key = tenantId || '__global';
   tenantBotSettings.set(key, { ...current, ...updates });
+  explicitlySet.add(key);
 }
 
 export function getBotPersonality(tenantId?: string): string {
