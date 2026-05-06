@@ -82,10 +82,10 @@ export default function BotFunctionsPage() {
     const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
-    const [botName, setBotName] = useState("");
+    const [botName, setBotName] = useState("StreamWeaver87");
     const [botInterests, setBotInterests] = useState("");
     const [skipShoutoutOverlay, setSkipShoutoutOverlay] = useState(false);
-    const [botPersonality, setBotPersonality] = useState("");
+    const [botPersonality, setBotPersonality] = useState(`You are StreamWeaver87, the onboard AI steward of the Space Mountain — a legendary interstellar cruise liner that drifts between streams. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. You speak with the flair of a theme park ride narrator mixed with a helpful concierge. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`);
 
     const [idleAnimationData, setIdleAnimationData] = useState<any>(botAnimation);
     const [talkingAnimationData, setTalkingAnimationData] = useState<any>(null);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { appendPublicChatMessages, readPublicChatMessages, clearPublicChatMemory } from '@/lib/public-chat-store';
+import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 
@@ -56,22 +57,36 @@ export async function POST(request: NextRequest) {
     const aiConfig = getAIConfig(tenantId);
     const { getBotPersonality } = require('@/lib/bot-settings-store');
     const storedPersonality = getBotPersonality(tenantId);
+    const DEFAULTS_PERSONALITY_CHECK = 'You are a helpful AI assistant.';
     const history = await readPublicChatMessages(20, tenantId);
 
-    // Priority: request body personality > stored personality > generic fallback
+    // Priority: request body personality > stored personality > StreamWeaver87 default
+    const defaultPersonality = `You are StreamWeaver87, the onboard AI steward of the Space Mountain. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
     const systemPrompt = personality
       ? `You are an AI assistant with the following personality:\n${personality}`
-      : storedPersonality && storedPersonality !== 'You are a helpful AI assistant.'
+      : storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK
         ? `Your name is ${aiConfig.botName}. ${storedPersonality}`
-        : `You are a helpful AI assistant for a streamer. Your name is ${aiConfig.botName}.`;
+        : `Your name is ${aiConfig.botName}. ${defaultPersonality}`;
 
     const historyText = formatHistory(history, aiConfig.botName);
 
+    // Commander override: inject global memory and special system prompt for mtman1987
+    let commanderContext = '';
+    const userIsCommander = isCommander(username);
+    if (userIsCommander) {
+      const commanderHistory = await readCommanderMemory(10);
+      commanderContext = [
+        getCommanderSystemPrompt(),
+        formatCommanderHistory(commanderHistory),
+      ].filter(Boolean).join('\n\n');
+    }
+
     const promptParts = [
       systemPrompt,
+      commanderContext,
       'You are having a conversation. Respond naturally and conversationally.',
       historyText,
-      `Latest message from ${username}: ${message}`,
+      `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : username}: ${message}`,
       `Respond as ${aiConfig.botName}:`,
     ].filter(Boolean);
 
@@ -149,6 +164,17 @@ export async function POST(request: NextRequest) {
 
     console.log('[AI Chat Memory] Saving AI response:', aiEntry);
     await appendPublicChatMessages([aiEntry], 100, tenantId);
+
+    // Save to global commander memory if this was M.T.
+    if (userIsCommander) {
+      await appendCommanderMemory({
+        botName: aiConfig.botName,
+        tenantId: tenantId || 'global',
+        message,
+        response: cleanResponse,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     console.log('[AI Chat Memory] Successfully saved messages to public chat file');
     return apiOk({ response: cleanResponse });

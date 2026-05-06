@@ -14,8 +14,8 @@ export function getAIConfig(tenantId?: string): AIConfig {
   const config = readUserConfigSync(tenantId);
   
   const provider = (config.AI_PROVIDER as AIProvider) || 'gemini';
-  const personalityName = config.AI_PERSONALITY_NAME || 'Commander';
-  const botName = config.AI_BOT_NAME || 'AI Bot';
+  const personalityName = config.AI_PERSONALITY_NAME || 'Captain';
+  const botName = config.AI_BOT_NAME || 'StreamWeaver87';
   
   let apiKey = '';
   let model = '';

@@ -94,11 +94,11 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
     }
     let changed = false;
     if (!userConfig.AI_BOT_PERSONALITY) {
-      userConfig.AI_BOT_PERSONALITY = `You are a friendly, witty stream assistant for ${username}. You engage with chat, welcome viewers, and keep the energy positive. Stay in character and keep responses to 1-2 sentences.`;
+      userConfig.AI_BOT_PERSONALITY = `You are StreamWeaver87, the onboard AI steward of the Space Mountain — a legendary interstellar cruise liner that drifts between streams. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. You speak with the flair of a theme park ride narrator mixed with a helpful concierge. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
       changed = true;
     }
     if (!userConfig.AI_BOT_NAME) {
-      userConfig.AI_BOT_NAME = 'AI Bot';
+      userConfig.AI_BOT_NAME = 'StreamWeaver87';
       changed = true;
     }
     if (!userConfig.TWITCH_BROADCASTER_USERNAME) {
