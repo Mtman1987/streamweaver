@@ -1,35 +1,44 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, readFile } from 'fs/promises';
+import { NextRequest } from 'next/server';
+import { promises as fs } from 'fs';
 import { resolve } from 'path';
-import { writeUserConfig } from '@/lib/user-config';
+import { getTenantFromRequest } from '@/lib/tenant-context';
+import { tenantPath } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 
-const SETTINGS_FILE = resolve(process.cwd(), 'tokens', 'discord-channels.json');
-
 const discordChannelsSchema = z.object({
+  guildId: z.string().trim().max(64).optional().default(''),
   logChannelId: z.string().trim().max(64).optional().default(''),
   aiChatChannelId: z.string().trim().max(64).optional().default(''),
   shoutoutChannelId: z.string().trim().max(64).optional().default(''),
+  discordBridgeEnabled: z.boolean().optional(),
 });
+
+function getFilePath(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'tokens/discord-channels.json');
+  return resolve(process.cwd(), 'tokens', 'discord-channels.json');
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const data = await readFile(SETTINGS_FILE, 'utf-8');
-    const parsed = discordChannelsSchema.safeParse(JSON.parse(data));
-    if (parsed.success) {
-      return apiOk(parsed.data as unknown as Record<string, unknown>);
-    }
+    const session = getTenantFromRequest(request);
+    const filePath = getFilePath(session?.tenantId);
+    const data = await fs.readFile(filePath, 'utf-8').catch(() => '{}');
+    const parsed = JSON.parse(data);
     return apiOk({
+      guildId: parsed.guildId || '',
+      logChannelId: parsed.logChannelId || '',
+      aiChatChannelId: parsed.aiChatChannelId || '',
+      shoutoutChannelId: parsed.shoutoutChannelId || '',
+      discordBridgeEnabled: parsed.discordBridgeEnabled !== false,
+    });
+  } catch {
+    return apiOk({
+      guildId: '',
       logChannelId: '',
       aiChatChannelId: '',
       shoutoutChannelId: '',
-    });
-  } catch (error) {
-    return apiOk({
-      logChannelId: '',
-      aiChatChannelId: '',
-      shoutoutChannelId: ''
+      discordBridgeEnabled: true,
     });
   }
 }
@@ -41,17 +50,22 @@ export async function POST(request: NextRequest) {
       return apiError('Invalid request body', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const settings = parsed.data;
-    await writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+    const session = getTenantFromRequest(request);
+    const tenantId = session?.tenantId;
+    const filePath = getFilePath(tenantId);
 
-    // Keep user-config in sync for callers that read env/config directly.
-    await writeUserConfig({
-      NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID: settings?.logChannelId,
-      NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID: settings?.aiChatChannelId,
-      NEXT_PUBLIC_DISCORD_SHOUTOUT_CHANNEL_ID: settings?.shoutoutChannelId,
-    });
+    // Merge with existing (don't overwrite fields not sent)
+    let existing: Record<string, any> = {};
+    try { existing = JSON.parse(await fs.readFile(filePath, 'utf-8')); } catch {}
+
+    const settings = { ...existing, ...parsed.data };
+
+    await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(settings, null, 2));
+
     return apiOk({ success: true });
   } catch (error) {
+    console.error('[Discord Channels] Save failed:', error);
     return apiError('Failed to save settings', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }

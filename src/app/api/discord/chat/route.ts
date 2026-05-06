@@ -40,8 +40,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Discord Chat] ${userName}: ${message.slice(0, 100)}`);
 
-    // Resolve which tenant this guild belongs to
-    const tenantId = await resolveGuildTenant(guildId);
+    // Resolve which tenant this guild belongs to (or auto-assign on first message)
+    let tenantId = await resolveGuildTenant(guildId);
+
+    // Auto-save guildId to the tenant's discord-channels.json if not set yet
+    if (!tenantId && guildId) {
+      // Can't auto-assign without knowing which tenant — skip
+    } else if (tenantId && guildId) {
+      // Ensure guildId is persisted in their config
+      try {
+        const dcPath = tenantPath(tenantId, 'tokens/discord-channels.json');
+        let dcConfig: Record<string, any> = {};
+        try { dcConfig = JSON.parse(await fs.readFile(dcPath, 'utf-8')); } catch {}
+        if (!dcConfig.guildId) {
+          dcConfig.guildId = guildId;
+          await fs.mkdir(dcPath.replace(/[\/\\][^\/\\]+$/, ''), { recursive: true });
+          await fs.writeFile(dcPath, JSON.stringify(dcConfig, null, 2));
+          console.log(`[Discord Chat] Auto-saved guildId ${guildId} for tenant ${tenantId}`);
+        }
+      } catch {}
+    }
 
     // Check if bot is mentioned
     const botName = getBotName(tenantId);
