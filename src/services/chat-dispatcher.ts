@@ -1727,14 +1727,7 @@ If no good match, respond with: Could not find matching user`;
             }
             
             const { getBotName, getBotInterests } = require('../lib/bot-settings-store');
-            const configuredBotName = (() => {
-                try {
-                    return getAIConfig(tenantId).botName || '';
-                } catch {
-                    return '';
-                }
-            })();
-            const botName = (getBotName(tenantId) !== 'AI Bot' ? getBotName(tenantId) : configuredBotName || 'AI Bot').trim();
+            const botName = getBotName(tenantId);
             const mentionTriggers = [
                 `@${botUsername.toLowerCase()}`,
                 botUsername.toLowerCase(),

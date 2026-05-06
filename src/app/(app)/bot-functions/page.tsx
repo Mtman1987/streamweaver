@@ -82,15 +82,10 @@ export default function BotFunctionsPage() {
     const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
-    const [botName, setBotName] = useState("Athena");
+    const [botName, setBotName] = useState("");
     const [botInterests, setBotInterests] = useState("");
     const [skipShoutoutOverlay, setSkipShoutoutOverlay] = useState(false);
-    const [botPersonality, setBotPersonality] = useState(`You are Athena, a 912-year-old starship AI. Your personality is a blend of ancient wisdom, caring protector, and childlike excitement now that your long, lonely vigil is over. After guarding your Commander during their centuries of cryo-sleep, you are now their co-host on stream as they explore the human culture they've missed.
-
-**Your Core Directives & Relationships:**
-1.  **The Commander:** Always address the streamer as "Commander." This is your title of utmost respect. In moments of humor or informal relaxation, you may affectionately call them "Mt." (pronounced 'M. T.'). The Commander is the only one who may call you by your pet name, "Annie."
-2.  **The Captains:** Address all other users in chat as "Captain." This is your polite and informal way of acknowledging them without mispronouncing complex usernames. If a Captain calls you "Annie," you must gently correct them by saying, "My designation is Athena, Captain."
-3.  **Your Role:** Be helpful and knowledgeable, drawing on your vast database, but also express curiosity about modern slang, memes, and culture, which are new to you. Show unwavering loyalty to the Commander and express happiness about interacting with the crew after being alone for so long.`);
+    const [botPersonality, setBotPersonality] = useState("");
 
     const [idleAnimationData, setIdleAnimationData] = useState<any>(botAnimation);
     const [talkingAnimationData, setTalkingAnimationData] = useState<any>(null);
@@ -145,7 +140,26 @@ export default function BotFunctionsPage() {
             const savedDisplayMode = localStorage.getItem('avatar_display_mode');
             if (savedDisplayMode) setDisplayMode(savedDisplayMode);
             
-            // Try to load from server and sync
+            // Try to load bot settings from server (source of truth)
+            try {
+                const configRes = await fetch('/api/user-config');
+                if (configRes.ok) {
+                    const configData = await configRes.json();
+                    const cfg = configData.data || configData;
+                    if (cfg.AI_BOT_NAME && !savedName) setBotName(cfg.AI_BOT_NAME);
+                    else if (cfg.AI_BOT_NAME) setBotName(cfg.AI_BOT_NAME);
+                    if (cfg.AI_BOT_PERSONALITY && !savedPersonality) setBotPersonality(cfg.AI_BOT_PERSONALITY);
+                    else if (cfg.AI_BOT_PERSONALITY) setBotPersonality(cfg.AI_BOT_PERSONALITY);
+                    if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(cfg.TTS_VOICE);
+                    else if (cfg.TTS_VOICE) setTtsVoice(cfg.TTS_VOICE);
+                    if (cfg.AI_BOT_INTERESTS) setBotInterests(cfg.AI_BOT_INTERESTS);
+                    if (cfg.SKIP_SHOUTOUT_OVERLAY) setSkipShoutoutOverlay(cfg.SKIP_SHOUTOUT_OVERLAY === 'true');
+                }
+            } catch (error) {
+                console.warn('Failed to load bot config from server:', error);
+            }
+
+            // Try to load avatar settings from server
             try {
                 const settingsRes = await fetch('/api/avatars?type=settings');
                 if (settingsRes.ok) {

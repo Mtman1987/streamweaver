@@ -54,11 +54,16 @@ export async function POST(request: NextRequest) {
     }
 
     const aiConfig = getAIConfig(tenantId);
+    const { getBotPersonality } = require('@/lib/bot-settings-store');
+    const storedPersonality = getBotPersonality(tenantId);
     const history = await readPublicChatMessages(20, tenantId);
 
+    // Priority: request body personality > stored personality > generic fallback
     const systemPrompt = personality
       ? `You are an AI assistant with the following personality:\n${personality}`
-      : `You are a helpful AI assistant for a streamer. Your name is ${aiConfig.botName}.`;
+      : storedPersonality && storedPersonality !== 'You are a helpful AI assistant.'
+        ? `Your name is ${aiConfig.botName}. ${storedPersonality}`
+        : `You are a helpful AI assistant for a streamer. Your name is ${aiConfig.botName}.`;
 
     const historyText = formatHistory(history, aiConfig.botName);
 
