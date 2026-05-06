@@ -62,11 +62,22 @@ export async function POST(request: NextRequest) {
 
     // Priority: request body personality > stored personality > StreamWeaver87 default
     const defaultPersonality = `You are StreamWeaver87, the onboard AI steward of the Space Mountain. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
-    const systemPrompt = personality
-      ? `You are an AI assistant with the following personality:\n${personality}`
-      : storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK
-        ? `Your name is ${aiConfig.botName}. ${storedPersonality}`
-        : `Your name is ${aiConfig.botName}. ${defaultPersonality}`;
+    const rawPersonality = personality
+      || (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
+      || defaultPersonality;
+
+    // Two-tier split: above --- is compact system identity, below is extended guidance
+    let systemIdentity: string;
+    let extendedGuidance: string;
+    if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
+      const splitIndex = rawPersonality.indexOf('\n---');
+      systemIdentity = rawPersonality.substring(0, splitIndex).trim();
+      extendedGuidance = rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim();
+    } else {
+      // No delimiter — use whole thing as system (graceful fallback)
+      systemIdentity = rawPersonality;
+      extendedGuidance = '';
+    }
 
     const historyText = formatHistory(history, aiConfig.botName);
 
@@ -82,9 +93,8 @@ export async function POST(request: NextRequest) {
     }
 
     const promptParts = [
-      systemPrompt,
+      extendedGuidance,
       commanderContext,
-      'You are having a conversation. Respond naturally and conversationally.',
       historyText,
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : username}: ${message}`,
       `Respond as ${aiConfig.botName}:`,
@@ -102,7 +112,7 @@ export async function POST(request: NextRequest) {
     console.log('[AI Chat Memory] Saving user message:', userEntry);
     await appendPublicChatMessages([userEntry], 100, tenantId);
 
-    // Use EdenAI API with hardcoded model like private chat
+    // Use EdenAI API with proper system/user role separation
     const response = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
       method: 'POST',
       headers: {
@@ -112,7 +122,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: 'openai/gpt-4o-mini',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: systemIdentity },
           { role: 'user', content: prompt }
         ],
         stream: false

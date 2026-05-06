@@ -13,6 +13,44 @@ const botSettingsSchema = z.object({
   skipShoutoutOverlay: z.boolean().optional(),
 });
 
+/**
+ * Auto-optimize personality if it's missing the --- delimiter.
+ * Calls the optimize-personality endpoint internally.
+ */
+async function autoOptimize(personality: string, botName: string): Promise<string> {
+  // Already structured — has our delimiter
+  if (personality.includes('\n---\n') || personality.includes('\n---')) {
+    return personality;
+  }
+
+  const edenaiKey = process.env.EDENAI_API_KEY;
+  if (!edenaiKey) return personality; // Can't optimize without key, save as-is
+
+  try {
+    console.log('[Bot Settings] Personality missing --- delimiter, auto-optimizing...');
+    const port = process.env.PORT || 3100;
+    const res = await fetch(`http://127.0.0.1:${port}/api/ai/optimize-personality`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personality, botName }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const optimized = data.optimized || data.data?.optimized;
+      if (optimized && optimized.includes('---')) {
+        console.log('[Bot Settings] Auto-optimization successful');
+        return optimized;
+      }
+    }
+    console.warn('[Bot Settings] Auto-optimization failed, saving raw');
+    return personality;
+  } catch (e) {
+    console.warn('[Bot Settings] Auto-optimization error:', e);
+    return personality;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const parsed = botSettingsSchema.safeParse(await request.json().catch(() => null));
@@ -20,13 +58,18 @@ export async function POST(request: NextRequest) {
       return apiError('Invalid request body', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { personality, voice, name, interests, skipShoutoutOverlay } = parsed.data;
+    const { personality: rawPersonality, voice, name, interests, skipShoutoutOverlay } = parsed.data;
     const session = getTenantFromRequest(request);
     const tid = session?.tenantId;
 
-    if (!personality && !voice && !name && !interests && skipShoutoutOverlay == null) {
+    if (!rawPersonality && !voice && !name && !interests && skipShoutoutOverlay == null) {
       return apiError('At least one setting is required', { status: 400, code: 'INVALID_BODY' });
     }
+
+    // Auto-optimize personality into structured format if missing delimiter
+    const personality = rawPersonality
+      ? await autoOptimize(rawPersonality, name || 'AI Bot')
+      : undefined;
 
     // Update in-memory per-tenant store
     const botUpdates: Record<string, string> = {};
