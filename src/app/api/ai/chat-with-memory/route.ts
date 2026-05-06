@@ -16,6 +16,7 @@ const chatWithMemorySchema = z.object({
   message: z.string().trim().min(1, 'Missing required fields: username, message').max(5000),
   personality: z.string().trim().max(3000).optional(),
   tenantId: z.string().trim().max(128).optional(),
+  context: z.enum(['twitch', 'discord', 'voice', 'private']).optional().default('twitch'),
 });
 
 type AIChatMessage = {
@@ -46,8 +47,8 @@ export async function POST(request: NextRequest) {
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { username, message, personality, tenantId } = parsed.data;
-    console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global' });
+    const { username, message, personality, tenantId, context } = parsed.data;
+    console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context });
 
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (!edenaiKey) {
@@ -92,9 +93,19 @@ export async function POST(request: NextRequest) {
       ].filter(Boolean).join('\n\n');
     }
 
+    // Context flag so the AI knows where this conversation is happening
+    const contextFlags: Record<string, string> = {
+      twitch: '[Context: Live Twitch chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
+      discord: '[Context: Discord server message. Can be slightly longer but stay concise.]',
+      voice: `[Context: The broadcaster is speaking to you via voice command. This is ${userIsCommander ? 'the Commander (M.T.)' : 'the streamer'}. Respond conversationally.]`,
+      private: '[Context: Private conversation. Not on stream. You can be more detailed and personal.]',
+    };
+    const contextFlag = contextFlags[context] || contextFlags.twitch;
+
     const promptParts = [
       extendedGuidance,
       commanderContext,
+      contextFlag,
       historyText,
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : username}: ${message}`,
       `Respond as ${aiConfig.botName}:`,

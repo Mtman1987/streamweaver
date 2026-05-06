@@ -1735,6 +1735,13 @@ If no good match, respond with: Could not find matching user`;
                 botName.toLowerCase(),
                 `hey ${botName.toLowerCase()}`
             ].filter(Boolean);
+            // Add pet names / aliases (e.g. "annie" for Athena)
+            const { readUserConfigSync: readCfg } = require('../lib/user-config');
+            const petNames = (readCfg(tenantId).AI_BOT_ALIASES || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
+            for (const alias of petNames) {
+                mentionTriggers.push(alias);
+                mentionTriggers.push(`hey ${alias}`);
+            }
             let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
             
             // Remove hardcoded Athena check - only use dynamic bot name
@@ -1770,6 +1777,7 @@ If no good match, respond with: Could not find matching user`;
                             username: actualUsername,
                             message: messageToSend,
                             tenantId: tenantId || undefined,
+                            context: message.includes('🌟') ? 'voice' : 'twitch',
                         })
                     });
                     

@@ -6,6 +6,8 @@ import {
 } from '@/lib/private-chat-store';
 import { getPrivateLTMTitles, incrementPrivateMessageCount, getPrivateMessageCount } from '@/lib/private-ltm-store';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getTenantFromRequest } from '@/lib/tenant-context';
+import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -65,7 +67,11 @@ export async function POST(request: NextRequest) {
     }
 
     const { username, message, personality, historyLimit } = parsed.data;
-    console.log('[Private Chat API] Request body:', { username, messageLength: message.length });
+    const session = getTenantFromRequest(request);
+    const tenantId = session?.tenantId;
+    const botName = getBotName(tenantId);
+    const botPersonality = getBotPersonality(tenantId);
+    console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global' });
 
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (!edenaiKey) {
@@ -76,7 +82,7 @@ export async function POST(request: NextRequest) {
     const messageCount = await incrementPrivateMessageCount();
     await checkAndCondensePrivateMemory();
 
-    const history = await readPrivateChatMessages(historyLimit);
+    const history = await readPrivateChatMessages(historyLimit, tenantId);
 
     // Get LTM titles for context
     const ltmTitles = await getPrivateLTMTitles();
@@ -84,28 +90,28 @@ export async function POST(request: NextRequest) {
       ? `\n\nLong Term Memory titles (request full content if relevant): ${ltmTitles.join(', ')}`
       : '';
 
-    const systemPrompt = personality
-      ? `You are an AI assistant with the following personality:\n${personality}`
-      : `You are a helpful AI assistant for a streamer. Your name is ${(global as any).botName || 'AI'}.`;
-
-    // Check if this is a private conversation
-    const isPrivateConversation = message.startsWith('[Private conversation]');
-    const cleanMessage = isPrivateConversation ? message.replace('[Private conversation]', '').trim() : message;
-    
-    const privacyContext = isPrivateConversation 
-      ? 'This is a private conversation - you can speak freely about personal topics, secrets, or sensitive information that you would not share publicly.'
-      : '';
+    // Two-tier personality split
+    let systemIdentity: string;
+    let extendedGuidance: string;
+    const rawPersonality = personality || botPersonality;
+    if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
+      const splitIndex = rawPersonality.indexOf('\n---');
+      systemIdentity = rawPersonality.substring(0, splitIndex).trim();
+      extendedGuidance = rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim();
+    } else {
+      systemIdentity = rawPersonality;
+      extendedGuidance = '';
+    }
 
     const historyText = formatHistory(history);
 
     const promptParts = [
-      systemPrompt,
-      privacyContext,
-      'You are having a private conversation. Respond naturally and conversationally.',
+      extendedGuidance,
+      '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
       'If you need more context from Long Term Memory, respond with: "LTM_REQUEST: [exact title]" and I will provide the full content.',
       historyText,
-      `Latest message from ${username}: ${cleanMessage}${ltmContext}`,
-      `Respond as ${(global as any).botName || 'AI'}:`,
+      `Latest message from ${username}: ${message}${ltmContext}`,
+      `Respond as ${botName}:`,
     ].filter(Boolean);
 
     const prompt = promptParts.join('\n\n');
@@ -113,14 +119,14 @@ export async function POST(request: NextRequest) {
     const userEntry: PrivateChatMessage = {
       type: 'user',
       username,
-      message: cleanMessage,
+      message,
       timestamp: new Date().toISOString(),
     };
 
     console.log('[Private Chat API] Saving user message:', userEntry);
-    await appendPrivateChatMessages([userEntry]);
+    await appendPrivateChatMessages([userEntry], 100, tenantId);
 
-    // Use EdenAI API
+    // Use EdenAI API with proper system/user role separation
     const response = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
       method: 'POST',
       headers: {
@@ -130,7 +136,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: 'openai/gpt-4o-mini',
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: systemIdentity },
           { role: 'user', content: prompt }
         ],
         stream: false
@@ -166,7 +172,7 @@ export async function POST(request: NextRequest) {
           const ltmData = await ltmResponse.json();
           
           // Re-generate response with LTM content
-          const enhancedPrompt = promptParts.join('\n\n') + `\n\nLTM Content for "${requestedTitle}": ${ltmData.content}\n\nNow respond as Athena (do not repeat the LTM content):`;
+          const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmData.content}\n\nNow respond as ${botName} (do not repeat the LTM content):`;
           
           const enhancedResponse = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
             method: 'POST',
@@ -177,7 +183,7 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify({
               model: 'openai/gpt-4o-mini',
               messages: [
-                { role: 'system', content: systemPrompt },
+                { role: 'system', content: systemIdentity },
                 { role: 'user', content: enhancedPrompt }
               ],
               stream: false
@@ -202,13 +208,13 @@ export async function POST(request: NextRequest) {
 
     const aiEntry: PrivateChatMessage = {
       type: 'ai',
-      username: (global as any).botName || 'AI',
+      username: botName,
       message: responseText,
       timestamp: new Date().toISOString(),
     };
 
     console.log('[Private Chat API] Saving AI response:', aiEntry);
-    await appendPrivateChatMessages([aiEntry]);
+    await appendPrivateChatMessages([aiEntry], 100, tenantId);
 
     console.log('[Private Chat API] Successfully saved both messages');
     return apiOk({ response: responseText });
