@@ -91,7 +91,7 @@ function seedTenantDiscordConfig() {
       TWITCH_BROADCASTER_USERNAME: 'mtman1987',
       AI_PROVIDER: 'edenai',
       AI_BOT_NAME: 'Athena',
-      AI_BOT_ALIASES: 'athena,hey athena',
+      AI_BOT_ALIASES: 'athena,hey athena,annie,athenabot87',
       TTS_PROVIDER: 'inworld',
       TTS_VOICE: 'Ashley'
     }, null, 2))
