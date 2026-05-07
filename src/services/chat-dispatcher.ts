@@ -1415,6 +1415,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 message: actualMessage,
                 rawInput: cmdArgs.join(' '),
                 platform: 'twitch',
+                tenantId: tenantId || undefined,
                 args: execArgs,
                 variables: {
                     user: actualUsername,
@@ -1646,17 +1647,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (!skipWelcome && await shouldWelcomeUser(actualUsername, tenantId)) {
                 const welcomeMode = await getWelcomeMode(tenantId);
                 
-                if (welcomeMode === 'overlay') {
-                    // Overlay-only mode: broadcast to overlay without chat message
-                    const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
-                    if (typeof (global as any).broadcast === 'function') {
-                        (global as any).broadcast({
-                            type: 'welcome-overlay',
-                            payload: { username: actualUsername, displayName, profileImage }
-                        }, tenantId);
-                    }
+                if (welcomeMode === 'off') {
+                    // Welcome disabled — do nothing
                 } else {
-                    // Chat mode: trigger walk-on shoutout as before
+                    // Let handleWalkOnShoutout use greetingmode to decide behavior
                     const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
                     handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId).catch(err => {
                         console.error('[Dispatcher] Walk-on shoutout failed:', err);

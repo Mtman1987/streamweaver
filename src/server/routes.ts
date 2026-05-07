@@ -124,8 +124,9 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                     try {
                         const { message, as, targetChannel, tenantId: requestedTenantId } = JSON.parse(body);
                         
-                        if (message.startsWith('[Discord]')) {
-                            const discordChannelsPath = resolve(process.cwd(), 'tokens', 'discord-channels.json');
+                        if (message.startsWith('[Discord]') && requestedTenantId) {
+                            const { tenantPath: tp } = require('../lib/tenant');
+                            const discordChannelsPath = tp(requestedTenantId, 'tokens/discord-channels.json');
                             try {
                                 const channelsData = await fs.readFile(discordChannelsPath, 'utf-8');
                                 const channels = JSON.parse(channelsData);

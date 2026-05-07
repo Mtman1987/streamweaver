@@ -42,7 +42,13 @@ function getTenantState(request: NextRequest): TtsState {
 
 function isLocalRequest(request: NextRequest): boolean {
   const host = request.headers.get('host') || '';
-  return host.startsWith('127.0.0.1') || host.startsWith('localhost');
+  if (host.startsWith('127.0.0.1') || host.startsWith('localhost')) return true;
+  // On Fly.io, internal requests may come via forwarded headers
+  const forwarded = request.headers.get('x-forwarded-for') || '';
+  if (forwarded.startsWith('127.0.0.1') || forwarded === '::1') return true;
+  // Allow if tenant param is present (only internal services know tenant IDs)
+  if (request.nextUrl.searchParams.get('tenant')) return true;
+  return false;
 }
 
 export async function GET(request: NextRequest) {

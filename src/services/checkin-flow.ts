@@ -215,13 +215,18 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
   const greeting = await generateGreeting(username, entry, kind, sourceLabel, tenantId);
   await playGreeting(greeting, tenantId);
 
-  if (process.env.DISCORD_WEBHOOK_URL) {
-    await fetch(process.env.DISCORD_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: `${copy.emoji} **${username}** just checked in with **${entry.name}** during a **${copy.title}**!` }),
-    }).catch(() => {});
-  }
+  // Post to tenant's shoutout Discord channel if bridge is enabled
+  try {
+    const { promises: fsP } = require('fs');
+    const { tenantPath: tp } = require('../lib/tenant');
+    if (tenantId) {
+      const dcConfig = JSON.parse(await fsP.readFile(tp(tenantId, 'tokens/discord-channels.json'), 'utf-8'));
+      if (dcConfig.discordBridgeEnabled !== false && dcConfig.shoutoutChannelId) {
+        const { sendDiscordMessage: sendDM } = require('./discord');
+        await sendDM(dcConfig.shoutoutChannelId, `${copy.emoji} **${username}** just checked in with **${entry.name}** during a **${copy.title}**!`);
+      }
+    }
+  } catch {}
 
   broadcastCheckin('reveal', {
     kind,

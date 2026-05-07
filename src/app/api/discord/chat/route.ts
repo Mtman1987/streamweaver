@@ -69,12 +69,21 @@ export async function POST(request: NextRequest) {
     const msgLower = message.toLowerCase();
     const botMentioned = allTriggers.some(trigger => trigger && msgLower.includes(trigger));
 
-    // Bridge to Twitch if enabled and dispatch is true
-    if (dispatch && tenantId) {
+    // Bridge to Twitch if enabled, dispatch is true, and message is from the configured bridge channel
+    if (dispatch && tenantId && channelId) {
       try {
-        const { sendChatMessage } = require('@/services/twitch');
-        const twitchMsg = `[Discord] ${userName}: ${message}`;
-        await sendChatMessage(twitchMsg, 'bot', undefined, tenantId);
+        const dcPath = tenantPath(tenantId, 'tokens/discord-channels.json');
+        let bridgeEnabled = false;
+        try {
+          const dcConfig = JSON.parse(await fs.readFile(dcPath, 'utf-8'));
+          bridgeEnabled = dcConfig.discordBridgeEnabled !== false && dcConfig.logChannelId === channelId;
+        } catch {}
+
+        if (bridgeEnabled) {
+          const { sendChatMessage } = require('@/services/twitch');
+          const twitchMsg = `[Discord] ${userName}: ${message}`;
+          await sendChatMessage(twitchMsg, 'bot', undefined, tenantId);
+        }
       } catch (e) {
         console.warn('[Discord Chat] Twitch bridge failed:', e);
       }

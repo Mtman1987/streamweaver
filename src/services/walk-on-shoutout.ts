@@ -129,16 +129,10 @@ async function fetchClip(username: string): Promise<TwitchClip | null> {
 async function playClip(clip: TwitchClip, displayName: string, profileImage: string, tenantId?: string): Promise<void> {
     const embedURL = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
     const delay = 700 + Math.floor(clip.duration * 1000);
-    const playerUrl = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT||3100}`}/shoutout-player?user=${encodeURIComponent(displayName)}&image=${encodeURIComponent(profileImage)}&video=${encodeURIComponent(embedURL)}&thumbnail_url=${encodeURIComponent(clip.thumbnailUrl)}`;
 
-    const cfg = await getAppConfig();
-    const sceneName = cfg.shoutoutScene || process.env.SHOUTOUT_SCENE || 'Shoutout';
-    const sourceName = cfg.shoutoutBrowserSource || process.env.SHOUTOUT_BROWSER_SOURCE || 'Shoutout-Player';
+    console.log(`[WalkOn] Broadcasting clip to shoutout overlay for ${displayName}`);
 
-    console.log(`[WalkOn] Scene: "${sceneName}", Source: "${sourceName}"`);
-    console.log('[WalkOn] Opening shoutout player:', playerUrl);
-
-    // Broadcast clip to overlay via WebSocket
+    // Broadcast clip to shoutout overlay via WebSocket
     if (typeof (global as any).broadcast === 'function') {
         (global as any).broadcast({
             type: 'shoutout-play-clip',
@@ -146,18 +140,7 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
         }, tenantId);
     }
 
-    // Also try OBS WebSocket
-    const { setBrowserSource } = await import('./obs');
-
-    try {
-        await setBrowserSource(sceneName, sourceName, 'about:blank');
-        await new Promise(r => setTimeout(r, 50));
-        await setBrowserSource(sceneName, sourceName, playerUrl);
-        console.log(`[WalkOn] Updated browser source successfully`);
-    } catch (error) {
-        console.error('[WalkOn] Failed to update browser source (OBS not connected?):', error);
-    }
-
+    // Wait for clip to finish playing
     await new Promise(resolve => setTimeout(resolve, delay + 2000));
 }
 
@@ -353,7 +336,8 @@ async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | 
             : resolve(process.cwd(), 'tokens', 'discord-channels.json');
         const data = await fs.readFile(p, 'utf-8');
         const channels = JSON.parse(data);
-        return channels.shoutoutChannelId || channels.logChannelId || null;
+        if (channels.discordBridgeEnabled === false) return null;
+        return channels.shoutoutChannelId || null;
     } catch {
         return null;
     }
@@ -393,22 +377,26 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     }
 
     // === MODE: FULL or OVERLAY ===
-    // Both play the clip first, then fire the greeting differently
+    // Both play the clip first, then fire the greeting after
 
     // Broadcaster drops the link
     await sendBroadcasterWelcome(displayName, tenantId);
 
-    // Fetch and play clip
-    const clip = await fetchClip(username);
-    if (clip) {
-        console.log(`[WalkOn] Playing clip for ${displayName}`);
-        await playClip(clip, displayName, profileImage, tenantId);
-        console.log(`[WalkOn] Clip finished for ${displayName}`);
-    } else {
-        console.log(`[WalkOn] No clips found for ${displayName}, skipping video`);
+    // Fetch and play clip (errors won't prevent greeting from firing)
+    try {
+        const clip = await fetchClip(username);
+        if (clip) {
+            console.log(`[WalkOn] Playing clip for ${displayName}`);
+            await playClip(clip, displayName, profileImage, tenantId);
+            console.log(`[WalkOn] Clip finished for ${displayName}`);
+        } else {
+            console.log(`[WalkOn] No clips found for ${displayName}, skipping video`);
+        }
+    } catch (err) {
+        console.error(`[WalkOn] Clip playback failed for ${displayName}:`, err);
     }
 
-    // Fire greeting (full = chat + TTS, overlay = overlay + TTS)
+    // Fire greeting after clip (full = chat + TTS, overlay = overlay + TTS)
     await fireGreeting(aiGreeting, mode, tenantId);
 
     if (!skipCooldown) await recordShoutout(user, tenantId);

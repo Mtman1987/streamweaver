@@ -11,6 +11,7 @@ export interface ExecutionContext {
   message?: string;
   rawInput?: string;
   platform?: string;
+  tenantId?: string;
   args?: Record<string, any>;
   variables?: Record<string, any>;
   breakRequested?: boolean;

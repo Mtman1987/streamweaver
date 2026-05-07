@@ -15,7 +15,7 @@ export interface ConversationalResponseOutput {
 export async function conversationalResponse(input: ConversationalResponseInput): Promise<ConversationalResponseOutput> {
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
     const systemPrompt = input.personality 
       ? `You are an AI assistant with the following personality:\n${input.personality}`

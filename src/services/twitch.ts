@@ -98,7 +98,7 @@ type TwitchUser = {
 // Get User Information from Twitch API
 export async function getTwitchUser(usernameOrId: string, by: "login" | "id" = "login"): Promise<{ id: string; bio: string; lastGame: string; displayName: string; profileImageUrl: string; createdAt?: string; } | null> {
     const appToken = await getTwitchAppAccessToken();
-    const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
+    const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID || process.env.TWITCH_CLIENT_ID;
 
     if (!clientId) {
         throw new Error("Twitch client ID is missing from environment variables.");
