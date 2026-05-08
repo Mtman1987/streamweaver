@@ -7,19 +7,24 @@ const ttsCurrentSchema = z.object({
   audioUrl: z.string().min(1, 'audioUrl is required'),
 });
 
-type TtsState = {
-  audioUrl: string | null;
-  updatedAt: string | null;
+type TtsQueueItem = {
+  audioUrl: string;
+  addedAt: string;
 };
 
-type TenantTtsState = Record<string, TtsState>;
+type TenantTtsState = {
+  queue: TtsQueueItem[];
+  lastServedAt: string | null;
+};
 
-function getTtsStateMap(): TenantTtsState {
+type TtsStateMap = Record<string, TenantTtsState>;
+
+function getTtsStateMap(): TtsStateMap {
   const g = globalThis as any;
-  if (!g.__streamweaver_tts_state_by_tenant) {
-    g.__streamweaver_tts_state_by_tenant = {};
+  if (!g.__streamweaver_tts_queue_by_tenant) {
+    g.__streamweaver_tts_queue_by_tenant = {};
   }
-  return g.__streamweaver_tts_state_by_tenant as TenantTtsState;
+  return g.__streamweaver_tts_queue_by_tenant as TtsStateMap;
 }
 
 function getTenantKey(request: NextRequest): string {
@@ -28,14 +33,11 @@ function getTenantKey(request: NextRequest): string {
   return session?.tenantId || tenantFromQuery || 'global';
 }
 
-function getTenantState(request: NextRequest): TtsState {
+function getTenantState(request: NextRequest): TenantTtsState {
   const tenantKey = getTenantKey(request);
   const map = getTtsStateMap();
   if (!map[tenantKey]) {
-    map[tenantKey] = {
-      audioUrl: null,
-      updatedAt: null,
-    };
+    map[tenantKey] = { queue: [], lastServedAt: null };
   }
   return map[tenantKey];
 }
@@ -43,10 +45,8 @@ function getTenantState(request: NextRequest): TtsState {
 function isLocalRequest(request: NextRequest): boolean {
   const host = request.headers.get('host') || '';
   if (host.startsWith('127.0.0.1') || host.startsWith('localhost')) return true;
-  // On Fly.io, internal requests may come via forwarded headers
   const forwarded = request.headers.get('x-forwarded-for') || '';
   if (forwarded.startsWith('127.0.0.1') || forwarded === '::1') return true;
-  // Allow if tenant param is present (only internal services know tenant IDs)
   if (request.nextUrl.searchParams.get('tenant')) return true;
   return false;
 }
@@ -55,12 +55,27 @@ export async function GET(request: NextRequest) {
   const state = getTenantState(request);
   const { searchParams } = new URL(request.url);
 
-  // ?poll=1 returns only the timestamp (lightweight check)
+  // ?poll=1 returns whether there's anything queued (lightweight check)
   if (searchParams.get('poll')) {
-    return apiOk({ updatedAt: state.updatedAt });
+    const hasItems = state.queue.length > 0;
+    return apiOk({ updatedAt: hasItems ? state.queue[0].addedAt : state.lastServedAt });
   }
 
-  return apiOk(state as unknown as Record<string, unknown>);
+  // ?next=1 pops the next item from the queue (player calls this when ready for next)
+  if (searchParams.get('next')) {
+    const item = state.queue.shift();
+    if (item) {
+      state.lastServedAt = item.addedAt;
+      return apiOk({ audioUrl: item.audioUrl, updatedAt: item.addedAt, remaining: state.queue.length });
+    }
+    return apiOk({ audioUrl: null, updatedAt: state.lastServedAt, remaining: 0 });
+  }
+
+  // Default: peek at front of queue without removing (backward compat)
+  if (state.queue.length > 0) {
+    return apiOk({ audioUrl: state.queue[0].audioUrl, updatedAt: state.queue[0].addedAt });
+  }
+  return apiOk({ audioUrl: null, updatedAt: state.lastServedAt });
 }
 
 export async function POST(request: NextRequest) {
@@ -76,14 +91,19 @@ export async function POST(request: NextRequest) {
     }
 
     const { audioUrl } = parsed.data;
-
     const state = getTenantState(request);
-    state.audioUrl = audioUrl;
-    state.updatedAt = new Date().toISOString();
+    const addedAt = new Date().toISOString();
 
-    console.log('[TTS Current] POST stored | audioUrl length:', audioUrl.length, '| updatedAt:', state.updatedAt);
-    return apiOk({ success: true, updatedAt: state.updatedAt });
+    state.queue.push({ audioUrl, addedAt });
+
+    // Cap queue at 20 to prevent memory issues
+    if (state.queue.length > 20) {
+      state.queue = state.queue.slice(-20);
+    }
+
+    console.log('[TTS Current] POST queued | queue size:', state.queue.length, '| addedAt:', addedAt);
+    return apiOk({ success: true, updatedAt: addedAt, queueSize: state.queue.length });
   } catch (error: any) {
-    return apiError(error?.message || 'Failed to save tts audio', { status: 500, code: 'INTERNAL_ERROR' });
+    return apiError(error?.message || 'Failed to queue tts audio', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }

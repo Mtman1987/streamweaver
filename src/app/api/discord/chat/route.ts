@@ -69,8 +69,9 @@ export async function POST(request: NextRequest) {
     const msgLower = message.toLowerCase();
     const botMentioned = allTriggers.some(trigger => trigger && msgLower.includes(trigger));
 
-    // Bridge to Twitch if enabled, dispatch is true, and message is from the configured bridge channel
-    if (dispatch && tenantId && channelId) {
+    // Bridge to Twitch if enabled, dispatch is true, message is from the configured bridge channel,
+    // and the bot is NOT mentioned (bot conversations stay in Discord)
+    if (dispatch && tenantId && channelId && !botMentioned) {
       try {
         const dcPath = tenantPath(tenantId, 'tokens/discord-channels.json');
         let bridgeEnabled = false;
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: false, error: 'empty-response' });
     }
 
-    // Send response via webhook (impersonating the bot with its avatar)
+    // Send response via webhook to Discord only (no Twitch, no TTS — conversation stays in Discord)
     if (channelId) {
       const avatarUrl = getAvatarUrl(tenantId);
       try {
@@ -129,7 +130,6 @@ export async function POST(request: NextRequest) {
         console.log(`[Discord Chat] Bot responded in channel ${channelId}`);
       } catch (e) {
         console.error('[Discord Chat] Webhook send failed:', e);
-        // Fallback: try sending via bot token directly
         try {
           const botToken = process.env.DISCORD_BOT_TOKEN;
           if (botToken) {
@@ -142,26 +142,6 @@ export async function POST(request: NextRequest) {
         } catch {}
       }
     }
-
-    // TTS for the response (same as Twitch)
-    try {
-      const ttsRes = await fetch(`http://127.0.0.1:${port}/api/tts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: aiReply }),
-      });
-      if (ttsRes.ok) {
-        const ttsData = await ttsRes.json();
-        if (ttsData.audioDataUri) {
-          const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-          await fetch(`http://127.0.0.1:${port}/api/tts/current${tenantQuery}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audioUrl: ttsData.audioDataUri }),
-          }).catch(() => {});
-        }
-      }
-    } catch {}
 
     return apiOk({ success: true, botResponded: true, response: aiReply });
   } catch (error) {

@@ -14,7 +14,6 @@ type AvatarSettings = {
 
 export default function TTSPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const lastUrlRef = useRef<string>('');
   const [status, setStatus] = useState('Listening for TTS...');
   const [playing, setPlaying] = useState(false);
   const [avatar, setAvatar] = useState<AvatarSettings | null>(null);
@@ -23,7 +22,6 @@ export default function TTSPlayer() {
   const [visible, setVisible] = useState(false);
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
-  const tenantPrefix = tenantQuery ? `?${tenantQuery}` : '';
 
   // Load avatar settings from server
   useEffect(() => {
@@ -78,8 +76,10 @@ export default function TTSPlayer() {
     return () => { clearTimeout(reconnect); ws?.close(); };
   }, []);
 
-  // Poll for TTS audio — no click needed, uses muted autoplay + unmute
+  // Poll for TTS audio queue — plays items sequentially without cutting off
   useEffect(() => {
+    let isPlaying = false;
+
     const playTTS = async (audioUrl: string) => {
       const audio = audioRef.current;
       if (!audio) return;
@@ -89,14 +89,11 @@ export default function TTSPlayer() {
       try { await applySavedSink(audio); } catch {}
 
       try {
-        // Start muted (browser always allows this)
         await audio.play();
-        // Unmute immediately after play starts
         audio.muted = false;
         audio.volume = 1.0;
         setStatus('Playing...');
       } catch (err: any) {
-        // Fallback: try unmuted directly (works in OBS browser source)
         audio.muted = false;
         audio.volume = 1.0;
         try {
@@ -104,32 +101,53 @@ export default function TTSPlayer() {
           setStatus('Playing...');
         } catch {
           setStatus(`Play failed: ${err.message}`);
+          isPlaying = false;
         }
       }
     };
 
-    const check = async () => {
+    const fetchNext = async () => {
+      if (isPlaying) return;
       try {
-        const pollPath = `/api/tts/current?poll=1${tenantQuery ? `&${tenantQuery}` : ''}`;
-        const fullPath = `/api/tts/current${tenantPrefix}`;
-        const pollRes = await fetch(pollPath);
-        if (!pollRes.ok) return;
-        const pollData = await pollRes.json();
-        if (!pollData.updatedAt || pollData.updatedAt === lastUrlRef.current) return;
-
-        const fullRes = await fetch(fullPath);
-        if (!fullRes.ok) return;
-        const data = await fullRes.json();
-        if (data.audioUrl && data.updatedAt) {
-          lastUrlRef.current = data.updatedAt;
+        const sep = tenantQuery ? `&${tenantQuery}` : '';
+        const res = await fetch(`/api/tts/current?next=1${sep}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.audioUrl) {
+          isPlaying = true;
           await playTTS(data.audioUrl);
         }
       } catch {}
     };
 
-    const interval = setInterval(check, 500);
-    return () => clearInterval(interval);
-  }, [overlayTenant, tenantPrefix, tenantQuery]);
+    const audio = audioRef.current;
+    const onEnded = () => {
+      isPlaying = false;
+      setPlaying(false);
+      setStatus('Listening for TTS...');
+      // Immediately check for next queued item
+      fetchNext();
+    };
+    const onError = () => {
+      isPlaying = false;
+      setPlaying(false);
+      setStatus('Listening for TTS...');
+    };
+
+    if (audio) {
+      audio.addEventListener('ended', onEnded);
+      audio.addEventListener('error', onError);
+    }
+
+    const interval = setInterval(fetchNext, 500);
+    return () => {
+      clearInterval(interval);
+      if (audio) {
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+      }
+    };
+  }, [overlayTenant, tenantQuery]);
 
   // Show avatar when playing, hide after idle (only in auto mode)
   useEffect(() => {
@@ -163,9 +181,6 @@ export default function TTSPlayer() {
       <audio
         ref={audioRef}
         onPlay={() => { setPlaying(true); setStatus('Playing...'); }}
-        onEnded={() => { setPlaying(false); setStatus('Listening for TTS...'); }}
-        onPause={() => { setPlaying(false); }}
-        onError={() => { setPlaying(false); setStatus('Listening for TTS...'); }}
       />
       {/* Avatar */}
       {avatar && (

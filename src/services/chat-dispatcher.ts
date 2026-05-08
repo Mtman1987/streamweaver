@@ -1801,9 +1801,7 @@ If no good match, respond with: Could not find matching user`;
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
                                         }).catch(err => console.error('[Dispatcher] Failed to send TTS to player:', err));
-                                    }
-                                    
-                                    if (typeof (global as any).broadcast === 'function') {
+                                    } else if (typeof (global as any).broadcast === 'function') {
                                         (global as any).broadcast({
                                             type: 'play-tts',
                                             payload: { audioDataUri: ttsResult.audioDataUri }
