@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { writeUserConfig } from '@/lib/user-config';
-import { setBotSettings } from '@/lib/bot-settings-store';
+import { setBotSettings, reloadBotSettings } from '@/lib/bot-settings-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { z } from 'zod';
@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
     if (Object.keys(configUpdates).length > 0) {
       await writeUserConfig(configUpdates, tid);
       console.log('[API] Saved to user-config.json:', configUpdates);
+      // Force reload from disk to ensure cache is consistent
+      reloadBotSettings(tid);
     }
 
     return apiOk({ success: true });

@@ -14,6 +14,10 @@ const tenantBotSettings = new Map<string, {
   interests: string;
 }>();
 
+// Track when each tenant's settings were last loaded from disk
+const lastLoadedAt = new Map<string, number>();
+const CACHE_TTL_MS = 60_000; // Re-read from disk every 60 seconds
+
 // Track which tenants have had settings explicitly set via API/WebSocket
 const explicitlySet = new Set<string>();
 
@@ -26,20 +30,41 @@ const DEFAULTS = {
 
 export function getBotSettings(tenantId?: string) {
   const key = tenantId || '__global';
-  if (!tenantBotSettings.has(key)) {
-    try {
-      const config = readUserConfigSync(tenantId);
-      tenantBotSettings.set(key, {
-        personality: config.AI_BOT_PERSONALITY || DEFAULTS.personality,
-        name: config.AI_BOT_NAME || DEFAULTS.name,
-        voice: config.TTS_VOICE || DEFAULTS.voice,
-        interests: config.AI_BOT_INTERESTS || '',
-      });
-    } catch {
-      tenantBotSettings.set(key, { ...DEFAULTS });
-    }
+  const now = Date.now();
+  const lastLoaded = lastLoadedAt.get(key) || 0;
+  // Re-read from disk if cache is stale (unless explicitly set this session)
+  if (!tenantBotSettings.has(key) || (!explicitlySet.has(key) && now - lastLoaded > CACHE_TTL_MS)) {
+    loadBotSettingsFromDisk(tenantId);
   }
   return tenantBotSettings.get(key)!;
+}
+
+function loadBotSettingsFromDisk(tenantId?: string) {
+  const key = tenantId || '__global';
+  try {
+    const config = readUserConfigSync(tenantId);
+    tenantBotSettings.set(key, {
+      personality: config.AI_BOT_PERSONALITY || DEFAULTS.personality,
+      name: config.AI_BOT_NAME || DEFAULTS.name,
+      voice: config.TTS_VOICE || DEFAULTS.voice,
+      interests: config.AI_BOT_INTERESTS || '',
+    });
+  } catch {
+    tenantBotSettings.set(key, { ...DEFAULTS });
+  }
+  lastLoadedAt.set(key, Date.now());
+}
+
+/**
+ * Force-reload bot settings from disk for a tenant.
+ * Call this after config changes to ensure the in-memory cache is fresh.
+ */
+export function reloadBotSettings(tenantId?: string) {
+  const key = tenantId || '__global';
+  tenantBotSettings.delete(key);
+  explicitlySet.delete(key);
+  loadBotSettingsFromDisk(tenantId);
+  console.log(`[BotSettings] Reloaded settings for ${key}: name=${tenantBotSettings.get(key)?.name}`);
 }
 
 /**
@@ -94,6 +119,7 @@ export function setBotSettings(tenantId: string | undefined, updates: Partial<ty
   const key = tenantId || '__global';
   tenantBotSettings.set(key, { ...current, ...updates });
   explicitlySet.add(key);
+  console.log(`[BotSettings] Updated in-memory for ${key}: name=${tenantBotSettings.get(key)?.name}`);
 }
 
 export function getBotPersonality(tenantId?: string): string {

@@ -314,7 +314,10 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     }
                     if (Object.keys(updates).length > 0) {
                         const { writeUserConfig } = require('../lib/user-config');
-                        writeUserConfig(updates, tid).catch((e: any) => console.error('[WebSocket] Failed to persist bot settings:', e));
+                        writeUserConfig(updates, tid).then(() => {
+                            const { reloadBotSettings } = require('../lib/bot-settings-store');
+                            reloadBotSettings(tid);
+                        }).catch((e: any) => console.error('[WebSocket] Failed to persist bot settings:', e));
                     }
                 } else if (message.type === 'voice-command') {
                     const { command } = message.payload;
