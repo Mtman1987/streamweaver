@@ -248,13 +248,17 @@ export async function handleGamble(
     displayAmount
   };
   
-  // Send result message only if chat output is enabled
-  if (settings.useBot) {
+  // Check gamble mode
+  const { getMode } = await import('../modes-manager');
+  const gambleMode = await getMode('gamblemode', tenantId);
+  
+  // Send result message in chat mode
+  if (gambleMode === 'chat') {
     await sendResultMessage(user, result, tenantId);
   }
   
-  // Send to overlay if enabled
-  if (settings.useOverlay) {
+  // Send to overlay in overlay mode
+  if (gambleMode === 'overlay') {
     await sendToOverlay(user, result, tenantId);
   }
   
@@ -298,8 +302,8 @@ export async function handleRoll(
   const { getMode } = await import('../modes-manager');
   const gambleMode = await getMode('gamblemode', tenantId);
   
-  // Send result message only if chat enabled
-  if (gambleMode === 'chat' && settings.useBot) {
+  // Send result message in chat mode
+  if (gambleMode === 'chat') {
     const message = `@${user} rolled a ${roll}! ${outcome} ${change >= 0 ? '+' : ''}${change} points. New total: ${formatNumber(newTotal)} | Type !double to double or nothing!`;
     await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
   }
@@ -344,8 +348,8 @@ export async function handleDouble(
   const { getMode } = await import('../modes-manager');
   const gambleMode = await getMode('gamblemode', tenantId);
   
-  // Send result message only if chat enabled
-  if (gambleMode === 'chat' && settings.useBot) {
+  // Send result message in chat mode
+  if (gambleMode === 'chat') {
     const message = won 
       ? `@${user} rolled ${roll}! DOUBLE OR NOTHING WIN! +${formatNumber(wager * 2)} points! New total: ${formatNumber(newTotal)}`
       : `@${user} rolled ${roll}! Double or nothing failed. -${formatNumber(wager * 2)} points. New total: ${formatNumber(newTotal)}`;
