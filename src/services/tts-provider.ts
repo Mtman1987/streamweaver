@@ -11,7 +11,7 @@ export interface TTSConfig {
 
 export const TTS_VOICES = {
   openai: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
-  inworld: ['Ashley', 'Marcus', 'Sarah', 'David'],
+  inworld: ['Ashley', 'Marcus', 'Sarah', 'David', 'Mortimer', 'Snik', 'Hades', 'Dominus', 'Victor', 'Lucian', 'Sebastian', 'Malcolm', 'Vinny', 'Conrad', 'Damon', 'Levi', 'Theodore', 'Ronald', 'Rupert', 'Graham', 'Hank', 'Oliver', 'Simon', 'Elliot', 'James', 'Gareth', 'Nate', 'Brian', 'Ethan', 'Tyler', 'Jason', 'Jake', 'Liam', 'Callum', 'Hamish', 'Arjun', 'Craig', 'Dennis', 'Edward', 'Mark', 'Shaun', 'Timothy', 'Clive', 'Carter', 'Blake', 'Cedric', 'Jonah', 'Avery', 'Brandon', 'Trevor', 'Alex', 'Derek', 'Evan', 'Grant', 'Tristan', 'Reed', 'Duncan', 'Felix', 'Lauren', 'Jessica', 'Veronica', 'Victoria', 'Miranda', 'Kelsey', 'Kayla', 'Chloe', 'Serena', 'Celeste', 'Evelyn', 'Pippa', 'Tessa', 'Anjali', 'Saanvi', 'Claire', 'Abby', 'Luna', 'Loretta', 'Darlene', 'Marlene', 'Elizabeth', 'Julia', 'Pixie', 'Olivia', 'Priya', 'Wendy', 'Deborah', 'Hana', 'Riley', 'Mia', 'Naomi', 'Nadia', 'Selene', 'Bianca', 'Amina', 'Sophie', 'Eleanor'],
   google: ['en-US-Wavenet-F', 'en-US-Wavenet-M', 'en-GB-Wavenet-F', 'en-GB-Wavenet-M'],
   elevenlabs: ['Algieba', 'Rachel', 'Bella', 'Antoni', 'Josh', 'Arnold', 'Adam', 'Sam'],
   edenai: ['en-US-Wavenet-F']
@@ -144,13 +144,11 @@ async function generateOpenAITTS(text: string, config: TTSConfig): Promise<strin
   return `data:audio/mpeg;base64,${audioContent}`;
 }
 
-const INWORLD_VOICES = new Set(['Ashley', 'Marcus', 'Sarah', 'David']);
+const INWORLD_VOICES = new Set(['Ashley', 'Marcus', 'Sarah', 'David', 'Mortimer', 'Snik', 'Hades', 'Dominus', 'Victor', 'Lucian', 'Sebastian', 'Malcolm', 'Vinny', 'Conrad', 'Damon', 'Levi', 'Theodore', 'Ronald', 'Rupert', 'Graham', 'Hank', 'Oliver', 'Simon', 'Elliot', 'James', 'Gareth', 'Nate', 'Brian', 'Ethan', 'Tyler', 'Jason', 'Jake', 'Liam', 'Callum', 'Hamish', 'Arjun', 'Craig', 'Dennis', 'Edward', 'Mark', 'Shaun', 'Timothy', 'Clive', 'Carter', 'Blake', 'Cedric', 'Jonah', 'Avery', 'Brandon', 'Trevor', 'Alex', 'Derek', 'Evan', 'Grant', 'Tristan', 'Reed', 'Duncan', 'Felix', 'Lauren', 'Jessica', 'Veronica', 'Victoria', 'Miranda', 'Kelsey', 'Kayla', 'Chloe', 'Serena', 'Celeste', 'Evelyn', 'Pippa', 'Tessa', 'Anjali', 'Saanvi', 'Claire', 'Abby', 'Luna', 'Loretta', 'Darlene', 'Marlene', 'Elizabeth', 'Julia', 'Pixie', 'Olivia', 'Priya', 'Wendy', 'Deborah', 'Hana', 'Riley', 'Mia', 'Naomi', 'Nadia', 'Selene', 'Bianca', 'Amina', 'Sophie', 'Eleanor']);
 
 async function generateInworldTTS(text: string, config: TTSConfig): Promise<string> {
-  // Map to valid Inworld voice if the configured voice isn't one
-  const voice = INWORLD_VOICES.has(config.voice) ? config.voice
-    : INWORLD_VOICES.has(config.voice.replace(' (Inworld)', '')) ? config.voice.replace(' (Inworld)', '')
-    : 'Ashley';
+  // Pass voice directly to Inworld API — let the API validate
+  const voice = config.voice || 'Ashley';
   
   const response = await fetch('https://api.inworld.ai/tts/v1/voice', {
     method: 'POST',

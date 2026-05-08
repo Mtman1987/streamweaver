@@ -12,11 +12,11 @@ export interface StreamWeaverModes {
 }
 
 const DEFAULT_MODES: StreamWeaverModes = {
-  gamblemode: 'overlay',
-  welcomemode: 'overlay',
-  greetingmode: 'full',
+  gamblemode: 'chat',
+  welcomemode: 'chat',
+  greetingmode: 'chat',
   clipmode: 'viewer',
-  pokemode: 'overlay',
+  pokemode: 'chat',
   chatmode: 'single',
 };
 

@@ -561,7 +561,7 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
 
             // 1. Broadcaster posts the card list + balance (chat mode only)
             const { getPokeMode } = require('./poke-mode');
-            const pokeMode = getPokeMode(tenantId);
+            const pokeMode = await getPokeMode(tenantId);
             if (pokeMode === 'chat') {
                 await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster', undefined, tenantId);
             }
