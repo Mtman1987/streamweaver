@@ -1723,7 +1723,7 @@ If no good match, respond with: Could not find matching user`;
                 return;
             }
             
-            const { getBotName, getBotInterests } = require('../lib/bot-settings-store');
+            const { getBotName, getBotInterests, getBotAliases } = require('../lib/bot-settings-store');
             const botName = getBotName(tenantId);
             const mentionTriggers = [
                 `@${botUsername.toLowerCase()}`,
@@ -1732,15 +1732,8 @@ If no good match, respond with: Could not find matching user`;
                 `hey ${botName.toLowerCase()}`
             ].filter(Boolean);
             // Add pet names / aliases (e.g. "annie" for Athena)
-            let petNames: string[] = [];
-            try {
-                const { readUserConfigSync: readCfg } = require('../lib/user-config');
-                const cfg = readCfg(tenantId);
-                petNames = (cfg.AI_BOT_ALIASES || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
-                console.log(`[Dispatcher] Loaded aliases for tenant ${tenantId}: [${petNames.join(', ')}]`);
-            } catch (e) {
-                console.error('[Dispatcher] Failed to load AI_BOT_ALIASES:', e);
-            }
+            const petNames = (getBotAliases(tenantId) || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
+            console.log(`[Dispatcher] Loaded aliases for tenant ${tenantId}: [${petNames.join(', ')}]`);
             for (const alias of petNames) {
                 mentionTriggers.push(alias);
                 mentionTriggers.push(`hey ${alias}`);

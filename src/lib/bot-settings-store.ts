@@ -12,6 +12,7 @@ const tenantBotSettings = new Map<string, {
   name: string;
   voice: string;
   interests: string;
+  aliases: string;
 }>();
 
 // Track when each tenant's settings were last loaded from disk
@@ -26,6 +27,7 @@ const DEFAULTS = {
   name: 'StreamWeaver87',
   voice: 'Algieba',
   interests: '',
+  aliases: '',
 };
 
 export function getBotSettings(tenantId?: string) {
@@ -48,6 +50,7 @@ function loadBotSettingsFromDisk(tenantId?: string) {
       name: config.AI_BOT_NAME || DEFAULTS.name,
       voice: config.TTS_VOICE || DEFAULTS.voice,
       interests: config.AI_BOT_INTERESTS || '',
+      aliases: config.AI_BOT_ALIASES || '',
     });
   } catch {
     tenantBotSettings.set(key, { ...DEFAULTS });
@@ -136,6 +139,10 @@ export function getBotVoice(tenantId?: string): string {
 
 export function getBotInterests(tenantId?: string): string {
   return getEffectiveSettings(tenantId).interests;
+}
+
+export function getBotAliases(tenantId?: string): string {
+  return getEffectiveSettings(tenantId).aliases;
 }
 
 export function tenantHasBotAccount(tenantId?: string): boolean {
