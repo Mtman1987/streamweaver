@@ -426,6 +426,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
     if (isCommand && !isBot) {
         console.log(`[Dispatcher] Processing command: ${actualMessage} from ${actualUsername}`);
+        const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
         
         // Handle !collection command
         if (actualMessage.toLowerCase() === '!collection') {
@@ -1664,6 +1665,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Check if message mentions bot (allow from anyone except bot itself and skip self messages)
         if (!isBot && !self) {
             const lowerMessage = actualMessage.toLowerCase();
+            console.log(`[Dispatcher] Non-command message from ${actualUsername}, checking mentions. lowerMessage: "${lowerMessage.slice(0, 80)}"`);
             
             // Check for shoutout command (without bot name)
             // Skip messages that look like the formatted shoutout output to prevent re-triggering
@@ -1730,12 +1732,20 @@ If no good match, respond with: Could not find matching user`;
                 `hey ${botName.toLowerCase()}`
             ].filter(Boolean);
             // Add pet names / aliases (e.g. "annie" for Athena)
-            const { readUserConfigSync: readCfg } = require('../lib/user-config');
-            const petNames = (readCfg(tenantId).AI_BOT_ALIASES || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
+            let petNames: string[] = [];
+            try {
+                const { readUserConfigSync: readCfg } = require('../lib/user-config');
+                const cfg = readCfg(tenantId);
+                petNames = (cfg.AI_BOT_ALIASES || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
+                console.log(`[Dispatcher] Loaded aliases for tenant ${tenantId}: [${petNames.join(', ')}]`);
+            } catch (e) {
+                console.error('[Dispatcher] Failed to load AI_BOT_ALIASES:', e);
+            }
             for (const alias of petNames) {
                 mentionTriggers.push(alias);
                 mentionTriggers.push(`hey ${alias}`);
             }
+            console.log(`[Dispatcher] mentionTriggers for tenant ${tenantId}:`, mentionTriggers.join(', '));
             let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
             
             // Remove hardcoded Athena check - only use dynamic bot name
