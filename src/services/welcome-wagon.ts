@@ -1,6 +1,7 @@
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 import { getTwitchUser } from './twitch';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
+import { isKnownBot } from './known-bots';
 
 const WELCOME_FILE = 'welcome-wagon.json';
 const WELCOME_MODE_FILE = 'welcome-mode.json';
@@ -103,6 +104,9 @@ export async function shouldWelcomeUser(username: string, tenantId?: string): Pr
   const session = getSession(tenantId);
 
   if (session.welcomedUsers.has(key)) return false;
+
+  // Skip known bots
+  if (await isKnownBot(key, tenantId)) return false;
 
   try {
     const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/live`);

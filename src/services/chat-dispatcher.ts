@@ -16,6 +16,7 @@ import { getPoints, setPoints } from './points';
 import { getAIConfig } from './ai-provider';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
+import { isKnownBot } from './known-bots';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { tenantPath } from '../lib/tenant';
@@ -1637,33 +1638,37 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     } else {
         // Points & Welcome Wagon (only for non-self messages to avoid awarding yourself points)
         if (!self && !isBot && !consumedByRedemption) {
-            awardChatPoints(actualUsername, tenantCtx).catch(() => {});
+            // Skip points and welcome for known bots
+            const skipAsBot = await isKnownBot(actualUsername, tenantId);
+            if (!skipAsBot) {
+                awardChatPoints(actualUsername, tenantCtx).catch(() => {});
             
-            // Skip welcome wagon for broadcaster, bot, and messages from voice commands
-            const skipWelcome = consumedByRedemption || tags.badges?.broadcaster || 
-                                actualUsername.toLowerCase() === (botUsername || '').toLowerCase() ||
-                                actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase() ||
-                                message.includes('🌟');
+                // Skip welcome wagon for broadcaster, bot, and messages from voice commands
+                const skipWelcome = consumedByRedemption || tags.badges?.broadcaster || 
+                                    actualUsername.toLowerCase() === (botUsername || '').toLowerCase() ||
+                                    actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase() ||
+                                    message.includes('🌟');
             
-            if (!skipWelcome && await shouldWelcomeUser(actualUsername, tenantId)) {
-                const welcomeMode = await getWelcomeMode(tenantId);
+                if (!skipWelcome && await shouldWelcomeUser(actualUsername, tenantId)) {
+                    const welcomeMode = await getWelcomeMode(tenantId);
                 
-                if (welcomeMode === 'off') {
-                    // Welcome disabled — do nothing
-                } else {
-                    // Let handleWalkOnShoutout use greetingmode to decide behavior
-                    const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
-                    handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId).catch(err => {
-                        console.error('[Dispatcher] Walk-on shoutout failed:', err);
-                    });
+                    if (welcomeMode === 'off') {
+                        // Welcome disabled — do nothing
+                    } else {
+                        // Let handleWalkOnShoutout use greetingmode to decide behavior
+                        const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
+                        handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId).catch(err => {
+                            console.error('[Dispatcher] Walk-on shoutout failed:', err);
+                        });
+                    }
+                
+                    markUserWelcomed(actualUsername, tenantId).catch(() => {});
                 }
-                
-                markUserWelcomed(actualUsername, tenantId).catch(() => {});
             }
         }
         
-        // Check if message mentions bot (allow from anyone except bot itself and skip self messages)
-        if (!isBot && !self) {
+        // Check if message mentions bot (allow from anyone except bot itself, known bots, and skip self messages)
+        if (!isBot && !self && !(await isKnownBot(actualUsername, tenantId))) {
             const lowerMessage = actualMessage.toLowerCase();
             console.log(`[Dispatcher] Non-command message from ${actualUsername}, checking mentions. lowerMessage: "${lowerMessage.slice(0, 80)}"`);
             
