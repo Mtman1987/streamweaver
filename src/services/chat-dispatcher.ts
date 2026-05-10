@@ -636,6 +636,32 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        // Handle !ignore command (mod/broadcaster only) - add/remove from known bots
+        if (actualMessage.toLowerCase().startsWith('!ignore')) {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const args = actualMessage.substring(7).trim();
+                const targetUser = args.replace('@', '').toLowerCase();
+                if (!targetUser) {
+                    await reply(`@${actualUsername}, usage: !ignore @username (toggles bot ignore list)`, 'bot').catch(() => {});
+                    return;
+                }
+                const { isKnownBot: checkBot, addCustomBot, removeCustomBot, clearBotCache } = require('./known-bots');
+                const alreadyIgnored = await checkBot(targetUser, tenantId);
+                if (alreadyIgnored) {
+                    await removeCustomBot(targetUser, tenantId);
+                    clearBotCache(tenantId);
+                    await reply(`@${actualUsername}, ${targetUser} removed from ignore list.`, 'bot').catch(() => {});
+                } else {
+                    await addCustomBot(targetUser, tenantId);
+                    clearBotCache(tenantId);
+                    await reply(`@${actualUsername}, ${targetUser} added to ignore list (no welcome/shoutout/points).`, 'bot').catch(() => {});
+                }
+            } else {
+                await reply(`@${actualUsername}, only mods can manage the ignore list!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
         // Handle !resetallpoints command (mod/broadcaster only)
         if (actualMessage.toLowerCase() === '!resetallpoints') {
             if (tags.mod || tags.badges?.broadcaster) {
@@ -1387,7 +1413,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !admin
         if (actualMessage.toLowerCase() === '!admin') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !brb, !back';
+                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !brb, !back, !ignore <user>';
                 await reply(adminSummary, 'broadcaster').catch(() => {});
             } else {
                 await reply(`@${actualUsername}, only mods can view admin commands!`, 'broadcaster').catch(() => {});

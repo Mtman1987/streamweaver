@@ -2,6 +2,37 @@ import { sendChatMessage } from './twitch';
 import { recordDetailedCheckin, getEntryInviteLink } from './checkin-stats';
 import { getCheckinSource, type CheckinEntry, type CheckinKind } from './checkin-sources';
 import { getStoredTokens } from '../lib/token-utils.server';
+import { readJsonFile, writeJsonFile } from './storage';
+
+const FRONT_SEAT_FILE = 'space-mountain-front-seat.json';
+
+type FrontSeatHistory = { history: string[] }; // last N usernames who got front seat
+
+/**
+ * Pick a front seat rider, rotating so no one gets it every time.
+ * Picks from riders who haven't had it recently; falls back to random if all have.
+ */
+async function pickFrontSeat(riders: CheckinEntry[], tenantId?: string): Promise<CheckinEntry> {
+  if (riders.length <= 1) return riders[0];
+
+  const ctx = tenantId ? { tenantId, username: '' } : undefined;
+  const data = await readJsonFile<FrontSeatHistory>(FRONT_SEAT_FILE, { history: [] }, ctx);
+  const recentSet = new Set(data.history.slice(-Math.max(5, Math.floor(riders.length * 0.6))));
+
+  // Prefer riders who haven't had front seat recently
+  const eligible = riders.filter(r => !recentSet.has(r.name.toLowerCase()));
+  const pool = eligible.length > 0 ? eligible : riders;
+
+  const winner = pool[Math.floor(Math.random() * pool.length)];
+
+  // Record this winner
+  data.history.push(winner.name.toLowerCase());
+  // Keep last 20 entries
+  if (data.history.length > 20) data.history = data.history.slice(-20);
+  await writeJsonFile(FRONT_SEAT_FILE, data, ctx);
+
+  return winner;
+}
 
 type PointsContext = { tenantId: string; username: string } | undefined;
 
@@ -263,17 +294,19 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     return { ...entry, total: stats.entryTotal };
   });
 
+  // Pick front seat rider — rotate so no one gets it every time
+  const frontSeatRider = await pickFrontSeat(checkedIn, tenantId);
+
   const names = checkedIn.slice(0, 8).map((entry) => entry.name).join(', ');
   const suffix = checkedIn.length > 8 ? ` and ${checkedIn.length - 8} more` : '';
-  let broadcasterMsg = `@${username} launched ${copy.title} and checked in ${checkedIn.length} riders: ${names}${suffix}`;
+  let broadcasterMsg = `@${username} launched ${copy.title} with ${checkedIn.length} riders: ${names}${suffix} | 🎢 Front seat: ${frontSeatRider.name}!`;
   if (pointCost > 0) {
     const balance = await getBalance(username, tenantId);
     if (typeof balance === 'number') broadcasterMsg += ` | Balance: ${balance} pts`;
   }
   await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
 
-  const lead = checkedIn[0];
-  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${lead.name}!`;
+  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${frontSeatRider.name}! 🎢`;
   await playGreeting(greeting, tenantId);
 
   broadcastCheckin('reveal', {
@@ -285,6 +318,7 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     bulk: true,
     count: checkedIn.length,
     names: checkedIn.map((entry) => entry.name),
-    entry: lead,
+    frontSeat: frontSeatRider.name,
+    entry: frontSeatRider,
   }, tenantId);
 }

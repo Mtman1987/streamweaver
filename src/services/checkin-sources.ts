@@ -232,6 +232,7 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
   }
 
   try {
+    // Get chatters in channel
     const response = await fetch(
       `https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${encodeURIComponent(auth.broadcasterId)}&moderator_id=${encodeURIComponent(auth.broadcasterId)}&first=1000`,
       {
@@ -249,19 +250,44 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
     const payload = await response.json() as any;
     const actor = (actorUsername || '').toLowerCase();
     const broadcaster = (auth.broadcasterUsername || '').toLowerCase();
-    const entries = sortAndAssignIds((payload?.data || [])
+    let chatters: Array<{ login: string; name: string; userId: string }> = (payload?.data || [])
       .map((chatter: any) => {
         const login = String(chatter?.user_login || '').trim();
         const name = String(chatter?.user_name || login).trim();
         if (!login || login.toLowerCase() === actor || login.toLowerCase() === broadcaster) return null;
-        return {
-          key: toEntryKey('space-mountain', String(chatter?.user_id || login), name),
-          name,
-          imageUrl: '',
-          twitchUserId: String(chatter?.user_id || ''),
-        };
+        return { login: login.toLowerCase(), name, userId: String(chatter?.user_id || '') };
       })
-      .filter(Boolean) as Omit<CheckinEntry, 'id'>[]);
+      .filter(Boolean);
+
+    // Filter out known bots
+    const { isKnownBot: isBot } = require('./known-bots');
+    const filtered: typeof chatters = [];
+    for (const c of chatters) {
+      if (!(await isBot(c.login, tenantId))) filtered.push(c);
+    }
+    chatters = filtered;
+
+    // If a Discord guild is configured, only keep chatters who are also in that server
+    const redeemsConfig = await getConfigSection('redeems', tenantId);
+    const guildId = redeemsConfig.spaceMountainCheckin?.discordGuildId;
+    if (guildId) {
+      try {
+        const discordMembers = await fetchDiscordMemberNames(guildId);
+        if (discordMembers.size > 0) {
+          chatters = chatters.filter(c => discordMembers.has(c.login) || discordMembers.has(c.name.toLowerCase()));
+          console.log(`[Space Mountain] Filtered to ${chatters.length} chatters who are also in Discord guild ${guildId}`);
+        }
+      } catch (err) {
+        console.warn('[Space Mountain] Discord member fetch failed, using all chatters:', err);
+      }
+    }
+
+    const entries = sortAndAssignIds(chatters.map(c => ({
+      key: toEntryKey('space-mountain', c.userId || c.login, c.name),
+      name: c.name,
+      imageUrl: '',
+      twitchUserId: c.userId,
+    })));
 
     return {
       kind: 'space-mountain',
@@ -274,6 +300,42 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
     console.warn('[Space Mountain] Source fetch failed:', error);
     return { kind: 'space-mountain', label: 'Space Mountain Check-In', sourceLabel: 'Space Mountain Riders', selectionMode: 'bulk', entries: [] };
   }
+}
+
+/**
+ * Fetch Discord server members and return a Set of lowercase display names / usernames.
+ * Uses the same bot token as the Discord service.
+ */
+async function fetchDiscordMemberNames(guildId: string): Promise<Set<string>> {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return new Set();
+
+  const names = new Set<string>();
+  let after = '';
+  const limit = 1000;
+
+  // Paginate through members (max 1000 per request)
+  for (let i = 0; i < 10; i++) {
+    const url = `https://discord.com/api/v10/guilds/${guildId}/members?limit=${limit}${after ? `&after=${after}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bot ${token}` } });
+    if (!res.ok) break;
+    const members: any[] = await res.json();
+    if (!members.length) break;
+
+    for (const m of members) {
+      const nick = (m.nick || '').toLowerCase().trim();
+      const username = (m.user?.username || '').toLowerCase().trim();
+      const globalName = (m.user?.global_name || '').toLowerCase().trim();
+      if (nick) names.add(nick);
+      if (username) names.add(username);
+      if (globalName) names.add(globalName);
+    }
+
+    if (members.length < limit) break;
+    after = members[members.length - 1].user?.id || '';
+  }
+
+  return names;
 }
 
 export async function getCheckinSource(kind: CheckinKind, tenantId?: string, actorUsername?: string): Promise<CheckinSourceResult> {

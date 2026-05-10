@@ -100,6 +100,7 @@ export const redeemsConfigSchema = z.object({
   spaceMountainCheckin: z.object({
     rewardTitle: z.string().default(''),
     pointCost: z.number().int().default(0),
+    discordGuildId: z.string().default(''),
   }).default({}),
   pokePack: z.object({
     rewardTitle: z.string().default(''),
