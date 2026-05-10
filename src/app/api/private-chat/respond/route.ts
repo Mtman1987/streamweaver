@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'mistralai/mistral-small-latest',
+        model: 'google/gemini-2.0-flash',
         messages: [
           { role: 'system', content: systemIdentity },
           { role: 'user', content: prompt }
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'mistralai/mistral-small-latest',
+              model: 'google/gemini-2.0-flash',
               messages: [
                 { role: 'system', content: systemIdentity },
                 { role: 'user', content: enhancedPrompt }
