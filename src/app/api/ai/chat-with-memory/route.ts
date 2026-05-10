@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
-import { appendPublicChatMessages, readPublicChatMessages, clearPublicChatMemory } from '@/lib/public-chat-store';
+import { appendPublicChatMessages, readPublicChatMessages } from '@/lib/public-chat-store';
 import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: 'mistralai/mistral-small-latest',
         messages: [
           { role: 'system', content: systemIdentity },
           { role: 'user', content: prompt }
@@ -145,26 +145,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[AI Chat Memory] EdenAI error:', response.status, errorText);
-      
-      // Check for content policy violations
-      const isContentViolation = (
-        errorText.includes('harassment') ||
-        errorText.includes('Content rejected') ||
-        errorText.includes('violation of the following policies') ||
-        errorText.includes('invalid_request_error') ||
-        response.status === 400
-      );
-      
-      if (isContentViolation) {
-        console.log('[AI Chat Memory] Content policy violation detected - clearing memory');
-        await clearPublicChatMemory(tenantId);
-        return apiOk({ 
-          response: 'Oops! I need to reset our conversation due to content guidelines. Let\'s start fresh! 🔄',
-          memoryCleared: true 
-        });
-      }
-      
-      return apiOk({ response: 'Sorry, I had trouble processing that. Could you rephrase?' });
+      return apiOk({ response: 'Hmm, let me think about that differently... Could you rephrase?' });
     }
 
     const data = await response.json();
