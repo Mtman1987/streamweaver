@@ -47,8 +47,11 @@ export async function POST(request: NextRequest) {
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { username, message, personality, tenantId, context } = parsed.data;
-    console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context });
+    const { username, message, personality, tenantId: bodyTenantId, context } = parsed.data;
+    // Resolve tenant: prefer session cookie (browser requests), fall back to body (server-side internal calls)
+    const session = (await import('@/lib/tenant-context')).getTenantFromRequest(request);
+    const tenantId = session?.tenantId || bodyTenantId;
+    console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context, source: session?.tenantId ? 'cookie' : 'body' });
 
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (!edenaiKey) {
@@ -61,10 +64,9 @@ export async function POST(request: NextRequest) {
     const DEFAULTS_PERSONALITY_CHECK = 'You are a helpful AI assistant.';
     const history = await readPublicChatMessages(20, tenantId);
 
-    // Priority: request body personality > stored personality > StreamWeaver87 default
+    // Priority: stored tenant personality > StreamWeaver87 default (ignore client override to prevent cross-tenant leaks)
     const defaultPersonality = `You are StreamWeaver87, the onboard AI steward of the Space Mountain. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
-    const rawPersonality = personality
-      || (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
+    const rawPersonality = (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
       || defaultPersonality;
 
     // Two-tier split: above --- is compact system identity, below is extended guidance

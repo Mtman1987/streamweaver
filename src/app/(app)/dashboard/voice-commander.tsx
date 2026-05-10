@@ -663,6 +663,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
 
             try {
                 const username = userConfig.TWITCH_BROADCASTER_USERNAME || 'Commander';
+                const tenantId = getClientTenantId();
                 const resp = await fetch('/api/private-chat/respond', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -670,7 +671,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         username,
                         message: `[Private conversation] ${transcription}`,
                         personality: personalityRef.current,
-                        historyLimit: 20
+                        historyLimit: 20,
+                        tenantId: tenantId || undefined
                     })
                 });
 
@@ -718,13 +720,16 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
 
             try {
                 const username = userConfig.TWITCH_BROADCASTER_USERNAME || 'Commander';
+                const tenantId = getClientTenantId();
                 const resp = await fetch('/api/ai/chat-with-memory', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username,
                         message: transcription,
-                        personality: personalityRef.current
+                        personality: personalityRef.current,
+                        tenantId: tenantId || undefined,
+                        context: 'voice'
                     })
                 });
 
@@ -789,6 +794,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
 
                 // Try chat-with-memory if Discord AI channel exists, otherwise use private-chat
                 if (aiChannelId) {
+                    const tenantId = getClientTenantId();
                     const resp = await fetch('/api/ai/chat-with-memory', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -796,7 +802,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                             username,
                             message: aiMessage,
                             personality: personalityRef.current,
-                            channelId: aiChannelId
+                            tenantId: tenantId || undefined,
+                            context: destination === 'twitch' ? 'twitch' : 'discord'
                         })
                     });
                     if (resp.ok) {
@@ -804,6 +811,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         reply = data?.response?.trim();
                     }
                 } else {
+                    const tenantId = getClientTenantId();
                     const resp = await fetch('/api/private-chat/respond', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -811,7 +819,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                             username,
                             message: aiMessage,
                             personality: personalityRef.current,
-                            historyLimit: 20
+                            historyLimit: 20,
+                            tenantId: tenantId || undefined
                         })
                     });
                     if (resp.ok) {

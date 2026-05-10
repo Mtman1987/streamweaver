@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const tenantId = session?.tenantId;
     const botName = getBotName(tenantId);
     const botPersonality = getBotPersonality(tenantId);
-    console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global' });
+    console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });
 
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (!edenaiKey) {
@@ -90,10 +90,10 @@ export async function POST(request: NextRequest) {
       ? `\n\nLong Term Memory titles (request full content if relevant): ${ltmTitles.join(', ')}`
       : '';
 
-    // Two-tier personality split
+    // Two-tier personality split — ALWAYS use server-side tenant personality (ignore client override)
     let systemIdentity: string;
     let extendedGuidance: string;
-    const rawPersonality = personality || botPersonality;
+    const rawPersonality = botPersonality;
     if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
       const splitIndex = rawPersonality.indexOf('\n---');
       systemIdentity = rawPersonality.substring(0, splitIndex).trim();
