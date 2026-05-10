@@ -123,7 +123,8 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
-    console.log('[Private Chat API] Saving user message:', userEntry);
+    console.log('[Private Chat API] Saving user message to tenant:', tenantId || 'NO TENANT - LEGACY PATH');
+    console.log('[Private Chat API] File path:', (await import('@/lib/private-chat-store')).getPrivateChatFilePath(tenantId));
     await appendPrivateChatMessages([userEntry], 100, tenantId);
 
     // Use EdenAI API with proper system/user role separation
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
+        model: 'google/gemini-2.0-flash',
         messages: [
           { role: 'system', content: systemIdentity },
           { role: 'user', content: prompt }
@@ -181,7 +182,7 @@ export async function POST(request: NextRequest) {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'openai/gpt-4o-mini',
+              model: 'google/gemini-2.0-flash',
               messages: [
                 { role: 'system', content: systemIdentity },
                 { role: 'user', content: enhancedPrompt }
