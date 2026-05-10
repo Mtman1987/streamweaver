@@ -10,6 +10,7 @@ const botSettingsSchema = z.object({
   voice: z.string().trim().min(1).max(128).optional(),
   name: z.string().trim().min(1).max(128).optional(),
   interests: z.string().trim().max(500).optional(),
+  aliases: z.string().trim().max(500).optional(),
   skipShoutoutOverlay: z.boolean().optional(),
 });
 
@@ -58,11 +59,11 @@ export async function POST(request: NextRequest) {
       return apiError('Invalid request body', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { personality: rawPersonality, voice, name, interests, skipShoutoutOverlay } = parsed.data;
+    const { personality: rawPersonality, voice, name, interests, aliases, skipShoutoutOverlay } = parsed.data;
     const session = getTenantFromRequest(request);
     const tid = session?.tenantId;
 
-    if (!rawPersonality && !voice && !name && !interests && skipShoutoutOverlay == null) {
+    if (!rawPersonality && !voice && !name && !interests && aliases == null && skipShoutoutOverlay == null) {
       return apiError('At least one setting is required', { status: 400, code: 'INVALID_BODY' });
     }
 
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
     if (voice) botUpdates.voice = voice;
     if (name) botUpdates.name = name;
     if (interests) botUpdates.interests = interests;
+    if (aliases != null) botUpdates.aliases = aliases;
     setBotSettings(tid, botUpdates);
 
     // Persist to user-config.json
@@ -85,6 +87,7 @@ export async function POST(request: NextRequest) {
     if (voice) { configUpdates.TTS_VOICE = voice; console.log(`[API] Updated bot voice to: ${voice}`); }
     if (personality) { configUpdates.AI_BOT_PERSONALITY = personality; console.log('[API] Updated bot personality'); }
     if (interests) { configUpdates.AI_BOT_INTERESTS = interests; console.log('[API] Updated bot interests'); }
+    if (aliases != null) { configUpdates.AI_BOT_ALIASES = aliases; console.log(`[API] Updated bot aliases to: ${aliases}`); }
     if (skipShoutoutOverlay != null) {
       configUpdates.SKIP_SHOUTOUT_OVERLAY = skipShoutoutOverlay ? 'true' : 'false';
       console.log(`[API] Updated skip shoutout overlay to: ${skipShoutoutOverlay}`);

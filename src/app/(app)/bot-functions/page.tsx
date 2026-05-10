@@ -129,6 +129,7 @@ export default function BotFunctionsPage() {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
     const [botName, setBotName] = useState("StreamWeaver87");
+    const [botAliases, setBotAliases] = useState("");
     const [botInterests, setBotInterests] = useState("");
     const [skipShoutoutOverlay, setSkipShoutoutOverlay] = useState(false);
     const [botPersonality, setBotPersonality] = useState(`You are **StreamWeaver87**, the onboard AI steward of the Space Mountain cruise liner. (MANDATORY)
@@ -193,6 +194,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
             const savedIdleFile = localStorage.getItem("avatar_idle_file");
             const savedTalkingFile = localStorage.getItem("avatar_talking_file");
             const savedInterests = localStorage.getItem("bot_interests");
+            const savedAliases = localStorage.getItem("bot_aliases");
             const savedType = localStorage.getItem("avatar_type");
 
             if (savedIdle && savedIdle !== 'undefined') {
@@ -206,6 +208,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
             if (savedPersonality) setBotPersonality(savedPersonality);
             if (savedSkipShoutoutOverlay) setSkipShoutoutOverlay(savedSkipShoutoutOverlay === 'true');
             if (savedInterests) setBotInterests(savedInterests);
+            if (savedAliases) setBotAliases(savedAliases);
             if (savedIdleFile) setIdleUrl(`/avatars/${savedIdleFile}`);
             if (savedTalkingFile) setTalkingUrl(`/avatars/${savedTalkingFile}`);
             if (savedType) setAnimationType(savedType as 'lottie' | 'mp4' | 'gif');
@@ -227,6 +230,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(cfg.TTS_VOICE);
                     else if (cfg.TTS_VOICE) setTtsVoice(cfg.TTS_VOICE);
                     if (cfg.AI_BOT_INTERESTS) setBotInterests(cfg.AI_BOT_INTERESTS);
+                    if (cfg.AI_BOT_ALIASES) setBotAliases(cfg.AI_BOT_ALIASES);
                     if (cfg.SKIP_SHOUTOUT_OVERLAY) setSkipShoutoutOverlay(cfg.SKIP_SHOUTOUT_OVERLAY === 'true');
                 }
             } catch (error) {
@@ -311,6 +315,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         localStorage.setItem("bot_name", botName);
         localStorage.setItem("bot_personality", botPersonality);
         localStorage.setItem("bot_interests", botInterests);
+        localStorage.setItem("bot_aliases", botAliases);
         localStorage.setItem("skip_shoutout_overlay", skipShoutoutOverlay ? 'true' : 'false');
         
         // Send personality, name, and interests to server via WebSocket or API
@@ -318,14 +323,14 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
             if (typeof window !== 'undefined' && (window as any).ws && (window as any).ws.readyState === WebSocket.OPEN) {
                 (window as any).ws.send(JSON.stringify({
                     type: 'update-bot-settings',
-                    payload: { personality: botPersonality, name: botName, interests: botInterests, skipShoutoutOverlay }
+                    payload: { personality: botPersonality, name: botName, interests: botInterests, aliases: botAliases, skipShoutoutOverlay }
                 }));
             } else {
                 // Fallback to API if WebSocket not available
                 await fetch('/api/bot-settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ personality: botPersonality, name: botName, interests: botInterests, skipShoutoutOverlay })
+                    body: JSON.stringify({ personality: botPersonality, name: botName, interests: botInterests, aliases: botAliases, skipShoutoutOverlay })
                 });
             }
         } catch (error) {
@@ -645,6 +650,16 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     <div className="space-y-2">
                         <Label htmlFor="bot-name">Bot Name</Label>
                         <Input id="bot-name" value={botName} onChange={(e) => setBotName(e.target.value)} placeholder="e.g., Athena, Sparky" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="bot-aliases">Aliases / Nicknames (comma-separated)</Label>
+                        <Input 
+                            id="bot-aliases" 
+                            value={botAliases} 
+                            onChange={(e) => setBotAliases(e.target.value)} 
+                            placeholder="e.g., annie, hey athena, athenabot87" 
+                        />
+                        <p className="text-xs text-muted-foreground">Chat messages containing any of these will trigger the bot (case-insensitive)</p>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="bot-personality">Personality</Label>

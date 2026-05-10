@@ -28,6 +28,7 @@ const ALLOWED_KEYS = new Set([
   'AI_MODEL',
   'AI_PERSONALITY_NAME', // replaces hardcoded 'Commander'
   'AI_BOT_NAME', // replaces hardcoded 'Athena'
+  'AI_BOT_ALIASES', // trigger aliases (comma-separated)
   'GEMINI_API_KEY',
   'EDENAI_API_KEY',
   'OPENAI_API_KEY',
