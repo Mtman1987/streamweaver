@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash',
+        model: 'openai/gpt-4o-mini',
         messages: [
           { role: 'system', content: systemIdentity },
           { role: 'user', content: prompt }

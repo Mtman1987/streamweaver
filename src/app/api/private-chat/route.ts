@@ -22,6 +22,21 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = getTenantFromRequest(request);
+    const { getPrivateChatFilePath } = await import('@/lib/private-chat-store');
+    const { promises: fsp } = await import('fs');
+    const filePath = getPrivateChatFilePath(session?.tenantId);
+    await fsp.writeFile(filePath, '[]');
+    console.log(`[Private Chat] Cleared history for tenant ${session?.tenantId || 'global'}`);
+    return apiOk({ cleared: true });
+  } catch (error) {
+    console.error('Private chat DELETE API error:', error);
+    return apiError('Failed to clear messages', { status: 500, code: 'INTERNAL_ERROR' });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const parsedBody = privateChatMessageSchema.safeParse(await request.json().catch(() => null));
