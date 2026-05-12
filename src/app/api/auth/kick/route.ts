@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
   const baseUrl = getConfiguredAppUrl(request.nextUrl.origin);
   const redirectUri = `${baseUrl}/api/auth/kick/callback`;
 
+  const role = request.nextUrl.searchParams.get('role') || 'broadcaster';
+
   const scopes = [
     'user:read',
     'channel:read',
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', scopes);
-  authUrl.searchParams.set('state', 'kick-bot');
+  authUrl.searchParams.set('state', role);
 
   return NextResponse.redirect(authUrl.toString());
 }

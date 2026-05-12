@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
-import { tenantPath, getTenantIdFromSession } from '@/lib/tenant';
+import { tenantPath, getTenantIdFromSession, isAdmin, globalPath } from '@/lib/tenant';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
     const error = searchParams.get('error');
+    const role = searchParams.get('state') || 'broadcaster';
 
     if (error) {
       return NextResponse.redirect(new URL(`/integrations?error=kick_${error}`, request.url));
@@ -63,33 +64,68 @@ export async function GET(request: NextRequest) {
       });
       if (userRes.ok) {
         const userData = await userRes.json();
-        kickUsername = userData.data?.username || userData.username || '';
-        kickChannelId = String(userData.data?.channel_id || userData.channel_id || '');
-        kickChatroomId = String(userData.data?.chatroom_id || userData.chatroom_id || '');
+        const d = userData.data || userData;
+        kickUsername = d.username || d.slug || '';
+        kickChannelId = String(d.channel_id || d.id || '');
+        kickChatroomId = String(d.chatroom_id || d.chatroom?.id || '');
       }
     } catch (e) {
       console.error('[Kick OAuth] User info fetch failed:', e);
     }
 
-    // Store tokens per-tenant
+    // Community bot — admin-only, global storage
+    if (role === 'community-bot') {
+      if (!isAdmin(tenantId)) {
+        return NextResponse.redirect(new URL('/integrations?error=kick_admin_only', request.url));
+      }
+      const globalFile = globalPath('kick-bot-tokens.json');
+      await fs.mkdir(path.dirname(globalFile), { recursive: true });
+      await fs.writeFile(globalFile, JSON.stringify({
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        tokenExpiry,
+        username: kickUsername,
+        channelId: kickChannelId,
+        chatroomId: kickChatroomId,
+        lastUpdated: new Date().toISOString(),
+      }, null, 2));
+      console.log(`[Kick OAuth] ✅ Community bot token stored (${kickUsername})`);
+      return NextResponse.redirect(new URL('/integrations?kick=community-bot-connected', request.url));
+    }
+
+    // Broadcaster or Bot — tenant-scoped
     const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
     await fs.mkdir(path.dirname(tokensFile), { recursive: true });
 
-    const kickTokens = {
-      accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token,
-      tokenExpiry,
-      username: kickUsername,
-      channelId: kickChannelId,
-      chatroomId: kickChatroomId,
-      scopes: tokenData.scope || '',
+    let existing: Record<string, any> = {};
+    try { existing = JSON.parse(await fs.readFile(tokensFile, 'utf-8')); } catch {}
+
+    const isBroadcaster = role === 'broadcaster';
+
+    const tokenStorage = {
+      ...existing,
+      ...(isBroadcaster ? {
+        broadcasterToken: tokenData.access_token,
+        broadcasterRefreshToken: tokenData.refresh_token,
+        broadcasterTokenExpiry: tokenExpiry,
+        broadcasterUsername: kickUsername,
+        broadcasterChannelId: kickChannelId,
+        broadcasterChatroomId: kickChatroomId,
+      } : {
+        botToken: tokenData.access_token,
+        botRefreshToken: tokenData.refresh_token,
+        botTokenExpiry: tokenExpiry,
+        botUsername: kickUsername,
+        botChannelId: kickChannelId,
+        botChatroomId: kickChatroomId,
+      }),
       lastUpdated: new Date().toISOString(),
     };
 
-    await fs.writeFile(tokensFile, JSON.stringify(kickTokens, null, 2));
-    console.log(`[Kick OAuth] ✅ Tokens stored for tenant ${tenantId} (${kickUsername})`);
+    await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
+    console.log(`[Kick OAuth] ✅ ${role} token stored for tenant ${tenantId} (${kickUsername})`);
 
-    return NextResponse.redirect(new URL('/integrations?kick=connected', request.url));
+    return NextResponse.redirect(new URL(`/integrations?kick=${role}-connected`, request.url));
   } catch (error) {
     console.error('[Kick OAuth] Callback error:', error);
     return NextResponse.redirect(new URL('/integrations?error=kick_auth_failed', request.url));

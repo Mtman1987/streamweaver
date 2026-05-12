@@ -50,16 +50,56 @@ export class KickService extends EventEmitter {
   }
 
   /**
-   * Load stored tokens for a tenant
+   * Load stored tokens for a tenant (bot token preferred, then global community bot)
    */
   async loadTokens(tenantId: string): Promise<KickTokens | null> {
     try {
       const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
-      const data = await fs.readFile(tokensFile, 'utf-8');
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
+      const data = JSON.parse(await fs.readFile(tokensFile, 'utf-8'));
+
+      // Prefer tenant's own bot token
+      if (data.botToken) {
+        return {
+          accessToken: data.botToken,
+          refreshToken: data.botRefreshToken,
+          tokenExpiry: data.botTokenExpiry,
+          username: data.botUsername || '',
+          channelId: data.broadcasterChannelId || data.botChannelId || '',
+          chatroomId: data.broadcasterChatroomId || data.botChatroomId || '',
+        };
+      }
+
+      // Fall back to broadcaster token for sending
+      if (data.broadcasterToken) {
+        return {
+          accessToken: data.broadcasterToken,
+          refreshToken: data.broadcasterRefreshToken,
+          tokenExpiry: data.broadcasterTokenExpiry,
+          username: data.broadcasterUsername || '',
+          channelId: data.broadcasterChannelId || '',
+          chatroomId: data.broadcasterChatroomId || '',
+        };
+      }
+    } catch {}
+
+    // Fall back to global community bot
+    try {
+      const { globalPath: gp } = require('../lib/tenant');
+      const globalFile = gp('kick-bot-tokens.json');
+      const data = JSON.parse(await fs.readFile(globalFile, 'utf-8'));
+      if (data.accessToken) {
+        return {
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          tokenExpiry: data.tokenExpiry,
+          username: data.username || 'streamweaverbot',
+          channelId: data.channelId || '',
+          chatroomId: '', // Will use the broadcaster's chatroom
+        };
+      }
+    } catch {}
+
+    return null;
   }
 
   /**
