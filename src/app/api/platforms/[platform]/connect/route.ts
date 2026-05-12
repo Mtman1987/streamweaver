@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMultiPlatformManager } from '@/services/multi-platform';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { tenantPath } from '@/lib/tenant';
+import { promises as fs } from 'fs';
 import { z } from 'zod';
 
 const connectPlatformSchema = z.enum(['kick', 'tiktok']);
 const disconnectPlatformSchema = z.enum(['youtube', 'kick', 'tiktok']);
 const connectBodySchema = z.object({
   username: z.string().trim().min(1, 'Username is required').max(64, 'Username is too long'),
+  chatroomId: z.number().nullable().optional(),
+  channelId: z.number().nullable().optional(),
 });
 
 /**
@@ -39,8 +43,35 @@ export async function POST(
 
     if (parsedPlatform.data === 'kick') {
       const session = getTenantFromRequest(request);
-      const tenantId = session?.twitchId;
-      await multiPlatform.connectKick(username, tenantId);
+      const tenantId = session?.tenantId;
+      const { chatroomId, channelId } = parsedBody.data;
+
+      // Store chatroom/channel IDs if provided (resolved client-side)
+      if (tenantId && (chatroomId || channelId)) {
+        try {
+          const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
+          let existing: Record<string, any> = {};
+          try { existing = JSON.parse(await fs.readFile(tokensFile, 'utf-8')); } catch {}
+          if (chatroomId) existing.broadcasterChatroomId = String(chatroomId);
+          if (channelId) existing.broadcasterChannelId = String(channelId);
+          if (!existing.broadcasterUsername) existing.broadcasterUsername = username;
+          await fs.writeFile(tokensFile, JSON.stringify(existing, null, 2));
+          console.log(`[Kick] Stored chatroom=${chatroomId}, channel=${channelId} for tenant ${tenantId}`);
+        } catch (e) {
+          console.warn('[Kick] Failed to persist IDs:', e);
+        }
+      }
+
+      // Signal the server process to connect (runs outside Next.js bundle)
+      try {
+        const connectFn = (global as any).__kickConnect;
+        if (connectFn) {
+          connectFn(username, tenantId).catch((e: any) => console.error('[Kick] Background connect failed:', e));
+        } else {
+          console.log('[Kick] No server-side connect function available. Will connect on next restart.');
+        }
+      } catch {}
+
       return NextResponse.json({ success: true, platform: 'kick' });
     } 
     else {

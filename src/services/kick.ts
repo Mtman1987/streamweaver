@@ -4,7 +4,6 @@
  */
 
 import { EventEmitter } from 'events';
-import Pusher from 'pusher-js';
 import { promises as fs } from 'fs';
 import { tenantPath } from '../lib/tenant';
 
@@ -170,26 +169,42 @@ export class KickService extends EventEmitter {
         this.tokens = await this.loadTokens(tenantId);
         if (this.tokens) {
           console.log(`[Kick] Loaded tokens for ${this.tokens.username}`);
-          if (this.tokens.chatroomId) {
-            this.chatroomId = parseInt(this.tokens.chatroomId);
-          }
-          if (this.tokens.channelId) {
-            this.channelId = parseInt(this.tokens.channelId);
-          }
+          const parsedChatroom = parseInt(this.tokens.chatroomId);
+          const parsedChannel = parseInt(this.tokens.channelId);
+          if (!isNaN(parsedChatroom) && parsedChatroom > 0) this.chatroomId = parsedChatroom;
+          if (!isNaN(parsedChannel) && parsedChannel > 0) this.channelId = parsedChannel;
         }
       }
 
-      // Get channel info from Kick public API if we don't have IDs
+      // If we still don't have chatroom ID, try to resolve it
       if (!this.chatroomId) {
+        console.log(`[Kick] No chatroom ID stored, resolving for channel: ${channelName}`);
         const channelInfo = await this.getChannelInfo(channelName);
-        if (!channelInfo) throw new Error('Channel not found');
-        this.channelId = channelInfo.id;
-        this.chatroomId = channelInfo.chatroom?.id;
-        if (!this.chatroomId) throw new Error('Chatroom not found');
+        if (channelInfo) {
+          this.channelId = channelInfo.id || this.channelId;
+          this.chatroomId = channelInfo.chatroom?.id || channelInfo.chatroom_id || null;
+        }
+        if (!this.chatroomId) {
+          throw new Error(`Could not resolve chatroom ID for ${channelName}. Re-authorize Kick Broadcaster to fix.`);
+        }
+        // Persist the resolved chatroom ID so we don't need to look it up again
+        if (tenantId) {
+          try {
+            const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
+            const existing = JSON.parse(await fs.readFile(tokensFile, 'utf-8'));
+            existing.broadcasterChatroomId = String(this.chatroomId);
+            if (this.channelId) existing.broadcasterChannelId = String(this.channelId);
+            await fs.writeFile(tokensFile, JSON.stringify(existing, null, 2));
+            console.log(`[Kick] Persisted chatroom ID: ${this.chatroomId}`);
+          } catch {}
+        }
       }
 
       // Connect via Pusher (Kick uses Pusher for WebSocket)
-      this.pusher = new Pusher('eb1d5f283081a78b932c', {
+      // eslint-disable-next-line no-eval
+      const PusherModule = eval('require')('pusher-js');
+      const PusherClient = PusherModule.Pusher || PusherModule.default || PusherModule;
+      this.pusher = new PusherClient('32cbd69e4b950bf97679', {
         cluster: 'us2',
         wsHost: 'ws-us2.pusher.com',
         wsPort: 443,
@@ -201,21 +216,21 @@ export class KickService extends EventEmitter {
       const channelKey = `chatrooms.${this.chatroomId}.v2`;
       this.channel = this.pusher.subscribe(channelKey);
 
-      this.channel.bind('App\\Events\\ChatMessageEvent', (data: any) => {
+      this.channel.bind('App\Events\ChatMessageEvent', (data: any) => {
         const message = this.parseMessage(data);
         if (message) this.emit('message', message);
       });
 
-      this.channel.bind('App\\Events\\SubscriptionEvent', (data: any) => {
+      this.channel.bind('App\Events\SubscriptionEvent', (data: any) => {
         const sub = this.parseSubscription(data);
         if (sub) this.emit('subscription', sub);
       });
 
-      this.channel.bind('App\\Events\\FollowersUpdated', (data: any) => {
+      this.channel.bind('App\Events\FollowersUpdated', (data: any) => {
         this.emit('follow', { username: data.username, followed: data.followed });
       });
 
-      this.channel.bind('App\\Events\\GiftsLeaderboardUpdated', (data: any) => {
+      this.channel.bind('App\Events\GiftsLeaderboardUpdated', (data: any) => {
         this.emit('gift', data);
       });
 
@@ -231,14 +246,46 @@ export class KickService extends EventEmitter {
 
   /**
    * Get channel information from Kick API
+   * Uses /public/v1/users/me (authenticated) since public v2 is blocked from servers
    */
   private async getChannelInfo(channelName: string): Promise<any> {
+    // Ensure we have a valid (non-expired) token
+    const token = await this.getValidToken();
+    if (token) {
+      try {
+        console.log('[Kick] Calling /public/v1/users/me to resolve chatroom...');
+        const res = await fetch('https://api.kick.com/public/v1/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const user = data.data || data;
+          const chatroomId = user.chatroom_id || user.chatroom?.id;
+          const channelId = user.channel_id || user.id;
+          console.log(`[Kick] /users/me resolved: channel=${channelId}, chatroom=${chatroomId}, username=${user.username}`);
+          if (channelId && chatroomId) {
+            return { id: channelId, chatroom: { id: chatroomId } };
+          }
+          console.warn('[Kick] /users/me response missing chatroom_id. Full response:', JSON.stringify(user).slice(0, 500));
+        } else {
+          console.warn(`[Kick] /users/me returned ${res.status}: ${await res.text().catch(() => '')}`);
+        }
+      } catch (e) {
+        console.warn('[Kick] /users/me lookup failed:', e);
+      }
+    } else {
+      console.warn('[Kick] No valid token available for /users/me lookup');
+    }
+
+    // Fallback: public v2 API (blocked from most server IPs)
     try {
-      const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
+      const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`, {
+        headers: { 'Accept': 'application/json' },
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
-      console.error('[Kick] Error fetching channel info:', error);
+      console.error('[Kick] Public channel info fetch failed:', error);
       return null;
     }
   }

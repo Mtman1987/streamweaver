@@ -263,6 +263,37 @@ async function startServer() {
             console.error('[STEP 3.5] Chat dispatcher preload failed:', error);
         }
 
+        // STEP 3.6: Auto-connect Kick chat for tenants with stored tokens
+        console.log('[STEP 3.6] Auto-connecting Kick chat...');
+        try {
+            const { listTenants: listTenantsForKick } = require('./src/lib/tenant');
+            const { tenantPath: kickTenantPath } = require('./src/lib/tenant');
+            const { getMultiPlatformManager } = require('./src/services/multi-platform');
+            const fsKick = require('fs').promises;
+
+            // Register global connect function for API routes to call
+            (global as any).__kickConnect = async (channelName: string, tenantId?: string) => {
+                const mp = getMultiPlatformManager();
+                await mp.connectKick(channelName, tenantId);
+                console.log(`[Kick] ✅ Connected via API trigger: ${channelName}`);
+            };
+
+            const kickTenants = await listTenantsForKick();
+            for (const tid of kickTenants) {
+                try {
+                    const tokensFile = kickTenantPath(tid, 'tokens/kick-tokens.json');
+                    const data = JSON.parse(await fsKick.readFile(tokensFile, 'utf-8'));
+                    if (data.broadcasterUsername && data.broadcasterChatroomId) {
+                        const mp = getMultiPlatformManager();
+                        await mp.connectKick(data.broadcasterUsername, tid);
+                        console.log(`[STEP 3.6] ✅ Kick connected for ${data.broadcasterUsername}`);
+                    }
+                } catch {}
+            }
+        } catch (e) {
+            console.warn('[STEP 3.6] ⚠️ Kick auto-connect failed:', e);
+        }
+
         // STEP 4: Initialize all services
         console.log('[STEP 4] Initializing services...');
         const { loadChatHistory } = require('./src/services/chat-monitor');

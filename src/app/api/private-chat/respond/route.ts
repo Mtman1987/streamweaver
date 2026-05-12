@@ -4,7 +4,7 @@ import {
   readPrivateChatMessages,
   type PrivateChatMessage,
 } from '@/lib/private-chat-store';
-import { getPrivateLTMTitles, incrementPrivateMessageCount, getPrivateMessageCount } from '@/lib/private-ltm-store';
+import { getPrivateLTMTitles, incrementPrivateMessageCount, getPrivateMessageCount, retrieveLTMByTitle } from '@/lib/private-ltm-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
@@ -35,9 +35,9 @@ function formatHistory(messages: PrivateChatMessage[]): string {
   return `Conversation so far:\n${lines.join('\n')}`;
 }
 
-async function checkAndCondensePrivateMemory(): Promise<void> {
+async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
   try {
-    const messageCount = await getPrivateMessageCount();
+    const messageCount = await getPrivateMessageCount(tenantId);
     if (messageCount > 0 && messageCount % 50 === 0) {
       console.log(`[Private LTM] Message count reached ${messageCount}, condensing history...`);
       
@@ -79,13 +79,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Increment message count and check for LTM condensation
-    const messageCount = await incrementPrivateMessageCount();
-    await checkAndCondensePrivateMemory();
+    const messageCount = await incrementPrivateMessageCount(tenantId);
+    await checkAndCondensePrivateMemory(tenantId);
 
     const history = await readPrivateChatMessages(historyLimit, tenantId);
 
     // Get LTM titles for context
-    const ltmTitles = await getPrivateLTMTitles();
+    const ltmTitles = await getPrivateLTMTitles(tenantId);
     const ltmContext = ltmTitles.length > 0 
       ? `\n\nLong Term Memory titles (request full content if relevant): ${ltmTitles.join(', ')}`
       : '';
@@ -163,17 +163,11 @@ export async function POST(request: NextRequest) {
       const requestedTitle = ltmRequestMatch[1].trim();
       
       try {
-        const ltmResponse = await fetch(`${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || 'http://localhost:3100'}/api/private-ltm/retrieve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: requestedTitle })
-        });
+        const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
         
-        if (ltmResponse.ok) {
-          const ltmData = await ltmResponse.json();
-          
+        if (ltmContent) {
           // Re-generate response with LTM content
-          const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmData.content}\n\nNow respond as ${botName} (do not repeat the LTM content):`;
+          const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
           
           const enhancedResponse = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
             method: 'POST',
@@ -195,10 +189,13 @@ export async function POST(request: NextRequest) {
             const enhancedData = await enhancedResponse.json();
             responseText = enhancedData.choices?.[0]?.message?.content?.trim() || responseText;
           }
+        } else {
+          // No memory found — let AI know
+          responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about, Commander?`;
         }
       } catch (error) {
         console.error('[Private Chat] Failed to retrieve LTM:', error);
-        responseText = responseText || 'I apologize, I had trouble accessing my memory.';
+        responseText = 'I had trouble accessing my memory banks. Could you remind me what you were referring to?';
       }
     }
 

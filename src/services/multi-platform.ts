@@ -108,6 +108,16 @@ export class MultiPlatformChatManager extends EventEmitter {
   async connectKick(channelName: string, tenantId?: string): Promise<void> {
     try {
       const kick = getKickService(tenantId);
+      kick.setMaxListeners(20);
+
+      // Remove old listeners to prevent stacking on reconnect
+      kick.removeAllListeners('message');
+      kick.removeAllListeners('subscription');
+      kick.removeAllListeners('follow');
+      kick.removeAllListeners('gift');
+      kick.removeAllListeners('connected');
+      kick.removeAllListeners('disconnected');
+      kick.removeAllListeners('error');
 
       kick.on('message', (msg: KickMessage) => {
         const unified: UnifiedMessage = {
