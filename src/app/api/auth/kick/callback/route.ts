@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const redirectUri = `${baseUrl}/api/auth/kick/callback`;
 
     // Exchange code for tokens
-    const tokenResponse = await fetch('https://id.kick.com/oauth/token', {
+    const tokenResponse = await fetch('https://api.kick.com/public/v1/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
