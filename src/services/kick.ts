@@ -296,7 +296,7 @@ export class KickService extends EventEmitter {
     }
 
     try {
-      const res = await fetch('https://api.kick.com/public/v1/chat', {
+      const res = await fetch(`https://api.kick.com/public/v1/chat`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -310,6 +310,21 @@ export class KickService extends EventEmitter {
 
       if (!res.ok) {
         const errText = await res.text();
+        // If public API fails, try v2 endpoint
+        if (res.status === 404 || res.status === 401) {
+          const v2Res = await fetch(`https://kick.com/api/v2/messages/send/${this.chatroomId}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ content: message, type: 'message' }),
+          });
+          if (!v2Res.ok) {
+            console.error(`[Kick] v2 send also failed (${v2Res.status}):`, await v2Res.text().catch(() => ''));
+          }
+          return;
+        }
         console.error(`[Kick] Send message failed (${res.status}):`, errText);
         // Try token refresh on 401
         if (res.status === 401) {
