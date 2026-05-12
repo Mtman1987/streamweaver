@@ -113,7 +113,7 @@ export class KickService extends EventEmitter {
     if (!clientId || !clientSecret) return false;
 
     try {
-      const res = await fetch('https://api.kick.com/public/v1/oauth/token', {
+      const res = await fetch('https://id.kick.com/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({

@@ -9,7 +9,10 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
     const error = searchParams.get('error');
-    const role = searchParams.get('state') || 'broadcaster';
+    const state = searchParams.get('state') || 'broadcaster';
+
+    // Extract role from state (format: "role_randomhex")
+    const role = state.split('_')[0] || 'broadcaster';
 
     if (error) {
       return NextResponse.redirect(new URL(`/integrations?error=kick_${error}`, request.url));
@@ -24,6 +27,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/integrations?error=kick_not_configured', request.url));
     }
 
+    // Get PKCE verifier from cookie
+    const codeVerifier = request.cookies.get('kick_pkce_verifier')?.value;
+    if (!codeVerifier) {
+      console.error('[Kick OAuth] No PKCE verifier cookie found');
+      return NextResponse.redirect(new URL('/integrations?error=kick_pkce_missing', request.url));
+    }
+
     const tenantId = getTenantIdFromSession(request.cookies.get('streamweaver-session')?.value);
     if (!tenantId) {
       return NextResponse.redirect(new URL('/integrations?error=kick_no_session', request.url));
@@ -32,8 +42,8 @@ export async function GET(request: NextRequest) {
     const baseUrl = getConfiguredAppUrl(request.nextUrl.origin);
     const redirectUri = `${baseUrl}/api/auth/kick/callback`;
 
-    // Exchange code for tokens
-    const tokenResponse = await fetch('https://api.kick.com/public/v1/oauth/token', {
+    // Exchange code for tokens (Kick uses Auth0 with PKCE)
+    const tokenResponse = await fetch('https://id.kick.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -42,6 +52,7 @@ export async function GET(request: NextRequest) {
         code,
         grant_type: 'authorization_code',
         redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
       }),
     });
 
@@ -52,7 +63,7 @@ export async function GET(request: NextRequest) {
     }
 
     const tokenData = await tokenResponse.json();
-    const tokenExpiry = Date.now() + (tokenData.expires_in - 60) * 1000;
+    const tokenExpiry = Date.now() + ((tokenData.expires_in || 3600) - 60) * 1000;
 
     // Get user info from Kick
     let kickUsername = '';
@@ -90,7 +101,10 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       }, null, 2));
       console.log(`[Kick OAuth] ✅ Community bot token stored (${kickUsername})`);
-      return NextResponse.redirect(new URL('/integrations?kick=community-bot-connected', request.url));
+      const resp = NextResponse.redirect(new URL('/integrations?kick=community-bot-connected', request.url));
+      resp.cookies.delete('kick_pkce_verifier');
+      resp.cookies.delete('kick_oauth_state');
+      return resp;
     }
 
     // Broadcaster or Bot — tenant-scoped
@@ -125,7 +139,10 @@ export async function GET(request: NextRequest) {
     await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
     console.log(`[Kick OAuth] ✅ ${role} token stored for tenant ${tenantId} (${kickUsername})`);
 
-    return NextResponse.redirect(new URL(`/integrations?kick=${role}-connected`, request.url));
+    const resp = NextResponse.redirect(new URL(`/integrations?kick=${role}-connected`, request.url));
+    resp.cookies.delete('kick_pkce_verifier');
+    resp.cookies.delete('kick_oauth_state');
+    return resp;
   } catch (error) {
     console.error('[Kick OAuth] Callback error:', error);
     return NextResponse.redirect(new URL('/integrations?error=kick_auth_failed', request.url));
