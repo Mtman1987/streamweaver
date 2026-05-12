@@ -173,18 +173,25 @@ export async function isChannelInSharedChat(channelLogin: string): Promise<boole
 // ---------------------------------------------------------------------------
 
 /**
- * Get a user access token for the bot or broadcaster from stored tokens.
+ * Get a valid user access token for the bot or broadcaster from stored tokens.
  * POST /helix/chat/messages requires a user token, NOT an app token.
+ * Uses ensureValidToken to auto-refresh expired tokens.
  */
 async function getUserToken(as: 'bot' | 'broadcaster', tenantId?: string): Promise<string | null> {
   try {
-    const tokensPath = tenantId
-      ? tenantPath(tenantId, 'tokens/twitch-tokens.json')
-      : resolve(process.cwd(), 'tokens', 'twitch-tokens.json');
-    const raw = await fs.readFile(tokensPath, 'utf-8');
-    const tokens = JSON.parse(raw);
-    return as === 'bot' ? (tokens.botToken || tokens.broadcasterToken) : tokens.broadcasterToken;
-  } catch {
+    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const clientId = process.env.TWITCH_CLIENT_ID || process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = await getStoredTokens(tenantId);
+    if (!tokens) return null;
+
+    // Try bot token first for 'bot', fall back to broadcaster
+    const tokenType = as === 'bot' && tokens.botToken ? 'bot' : 'broadcaster';
+    return await ensureValidToken(clientId, clientSecret, tokenType, tokens, tenantId);
+  } catch (e) {
+    console.warn('[SharedChat] getUserToken failed:', e);
     return null;
   }
 }

@@ -17,7 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ChatClient } from "./chat-client";
 import { Button } from "@/components/ui/button";
 import { VoiceCommander } from "./voice-commander";
-import { FlowRunViewer } from "@/components/flow/flow-run-viewer";
+import { BotBlacklist } from "@/components/bot-blacklist";
 import AudioRouter from '@/components/audio-router';
 
 const initialChartData = [
@@ -160,24 +160,7 @@ export function DashboardClient({ allMetrics, allViewers, selectedPlatform, setS
         <DiscordChannelSettings />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="relative">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="absolute top-2 right-2 h-6 w-6 z-10" 
-            onClick={() => toggleMinimize('flow')}
-          >
-            {minimizedComponents.has('flow') ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-          </Button>
-          {!minimizedComponents.has('flow') ? (
-            <FlowRunViewer />
-          ) : (
-            <CardHeader>
-              <CardTitle>Flow Run Viewer (Minimized)</CardTitle>
-              <CardDescription>Click maximize to restore</CardDescription>
-            </CardHeader>
-          )}
-        </Card>
+        <BotBlacklist />
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {selectedUser ? (

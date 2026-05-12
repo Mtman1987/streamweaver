@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { getYouTubeService, YouTubeMessage } from './youtube';
 import { getKickService, KickMessage } from './kick';
 import { getTikTokService, TikTokMessage, TikTokGift, TikTokFollow } from './tiktok';
+import { handleKickMessage } from './kick-dispatcher';
 
 export interface UnifiedMessage {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok' | 'discord';
@@ -31,6 +32,7 @@ export interface UnifiedEvent {
 
 export class MultiPlatformChatManager extends EventEmitter {
   private connections: Map<string, boolean> = new Map();
+  private kickTenantId: string | undefined;
   
   constructor() {
     super();
@@ -103,9 +105,9 @@ export class MultiPlatformChatManager extends EventEmitter {
   /**
    * Connect to Kick Chat
    */
-  async connectKick(channelName: string): Promise<void> {
+  async connectKick(channelName: string, tenantId?: string): Promise<void> {
     try {
-      const kick = getKickService();
+      const kick = getKickService(tenantId);
 
       kick.on('message', (msg: KickMessage) => {
         const unified: UnifiedMessage = {
@@ -121,6 +123,13 @@ export class MultiPlatformChatManager extends EventEmitter {
         };
 
         this.emit('message', unified);
+
+        // Route through Kick command dispatcher
+        if (tenantId) {
+          handleKickMessage(msg, tenantId).catch(e =>
+            console.error('[MultiPlatform] Kick dispatch error:', e)
+          );
+        }
       });
 
       kick.on('subscription', (sub) => {
@@ -165,7 +174,8 @@ export class MultiPlatformChatManager extends EventEmitter {
         this.emit('error', { platform: 'kick', error });
       });
 
-      await kick.connect(channelName);
+      this.kickTenantId = tenantId;
+      await kick.connect(channelName, tenantId);
 
     } catch (error) {
       console.error('[MultiPlatform] Kick connection error:', error);
@@ -261,7 +271,7 @@ export class MultiPlatformChatManager extends EventEmitter {
         await getYouTubeService().sendChatMessage(message);
         break;
       case 'kick':
-        await getKickService().sendChatMessage(message);
+        await getKickService(this.kickTenantId).sendChatMessage(message);
         break;
       default:
         throw new Error(`Sending messages not supported for ${platform}`);
@@ -288,7 +298,7 @@ export class MultiPlatformChatManager extends EventEmitter {
         getYouTubeService().disconnect();
         break;
       case 'kick':
-        getKickService().disconnect();
+        getKickService(this.kickTenantId).disconnect();
         break;
       case 'tiktok':
         getTikTokService().disconnect();

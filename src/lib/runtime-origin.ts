@@ -50,18 +50,20 @@ export function getInternalAppUrl(): string {
   return LOCAL_APP_URL;
 }
 
-export function getOAuthRedirectUri(provider: 'twitch' | 'discord' | 'youtube', fallbackOrigin?: string | null): string {
+export function getOAuthRedirectUri(provider: 'twitch' | 'discord' | 'youtube' | 'kick', fallbackOrigin?: string | null): string {
   const explicit =
     provider === 'twitch'
       ? process.env.TWITCH_REDIRECT_URI
       : provider === 'discord'
         ? process.env.DISCORD_REDIRECT_URI
-        : process.env.YOUTUBE_REDIRECT_URI;
+        : provider === 'kick'
+          ? process.env.KICK_REDIRECT_URI
+          : process.env.YOUTUBE_REDIRECT_URI;
 
   const normalizedExplicit = normalizeUrl(explicit);
   if (normalizedExplicit) return normalizedExplicit;
 
-  return `${getConfiguredAppUrl(fallbackOrigin)}/auth/${provider}/callback`;
+  return `${getConfiguredAppUrl(fallbackOrigin)}/api/auth/${provider}/callback`;
 }
 
 export function getAllowedHostnames(extraHosts: string[] = []): Set<string> {

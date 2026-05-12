@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMultiPlatformManager } from '@/services/multi-platform';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 import { z } from 'zod';
 
 const connectPlatformSchema = z.enum(['kick', 'tiktok']);
@@ -37,7 +38,9 @@ export async function POST(
     }
 
     if (parsedPlatform.data === 'kick') {
-      await multiPlatform.connectKick(username);
+      const session = getTenantFromRequest(request);
+      const tenantId = session?.twitchId;
+      await multiPlatform.connectKick(username, tenantId);
       return NextResponse.json({ success: true, platform: 'kick' });
     } 
     else {

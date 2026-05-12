@@ -56,6 +56,7 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname === '/api/avatars') return true;
   if (pathname === '/api/bic-list') return true;
   if (pathname === '/api/bic-counter') return true;
+  if (pathname === '/api/pokedex') return true;
   if (pathname === '/api/tts/current') return true;
   if (pathname === '/api/user-profile' && hasTenant) return true;
   if (pathname === '/api/pokemon/gym' && hasTenant) return true;

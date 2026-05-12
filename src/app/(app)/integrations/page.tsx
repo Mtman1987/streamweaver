@@ -269,7 +269,7 @@ export default function IntegrationsPage() {
       connected: platformStates.kick, 
       type: "streaming",
       authType: "username",
-      description: "Connect to Kick.com chat (read-only)"
+      description: "Connect to Kick.com chat with bot commands"
     },
     { 
       id: "tiktok",

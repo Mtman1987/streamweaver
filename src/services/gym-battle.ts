@@ -130,9 +130,24 @@ export async function joinQueue(username: string, tenantId?: string): Promise<vo
   bc({ type: 'gym-queue-update', payload: { queue: [...st.queue], count: pos } }, tenantId);
 }
 
+export async function skipBattle(tenantId?: string): Promise<void> {
+  const st = getState(tenantId);
+  if (!st.battle) { await reply('No battle to skip!', 'broadcaster', tenantId); return; }
+  const skipped = st.battle.challenger.username;
+  bc({ type: 'gym-battle-end', payload: { winner: 'none', skipped: true, ...buildBattleState(tenantId) } }, tenantId);
+  await reply(`⏭️ Battle with @${skipped} was skipped.`, 'broadcaster', tenantId);
+  st.battle = null;
+}
+
 export async function startNextBattle(tenantId?: string): Promise<void> {
   const st = getState(tenantId);
-  if (st.battle) { await reply('A gym battle is already in progress!', 'broadcaster', tenantId); return; }
+  if (st.battle) {
+    // Force-end current battle and start next
+    const skipped = st.battle.challenger.username;
+    bc({ type: 'gym-battle-end', payload: { winner: 'none', skipped: true, ...buildBattleState(tenantId) } }, tenantId);
+    await reply(`⏭️ Battle with @${skipped} skipped. Starting next...`, 'broadcaster', tenantId);
+    st.battle = null;
+  }
   if (st.queue.length === 0) { await reply('No challengers in the queue!', 'broadcaster', tenantId); return; }
 
   const challengerName = st.queue.shift()!;
@@ -154,7 +169,7 @@ export async function startNextBattle(tenantId?: string): Promise<void> {
   st.battle = {
     challenger: { username: displayName, cards: challengerPick, activeIndex: 0, energy: [] },
     gymLeader: { username: broadcaster, cards: await pickThree(leaderCards, broadcaster), activeIndex: 0, energy: [] },
-    currentTurn: 'challenger', turnCount: 1, expiresAt: Date.now() + 300000, tenantId
+    currentTurn: 'challenger', turnCount: 1, expiresAt: Date.now() + 120000, tenantId
   };
 
   bc({ type: 'gym-battle-start', payload: buildBattleState(tenantId) }, tenantId);
@@ -242,7 +257,7 @@ function spendEnergy(player: BattlePlayer, cost: string[]): void { player.energy
 async function endTurn(tenantId?: string): Promise<void> {
   const st = getState(tenantId);
   if (!st.battle) return;
-  st.battle.expiresAt = Date.now() + 300000;
+  st.battle.expiresAt = Date.now() + 120000;
   st.battle.currentTurn = st.battle.currentTurn === 'challenger' ? 'gymLeader' : 'challenger';
   st.battle.turnCount++;
   const activePlayer = st.battle.currentTurn === 'challenger' ? st.battle.challenger : st.battle.gymLeader;
@@ -290,16 +305,21 @@ function buildBattleState(tenantId?: string) {
   };
 }
 
-// Cleanup expired battles
+// Cleanup expired battles (checks every 15s)
 if (!g.__gymBattleInterval) {
   g.__gymBattleInterval = setInterval(() => {
     for (const [key, st] of states.entries()) {
       if (st.battle && st.battle.expiresAt < Date.now()) {
-        sendChatMessage(`⏰ Gym battle between @${st.battle.challenger.username} and @${st.battle.gymLeader.username} expired!`, 'broadcaster', undefined, st.battle.tenantId).catch(() => {});
+        const tid = st.battle.tenantId;
+        const challenger = st.battle.challenger.username;
+        const leader = st.battle.gymLeader.username;
+        const state = buildBattleState(tid);
         st.battle = null;
+        bc({ type: 'gym-battle-end', payload: { winner: 'none', expired: true, ...state } }, tid);
+        sendChatMessage(`⏰ Gym battle between @${challenger} and @${leader} timed out! Use !nextchallenger to start the next battle.`, 'broadcaster', undefined, tid).catch(() => {});
       }
     }
-  }, 30000);
+  }, 15000);
 }
 
 export async function testGymBattle(tenantId?: string): Promise<void> {

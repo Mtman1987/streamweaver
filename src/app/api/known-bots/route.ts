@@ -7,8 +7,8 @@ export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session) return apiError('Not authenticated', { status: 401 });
 
-  const all = await getAllKnownBots(session.twitchId);
-  const custom = await getCustomBots(session.twitchId);
+  const all = await getAllKnownBots(session.tenantId);
+  const custom = await getCustomBots(session.tenantId);
   const defaults = getDefaultBots();
 
   return apiOk({ bots: all, custom, defaults, total: all.length });
@@ -24,12 +24,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'remove') {
-    await removeCustomBot(username, session.twitchId);
-    clearBotCache(session.twitchId);
+    await removeCustomBot(username, session.tenantId);
+    clearBotCache(session.tenantId);
     return apiOk({ removed: username.toLowerCase() });
   }
 
-  await addCustomBot(username, session.twitchId);
-  clearBotCache(session.twitchId);
+  await addCustomBot(username, session.tenantId);
+  clearBotCache(session.tenantId);
   return apiOk({ added: username.toLowerCase() });
 }

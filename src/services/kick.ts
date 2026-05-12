@@ -3,9 +3,10 @@
  * Handles Kick API and WebSocket connections for live streaming
  */
 
-import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import Pusher from 'pusher-js';
+import { promises as fs } from 'fs';
+import { tenantPath } from '../lib/tenant';
 
 export interface KickMessage {
   id: string;
@@ -25,35 +26,126 @@ export interface KickSubscription {
   tier: number;
 }
 
+interface KickTokens {
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiry: number;
+  username: string;
+  channelId: string;
+  chatroomId: string;
+}
+
 export class KickService extends EventEmitter {
   private pusher: any;
   private channel: any;
   private channelName: string | null = null;
   private channelId: number | null = null;
+  private chatroomId: number | null = null;
   private connected: boolean = false;
+  private tenantId: string | null = null;
+  private tokens: KickTokens | null = null;
 
   constructor() {
     super();
   }
 
   /**
-   * Connect to Kick channel chat
+   * Load stored tokens for a tenant
    */
-  async connect(channelName: string): Promise<void> {
+  async loadTokens(tenantId: string): Promise<KickTokens | null> {
     try {
-      this.channelName = channelName;
+      const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
+      const data = await fs.readFile(tokensFile, 'utf-8');
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
 
-      // Get channel info from Kick API
-      const channelInfo = await this.getChannelInfo(channelName);
-      if (!channelInfo) {
-        throw new Error('Channel not found');
+  /**
+   * Refresh the access token
+   */
+  private async refreshAccessToken(): Promise<boolean> {
+    if (!this.tokens?.refreshToken || !this.tenantId) return false;
+
+    const clientId = process.env.KICK_CLIENT_ID;
+    const clientSecret = process.env.KICK_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return false;
+
+    try {
+      const res = await fetch('https://id.kick.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'refresh_token',
+          refresh_token: this.tokens.refreshToken,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error('[Kick] Token refresh failed:', res.status);
+        return false;
       }
 
-      this.channelId = channelInfo.id;
-      const chatroomId = channelInfo.chatroom?.id;
+      const data = await res.json();
+      this.tokens.accessToken = data.access_token;
+      this.tokens.refreshToken = data.refresh_token || this.tokens.refreshToken;
+      this.tokens.tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
 
-      if (!chatroomId) {
-        throw new Error('Chatroom not found');
+      // Persist updated tokens
+      const tokensFile = tenantPath(this.tenantId, 'tokens/kick-tokens.json');
+      await fs.writeFile(tokensFile, JSON.stringify({ ...this.tokens, lastUpdated: new Date().toISOString() }, null, 2));
+      console.log('[Kick] ✅ Token refreshed');
+      return true;
+    } catch (error) {
+      console.error('[Kick] Token refresh error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get a valid access token, refreshing if needed
+   */
+  private async getValidToken(): Promise<string | null> {
+    if (!this.tokens) return null;
+    if (Date.now() >= this.tokens.tokenExpiry) {
+      const refreshed = await this.refreshAccessToken();
+      if (!refreshed) return null;
+    }
+    return this.tokens.accessToken;
+  }
+
+  /**
+   * Connect to Kick channel chat with optional tenant auth
+   */
+  async connect(channelName: string, tenantId?: string): Promise<void> {
+    try {
+      this.channelName = channelName;
+      this.tenantId = tenantId || null;
+
+      // Load tokens if tenant provided
+      if (tenantId) {
+        this.tokens = await this.loadTokens(tenantId);
+        if (this.tokens) {
+          console.log(`[Kick] Loaded tokens for ${this.tokens.username}`);
+          if (this.tokens.chatroomId) {
+            this.chatroomId = parseInt(this.tokens.chatroomId);
+          }
+          if (this.tokens.channelId) {
+            this.channelId = parseInt(this.tokens.channelId);
+          }
+        }
+      }
+
+      // Get channel info from Kick public API if we don't have IDs
+      if (!this.chatroomId) {
+        const channelInfo = await this.getChannelInfo(channelName);
+        if (!channelInfo) throw new Error('Channel not found');
+        this.channelId = channelInfo.id;
+        this.chatroomId = channelInfo.chatroom?.id;
+        if (!this.chatroomId) throw new Error('Chatroom not found');
       }
 
       // Connect via Pusher (Kick uses Pusher for WebSocket)
@@ -66,43 +158,30 @@ export class KickService extends EventEmitter {
         forceTLS: true
       });
 
-      // Subscribe to chatroom channel
-      const channelKey = `chatrooms.${chatroomId}.v2`;
+      const channelKey = `chatrooms.${this.chatroomId}.v2`;
       this.channel = this.pusher.subscribe(channelKey);
 
-      // Listen for chat messages
       this.channel.bind('App\\Events\\ChatMessageEvent', (data: any) => {
         const message = this.parseMessage(data);
-        if (message) {
-          this.emit('message', message);
-        }
+        if (message) this.emit('message', message);
       });
 
-      // Listen for subscriptions
       this.channel.bind('App\\Events\\SubscriptionEvent', (data: any) => {
         const sub = this.parseSubscription(data);
-        if (sub) {
-          this.emit('subscription', sub);
-        }
+        if (sub) this.emit('subscription', sub);
       });
 
-      // Listen for follows
       this.channel.bind('App\\Events\\FollowersUpdated', (data: any) => {
-        this.emit('follow', {
-          username: data.username,
-          followed: data.followed
-        });
+        this.emit('follow', { username: data.username, followed: data.followed });
       });
 
-      // Listen for gifts/tips
       this.channel.bind('App\\Events\\GiftsLeaderboardUpdated', (data: any) => {
         this.emit('gift', data);
       });
 
       this.connected = true;
-      console.log(`[Kick] Connected to channel: ${channelName}`);
+      console.log(`[Kick] ✅ Connected to channel: ${channelName} (chatroom: ${this.chatroomId})`);
       this.emit('connected');
-
     } catch (error) {
       console.error('[Kick] Connection error:', error);
       this.emit('error', error);
@@ -116,9 +195,7 @@ export class KickService extends EventEmitter {
   private async getChannelInfo(channelName: string): Promise<any> {
     try {
       const response = await fetch(`https://kick.com/api/v2/channels/${channelName}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
       console.error('[Kick] Error fetching channel info:', error);
@@ -132,14 +209,10 @@ export class KickService extends EventEmitter {
   private parseMessage(data: any): KickMessage | null {
     try {
       const sender = data.sender;
-      const badges = [];
-
+      const badges: string[] = [];
       if (sender.identity?.badges) {
-        for (const badge of sender.identity.badges) {
-          badges.push(badge.type);
-        }
+        for (const badge of sender.identity.badges) badges.push(badge.type);
       }
-
       return {
         id: data.id,
         username: sender.slug,
@@ -162,76 +235,97 @@ export class KickService extends EventEmitter {
    */
   private parseSubscription(data: any): KickSubscription | null {
     try {
-      return {
-        username: data.username,
-        months: data.months || 1,
-        tier: data.tier || 1
-      };
-    } catch (error) {
-      console.error('[Kick] Error parsing subscription:', error);
+      return { username: data.username, months: data.months || 1, tier: data.tier || 1 };
+    } catch {
       return null;
     }
   }
 
   /**
-   * Send a message to Kick chat
-   * Note: Requires authentication - this is a placeholder
+   * Send a message to Kick chat (authenticated)
    */
   async sendChatMessage(message: string): Promise<void> {
-    if (!this.connected || !this.channelId) {
+    if (!this.connected || !this.chatroomId) {
       throw new Error('Not connected to Kick');
     }
 
+    const token = await this.getValidToken();
+    if (!token) {
+      console.warn('[Kick] ⚠️ No valid token — cannot send message');
+      return;
+    }
+
     try {
-      // Note: Kick API for sending messages requires authentication
-      // This would need a proper auth token and API endpoint
-      console.log('[Kick] Sending message (requires auth):', message);
-      
-      // Placeholder - actual implementation would need:
-      // - Valid auth token
-      // - POST to https://kick.com/api/v2/messages/send/{chatroomId}
-      // - Headers with Bearer token
-      
-      throw new Error('Kick message sending requires authentication token');
+      const res = await fetch('https://api.kick.com/public/v1/chat', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatroom_id: this.chatroomId,
+          content: message,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[Kick] Send message failed (${res.status}):`, errText);
+        // Try token refresh on 401
+        if (res.status === 401) {
+          const refreshed = await this.refreshAccessToken();
+          if (refreshed) {
+            // Retry once
+            const retryRes = await fetch('https://api.kick.com/public/v1/chat', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.tokens!.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ chatroom_id: this.chatroomId, content: message }),
+            });
+            if (!retryRes.ok) console.error('[Kick] Retry send failed:', retryRes.status);
+          }
+        }
+      }
     } catch (error) {
       console.error('[Kick] Error sending message:', error);
-      throw error;
     }
   }
 
   /**
-   * Delete a message (moderator action)
+   * Timeout a user
    */
-  async deleteMessage(messageId: string): Promise<void> {
-    if (!this.connected) {
-      throw new Error('Not connected to Kick');
-    }
+  async timeoutUser(username: string, duration: number = 600): Promise<void> {
+    const token = await this.getValidToken();
+    if (!token || !this.channelId) return;
 
     try {
-      console.log('[Kick] Deleting message (requires mod auth):', messageId);
-      // Requires moderator auth token
-      throw new Error('Kick message deletion requires moderator authentication');
+      await fetch(`https://api.kick.com/public/v1/channels/${this.channelId}/chat/timeout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, duration }),
+      });
     } catch (error) {
-      console.error('[Kick] Error deleting message:', error);
-      throw error;
+      console.error('[Kick] Timeout user error:', error);
     }
   }
 
   /**
-   * Ban a user from chat
+   * Ban a user
    */
-  async banUser(username: string, permanent: boolean = false): Promise<void> {
-    if (!this.connected) {
-      throw new Error('Not connected to Kick');
-    }
+  async banUser(username: string): Promise<void> {
+    const token = await this.getValidToken();
+    if (!token || !this.channelId) return;
 
     try {
-      console.log(`[Kick] ${permanent ? 'Banning' : 'Timing out'} user (requires mod auth):`, username);
-      // Requires moderator auth token
-      throw new Error('Kick user moderation requires moderator authentication');
+      await fetch(`https://api.kick.com/public/v1/channels/${this.channelId}/chat/ban`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
     } catch (error) {
-      console.error('[Kick] Error banning user:', error);
-      throw error;
+      console.error('[Kick] Ban user error:', error);
     }
   }
 
@@ -243,32 +337,51 @@ export class KickService extends EventEmitter {
       this.channel.unbind_all();
       this.pusher.unsubscribe(this.channel.name);
     }
-
-    if (this.pusher) {
-      this.pusher.disconnect();
-    }
-
+    if (this.pusher) this.pusher.disconnect();
     this.connected = false;
     this.channelName = null;
     this.channelId = null;
+    this.chatroomId = null;
+    this.tokens = null;
+    this.tenantId = null;
     console.log('[Kick] Disconnected');
     this.emit('disconnected');
   }
 
-  /**
-   * Get connection status
-   */
   isConnected(): boolean {
     return this.connected;
   }
+
+  hasAuth(): boolean {
+    return this.tokens !== null;
+  }
+
+  getChannelName(): string | null {
+    return this.channelName;
+  }
+
+  getTenantId(): string | null {
+    return this.tenantId;
+  }
 }
 
-// Singleton instance
-let kickService: KickService | null = null;
+// Per-tenant instances
+const kickInstances = new Map<string, KickService>();
 
-export function getKickService(): KickService {
-  if (!kickService) {
-    kickService = new KickService();
+export function getKickService(tenantId?: string): KickService {
+  const key = tenantId || 'global';
+  let instance = kickInstances.get(key);
+  if (!instance) {
+    instance = new KickService();
+    kickInstances.set(key, instance);
   }
-  return kickService;
+  return instance;
+}
+
+export function getKickServiceForTenant(tenantId: string): KickService | undefined {
+  return kickInstances.get(tenantId);
+}
+
+export function getAllKickInstances(): Map<string, KickService> {
+  return kickInstances;
 }

@@ -355,7 +355,7 @@ function render(){
     if(currentUser===OWNER){
       if(c.supertype==='Pok\u00e9mon')inner+='<button data-gym="'+cardId+'">'+(inGym?'\u2715':'\u2694\ufe0f')+'</button>';
       inner+='<button data-swap-my="'+c.idx+'">\ud83d\udd04</button>';
-      if(c.seasonId===CURRENT_SEASON)inner+='<button data-deck="'+c.idx+'" style="'+(inDeck?'background:#22c55e;color:#000':'')+'">\ud83c\udccf'+(deckCount>0?' x'+deckCount:'')+'</button>';
+      inner+='<button data-deck="'+c.idx+'" style="'+(inDeck?'background:#22c55e;color:#000':'')+'">\ud83c\udccf'+(deckCount>0?' x'+deckCount:'')+'</button>';
     } else {
       inner+='<button data-swap-their="'+c.idx+'">\ud83d\udd04</button>';
     }

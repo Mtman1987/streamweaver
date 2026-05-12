@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
     'channel:manage:broadcast',
     'moderator:manage:announcements',
     'channel:read:redemptions',
-    'user:write:chat'
+    'user:write:chat',
+    'channel:bot'
   ].join(' ');
 
   const authUrl = new URL('https://id.twitch.tv/oauth2/authorize');
