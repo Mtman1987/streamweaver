@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     'moderation:manage',
   ].join(' ');
 
-  const authUrl = new URL('https://id.kick.com/oauth/authorize');  // Kick's OAuth authorize endpoint
+  const authUrl = new URL('https://kick.com/oauth/authorize');
   authUrl.searchParams.set('client_id', clientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('response_type', 'code');
