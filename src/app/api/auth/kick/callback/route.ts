@@ -5,44 +5,41 @@ import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { tenantPath, getTenantIdFromSession, isAdmin, globalPath } from '@/lib/tenant';
 
 export async function GET(request: NextRequest) {
+  const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
     const error = searchParams.get('error');
     const state = searchParams.get('state') || 'broadcaster';
-
-    // Extract role from state (format: "role_randomhex")
     const role = state.split('_')[0] || 'broadcaster';
 
     if (error) {
-      return NextResponse.redirect(new URL(`/integrations?error=kick_${error}`, request.url));
+      return NextResponse.redirect(`${appOrigin}/integrations?error=kick_${error}`);
     }
     if (!code) {
-      return NextResponse.redirect(new URL('/integrations?error=kick_no_code', request.url));
+      return NextResponse.redirect(`${appOrigin}/integrations?error=kick_no_code`);
     }
 
     const clientId = process.env.KICK_CLIENT_ID;
     const clientSecret = process.env.KICK_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-      return NextResponse.redirect(new URL('/integrations?error=kick_not_configured', request.url));
+      return NextResponse.redirect(`${appOrigin}/integrations?error=kick_not_configured`);
     }
 
-    // Get PKCE verifier from cookie
     const codeVerifier = request.cookies.get('kick_pkce_verifier')?.value;
     if (!codeVerifier) {
       console.error('[Kick OAuth] No PKCE verifier cookie found');
-      return NextResponse.redirect(new URL('/integrations?error=kick_pkce_missing', request.url));
+      return NextResponse.redirect(`${appOrigin}/integrations?error=kick_pkce_missing`);
     }
 
     const tenantId = getTenantIdFromSession(request.cookies.get('streamweaver-session')?.value);
     if (!tenantId) {
-      return NextResponse.redirect(new URL('/integrations?error=kick_no_session', request.url));
+      return NextResponse.redirect(`${appOrigin}/integrations?error=kick_no_session`);
     }
 
-    const baseUrl = getConfiguredAppUrl(request.nextUrl.origin);
-    const redirectUri = `${baseUrl}/api/auth/kick/callback`;
+    const redirectUri = `${appOrigin}/api/auth/kick/callback`;
 
-    // Exchange code for tokens (Kick uses Auth0 with PKCE)
     const tokenResponse = await fetch('https://id.kick.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -59,13 +56,12 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errText = await tokenResponse.text();
       console.error('[Kick OAuth] Token exchange failed:', tokenResponse.status, errText);
-      return NextResponse.redirect(new URL('/integrations?error=kick_token_failed', request.url));
+      return NextResponse.redirect(`${appOrigin}/integrations?error=kick_token_failed`);
     }
 
     const tokenData = await tokenResponse.json();
     const tokenExpiry = Date.now() + ((tokenData.expires_in || 3600) - 60) * 1000;
 
-    // Get user info from Kick
     let kickUsername = '';
     let kickChannelId = '';
     let kickChatroomId = '';
@@ -84,10 +80,9 @@ export async function GET(request: NextRequest) {
       console.error('[Kick OAuth] User info fetch failed:', e);
     }
 
-    // Community bot — admin-only, global storage
     if (role === 'community-bot') {
       if (!isAdmin(tenantId)) {
-        return NextResponse.redirect(new URL('/integrations?error=kick_admin_only', request.url));
+        return NextResponse.redirect(`${appOrigin}/integrations?error=kick_admin_only`);
       }
       const globalFile = globalPath('kick-bot-tokens.json');
       await fs.mkdir(path.dirname(globalFile), { recursive: true });
@@ -101,13 +96,12 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       }, null, 2));
       console.log(`[Kick OAuth] ✅ Community bot token stored (${kickUsername})`);
-      const resp = NextResponse.redirect(new URL('/integrations?kick=community-bot-connected', request.url));
+      const resp = NextResponse.redirect(`${appOrigin}/integrations?kick=community-bot-connected`);
       resp.cookies.delete('kick_pkce_verifier');
       resp.cookies.delete('kick_oauth_state');
       return resp;
     }
 
-    // Broadcaster or Bot — tenant-scoped
     const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
     await fs.mkdir(path.dirname(tokensFile), { recursive: true });
 
@@ -115,7 +109,6 @@ export async function GET(request: NextRequest) {
     try { existing = JSON.parse(await fs.readFile(tokensFile, 'utf-8')); } catch {}
 
     const isBroadcaster = role === 'broadcaster';
-
     const tokenStorage = {
       ...existing,
       ...(isBroadcaster ? {
@@ -139,12 +132,12 @@ export async function GET(request: NextRequest) {
     await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
     console.log(`[Kick OAuth] ✅ ${role} token stored for tenant ${tenantId} (${kickUsername})`);
 
-    const resp = NextResponse.redirect(new URL(`/integrations?kick=${role}-connected`, request.url));
+    const resp = NextResponse.redirect(`${appOrigin}/integrations?kick=${role}-connected`);
     resp.cookies.delete('kick_pkce_verifier');
     resp.cookies.delete('kick_oauth_state');
     return resp;
   } catch (error) {
     console.error('[Kick OAuth] Callback error:', error);
-    return NextResponse.redirect(new URL('/integrations?error=kick_auth_failed', request.url));
+    return NextResponse.redirect(`${appOrigin}/integrations?error=kick_auth_failed`);
   }
 }
