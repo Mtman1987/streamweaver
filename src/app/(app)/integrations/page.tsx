@@ -52,6 +52,20 @@ export default function IntegrationsPage() {
   });
   const [obsScenesBusy, setObsScenesBusy] = useState(false);
 
+  const [kickStatus, setKickStatus] = useState<{
+    broadcasterConnected: boolean;
+    botConnected: boolean;
+    broadcasterUsername: string | null;
+    botUsername: string | null;
+    channelConnected: boolean;
+  }>({
+    broadcasterConnected: false,
+    botConnected: false,
+    broadcasterUsername: null,
+    botUsername: null,
+    channelConnected: false,
+  });
+
   const [platformStates, setPlatformStates] = useState({
     twitch: false,
     youtube: false,
@@ -71,6 +85,16 @@ export default function IntegrationsPage() {
   const requireLocalApiKey = (): string | null => {
     return 'no-key-needed';
   };
+
+  // Load Kick status
+  useEffect(() => {
+    fetch('/api/integrations/kick/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) setKickStatus(data);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch('/api/obs/scenes')
@@ -268,7 +292,7 @@ export default function IntegrationsPage() {
       name: "Kick", 
       connected: platformStates.kick, 
       type: "streaming",
-      authType: "username",
+      authType: "kick-custom",
       description: "Connect to Kick.com chat with bot commands"
     },
     { 
@@ -459,6 +483,97 @@ export default function IntegrationsPage() {
                       <Badge variant="outline">Offline</Badge>
                     )}
                   </div>
+                </div>
+              </div>
+            ) : platform.id === 'kick' ? (
+              <div key={platform.id} className="p-4 border rounded space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {kickStatus.channelConnected ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-gray-400" />
+                    )}
+                    <div className="flex-1">
+                      <div className="font-medium">Kick</div>
+                      <div className="text-sm text-muted-foreground">{platform.description}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded border px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    {kickStatus.channelConnected ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-gray-400" />
+                    )}
+                    <div>
+                      <div className="text-sm font-medium">Channel Chat (Pusher)</div>
+                      <div className="text-xs text-muted-foreground">Reads chat messages via WebSocket</div>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => {
+                    const username = prompt('Enter your Kick channel username:');
+                    if (username) {
+                      fetch('/api/platforms/kick/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username })
+                      }).then(async (res) => {
+                        if (res.ok) {
+                          setPlatformStates({ ...platformStates, kick: true });
+                          setKickStatus(s => ({ ...s, channelConnected: true }));
+                          toast({ title: 'Kick connected', description: `Listening to ${username}'s chat` });
+                        } else {
+                          const d = await res.json().catch(() => ({}));
+                          toast({ variant: 'destructive', title: 'Failed', description: d.error || 'Connection failed' });
+                        }
+                      }).catch(() => toast({ variant: 'destructive', title: 'Failed' }));
+                    }
+                  }}>
+                    {kickStatus.channelConnected ? 'Reconnect' : 'Connect Chat'}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between rounded border px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    {kickStatus.broadcasterConnected ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-gray-400" />
+                    )}
+                    <div>
+                      <div className="text-sm font-medium">Kick Broadcaster</div>
+                      <div className="text-xs text-muted-foreground">
+                        {kickStatus.broadcasterUsername ? `@${kickStatus.broadcasterUsername}` : 'Not connected'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Your Kick account — for channel management</div>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => { window.location.href = '/api/auth/kick?role=broadcaster'; }}>
+                    {kickStatus.broadcasterConnected ? 'Re-authorize' : 'Connect'}
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between rounded border px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    {kickStatus.botConnected ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-gray-400" />
+                    )}
+                    <div>
+                      <div className="text-sm font-medium">Kick Bot</div>
+                      <div className="text-xs text-muted-foreground">
+                        {kickStatus.botUsername ? `@${kickStatus.botUsername}` : 'Using shared streamweaverbot'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Optional — link your own bot or use the shared streamweaverbot</div>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => { window.location.href = '/api/auth/kick?role=bot'; }}>
+                    {kickStatus.botConnected ? 'Re-authorize' : 'Link Custom Bot'}
+                  </Button>
                 </div>
               </div>
             ) : (
