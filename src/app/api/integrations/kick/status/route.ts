@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session) return apiOk({ broadcasterConnected: false, botConnected: false, broadcasterUsername: null, botUsername: null, channelConnected: false });
 
-  const tenantId = session.twitchId;
+  const tenantId = session.tenantId;
   let broadcasterConnected = false;
   let botConnected = false;
   let broadcasterUsername: string | null = null;
