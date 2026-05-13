@@ -10,7 +10,13 @@ import { getConfigSection } from '../lib/local-config/service';
 
 const eventSubSockets = new Map<string, WebSocket>();
 
+function normalizeTenantId(tenantId?: string): string | undefined {
+    if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+    return tenantId;
+}
+
 async function resolvePointsCtx(tenantId?: string): Promise<{ tenantId: string; username: string } | undefined> {
+    tenantId = normalizeTenantId(tenantId);
     if (!tenantId) return undefined;
     try {
         const tokens = await getStoredTokens(tenantId);
@@ -614,14 +620,15 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 if (ttsResult.audioDataUri) {
                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                     if (useTTSPlayer) {
-                        const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                        const ttsTenantId = normalizeTenantId(tenantId);
+                        const tenantQuery = ttsTenantId ? `?tenant=${encodeURIComponent(ttsTenantId)}` : '';
                         await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
                         }).catch(() => {});
                     } else if ((global as any).broadcast) {
-                        (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, tenantId);
+                        (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, normalizeTenantId(tenantId));
                     }
                 }
             } catch (err: unknown) {

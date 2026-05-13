@@ -5,6 +5,7 @@ import { getUserCollection, saveUserCollection } from './pokemon-storage-discord
 interface TradeSession {
   initiator: string;
   target: string;
+  tenantId: string;
   initiatorCard?: { index: number; name: string; number: string; setCode: string; imageUrl?: string };
   targetCard?: { index: number; name: string; number: string; setCode: string; imageUrl?: string };
   initiatorAccepted: boolean;
@@ -14,6 +15,11 @@ interface TradeSession {
 
 const activeTrades = new Map<string, Map<string, TradeSession>>();
 const TRADE_TIMEOUT = 120000;
+
+function normalizeTenantId(tenantId?: string): string | undefined {
+  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+  return tenantId;
+}
 
 function getTradeKey(user1: string, user2: string, tenantId: string): string {
   return `${tenantId}:${[user1, user2].sort().join(':')}`;
@@ -33,6 +39,7 @@ export async function initiateTrade(initiator: string, target: string, tenantId?
   tenantTrades.set(key, {
     initiator,
     target,
+    tenantId: tid,
     initiatorAccepted: false,
     targetAccepted: false,
     expiresAt: Date.now() + TRADE_TIMEOUT
@@ -127,7 +134,7 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
         userB: session.target,
         cardA: session.initiatorCard,
         cardB: session.targetCard
-      }, tid);
+      }, normalizeTenantId(tid));
     }
   }
 }
@@ -229,7 +236,7 @@ async function executeTrade(session: TradeSession): Promise<void> {
       userB: session.target,
       cardA: { ...removedA },
       cardB: { ...removedB }
-    });
+    }, normalizeTenantId(session.tenantId));
   }
 
   await sendChatMessage(

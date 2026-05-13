@@ -43,6 +43,11 @@ function pickRandom(arr: any[], count: number): any[] {
   return shuffled.slice(0, count);
 }
 
+function normalizeTenantId(tenantId?: string): string | undefined {
+  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+  return tenantId;
+}
+
 export async function openPack(setNumber: number, username: string, enabledSets?: string[], tenantId?: string) {
   // Load enabled sets from config if not provided
   let sets = enabledSets;
@@ -95,8 +100,9 @@ export async function openPack(setNumber: number, username: string, enabledSets?
 
   if (typeof (global as any).broadcast === 'function') {
     const payload = { pack, setName: setInfo.name, username };
-    (global as any).broadcast({ type: 'pokemon-pack-open', payload }, tenantId);
-    (global as any).broadcast({ type: 'pokemon-pack-opened', payload }, tenantId);
+    const broadcastTenantId = normalizeTenantId(tenantId);
+    (global as any).broadcast({ type: 'pokemon-pack-open', payload }, broadcastTenantId);
+    (global as any).broadcast({ type: 'pokemon-pack-opened', payload }, broadcastTenantId);
   }
 
   return { pack, setName: setInfo.name, setCode: setInfo.code, username };

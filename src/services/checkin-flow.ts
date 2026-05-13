@@ -36,7 +36,13 @@ async function pickFrontSeat(riders: CheckinEntry[], tenantId?: string): Promise
 
 type PointsContext = { tenantId: string; username: string } | undefined;
 
+function normalizeTenantId(tenantId?: string): string | undefined {
+  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+  return tenantId;
+}
+
 async function resolvePointsCtx(tenantId?: string): Promise<PointsContext> {
+  tenantId = normalizeTenantId(tenantId);
   if (!tenantId) return undefined;
   try {
     const tokens = await getStoredTokens(tenantId);
@@ -62,11 +68,12 @@ function labels(kind: CheckinKind) {
 function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, unknown>, tenantId?: string) {
   if (typeof (global as any).broadcast !== 'function') return;
   const broadcast = (global as any).broadcast;
+  const broadcastTenantId = normalizeTenantId(tenantId);
 
   broadcast({
     type: type === 'pending' ? 'checkin-pending' : 'checkin-reveal',
     payload,
-  }, tenantId);
+  }, broadcastTenantId);
 
   // Keep the legacy partner overlay event stream alive so older /partner-checkin
   // browser tabs still render crew/mod/space mountain check-ins without needing a
@@ -84,7 +91,7 @@ function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, un
         emoji: payload.emoji,
         count: payload.count,
       },
-    }, tenantId);
+    }, broadcastTenantId);
     return;
   }
 
@@ -107,7 +114,7 @@ function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, un
       } : null,
       entry,
     },
-  }, tenantId);
+  }, broadcastTenantId);
 }
 
 async function generateGreeting(username: string, entry: CheckinEntry, kind: CheckinKind, sourceLabel: string, tenantId?: string): Promise<string> {
@@ -153,15 +160,16 @@ async function playGreeting(greeting: string, tenantId?: string): Promise<void> 
     if (!ttsResult.audioDataUri) return;
 
     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
+    const ttsTenantId = normalizeTenantId(tenantId);
     if (useTTSPlayer) {
-      const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+      const tenantQuery = ttsTenantId ? `?tenant=${encodeURIComponent(ttsTenantId)}` : '';
       await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/tts/current${tenantQuery}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
       }).catch(() => {});
     } else if (typeof (global as any).broadcast === 'function') {
-      (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, tenantId);
+      (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, ttsTenantId);
     }
   } catch (error) {
     console.error('[Checkin] TTS error:', error);

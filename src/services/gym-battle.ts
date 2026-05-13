@@ -78,9 +78,7 @@ function getState(tenantId?: string) {
 }
 
 function getBroadcasterUsername(tenantId?: string): string {
-  if (tenantId?.startsWith('__kick_silent__:')) {
-    tenantId = tenantId.slice('__kick_silent__:'.length);
-  }
+  tenantId = normalizeTenantId(tenantId);
   if (tenantId) {
     try {
       const tenantsDir = path.join(process.env.PERSIST_ROOT || path.join(process.cwd(), 'data', 'runtime'), 'tenants');
@@ -107,7 +105,13 @@ function getBroadcasterUsername(tenantId?: string): string {
 }
 
 function bc(msg: object, tenantId?: string) {
+  tenantId = normalizeTenantId(tenantId);
   if (typeof (global as any).broadcast === 'function') (global as any).broadcast(msg, tenantId);
+}
+
+function normalizeTenantId(tenantId?: string): string | undefined {
+  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+  return tenantId;
 }
 
 function reply(msg: string, as: 'bot' | 'broadcaster' = 'broadcaster', tenantId?: string) {

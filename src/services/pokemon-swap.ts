@@ -17,6 +17,11 @@ type PendingSwap = {
 
 const pendingSwaps = new Map<string, Map<string, PendingSwap>>();
 
+function normalizeTenantId(tenantId?: string): string | undefined {
+  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+  return tenantId;
+}
+
 export async function proposeSwap(fromUser: string, toUser: string, fromCardNum: number, toCardNum: number, tenantId?: string): Promise<void> {
   const fromCards = await getUserCards(fromUser);
   const toCards = await getUserCards(toUser);
@@ -48,6 +53,7 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
   } catch {}
 
   const tid = tenantId || 'global';
+  const broadcastTid = normalizeTenantId(tenantId);
   const tenantSwaps = pendingSwaps.get(tid) || new Map();
   pendingSwaps.set(tid, tenantSwaps);
 
@@ -83,19 +89,20 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
     (global as any).broadcast({
       type: 'pokemon-swap-proposal',
       payload: { from: fromUser, to: toUser, fromCard: fc, toCard: tc },
-    }, tid);
+    }, broadcastTid);
     (global as any).broadcast({
       type: 'pokemon-trade-preview',
       userA: fromUser, userB: toUser,
       avatarA: fromAvatar, avatarB: toAvatar,
       cardA: { name: fc.name, number: fc.number, setCode: fc.setCode, imageUrl: fc.imageUrl },
       cardB: { name: tc.name, number: tc.number, setCode: tc.setCode, imageUrl: tc.imageUrl },
-    }, tid);
+    }, broadcastTid);
   }
 }
 
 export async function acceptSwap(username: string, tenantId?: string): Promise<boolean> {
   const tid = tenantId || 'global';
+  const broadcastTid = normalizeTenantId(tenantId);
   const tenantSwaps = pendingSwaps.get(tid);
   if (!tenantSwaps) return false;
 
@@ -148,7 +155,7 @@ export async function acceptSwap(username: string, tenantId?: string): Promise<b
       avatarA: swap.fromAvatar, avatarB: swap.toAvatar,
       cardA: { name: swap.fromCard.name, number: swap.fromCard.number, setCode: swap.fromCard.setCode, imageUrl: swap.fromCard.imageUrl },
       cardB: { name: swap.toCard.name, number: swap.toCard.number, setCode: swap.toCard.setCode, imageUrl: swap.toCard.imageUrl },
-    }, tid);
+    }, broadcastTid);
   }
 
   return true;

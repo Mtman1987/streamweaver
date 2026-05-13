@@ -733,10 +733,17 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       }
       case 'link': {
         if (!args) {
-          await reply(`@${username}, type !link <your_twitch_username> to link your Kick account to your Twitch for points & commands.`);
+          await reply(`@${username}, type !link @your_twitch_username to link your Kick account to your Twitch for points & commands.`);
           return;
         }
         const twitchName = args.split(/\s+/)[0].replace('@', '').toLowerCase();
+        if (!/^[a-z0-9_]{3,25}$/i.test(twitchName)) {
+          await reply(`@${username}, usage: !link @your_twitch_username`);
+          return;
+        }
+        let twitchId = `username:${twitchName}`;
+        let twitchLogin = twitchName;
+        let twitchDisplayName = twitchName;
         try {
           const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
           const { getConfigSection } = require('../lib/local-config/service');
@@ -746,13 +753,24 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
           const res = await fetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(twitchName)}`, {
             headers: { 'Authorization': `Bearer ${token}`, 'Client-ID': twitchConfig.clientId },
           });
-          if (!res.ok) { await reply(`@${username}, couldn't look up that Twitch username.`); return; }
-          const data = await res.json();
-          const user = data.data?.[0];
-          if (!user) { await reply(`@${username}, Twitch user "${twitchName}" not found.`); return; }
+          if (res.ok) {
+            const data = await res.json();
+            const user = data.data?.[0];
+            if (user) {
+              twitchId = user.id;
+              twitchLogin = user.login;
+              twitchDisplayName = user.display_name || user.login;
+            }
+          } else {
+            console.warn(`[KickDispatcher] Twitch lookup failed for !link ${twitchName}: ${res.status}`);
+          }
+        } catch (e: any) {
+          console.warn('[KickDispatcher] !link Twitch lookup skipped:', e?.message || e);
+        }
+        try {
           const { linkKickToTwitch } = require('./kick-links');
-          await linkKickToTwitch(username, user.id, user.login, tenantId);
-          await reply(`✅ @${username}, your Kick account is now linked to Twitch: ${user.display_name}. Points & commands will sync!`);
+          await linkKickToTwitch(username, twitchId, twitchLogin, tenantId);
+          await reply(`✅ @${username}, your Kick account is now linked to Twitch: ${twitchDisplayName}. Points & commands will sync!`);
         } catch (e: any) {
           console.error('[KickDispatcher] !link error:', e);
           await reply(`@${username}, link failed. Try again later.`);
@@ -968,6 +986,17 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
               }).catch(err => console.error('[KickDispatcher] TTS queue failed:', err));
+              if (typeof (global as any).broadcast === 'function') {
+                const broadcast = (global as any).broadcast;
+                broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, tenantId);
+                try {
+                  const { showTalkingAvatar, hideAvatarAfterDelay } = require('../server/avatar');
+                  showTalkingAvatar(broadcast, tenantId);
+                  hideAvatarAfterDelay(12000, broadcast, tenantId);
+                } catch (avatarErr) {
+                  console.error('[KickDispatcher] Avatar trigger failed:', avatarErr);
+                }
+              }
             }
           } catch (err) {
             console.error('[KickDispatcher] TTS generation failed:', err);

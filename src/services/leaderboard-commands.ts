@@ -20,6 +20,11 @@ function checkCooldown(username: string): boolean {
   return true;
 }
 
+function normalizeTenantId(tenantId?: string): string | undefined {
+  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+  return tenantId;
+}
+
 export async function handleLeaderboardCommand(
   command: string,
   username: string,
@@ -29,13 +34,14 @@ export async function handleLeaderboardCommand(
 ) {
   if (!checkCooldown(username)) return;
   
-  const tenantCtx = tenantId ? { tenantId, username: '' } : undefined;
+  const realTenantId = normalizeTenantId(tenantId);
+  const tenantCtx = realTenantId ? { tenantId: realTenantId, username: '' } : undefined;
 
   // Resolve broadcaster username for storage context
   if (tenantCtx) {
     try {
       const { getStoredTokens } = require('../lib/token-utils.server');
-      const tokens = await getStoredTokens(tenantId);
+      const tokens = await getStoredTokens(realTenantId);
       if (tokens?.broadcasterUsername) tenantCtx.username = tokens.broadcasterUsername;
     } catch {}
   }
@@ -69,14 +75,14 @@ export async function handleLeaderboardCommand(
     broadcast({
       type: 'leaderboard-profile',
       payload: profile
-    }, tenantId);
+    }, realTenantId);
     
     // Send chat response
     const totalHours = Math.floor(user.watchtime / 60);
     let channelUsername = '';
     try {
       const { getStoredTokens: gst } = require('../lib/token-utils.server');
-      const t = await gst(tenantId);
+      const t = await gst(realTenantId);
       if (t?.broadcasterUsername) channelUsername = t.broadcasterUsername.toLowerCase();
     } catch {}
     const channelMinutes = channelUsername ? (user.watchtimeByChannel?.[channelUsername] || 0) : 0;
@@ -150,7 +156,7 @@ export async function handleLeaderboardCommand(
         target: { user: target, rank: theirRank, value: theirValue },
         ahead: myRank < theirRank
       }
-    }, tenantId);
+    }, realTenantId);
     
     // Send chat response
     const ahead = myRank < theirRank;
@@ -175,7 +181,7 @@ export async function handleLeaderboardCommand(
         })),
         you: { user: username, rank: myRank, value: myValue }
       }
-    }, tenantId);
+    }, realTenantId);
     
     // Send chat response
     let chatMsg = `@${username}, you're currently #${myRank} with ${myValue} ${statName.toLowerCase()}!`;
@@ -185,7 +191,7 @@ export async function handleLeaderboardCommand(
       let channelUsername = '';
       try {
         const { getStoredTokens: gst } = require('../lib/token-utils.server');
-        const t = await gst(tenantId);
+        const t = await gst(realTenantId);
         if (t?.broadcasterUsername) channelUsername = t.broadcasterUsername.toLowerCase();
       } catch {}
       const chMin = channelUsername ? (user.watchtimeByChannel?.[channelUsername] || 0) : 0;
