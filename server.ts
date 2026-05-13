@@ -283,6 +283,28 @@ async function startServer() {
                 try {
                     const tokensFile = kickTenantPath(tid, 'tokens/kick-tokens.json');
                     const data = JSON.parse(await fsKick.readFile(tokensFile, 'utf-8'));
+
+                    // Resolve missing username/channelId/chatroomId from token (if token available)
+                    if (data.broadcasterToken && (!data.broadcasterUsername || !data.broadcasterChatroomId)) {
+                        try {
+                            const chRes = await fetch('https://api.kick.com/public/v1/channels', {
+                                headers: { 'Authorization': `Bearer ${data.broadcasterToken}` },
+                            });
+                            if (chRes.ok) {
+                                const chData = await chRes.json();
+                                const ch = chData.data?.[0];
+                                if (ch) {
+                                    data.broadcasterUsername = ch.slug || data.broadcasterUsername;
+                                    data.broadcasterChannelId = String(ch.broadcaster_user_id || '');
+                                    data.broadcasterChatroomId = String(ch.broadcaster_user_id || '');
+                                    await fsKick.writeFile(tokensFile, JSON.stringify(data, null, 2));
+                                    console.log(`[STEP 3.6] Resolved Kick info for ${tid}: ${data.broadcasterUsername} (${data.broadcasterChannelId})`);
+                                }
+                            }
+                        } catch {}
+                    }
+
+                    // Connect if we have username + chatroomId (token not required for listening)
                     if (data.broadcasterUsername && data.broadcasterChatroomId) {
                         const mp = getMultiPlatformManager();
                         await mp.connectKick(data.broadcasterUsername, tid);
@@ -292,6 +314,23 @@ async function startServer() {
             }
         } catch (e) {
             console.warn('[STEP 3.6] ⚠️ Kick auto-connect failed:', e);
+        }
+
+        // Connect to community Kick channels (players without StreamWeaver)
+        try {
+            const { getMultiPlatformManager } = require('./src/services/multi-platform');
+            const COMMUNITY_KICK_CHANNELS: string[] = [];
+            for (const slug of COMMUNITY_KICK_CHANNELS) {
+                try {
+                    const mp = getMultiPlatformManager();
+                    await mp.connectKick(slug, `kick_community_${slug}`);
+                    console.log(`[STEP 3.6] ✅ Kick community channel connected: ${slug}`);
+                } catch (e: any) {
+                    console.warn(`[STEP 3.6] ⚠️ Kick community connect failed for ${slug}:`, e.message);
+                }
+            }
+        } catch (e) {
+            console.warn('[STEP 3.6] ⚠️ Community Kick channels failed:', e);
         }
 
         // STEP 4: Initialize all services
@@ -367,6 +406,122 @@ async function startServer() {
             try {
                 const { reconnectDisconnectedTenants } = require('./src/services/twitch-client');
                 await reconnectDisconnectedTenants();
+            } catch (e) { /* silent */ }
+        }, 300000); // every 5 minutes
+        pollingService.addTask('kick-health', async () => {
+            try {
+                const { getAllKickInstances } = require('./src/services/kick');
+                const instances = getAllKickInstances();
+                for (const [tenantId, kick] of instances) {
+                    if (tenantId === 'global') continue;
+                    const connected = (kick as any).isConnected();
+                    if (!connected && (kick as any).getChannelName()) {
+                        console.log(`[Kick] ⚠️ Instance for tenant ${tenantId} disconnected, triggering reconnect...`);
+                        const channelName = (kick as any).getChannelName();
+                        try {
+                            (kick as any).disconnect();
+                            const { getMultiPlatformManager } = require('./src/services/multi-platform');
+                            await getMultiPlatformManager().connectKick(channelName, tenantId);
+                        } catch (e) { console.warn(`[Kick] Reconnect failed for ${tenantId}:`, e); }
+                    }
+                }
+            } catch (e) { /* silent */ }
+        }, 120000); // every 2 minutes
+        pollingService.addTask('kick-token-refresh', async () => {
+            try {
+                const { listTenants: listTenantsForRefresh } = require('./src/lib/tenant');
+                const { tenantPath: refreshTenantPath } = require('./src/lib/tenant');
+                const fsRefresh = require('fs').promises;
+                const clientId = process.env.KICK_CLIENT_ID;
+                const clientSecret = process.env.KICK_CLIENT_SECRET;
+                if (!clientId || !clientSecret) return;
+
+                const tenantIds = await listTenantsForRefresh();
+                for (const tid of tenantIds) {
+                    try {
+                        const tokensFile = refreshTenantPath(tid, 'tokens/kick-tokens.json');
+                        const data = JSON.parse(await fsRefresh.readFile(tokensFile, 'utf-8'));
+                        let changed = false;
+                        const BUFFER = 10 * 60 * 1000; // refresh 10 min before expiry
+
+                        // Refresh broadcaster token
+                        if (data.broadcasterToken && data.broadcasterRefreshToken && data.broadcasterTokenExpiry) {
+                            if (Date.now() >= (data.broadcasterTokenExpiry - BUFFER)) {
+                                const res = await fetch('https://id.kick.com/oauth/token', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    body: new URLSearchParams({
+                                        client_id: clientId, client_secret: clientSecret,
+                                        grant_type: 'refresh_token', refresh_token: data.broadcasterRefreshToken,
+                                    }),
+                                });
+                                if (res.ok) {
+                                    const d = await res.json();
+                                    data.broadcasterToken = d.access_token;
+                                    if (d.refresh_token) data.broadcasterRefreshToken = d.refresh_token;
+                                    data.broadcasterTokenExpiry = Date.now() + (d.expires_in - 60) * 1000;
+                                    changed = true;
+                                    console.log(`[Kick] ✅ Proactive refresh: broadcaster token for tenant ${tid}`);
+                                }
+                            }
+                        }
+
+                        // Refresh bot token
+                        if (data.botToken && data.botRefreshToken && data.botTokenExpiry) {
+                            if (Date.now() >= (data.botTokenExpiry - BUFFER)) {
+                                const res = await fetch('https://id.kick.com/oauth/token', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    body: new URLSearchParams({
+                                        client_id: clientId, client_secret: clientSecret,
+                                        grant_type: 'refresh_token', refresh_token: data.botRefreshToken,
+                                    }),
+                                });
+                                if (res.ok) {
+                                    const d = await res.json();
+                                    data.botToken = d.access_token;
+                                    if (d.refresh_token) data.botRefreshToken = d.refresh_token;
+                                    data.botTokenExpiry = Date.now() + (d.expires_in - 60) * 1000;
+                                    changed = true;
+                                    console.log(`[Kick] ✅ Proactive refresh: bot token for tenant ${tid}`);
+                                }
+                            }
+                        }
+
+                        if (changed) {
+                            data.lastUpdated = new Date().toISOString();
+                            await fsRefresh.writeFile(tokensFile, JSON.stringify(data, null, 2));
+                        }
+                    } catch {}
+                }
+
+                // Also refresh global bot token
+                try {
+                    const { globalPath: gp } = require('./src/lib/tenant');
+                    const globalFile = gp('kick-bot-tokens.json');
+                    const botData = JSON.parse(await fsRefresh.readFile(globalFile, 'utf-8'));
+                    if (botData.accessToken && botData.refreshToken && botData.tokenExpiry) {
+                        const BUFFER = 10 * 60 * 1000;
+                        if (Date.now() >= (botData.tokenExpiry - BUFFER)) {
+                            const res = await fetch('https://id.kick.com/oauth/token', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: new URLSearchParams({
+                                    client_id: clientId, client_secret: clientSecret,
+                                    grant_type: 'refresh_token', refresh_token: botData.refreshToken,
+                                }),
+                            });
+                            if (res.ok) {
+                                const d = await res.json();
+                                botData.accessToken = d.access_token;
+                                if (d.refresh_token) botData.refreshToken = d.refresh_token;
+                                botData.tokenExpiry = Date.now() + (d.expires_in - 60) * 1000;
+                                await fsRefresh.writeFile(globalFile, JSON.stringify(botData, null, 2));
+                                console.log('[Kick] ✅ Proactive refresh: global bot token');
+                            }
+                        }
+                    }
+                } catch {}
             } catch (e) { /* silent */ }
         }, 300000); // every 5 minutes
         pollingService.addTask('metrics', async () => {

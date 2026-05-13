@@ -73,7 +73,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
     const wss = new WebSocketServer({ server: httpServer });
     
     wss.on('connection', async (ws, request) => {
-        console.log('[WebSocket] New client connected');
         const connectionAuthorized = validateLocalApiKeySync(extractApiKeyFromRequest(request));
         (ws as any).__localAuthorized = connectionAuthorized;
         
@@ -83,10 +82,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
         const resolvedTenantId = urlTenantId || cookieTenantId;
         if (resolvedTenantId) {
             (ws as any).__tenantId = resolvedTenantId;
-            if (urlTenantId && cookieTenantId && urlTenantId !== cookieTenantId) {
-                console.warn(`[WebSocket] Tenant mismatch (url=${urlTenantId}, cookie=${cookieTenantId}), using URL tenant`);
-            }
-            console.log(`[WebSocket] Client tagged with tenant: ${resolvedTenantId}`);
         }
         
         // Do not load global chat history before tenant identification.
@@ -99,7 +94,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 type: 'twitch-badges', 
                 payload: { badges } 
             }));
-            console.log('[WebSocket] Sent fresh badges to new client');
         } catch (e) {
             console.warn('[WebSocket] Failed to load badges for new client:', e);
         }
@@ -123,7 +117,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     const tid = message.payload?.tenantId || message.tenantId;
                     if (tid) {
                         (ws as any).__tenantId = tid;
-                        console.log(`[WebSocket] Client identified as tenant: ${tid}`);
 
                         // Send tenant-specific Twitch status after identify.
                         const { getTwitchStatus } = require('../services/twitch-client');
@@ -149,7 +142,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                                 connectedAt: Date.now(),
                                 lastSeen: Date.now()
                             });
-                            console.log(`[WebSocket] Added active user: ${userProfile.displayName || userProfile.username || tid}`);
                             broadcastActiveUsers(broadcast, tid);
                         }
                         
@@ -161,7 +153,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                                 type: 'chat-history',
                                 payload: history
                             }));
-                            console.log(`[WebSocket] Sent ${history.length} cached history items for tenant ${tid}`);
                         }
                     }
                     return;
@@ -405,7 +396,6 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             const tenantId = (ws as any).__tenantId;
             if (tenantId && activeUsers.has(tenantId)) {
                 activeUsers.delete(tenantId);
-                console.log(`[WebSocket] Removed active user: ${tenantId}`);
                 broadcastActiveUsers(broadcast, tenantId);
             }
         });

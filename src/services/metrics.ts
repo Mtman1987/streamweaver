@@ -25,7 +25,6 @@ export async function loadMetrics(tenantId?: string): Promise<void> {
     try {
         const data = await fs.readFile(metricsFilePath(tenantId), 'utf-8');
         metrics = JSON.parse(data);
-        console.log('[Metrics] Loaded successfully');
     } catch (error: any) {
         if (error.code === 'ENOENT') {
             console.log('[Metrics] No file found, starting fresh');

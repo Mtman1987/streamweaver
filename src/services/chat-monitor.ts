@@ -54,7 +54,7 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
             return [];
         }
 
-        console.log(`[Discord:${key}] Loading chat history from channel ${logChannelId}...`);
+
         let messages;
         try {
             messages = await getChannelMessages(logChannelId, 50);
@@ -112,7 +112,7 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
             lastDiscordMessageId.set(key, messages[0].id);
         }
         
-        console.log(`[Discord:${key}] Loaded ${chatHistory.length} chat history messages`);
+
 
         // Broadcast history to connected clients so the UI updates
         if (typeof (global as any).broadcast === 'function') {
@@ -189,7 +189,5 @@ export async function checkChatActivity() {
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';
-    const history = cachedChatHistory.get(key) || [];
-    console.log(`[Chat Monitor:${key}] getCachedChatHistory called. Items: ${history.length}`);
-    return history;
+    return cachedChatHistory.get(key) || [];
 }

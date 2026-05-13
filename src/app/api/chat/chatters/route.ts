@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
 
     const url = `https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${userId}&moderator_id=${userId}`;
 
-    console.log('[Chatters API] Fetching from:', url);
-    console.log('[Chatters API] Using user ID:', userId);
+    // Chatters API logging removed for noise reduction — only log errors
 
     const response = await fetch(url, {
       headers: {
@@ -54,8 +53,6 @@ export async function GET(request: NextRequest) {
         'Client-ID': clientId,
       },
     });
-
-    console.log('[Chatters API] Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -69,7 +66,6 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('[Chatters API] Success, found', data.data?.length || 0, 'chatters');
     return apiOk({ chatters: data.data || [] });
 
   } catch (error) {

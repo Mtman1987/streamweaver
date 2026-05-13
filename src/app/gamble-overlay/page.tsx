@@ -21,8 +21,8 @@ export default function GambleOverlay() {
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
-            if (msg.type === 'gamble-result') {
-              setData(msg.payload);
+            if (msg.type === 'gamble-result' || msg.type === 'roll-result' || msg.type === 'double-result' || msg.type === 'steal-result') {
+              setData(msg);
               setVisible(true);
               clearTimeout(hideTimer);
               hideTimer = setTimeout(() => setVisible(false), 8000);
@@ -40,9 +40,32 @@ export default function GambleOverlay() {
 
   if (!visible || !data?.payload) return null;
 
-  const { user, outcome, amount, newTotal, currency, betAmount, change, oldTotal } = data.payload;
-  const isJackpot = outcome === 'jackpot';
-  const isWin = outcome === 'win';
+  const p = data.payload?.payload || data.payload;
+  const eventType = data.type;
+  const user = p.user || p.playerName || '';
+  const newTotal = p.newTotal ?? 0;
+  const change = p.change ?? 0;
+  const oldTotal = (newTotal - change) || 0;
+
+  let title = '';
+  let isJackpot = false;
+  let isWin = false;
+
+  if (eventType === 'gamble-result') {
+    isJackpot = p.outcome === 'jackpot';
+    isWin = p.outcome === 'win';
+    title = isJackpot ? '🎰 JACKPOT!' : isWin ? '🎉 WON!' : '💀 LOST!';
+  } else if (eventType === 'roll-result') {
+    isWin = change > 0;
+    isJackpot = p.roll === 6;
+    title = isJackpot ? '🎲 JACKPOT ROLL!' : isWin ? `🎲 Rolled ${p.roll}!` : `🎲 Rolled ${p.roll}!`;
+  } else if (eventType === 'double-result') {
+    isWin = p.won;
+    title = isWin ? '🔥 DOUBLE WIN!' : '💀 DOUBLE FAIL!';
+  } else if (eventType === 'steal-result') {
+    isWin = change > 0;
+    title = isWin ? '💰 STOLEN!' : '💰 STEAL FAILED!';
+  }
 
   const bgColor = isJackpot ? 'linear-gradient(135deg, #FFD700, #FFA500)' :
                   isWin ? 'linear-gradient(135deg, #4CAF50, #45a049)' :
@@ -62,18 +85,14 @@ export default function GambleOverlay() {
       }}>
         <div style={{ fontSize: 56, marginBottom: 30, opacity: 0.9 }}>{user}</div>
         <div style={{ fontSize: 72, fontWeight: 'bold', marginBottom: 20 }}>
-          {isJackpot ? 'JACKPOT!' : isWin ? 'WON' : 'LOST'}
+          {title}
         </div>
-        {amount > 0 && (
-          <div style={{ fontSize: 64 }}>
-            {change > 0 ? '+' : ''}{(change || 0).toLocaleString()} Points
-          </div>
-        )}
-        {oldTotal !== undefined && newTotal !== undefined && (
-          <div style={{ fontSize: 48, marginTop: 20, opacity: 0.8 }}>
-            {(oldTotal || 0).toLocaleString()} → {(newTotal || 0).toLocaleString()}
-          </div>
-        )}
+        <div style={{ fontSize: 64 }}>
+          {change > 0 ? '+' : ''}{change.toLocaleString()} Points
+        </div>
+        <div style={{ fontSize: 48, marginTop: 20, opacity: 0.8 }}>
+          {oldTotal.toLocaleString()} → {newTotal.toLocaleString()}
+        </div>
       </div>
       <style>{`
         @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }

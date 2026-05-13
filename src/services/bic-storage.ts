@@ -96,7 +96,7 @@ export function removeFromBlacklist(target: string): boolean {
  */
 export async function migrateFromAutomationVariables(tenantId?: string): Promise<number> {
   try {
-    const { readAutomationVariables } = await import('./automation-variables-store');
+    const { readAutomationVariables } = await import('@/lib/automation-variables-store');
     const allVars = await readAutomationVariables(tenantId);
     const oldTotal = Number(allVars.global?.bic_total) || 0;
     const oldBlacklist = (allVars.global?.bic_blacklist as string[] | undefined) || [];

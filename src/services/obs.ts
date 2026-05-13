@@ -61,7 +61,7 @@ export async function setupObsWebSocket(): Promise<void> {
             try {
                 (obsClient as any).on?.('ConnectionOpened', () => console.log('[OBS] Connected'));
                 (obsClient as any).on?.('ConnectionClosed', () => {
-                    console.log('[OBS] Disconnected');
+                    // OBS disconnected silently — expected when OBS is not running
                     obsClient = null;
                 });
             } catch {

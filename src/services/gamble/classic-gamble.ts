@@ -180,7 +180,8 @@ function parseBetAmount(input: string, currentPoints: number): number {
   return isNaN(num) ? -1 : num;
 }
 
-async function sendOutput(user: string, message: string): Promise<void> {
+async function sendOutput(user: string, message: string, tenantId?: string): Promise<void> {
+  if (tenantId === '__kick_silent__') return;
   await sendChatMessage(`❌ @${user}, ${message}`, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
 }
 
@@ -202,36 +203,36 @@ export async function handleGamble(
     if (settings.defaultBet > 0) {
       betAmount = settings.defaultBet;
     } else {
-      await sendOutput(user, `please specify a valid bet amount or set DefaultBet > 0.`);
+      await sendOutput(user, `please specify a valid bet amount or set DefaultBet > 0.`, tenantId);
       return null;
     }
   } else {
     betAmount = parseBetAmount(betInput, userPoints);
     
     if (betAmount < 0) {
-      await sendOutput(user, `invalid bet! Use numbers/all/half/quarter/third/random.`);
+      await sendOutput(user, `invalid bet! Use numbers/all/half/quarter/third/random.`, tenantId);
       return null;
     }
   }
   
   // Validate bet
   if (betAmount <= 0 && userPoints > 0) {
-    await sendOutput(user, `you must bet a positive amount.`);
+    await sendOutput(user, `you must bet a positive amount.`, tenantId);
     return null;
   }
   
   if (betAmount > userPoints) {
-    await sendOutput(user, `you can't bet ${formatNumber(betAmount)} ${settings.currencyName}! You only have ${formatNumber(userPoints)}.`);
+    await sendOutput(user, `you can't bet ${formatNumber(betAmount)} ${settings.currencyName}! You only have ${formatNumber(userPoints)}.`, tenantId);
     return null;
   }
   
   if (settings.minBet > 0 && betAmount < settings.minBet) {
-    await sendOutput(user, `you must bet at least ${formatNumber(settings.minBet)} ${settings.currencyName}.`);
+    await sendOutput(user, `you must bet at least ${formatNumber(settings.minBet)} ${settings.currencyName}.`, tenantId);
     return null;
   }
   
   if (settings.maxBet > 0 && betAmount > settings.maxBet) {
-    await sendOutput(user, `you can bet at most ${formatNumber(settings.maxBet)} ${settings.currencyName}.`);
+    await sendOutput(user, `you can bet at most ${formatNumber(settings.maxBet)} ${settings.currencyName}.`, tenantId);
     return null;
   }
   
@@ -259,7 +260,7 @@ export async function handleGamble(
   
   // Send to overlay in overlay mode
   if (gambleMode === 'overlay') {
-    await sendToOverlay(user, result, tenantId);
+    await sendGambleToOverlay(user, result, tenantId);
   }
   
   console.log(`[ClassicGamble] ${user} ${outcome}: ${change > 0 ? '+' : ''}${change} (new: ${newTotal})`);
@@ -277,12 +278,12 @@ export async function handleRoll(
   
   const betAmount = parseInt(betInput);
   if (isNaN(betAmount) || betAmount <= 0) {
-    await sendOutput(user, `usage: !roll <amount>`);
+    await sendOutput(user, `usage: !roll <amount>`, tenantId);
     return null;
   }
   
   if (betAmount > userPoints) {
-    await sendOutput(user, `you don't have enough points! You have ${formatNumber(userPoints)}.`);
+    await sendOutput(user, `you don't have enough points! You have ${formatNumber(userPoints)}.`, tenantId);
     return null;
   }
   
@@ -327,7 +328,7 @@ export async function handleDouble(
   await loadSettings();
   
   if (wager * 2 > userPoints) {
-    await sendOutput(user, `you don't have enough points for double-or-nothing! Need ${formatNumber(wager * 2)}, have ${formatNumber(userPoints)}.`);
+    await sendOutput(user, `you don't have enough points for double-or-nothing! Need ${formatNumber(wager * 2)}, have ${formatNumber(userPoints)}.`, tenantId);
     return null;
   }
   
@@ -439,6 +440,31 @@ async function sendDoubleToOverlay(user: string, result: DoubleResult, wager: nu
     }
   } catch (error) {
     console.error('[ClassicGamble] Double overlay error:', error);
+  }
+}
+
+async function sendGambleToOverlay(user: string, result: GambleResult, tenantId?: string): Promise<void> {
+  try {
+    const overlayData = {
+      type: 'gamble',
+      text: `${user} ${result.outcome}!`,
+      payload: {
+        user,
+        outcome: result.outcome,
+        betAmount: result.betAmount,
+        change: result.change,
+        newTotal: result.newTotal,
+        displayAmount: result.displayAmount,
+        currency: settings.currencyName
+      },
+      timestamp: Date.now()
+    };
+
+    if (typeof (global as any).broadcast === 'function') {
+      (global as any).broadcast({ type: 'gamble-result', payload: overlayData }, tenantId);
+    }
+  } catch (error) {
+    console.error('[ClassicGamble] Gamble overlay error:', error);
   }
 }
 

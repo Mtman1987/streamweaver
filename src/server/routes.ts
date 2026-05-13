@@ -235,6 +235,32 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 return;
             }
 
+            if (pathname === '/api/kick/connect' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                    try {
+                        const { channelName, tenantId } = JSON.parse(body);
+                        if (!channelName) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'channelName required' }));
+                            return;
+                        }
+                        const { getMultiPlatformManager } = require('../services/multi-platform');
+                        const mp = getMultiPlatformManager();
+                        await mp.connectKick(channelName, tenantId);
+                        console.log(`[HTTP] ✅ Kick connected for ${channelName} (tenant: ${tenantId})`);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true }));
+                    } catch (e: any) {
+                        console.error('[HTTP] Kick connect failed:', e);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+
             if (pathname === '/api/twitch/reconnect' && req.method === 'POST') {
                 let body = '';
                 req.on('data', chunk => body += chunk);

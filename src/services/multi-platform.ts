@@ -7,7 +7,7 @@ import { EventEmitter } from 'events';
 import { getYouTubeService, YouTubeMessage } from './youtube';
 import { getKickService, KickMessage } from './kick';
 import { getTikTokService, TikTokMessage, TikTokGift, TikTokFollow } from './tiktok';
-import { handleKickMessage } from './kick-dispatcher';
+import { handleKickMessage } from './chat-dispatcher';
 
 export interface UnifiedMessage {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok' | 'discord';
@@ -173,11 +173,18 @@ export class MultiPlatformChatManager extends EventEmitter {
         this.connections.set('kick', true);
         console.log('[MultiPlatform] Kick connected');
         this.emit('platformConnected', 'kick');
+        // Broadcast status to dashboard
+        if (typeof (global as any).broadcast === 'function') {
+          (global as any).broadcast({ type: 'kick-status', payload: { connected: true, channel: channelName } }, tenantId);
+        }
       });
 
       kick.on('disconnected', () => {
         this.connections.set('kick', false);
         this.emit('platformDisconnected', 'kick');
+        if (typeof (global as any).broadcast === 'function') {
+          (global as any).broadcast({ type: 'kick-status', payload: { connected: false, channel: channelName } }, tenantId);
+        }
       });
 
       kick.on('error', (error) => {

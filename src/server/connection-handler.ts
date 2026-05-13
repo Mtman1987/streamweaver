@@ -4,12 +4,10 @@ import { getCachedChatHistory, loadChatHistory } from '../services/chat-monitor'
 
 export async function handleNewConnection(ws: WebSocket) {
     try {
-        console.log('[ConnectionHandler] New client connected.');
         const tenantId = (ws as any).__tenantId;
 
         // 1. Send tenant-specific Twitch status (or disconnected until identify).
         const status = tenantId ? getTwitchStatus(tenantId) : 'disconnected';
-        console.log(`[ConnectionHandler] Sending Twitch status to client: ${status} (tenant=${tenantId || 'unidentified'})`);
         if (status) {
             ws.send(JSON.stringify({
                 type: 'twitch-status',
@@ -32,8 +30,6 @@ export async function handleNewConnection(ws: WebSocket) {
         }
 
         // 3. Trigger a fresh load from Discord in the background.
-        // The `loadChatHistory` function itself will broadcast the result to all clients.
-        console.log('[ConnectionHandler] Triggering background refresh of chat history.');
         loadChatHistory(tenantId).catch((e) => console.error('[ConnectionHandler] Background history refresh failed:', e));
 
     } catch (e) {

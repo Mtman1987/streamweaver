@@ -47,6 +47,7 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname.startsWith('/api/auth/')) return true;
   if (pathname === '/api/__health' || pathname === '/api/session') return true;
   if (pathname === '/api/discord/chat') return true;
+  if (pathname === '/api/kick/chat-tag-broadcast') return true;
 
   if (method !== 'GET') return false;
 

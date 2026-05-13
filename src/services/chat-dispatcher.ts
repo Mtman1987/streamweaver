@@ -3,6 +3,7 @@ import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { sendDiscordMessage } from './discord';
 import { sendChatMessage } from './twitch';
+import { getKickService } from './kick';
 import { addPoints, awardChatPoints } from './points';
 import { givePoints, stealPoints } from './points-transfer';
 import { shouldWelcomeUser, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
@@ -17,6 +18,8 @@ import { getAIConfig } from './ai-provider';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
+import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
+import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { tenantPath } from '../lib/tenant';
@@ -32,6 +35,10 @@ export function markTtsHandled(message: string) {
     ttsHandledMessages.add(message.slice(0, 100));
     // Auto-cleanup after 10 seconds
     setTimeout(() => ttsHandledMessages.delete(message.slice(0, 100)), 10000);
+}
+
+export async function handleKickMessage(message: KickMessage, tenantId: string) {
+    return dispatchKickMessage(message, tenantId);
 }
 
 // Pagination state for card listings
@@ -72,8 +79,41 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Build storage context for tenant-scoped services
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: replyChannel } : undefined;
     
-    // Helper: send chat message to the correct channel (shared-chat aware)
+    // Helper: send chat message to Twitch (shared-chat aware)
     const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => sendChatMessage(msg, as, replyChannel, tenantId);
+
+    // Mirror Twitch dispatcher outputs to Kick for duel-stream mode.
+    // Enable with: KICK_MIRROR_CHAT=true
+
+    // Notes:
+    // - We always send the same text to Kick; Kick handles the formatting internally.
+    // - Some features (like points/storage) are handled independently on Kick; mirroring is for outputs/replies only.
+
+    const shouldMirrorToKick = () => {
+        // Enable with: KICK_MIRROR_CHAT=true
+        return process.env.KICK_MIRROR_CHAT === 'true';
+    };
+
+    const replyToKick = async (msg: string) => {
+        try {
+            const kick = getKickService(tenantId);
+            if (!kick.isConnected()) return;
+            await kick.sendChatMessage(msg);
+        } catch {}
+    };
+
+    const replyToKickIfEnabled = async (msg: string) => {
+        if (!shouldMirrorToKick()) return;
+        await replyToKick(msg);
+    };
+
+    const replyMaybeKick = async (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => {
+        await reply(msg, as).catch(() => {});
+        await replyToKickIfEnabled(msg);
+    };
+
+
+
     
     // Prevent duplicate processing with more specific ID
     const messageId = `${tags.id || 'no-id'}-${username}-${message.slice(0, 50)}`;
@@ -181,7 +221,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             });
             
             if (response.ok) {
-                await reply('ok but only because i want too, not because you told me', 'bot').catch(() => {});
+                await replyMaybeKick('ok but only because i want too, not because you told me', 'bot').catch(() => {});
+
                 console.log(`[Dispatcher] AI memory cleared by ${actualUsername}`);
             } else {
                 console.error('[Dispatcher] Memory clear API failed:', response.status);
@@ -235,9 +276,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 if (pointCost > 0) {
                     const { getUserPoints } = require('./points');
                     const pts = await getUserPoints(actualUsername, tenantCtx);
-                    if (pts < pointCost) {
-                        await reply(`@${actualUsername}, you need ${pointCost} points for this check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
-                        return;
+                        if (pts < pointCost) {
+                            await replyMaybeKick(`@${actualUsername}, you need ${pointCost} points for this check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
+                            return;
+
                     }
                 }
 
@@ -250,13 +292,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 }
 
                 if (source.entries.length === 0) {
-                    await reply(`@${actualUsername}, no ${source.sourceLabel.toLowerCase()} found right now.`, 'broadcaster').catch(() => {});
+                    await replyMaybeKick(`@${actualUsername}, no ${source.sourceLabel.toLowerCase()} found right now.`, 'broadcaster').catch(() => {});
                     return;
                 }
                 
                 const listMessage = formatCheckinList(matchedCheckin.kind, source.entries);
                 console.log(`[Dispatcher] Check-in list message:`, listMessage);
-                await reply(listMessage, 'broadcaster').catch(() => {});
+                    await replyMaybeKick(listMessage, 'broadcaster').catch(() => {});
+
 
                 const selectionId = parseInt(numArg, 10);
                 if (!selectionId || isNaN(selectionId) || selectionId < 1) {
@@ -706,6 +749,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        // Handle !gamblemode command
+        if (actualMessage.toLowerCase() === '!gamblemode') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { toggleMode } = await import('./modes-manager');
+                const toggled = await toggleMode('gamblemode', tenantId);
+                await reply(`🎰 Gamble mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
+            } else {
+                await reply(`@${actualUsername}, only mods can change gamble mode!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+        
         // Handle !greetingmode command
         if (actualMessage.toLowerCase() === '!greetingmode') {
             if (tags.mod || tags.badges?.broadcaster) {
@@ -923,12 +978,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const targetUser = args.replace('@', '').toLowerCase();
                 if (isBlacklisted(targetUser)) { await reply(`@${actualUsername}, ${targetUser} is protected from lighter theft!`, 'bot').catch(() => {}); return; }
                 const { total, userCount } = stealLighter(targetUser);
-                await reply(`fatkid4ev4 has stolen ${total} lighters, of those ${userCount} have been ${targetUser}'s`, 'bot').catch(() => {});
+                await reply(`🔥 fatkid4ev4 has stolen ${total} lighters, of those ${userCount} have been ${targetUser}'s`, 'bot').catch(() => {});
                 const { publishBicOverlay } = require('./bic-service');
                 await publishBicOverlay({ total, lastUser: targetUser, lastUserCount: userCount });
                 // Notify fatkid's stream about the lighter theft
                 if (tenantId !== '757276653') {
-                    sendChatMessage(`🔥 @${actualUsername} just swiped a lighter from ${targetUser} over in ${replyChannel}'s stream! (${total} total stolen)`, 'bot', undefined, '757276653').catch(() => {});
+                    sendChatMessage(`🔥 fatkid4ev4 stole ${targetUser}'s lighter! (${total} total stolen, ${userCount} from ${targetUser})`, 'bot', undefined, '757276653').catch(() => {});
                 }
             } catch (err) {
                 console.error('[Bic] Error:', err);
@@ -1423,7 +1478,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         
         // 1. Command Handling from JSON files
         console.log(`[Dispatcher] Looking for command: ${cmdName}`);
-        console.log(`[Dispatcher] Available commands:`, commands.map((c: any) => c.command).join(', '));
+        const commands = await getAllCommands(tenantId);
+        const configuredCommand = commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName);
         
         const command = configuredCommand || commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName && c.enabled);
         
@@ -1678,7 +1734,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 if (!skipWelcome && await shouldWelcomeUser(actualUsername, tenantId)) {
                     const welcomeMode = await getWelcomeMode(tenantId);
                 
-                    if (welcomeMode === 'off') {
+                    if (String(welcomeMode).toLowerCase() === 'off') {
+
                         // Welcome disabled — do nothing
                     } else {
                         // Let handleWalkOnShoutout use greetingmode to decide behavior
@@ -1745,7 +1802,8 @@ If no good match, respond with: Could not find matching user`;
                             });
                         } else {
                             console.log('[Dispatcher] AI did not return valid shoutout command');
-                            await reply('Could not find matching user in chat', 'bot').catch(() => {});
+                            await replyMaybeKick('Could not find matching user in chat', 'bot').catch(() => {});
+
                         }
                     }
                 } catch (error) {

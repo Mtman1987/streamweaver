@@ -63,6 +63,7 @@ export async function sendChatMessage(
   targetChannel?: string,
   tenantId?: string
 ): Promise<void> {
+  if (tenantId === '__kick_silent__') return;
   try {
     const wsPort = process.env.WS_PORT || '8090';
     const body: any = { message, as };

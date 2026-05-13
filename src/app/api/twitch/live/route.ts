@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { usernames } = parsed.data;
-    console.log('[Twitch Live API] Received usernames:', usernames.length);
+
 
     // Handle both string arrays and object arrays from new JSON format
     const usernameStrings = usernames
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     // Use usernames as-is (no variations needed when reading from validated JSON)
     const allUsernames = new Set(usernameStrings);
     
-    console.log(`[Twitch Live API] Checking ${allUsernames.size} usernames`);
+
     
     // Get all users in batches of 100
     const batchSize = 100;
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    console.log(`[Twitch Live API] Found ${allUsers.length} valid Twitch users`);
+
     
     if (allUsers.length === 0) {
       return NextResponse.json({ liveUsers: [] });
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    console.log(`[Twitch Live API] ${liveUsers.length} users are live`);
+    if (liveUsers.length > 0) console.log(`[Twitch Live] ${liveUsers.length} users live: ${liveUsers.map(u => u.username).join(', ')}`);
     return NextResponse.json({ 
       liveUsers,
       allUsers: allUsers.map(user => ({

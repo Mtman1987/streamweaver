@@ -62,14 +62,16 @@ export async function POST(
         }
       }
 
-      // Signal the server process to connect (runs outside Next.js bundle)
+      // Signal the server process to connect via its HTTP endpoint (same process as Kick service)
       try {
-        const connectFn = (global as any).__kickConnect;
-        if (connectFn) {
-          connectFn(username, tenantId).catch((e: any) => console.error('[Kick] Background connect failed:', e));
-        } else {
-          console.log('[Kick] No server-side connect function available. Will connect on next restart.');
-        }
+        const wsPort = process.env.WS_PORT || '8090';
+        fetch(`http://127.0.0.1:${wsPort}/api/kick/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelName: username, tenantId }),
+        }).then(r => {
+          if (!r.ok) r.text().then(t => console.error('[Kick] Server connect failed:', t));
+        }).catch((e: any) => console.error('[Kick] Server connect request failed:', e));
       } catch {}
 
       return NextResponse.json({ success: true, platform: 'kick' });
