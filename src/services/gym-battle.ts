@@ -78,6 +78,9 @@ function getState(tenantId?: string) {
 }
 
 function getBroadcasterUsername(tenantId?: string): string {
+  if (tenantId?.startsWith('__kick_silent__:')) {
+    tenantId = tenantId.slice('__kick_silent__:'.length);
+  }
   if (tenantId) {
     try {
       const tenantsDir = path.join(process.env.PERSIST_ROOT || path.join(process.cwd(), 'data', 'runtime'), 'tenants');

@@ -46,6 +46,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
 
   // Get the kick service for this tenant to send replies
   const kick = getKickService(tenantId);
+  const silentTenantId = `__kick_silent__:${tenantId}`;
   const reply = async (text: string) => {
     try {
       await kick.sendChatMessage(text);
@@ -272,11 +273,131 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         await reply(`MASTER MODE: ${modes.chatmode.toUpperCase()} | Gamble(${modes.gamblemode}), Welcome(${modes.welcomemode}), Greeting(${modes.greetingmode}), Clip(${modes.clipmode})`);
         return;
       }
+      case 'brb': {
+        if (!isPrivileged) return;
+        const { startBRB } = require('./brb-clips');
+        startBRB(broadcasterName, tenantId).catch((err: any) => console.error('[KickDispatcher] BRB error:', err));
+        await reply('Starting BRB clip player...');
+        return;
+      }
+      case 'back': {
+        if (!isPrivileged) return;
+        const { stopBRB } = require('./brb-clips');
+        stopBRB();
+        if (typeof (global as any).broadcast === 'function') {
+          (global as any).broadcast({ type: 'brb-stop' }, tenantId);
+          try {
+            const { getConfigSection } = require('../lib/local-config/service');
+            const obsConfig = await getConfigSection('obs', tenantId);
+            const liveScene = obsConfig?.scenes?.live || 'Live';
+            (global as any).broadcast({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
+          } catch {}
+        }
+        await reply('Welcome back!');
+        return;
+      }
+      case 'ignore': {
+        if (!isPrivileged) { await reply(`@${username}, only mods can manage the ignore list!`); return; }
+        const targetUser = args.replace('@', '').trim().toLowerCase();
+        if (!targetUser) {
+          await reply(`@${username}, usage: !ignore @username`);
+          return;
+        }
+        try {
+          const { isKnownBot, addCustomBot, removeCustomBot } = require('./known-bots');
+          const currentlyIgnored = await isKnownBot(targetUser, tenantId);
+          if (currentlyIgnored) await removeCustomBot(targetUser, tenantId);
+          else await addCustomBot(targetUser, tenantId);
+          await reply(currentlyIgnored
+            ? `@${username}, ${targetUser} removed from ignore list.`
+            : `@${username}, ${targetUser} added to ignore list (no welcome/shoutout/points).`);
+        } catch (err) {
+          console.error('[KickDispatcher] !ignore error:', err);
+        }
+        return;
+      }
+      case 'checkin':
+      case 'partner':
+      case 'crew':
+      case 'crewcheckin':
+      case 'mod':
+      case 'modcheckin':
+      case 'spacemountain':
+      case 'space':
+      case 'spacecheckin': {
+        const kindMap: Record<string, 'partner' | 'crew' | 'mod' | 'space-mountain'> = {
+          checkin: 'partner',
+          partner: 'partner',
+          crew: 'crew',
+          crewcheckin: 'crew',
+          mod: 'mod',
+          modcheckin: 'mod',
+          spacemountain: 'space-mountain',
+          space: 'space-mountain',
+          spacecheckin: 'space-mountain',
+        };
+        const kind = kindMap[cmdName];
+        try {
+          const { getConfigSection } = require('../lib/local-config/service');
+          const { getCheckinSource } = require('./checkin-sources');
+          const { formatCheckinList, createPendingPayload, runCheckin, runBulkCheckin } = require('./checkin-flow');
+          const redeemsConfig = await getConfigSection('redeems', tenantId);
+          const checkinConfigMap: Record<string, any> = {
+            partner: redeemsConfig.partnerCheckin,
+            crew: redeemsConfig.crewCheckin,
+            mod: redeemsConfig.modCheckin,
+            'space-mountain': redeemsConfig.spaceMountainCheckin,
+          };
+          const pointCost = Number(checkinConfigMap[kind]?.pointCost || 0);
+          if (pointCost > 0) {
+            const { getUserPoints } = require('./points');
+            const pts = await getUserPoints(pointsUsername, ctx);
+            if (pts < pointCost) {
+              await reply(`@${username}, you need ${pointCost} points for this check-in! (You have ${pts})`);
+              return;
+            }
+          }
+          const source = await getCheckinSource(kind, tenantId, pointsUsername);
+          if (kind === 'space-mountain') {
+            await runBulkCheckin('space-mountain', pointsUsername, pointCost, tenantId);
+            await reply(`@${username}, space mountain check-in started.`);
+            return;
+          }
+          if (source.entries.length === 0) {
+            await reply(`@${username}, no ${source.sourceLabel.toLowerCase()} found right now.`);
+            return;
+          }
+          await reply(formatCheckinList(kind, source.entries));
+          const selectionId = parseInt(args, 10);
+          if (!selectionId || isNaN(selectionId) || selectionId < 1) {
+            const { pendingCheckins } = require('./eventsub');
+            if (pendingCheckins) {
+              const tenantKey = tenantId || 'global';
+              let tenantSelections = pendingCheckins.get(tenantKey);
+              if (!tenantSelections) {
+                tenantSelections = new Map();
+                pendingCheckins.set(tenantKey, tenantSelections);
+              }
+              tenantSelections.set(pointsUsername.toLowerCase(), { timestamp: Date.now(), kind, pointCost });
+              if (typeof (global as any).broadcast === 'function') {
+                (global as any).broadcast({ type: 'checkin-pending', payload: createPendingPayload(kind, pointsUsername, source.sourceLabel) }, tenantId);
+              }
+            }
+            return;
+          }
+          await runCheckin(kind, pointsUsername, selectionId, pointCost, tenantId);
+          await reply(`@${username}, check-in submitted.`);
+        } catch (err) {
+          console.error('[KickDispatcher] check-in command failed:', err);
+          await reply(`@${username}, check-in system error! Contact a mod.`);
+        }
+        return;
+      }
       case 'gamble': {
         const { handleGamble } = require('./gamble/classic-gamble');
         const betInput = args;
         const userPts = await getPoints(pointsUsername, ctx);
-        const result = await handleGamble(pointsUsername, betInput, userPts.points, '__kick_silent__');
+        const result = await handleGamble(pointsUsername, betInput, userPts.points, silentTenantId);
         if (result) {
           await setPoints(pointsUsername, result.newTotal, ctx);
           const changeStr = result.change >= 0 ? `+${result.change}` : `${result.change}`;
@@ -288,7 +409,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       case 'roll': {
         const { handleRoll } = require('./gamble/classic-gamble');
         const userPts = await getPoints(pointsUsername, ctx);
-        const result = await handleRoll(pointsUsername, args, userPts.points, '__kick_silent__');
+        const result = await handleRoll(pointsUsername, args, userPts.points, silentTenantId);
         if (result) {
           await setPoints(pointsUsername, result.newTotal, ctx);
           // Store double-or-nothing state for !double (30 second window)
@@ -307,7 +428,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         }
         const { handleDouble } = require('./gamble/classic-gamble');
         const dblPts = await getPoints(username, ctx);
-        const dblResult = await handleDouble(username, doubleState.wager, dblPts.points, '__kick_silent__');
+        const dblResult = await handleDouble(username, doubleState.wager, dblPts.points, silentTenantId);
         if (dblResult) {
           await setPoints(username, dblResult.newTotal, ctx);
           const dblMsg = dblResult.won
@@ -424,7 +545,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         }
         // Open pack silently (suppress Twitch output) and reply to Kick only
         const { handlePackOpenCmd } = require('./eventsub');
-        await handlePackOpenCmd(pointsUsername, setNumber, pointCost, '__kick_silent__');
+        await handlePackOpenCmd(pointsUsername, setNumber, pointCost, silentTenantId);
         // Send result to Kick
         try {
           const { getUserCards } = require('./pokemon-collection');
@@ -498,6 +619,118 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         await reply(`@${username}, gym team set: ${matched.map((c: any) => `${c.name} (${c.setCode}-${c.number})`).join(', ')}`);
         return;
       }
+      case 'so': {
+        const targetName = args.trim().replace('@', '');
+        if (!targetName) {
+          await reply(`@${username}, usage: !so <user>`);
+          return;
+        }
+        try {
+          incrementMetric('shoutoutsGiven').catch(() => {});
+          await reply(`Go check out @${targetName}: https://twitch.tv/${targetName}`);
+        } catch (err: any) {
+          console.error('[KickDispatcher] !so failed:', err);
+          await reply(`@${username}, shoutout failed: ${err?.message || 'unknown error'}`);
+        }
+        return;
+      }
+      case 'offer': {
+        if (!args.trim()) {
+          await reply(`@${username}, usage: !offer <name> <number> or !offer <set>-<number>`);
+          return;
+        }
+        const { offerCard } = require('./pokemon-trade-manager');
+        await offerCard(pointsUsername, args.trim(), silentTenantId);
+        await reply(`@${username}, offer received.`);
+        return;
+      }
+      case 'accept': {
+        const { acceptSwap, hasPendingSwap } = require('./pokemon-swap');
+        if (hasPendingSwap(pointsUsername, silentTenantId)) {
+          const accepted = await acceptSwap(pointsUsername, silentTenantId);
+          await reply(accepted ? `@${username}, swap accepted.` : `@${username}, no pending swap found.`);
+          return;
+        }
+        const { acceptTrade } = require('./pokemon-trade-manager');
+        await acceptTrade(pointsUsername, silentTenantId);
+        await reply(`@${username}, trade accept received.`);
+        return;
+      }
+      case 'cancel': {
+        const { cancelSwap, hasPendingSwap } = require('./pokemon-swap');
+        if (hasPendingSwap(pointsUsername, silentTenantId)) {
+          const cancelled = await cancelSwap(pointsUsername, silentTenantId);
+          await reply(cancelled ? `@${username}, swap cancelled.` : `@${username}, no pending swap found.`);
+          return;
+        }
+        const { cancelTrade } = require('./pokemon-trade-manager');
+        await cancelTrade(pointsUsername, silentTenantId);
+        await reply(`@${username}, trade cancel received.`);
+        return;
+      }
+      case 'swap': {
+        const parts = args.trim().match(/^@?(\S+)\s+(\d+)\s+for\s+(\d+)$/i);
+        if (!parts) {
+          await reply(`@${username}, usage: !swap @user <your card#> for <their card#>`);
+          return;
+        }
+        const targetUser = parts[1].replace('@', '');
+        const myCard = parseInt(parts[2], 10);
+        const theirCard = parseInt(parts[3], 10);
+        if (targetUser.toLowerCase() === pointsUsername.toLowerCase()) {
+          await reply(`@${username}, you can't swap with yourself!`);
+          return;
+        }
+        const { proposeSwap } = require('./pokemon-swap');
+        await proposeSwap(pointsUsername, targetUser, myCard, theirCard, silentTenantId);
+        await reply(`@${username} proposed a swap with @${targetUser}. @${targetUser} type !accept or !cancel.`);
+        return;
+      }
+      case 'challenge': {
+        const { joinQueue } = require('./gym-battle');
+        await joinQueue(pointsUsername, silentTenantId);
+        await reply(`@${username}, you joined the gym queue.`);
+        return;
+      }
+      case 'testswap': {
+        if (!isPrivileged) return;
+        const { proposeSwap, acceptSwap } = require('./pokemon-swap');
+        await proposeSwap(pointsUsername, 'akhiteddy', 1, 1, silentTenantId);
+        setTimeout(async () => {
+          await acceptSwap('akhiteddy', silentTenantId);
+        }, 5000);
+        await reply(`@${username}, test swap started.`);
+        return;
+      }
+      case 'testgym': {
+        if (!isPrivileged) return;
+        const { testGymBattle } = require('./gym-battle');
+        await testGymBattle(silentTenantId);
+        await reply(`@${username}, test gym battle queued.`);
+        return;
+      }
+      case 'nextchallenger': {
+        if (!isPrivileged) {
+          await reply(`@${username}, only the gym leader can start battles!`);
+          return;
+        }
+        const { startNextBattle } = require('./gym-battle');
+        await startNextBattle(silentTenantId);
+        await reply(`@${username}, starting the next challenger.`);
+        return;
+      }
+      case 'attack': {
+        const { battleAttack } = require('./gym-battle');
+        await battleAttack(pointsUsername, silentTenantId);
+        await reply(`@${username}, attack submitted.`);
+        return;
+      }
+      case 'switch': {
+        const { battleSwitch } = require('./gym-battle');
+        await battleSwitch(pointsUsername, silentTenantId);
+        await reply(`@${username}, switch submitted.`);
+        return;
+      }
       case 'link': {
         if (!args) {
           await reply(`@${username}, type !link <your_twitch_username> to link your Kick account to your Twitch for points & commands.`);
@@ -547,7 +780,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       case 'leader': {
         const { handleLeaderboardCommand } = require('./leaderboard-commands');
         const broadcastFn = typeof (global as any).broadcast === 'function' ? (global as any).broadcast : () => {};
-        await handleLeaderboardCommand('!leader', pointsUsername, '', broadcastFn, '__kick_silent__');
+        await handleLeaderboardCommand('!leader', pointsUsername, '', broadcastFn, silentTenantId);
         // Get leaderboard data and reply to Kick
         try {
           const { getLeaderboard } = require('./points');
