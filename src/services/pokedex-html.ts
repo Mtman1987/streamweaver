@@ -164,7 +164,6 @@ let pickMode='gym'; // 'gym' or 'swap' or 'deck'
 let deckCards=[];  // array of collection idx
 const deckEnergy={Fire:0,Water:0,Grass:0,Lightning:0,Psychic:0,Fighting:0,Colorless:0};
 const ENERGY_IMGS={Fire:'https://images.pokemontcg.io/base1/98.png',Water:'https://images.pokemontcg.io/base1/102.png',Grass:'https://images.pokemontcg.io/base1/99.png',Lightning:'https://images.pokemontcg.io/base1/100.png',Psychic:'https://images.pokemontcg.io/base1/101.png',Fighting:'https://images.pokemontcg.io/base1/97.png',Colorless:'https://images.pokemontcg.io/base1/96.png'};
-const CURRENT_SEASON='season-1';
 function deckTotal(){return deckCards.length+Object.values(deckEnergy).reduce((a,b)=>a+b,0)}
 function getDeckCmd(){
   if(deckTotal()===0)return 'Add cards to build a deck';

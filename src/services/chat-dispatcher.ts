@@ -1094,12 +1094,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     await reply(`@${actualUsername}, card #${invalid} doesn't exist in your collection!`, 'broadcaster').catch(() => {});
                     return;
                 }
-                // Verify all cards are from current season
-                const nonSeason = decoded.cards.find((idx: number) => cards[idx - 1].seasonId !== 'season-1');
-                if (nonSeason) {
-                    await reply(`@${actualUsername}, card #${nonSeason} (${cards[nonSeason - 1].name}) is not from the current season!`, 'broadcaster').catch(() => {});
-                    return;
-                }
                 const { getUserCollection, saveUserCollection } = require('./pokemon-storage-discord');
                 const col = await getUserCollection(actualUsername);
                 col.deck = { cards: decoded.cards, energy };
