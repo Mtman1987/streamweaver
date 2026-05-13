@@ -33,11 +33,22 @@ interface TwitchClip {
 
 type ShoutoutMode = 'full' | 'overlay' | 'chat';
 
+type ShoutoutOptions = {
+    chatReply?: (message: string) => Promise<void>;
+    linkMessage?: string;
+};
+
+function normalizeTenantId(tenantId?: string): string | undefined {
+    if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
+    return tenantId;
+}
+
 // ============================
 // SHOUTOUT MODE RESOLUTION
 // ============================
 
 async function getShoutoutMode(tenantId?: string): Promise<ShoutoutMode> {
+    tenantId = normalizeTenantId(tenantId);
     // Legacy check
     const cfg = readUserConfigSync(tenantId);
     if (cfg.SKIP_SHOUTOUT_OVERLAY === 'true' || process.env.SKIP_SHOUTOUT_OVERLAY === 'true') {
@@ -58,13 +69,17 @@ async function getShoutoutMode(tenantId?: string): Promise<ShoutoutMode> {
 // BROADCASTER WELCOME MESSAGE
 // ============================
 
-async function sendBroadcasterWelcome(displayName: string, tenantId?: string): Promise<void> {
+async function sendBroadcasterWelcome(displayName: string, tenantId?: string, options: ShoutoutOptions = {}): Promise<void> {
     const cfg = await getAppConfig();
     const template = cfg.shoutoutIntroMessage || 'Shoutout: go check out @{displayName} at https://twitch.tv/{displayName}';
-    const msg = template
+    const msg = options.linkMessage || template
       .replaceAll('{displayName}', displayName)
       .replaceAll('{username}', displayName.toLowerCase())
       .replaceAll('{url}', `https://twitch.tv/${displayName}`);
+    if (options.chatReply) {
+        await options.chatReply(msg);
+        return;
+    }
     await sendChatMessage(msg, 'broadcaster', undefined, tenantId);
 }
 
@@ -129,6 +144,7 @@ async function fetchClip(username: string): Promise<TwitchClip | null> {
 async function playClip(clip: TwitchClip, displayName: string, profileImage: string, tenantId?: string): Promise<void> {
     const embedURL = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
     const delay = 700 + Math.floor(clip.duration * 1000);
+    const broadcastTenantId = normalizeTenantId(tenantId);
 
     console.log(`[WalkOn] Broadcasting clip to shoutout overlay for ${displayName}`);
 
@@ -137,7 +153,7 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
         (global as any).broadcast({
             type: 'shoutout-play-clip',
             payload: { clipUrl: embedURL, thumbnailUrl: clip.thumbnailUrl, user: displayName, profileImage }
-        }, tenantId);
+        }, broadcastTenantId);
     }
 
     // Wait for clip to finish playing
@@ -271,14 +287,16 @@ Rules:
 // GREETING OUTPUT
 // ============================
 
-async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: string): Promise<void> {
-    const botName = getBotName(tenantId);
+async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: string, options: ShoutoutOptions = {}): Promise<void> {
+    const realTenantId = normalizeTenantId(tenantId);
+    const botName = getBotName(realTenantId);
 
     // Chat message: full and chat modes type in chat
     if (mode === 'full' || mode === 'chat') {
         const { markTtsHandled } = require('./chat-dispatcher');
         markTtsHandled(aiGreeting);
-        await sendChatMessage(aiGreeting, 'bot', undefined, tenantId);
+        if (options.chatReply) await options.chatReply(aiGreeting);
+        else await sendChatMessage(aiGreeting, 'bot', undefined, tenantId);
     }
 
     // Overlay broadcast: overlay mode shows on overlay instead of chat
@@ -287,18 +305,18 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
             (global as any).broadcast({
                 type: 'greeting-overlay',
                 payload: { text: aiGreeting, botName }
-            }, tenantId);
+            }, realTenantId);
         }
     }
 
     // TTS: full and overlay modes speak it
     if (mode === 'full' || mode === 'overlay') {
         try {
-            const ttsResult = await textToSpeech({ text: aiGreeting, tenantId });
+            const ttsResult = await textToSpeech({ text: aiGreeting, tenantId: realTenantId });
             if (ttsResult.audioDataUri) {
                 const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
                 if (useTTSPlayer) {
-                    const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                    const tenantQuery = realTenantId ? `?tenant=${encodeURIComponent(realTenantId)}` : '';
                     await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -309,7 +327,16 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
                         (global as any).broadcast({
                             type: 'play-tts',
                             payload: { audioDataUri: ttsResult.audioDataUri }
-                        }, tenantId);
+                        }, realTenantId);
+                    }
+                }
+                if (typeof (global as any).broadcast === 'function') {
+                    try {
+                        const { showTalkingAvatar, hideAvatarAfterDelay } = require('../server/avatar');
+                        showTalkingAvatar((global as any).broadcast, realTenantId);
+                        hideAvatarAfterDelay(12000, (global as any).broadcast, realTenantId);
+                    } catch (avatarErr) {
+                        console.error('[WalkOn] Avatar trigger failed:', avatarErr);
                     }
                 }
             }
@@ -320,7 +347,7 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
 
     // Discord
     try {
-        const discordChannelId = await getDiscordShoutoutChannelId(tenantId);
+        const discordChannelId = await getDiscordShoutoutChannelId(realTenantId);
         if (discordChannelId) {
             await sendDiscordMessage(discordChannelId, `**${botName}:** ${aiGreeting}`);
         }
@@ -347,31 +374,34 @@ async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | 
 // MAIN EXECUTION
 // ============================
 
-export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false, tenantId?: string): Promise<void> {
+export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false, tenantId?: string, options: ShoutoutOptions = {}): Promise<void> {
     const user = username.toLowerCase();
+    const realTenantId = normalizeTenantId(tenantId);
 
-    if (!skipCooldown && !(await canShoutoutUser(user, tenantId))) {
+    if (!skipCooldown && !(await canShoutoutUser(user, realTenantId))) {
         console.log(`[WalkOn] Skipping shoutout for ${user} — on cooldown or excluded.`);
         return;
     }
 
     console.log(`[WalkOn] Processing walk-on shoutout for ${displayName}`);
 
-    const mode = await getShoutoutMode(tenantId);
+    const mode = await getShoutoutMode(realTenantId);
     console.log(`[WalkOn] Shoutout mode: ${mode}`);
 
     // Build persona and generate AI greeting
-    const persona = await buildPersona(user, displayName, profileImage, tenantId);
+    const persona = await buildPersona(user, displayName, profileImage, realTenantId);
     console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
-    const aiGreeting = await generateAIGreeting(persona, tenantId);
+    const aiGreeting = await generateAIGreeting(persona, realTenantId);
     console.log(`[WalkOn] AI greeting generated`);
 
     // === MODE: CHAT ===
     // Single clean message: AI greeting + link. No clip, no TTS, no overlay.
     if (mode === 'chat') {
-        const msg = `${aiGreeting} | Go check out @${displayName}: https://twitch.tv/${displayName}`;
-        await sendChatMessage(msg, 'bot', undefined, tenantId);
-        if (!skipCooldown) await recordShoutout(user, tenantId);
+        const msg = options.linkMessage || `${aiGreeting} | Go check out @${displayName}: https://twitch.tv/${displayName}`;
+        const fullMsg = options.linkMessage ? `${aiGreeting} | ${msg}` : msg;
+        if (options.chatReply) await options.chatReply(fullMsg);
+        else await sendChatMessage(fullMsg, 'bot', undefined, tenantId);
+        if (!skipCooldown) await recordShoutout(user, realTenantId);
         console.log(`[WalkOn] Completed chat-only shoutout for ${displayName}`);
         return;
     }
@@ -380,14 +410,14 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     // Both play the clip first, then fire the greeting after
 
     // Broadcaster drops the link
-    await sendBroadcasterWelcome(displayName, tenantId);
+    await sendBroadcasterWelcome(displayName, tenantId, options);
 
     // Fetch and play clip (errors won't prevent greeting from firing)
     try {
         const clip = await fetchClip(username);
         if (clip) {
             console.log(`[WalkOn] Playing clip for ${displayName}`);
-            await playClip(clip, displayName, profileImage, tenantId);
+            await playClip(clip, displayName, profileImage, realTenantId);
             console.log(`[WalkOn] Clip finished for ${displayName}`);
         } else {
             console.log(`[WalkOn] No clips found for ${displayName}, skipping video`);
@@ -397,8 +427,8 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     }
 
     // Fire greeting after clip (full = chat + TTS, overlay = overlay + TTS)
-    await fireGreeting(aiGreeting, mode, tenantId);
+    await fireGreeting(aiGreeting, mode, tenantId, options);
 
-    if (!skipCooldown) await recordShoutout(user, tenantId);
+    if (!skipCooldown) await recordShoutout(user, realTenantId);
     console.log(`[WalkOn] Completed ${mode} shoutout for ${displayName}`);
 }

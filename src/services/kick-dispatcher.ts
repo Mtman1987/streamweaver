@@ -627,7 +627,13 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         }
         try {
           incrementMetric('shoutoutsGiven').catch(() => {});
-          await reply(`Go check out @${targetName}: https://twitch.tv/${targetName}`);
+          const { handleWalkOnShoutout } = require('./walk-on-shoutout');
+          const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
+          const linkMessage = `Go check out @${targetName} | Twitch: https://twitch.tv/${targetName} | Kick: https://kick.com/${targetName}`;
+          await handleWalkOnShoutout(targetName, targetName, profileImage, true, silentTenantId, {
+            chatReply: reply,
+            linkMessage,
+          });
         } catch (err: any) {
           console.error('[KickDispatcher] !so failed:', err);
           await reply(`@${username}, shoutout failed: ${err?.message || 'unknown error'}`);
