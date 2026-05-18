@@ -33,6 +33,34 @@ function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
   return Boolean(client && communityBotClient && client === communityBotClient);
 }
 
+function isClientUsable(client: tmi.Client | null | undefined): client is tmi.Client {
+  if (!client) return false;
+  try {
+    const state = typeof (client as any).readyState === 'function' ? (client as any).readyState() : null;
+    return !state || state === 'OPEN';
+  } catch {
+    return true;
+  }
+}
+
+function isAuthFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /login authentication failed|authentication failed|invalid oauth|bad auth/i.test(message);
+}
+
+async function disconnectIfOpen(client: tmi.Client | null | undefined): Promise<void> {
+  if (!client) return;
+  try {
+    const state = typeof (client as any).readyState === 'function' ? (client as any).readyState() : null;
+    if (state && state !== 'OPEN') return;
+    await client.disconnect();
+  } catch (error) {
+    if (!/socket is not opened|already closing|cannot disconnect/i.test(String(error))) {
+      throw error;
+    }
+  }
+}
+
 async function getCommunityBotTokens(): Promise<StoredTokens | null> {
   try {
     const raw = await fsp.readFile(communityBotTokensPath(), 'utf-8');
@@ -180,11 +208,11 @@ export async function setupTwitchClient(tenantId: string) {
     if (existing) {
       if (existing.botClient) {
         if (!isSharedCommunityBotClient(existing.botClient)) {
-          try { existing.botClient.removeAllListeners(); await existing.botClient.disconnect(); } catch {}
+          try { existing.botClient.removeAllListeners(); await disconnectIfOpen(existing.botClient); } catch {}
         }
       }
       if (existing.broadcasterClient) {
-        try { existing.broadcasterClient.removeAllListeners(); await existing.broadcasterClient.disconnect(); } catch {}
+        try { existing.broadcasterClient.removeAllListeners(); await disconnectIfOpen(existing.broadcasterClient); } catch {}
       }
     }
 
@@ -215,6 +243,18 @@ export async function setupTwitchClient(tenantId: string) {
 
       tenant.botClient.on('connected', () => {
         console.log(`[Twitch:${tenantId}] Bot connected as ${botUsername}`);
+      });
+
+      tenant.botClient.on('disconnected', (reason) => {
+        console.log(`[Twitch:${tenantId}] Bot disconnected: ${reason}`);
+        if (tenant.botClient && !isSharedCommunityBotClient(tenant.botClient)) {
+          tenant.botClient = null;
+        }
+        if (!isClientUsable(tenant.broadcasterClient)) {
+          tenant.status = 'disconnected';
+          tenant.retryCount++;
+          if (!isAuthFailure(reason)) scheduleRetry(tenantId);
+        }
       });
 
       await tenant.botClient.connect();
@@ -257,7 +297,7 @@ export async function setupTwitchClient(tenantId: string) {
       tenant.status = 'disconnected';
       tenant.retryCount++;
 
-      if (reason !== 'Login authentication failed') {
+      if (!isAuthFailure(reason)) {
         scheduleRetry(tenantId);
       }
     });
@@ -305,6 +345,10 @@ export async function setupTwitchClient(tenantId: string) {
     console.error(`[Twitch:${tenantId}] Setup failed:`, error);
     const tenant = tenantClients.get(tenantId);
     if (tenant) tenant.status = 'disconnected';
+    if (isAuthFailure(error)) {
+      console.error(`[Twitch:${tenantId}] Authentication failed; reconnect retries paused until the Twitch account is re-authorized.`);
+      return;
+    }
     scheduleRetry(tenantId);
   } finally {
     setupInProgress.delete(tenantId);
@@ -332,7 +376,8 @@ export function getTwitchClient(type: 'bot' | 'broadcaster' = 'bot', tenantId?: 
   if (!tenantId) {
     for (const [, tenant] of tenantClients) {
       const client = type === 'bot' ? (tenant.botClient || tenant.broadcasterClient) : tenant.broadcasterClient;
-      if (client) return client;
+      if (isClientUsable(client)) return client;
+      if (type === 'bot' && isClientUsable(tenant.broadcasterClient)) return tenant.broadcasterClient;
     }
     return null;
   }
@@ -341,9 +386,11 @@ export function getTwitchClient(type: 'bot' | 'broadcaster' = 'bot', tenantId?: 
   if (!tenant) return null;
 
   if (type === 'bot') {
-    return tenant.botClient || tenant.broadcasterClient;
+    if (isClientUsable(tenant.botClient)) return tenant.botClient;
+    if (isClientUsable(tenant.broadcasterClient)) return tenant.broadcasterClient;
+    return null;
   }
-  return tenant.broadcasterClient;
+  return isClientUsable(tenant.broadcasterClient) ? tenant.broadcasterClient : null;
 }
 
 /**
@@ -371,7 +418,9 @@ export function getTenantIdFromChannel(channel: string): string | undefined {
  * Get all active tenant IDs.
  */
 export function getActiveTenantIds(): string[] {
-  return Array.from(tenantClients.keys());
+  return Array.from(tenantClients.entries())
+    .filter(([, tenant]) => tenant.status === 'connected')
+    .map(([tenantId]) => tenantId);
 }
 
 /**
@@ -411,11 +460,11 @@ export async function disconnectTenant(tenantId: string): Promise<void> {
 
   if (tenant.botClient) {
     if (!isSharedCommunityBotClient(tenant.botClient)) {
-      try { tenant.botClient.removeAllListeners(); await tenant.botClient.disconnect(); } catch {}
+      try { tenant.botClient.removeAllListeners(); await disconnectIfOpen(tenant.botClient); } catch {}
     }
   }
   if (tenant.broadcasterClient) {
-    try { tenant.broadcasterClient.removeAllListeners(); await tenant.broadcasterClient.disconnect(); } catch {}
+    try { tenant.broadcasterClient.removeAllListeners(); await disconnectIfOpen(tenant.broadcasterClient); } catch {}
   }
 
   channelToTenant.delete(tenant.broadcasterUsername.toLowerCase());
