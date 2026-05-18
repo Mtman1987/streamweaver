@@ -144,6 +144,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         const { getActiveTenantIds, getTwitchClient: getTc } = twitchClientModule;
                         const { sendWithSharedChatAwareness } = require('../services/shared-chat');
                         const clientType = as === 'broadcaster' ? 'broadcaster' : 'bot';
+                        let sendAs: 'bot' | 'broadcaster' = clientType;
                         console.log(`[HTTP /api/twitch/send-message] Requesting client type: ${clientType}`);
                         
                         // Resolve tenant in strict order:
@@ -195,6 +196,24 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             }
                         }
 
+                        if (!client && tid) {
+                            console.warn(`[HTTP /api/twitch/send-message] No usable ${clientType} client for tenant ${tid}; attempting reconnect once.`);
+                            try {
+                                await twitchClientModule.setupTwitchClient(tid);
+                                client = getTc(clientType, tid);
+                            } catch (reconnectError) {
+                                console.error(`[HTTP /api/twitch/send-message] Reconnect attempt failed for tenant ${tid}:`, reconnectError);
+                            }
+                        }
+
+                        if (!client && clientType === 'broadcaster' && tid) {
+                            client = getTc('bot', tid);
+                            if (client) {
+                                sendAs = 'bot';
+                                console.warn(`[HTTP /api/twitch/send-message] Broadcaster client unavailable for tenant ${tid}; sending with bot client instead.`);
+                            }
+                        }
+
                         if (!client) {
                             console.error(`[HTTP /api/twitch/send-message] ${clientType} client is null/undefined`);
                             res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -213,11 +232,11 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             client,
                             channel: finalChannel,
                             message,
-                            as: clientType,
+                            as: sendAs,
                             tenantId: tid,
                         });
                         
-                        console.log(`[HTTP /api/twitch/send-message] Message sent successfully as ${clientType}`);
+                        console.log(`[HTTP /api/twitch/send-message] Message sent successfully as ${sendAs}`);
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: true }));
                     } catch (e: any) {

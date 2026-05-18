@@ -28,6 +28,8 @@ let communityBotClient: tmi.Client | null = null;
 let communityBotUsername = '';
 const communityBotChannels = new Set<string>();
 let communityBotConnectPromise: Promise<tmi.Client | null> | null = null;
+const tenantsNeedingReauth = new Set<string>();
+const lastReauthNotice = new Map<string, number>();
 
 function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
   return Boolean(client && communityBotClient && client === communityBotClient);
@@ -117,6 +119,23 @@ async function ensureCommunityBotForChannel(
         communityBotConnectPromise = null;
         communityBotChannels.clear();
       });
+      client.on('message', async (channel, tags, message, self) => {
+        try {
+          if (self) return;
+          const channelName = channel.replace('#', '').toLowerCase();
+          const tenantId = channelToTenant.get(channelName);
+          if (!tenantId) return;
+
+          if (tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {
+            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);
+            return;
+          }
+
+          await handleTwitchMessage(channel, tags, message, self);
+        } catch (error) {
+          console.error('[Twitch:community-bot] Message handler failed:', error);
+        }
+      });
 
       await client.connect();
       communityBotClient = client;
@@ -144,6 +163,15 @@ async function ensureCommunityBotForChannel(
   }
 
   return client;
+}
+
+async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {
+  const key = `${tenantId}:${String(username || 'chat').toLowerCase()}`;
+  const now = Date.now();
+  if (now - (lastReauthNotice.get(key) || 0) < 60_000) return;
+  lastReauthNotice.set(key, now);
+  const mention = username ? `@${username}, ` : '';
+  await client.say(channel, `${mention}StreamWeaver needs the streamer to re-authorize Twitch before commands can run. Open StreamWeaver > Integrations > Twitch > Re-authorize.`);
 }
 
 function scheduleRetry(tenantId: string) {
@@ -191,6 +219,24 @@ export async function setupTwitchClient(tenantId: string) {
     const tokens = await getStoredTokens(tenantId);
     if (!tokens?.broadcasterToken || !tokens?.broadcasterRefreshToken) {
       console.error(`[Twitch:${tenantId}] No tokens available.`);
+      if (tokens?.broadcasterUsername) {
+        channelToTenant.set(tokens.broadcasterUsername.toLowerCase(), tenantId);
+        tenantsNeedingReauth.add(tenantId);
+        const tenant = tenantClients.get(tenantId) || {
+          broadcasterClient: null,
+          botClient: null,
+          status: 'disconnected' as const,
+          broadcasterUsername: tokens.broadcasterUsername,
+          botUsername: tokens.botUsername || '',
+          retryCount: 0,
+        };
+        tenantClients.set(tenantId, tenant);
+        const sharedBot = await ensureCommunityBotForChannel(tokens.broadcasterUsername, clientId, clientSecret);
+        if (sharedBot) {
+          tenant.botClient = sharedBot;
+          tenant.botUsername = communityBotUsername || 'community-bot';
+        }
+      }
       setupInProgress.delete(tenantId);
       return;
     }
@@ -201,7 +247,23 @@ export async function setupTwitchClient(tenantId: string) {
 
     console.log(`[Twitch:${tenantId}] Broadcaster: ${broadcasterUsername}, Bot: ${botUsername || 'none'}`);
 
+    if (broadcasterUsername) {
+      channelToTenant.set(broadcasterUsername.toLowerCase(), tenantId);
+      const existingTenant = tenantClients.get(tenantId);
+      if (!existingTenant) {
+        tenantClients.set(tenantId, {
+          broadcasterClient: null,
+          botClient: null,
+          status: 'connecting',
+          broadcasterUsername,
+          botUsername,
+          retryCount: 0,
+        });
+      }
+    }
+
     const broadcasterOauthToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+    tenantsNeedingReauth.delete(tenantId);
 
     // Disconnect existing clients for this tenant
     const existing = tenantClients.get(tenantId);
@@ -347,6 +409,14 @@ export async function setupTwitchClient(tenantId: string) {
     if (tenant) tenant.status = 'disconnected';
     if (isAuthFailure(error)) {
       console.error(`[Twitch:${tenantId}] Authentication failed; reconnect retries paused until the Twitch account is re-authorized.`);
+      tenantsNeedingReauth.add(tenantId);
+      if (tenant?.broadcasterUsername && clientId && clientSecret) {
+        const sharedBot = await ensureCommunityBotForChannel(tenant.broadcasterUsername, clientId, clientSecret);
+        if (sharedBot) {
+          tenant.botClient = sharedBot;
+          tenant.botUsername = communityBotUsername || 'community-bot';
+        }
+      }
       return;
     }
     scheduleRetry(tenantId);
