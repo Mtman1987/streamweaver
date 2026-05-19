@@ -9,7 +9,7 @@ export interface TTSConfig {
   discordBridge: boolean;
 }
 
-export const TTS_VOICES = {
+export const TTS_VOICES: Record<TTSProvider, string[]> = {
   openai: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
   inworld: ['Ashley', 'Marcus', 'Sarah', 'David', 'Mortimer', 'Snik', 'Hades', 'Dominus', 'Victor', 'Lucian', 'Sebastian', 'Malcolm', 'Vinny', 'Conrad', 'Damon', 'Levi', 'Theodore', 'Ronald', 'Rupert', 'Graham', 'Hank', 'Oliver', 'Simon', 'Elliot', 'James', 'Gareth', 'Nate', 'Brian', 'Ethan', 'Tyler', 'Jason', 'Jake', 'Liam', 'Callum', 'Hamish', 'Arjun', 'Craig', 'Dennis', 'Edward', 'Mark', 'Shaun', 'Timothy', 'Clive', 'Carter', 'Blake', 'Cedric', 'Jonah', 'Avery', 'Brandon', 'Trevor', 'Alex', 'Derek', 'Evan', 'Grant', 'Tristan', 'Reed', 'Duncan', 'Felix', 'Lauren', 'Jessica', 'Veronica', 'Victoria', 'Miranda', 'Kelsey', 'Kayla', 'Chloe', 'Serena', 'Celeste', 'Evelyn', 'Pippa', 'Tessa', 'Anjali', 'Saanvi', 'Claire', 'Abby', 'Luna', 'Loretta', 'Darlene', 'Marlene', 'Elizabeth', 'Julia', 'Pixie', 'Olivia', 'Priya', 'Wendy', 'Deborah', 'Hana', 'Riley', 'Mia', 'Naomi', 'Nadia', 'Selene', 'Bianca', 'Amina', 'Sophie', 'Eleanor'],
   google: ['en-US-Wavenet-F', 'en-US-Wavenet-M', 'en-GB-Wavenet-F', 'en-GB-Wavenet-M'],
@@ -17,11 +17,28 @@ export const TTS_VOICES = {
   edenai: ['en-US-Wavenet-F']
 };
 
+function normalizeProvider(provider: unknown): TTSProvider {
+  if (typeof provider !== 'string') return 'inworld';
+  const normalized = provider.trim().toLowerCase();
+  return normalized in TTS_VOICES ? normalized as TTSProvider : 'inworld';
+}
+
+function normalizeVoiceName(voice: string | undefined, provider: TTSProvider): string {
+  const fallback = TTS_VOICES[provider][0];
+  if (!voice) return fallback;
+
+  const providerVoice = TTS_VOICES[provider].find((knownVoice) => (
+    knownVoice.toLowerCase() === voice.toLowerCase()
+  ));
+
+  return providerVoice || voice;
+}
+
 export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
   
-  const provider = (config.TTS_PROVIDER as TTSProvider) || 'inworld';
-  const voice = config.TTS_VOICE || TTS_VOICES[provider][0];
+  const provider = normalizeProvider(config.TTS_PROVIDER);
+  const voice = normalizeVoiceName(config.TTS_VOICE, provider);
   const discordBridge = config.DISCORD_TTS_BRIDGE === 'true';
   console.log('[TTS Config] provider:', provider, '| voice:', voice, '| discordBridge:', discordBridge);
   
@@ -38,6 +55,9 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
       break;
     case 'elevenlabs':
       apiKey = config.ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY || '';
+      break;
+    case 'edenai':
+      apiKey = config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
       break;
   }
   
@@ -88,6 +108,9 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
       case 'elevenlabs':
         audioDataUri = await generateElevenLabsTTS(text, config);
         break;
+      case 'edenai':
+        audioDataUri = await generateEdenAITTS(text, config.voice, config.apiKey);
+        break;
       default:
         throw new Error(`Unsupported TTS provider: ${config.provider}`);
     }
@@ -95,7 +118,7 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
     // Fallback to EdenAI TTS if primary provider fails
     if (config.provider !== 'edenai') {
       console.warn(`[TTS] ${config.provider} failed (voice: ${config.voice}), falling back to EdenAI:`, (err as Error).message);
-      const edenKey = readUserConfigSync().EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
+      const edenKey = readUserConfigSync(tenantId).EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
       if (edenKey) {
         audioDataUri = await generateEdenAITTS(text, config.voice, edenKey);
       } else {
@@ -191,10 +214,17 @@ async function generateGoogleTTS(text: string, config: TTSConfig): Promise<strin
   throw new Error('Google TTS not implemented yet');
 }
 
-const INWORLD_FEMALE_VOICES = new Set(['Ashley', 'Lauren', 'Jessica', 'Veronica', 'Victoria', 'Miranda', 'Kelsey', 'Kayla', 'Chloe', 'Serena', 'Celeste', 'Evelyn', 'Pippa', 'Tessa', 'Anjali', 'Saanvi', 'Claire', 'Abby', 'Luna', 'Loretta', 'Darlene', 'Marlene', 'Elizabeth', 'Julia', 'Pixie', 'Olivia', 'Priya', 'Wendy', 'Deborah', 'Hana', 'Riley', 'Mia', 'Naomi', 'Nadia', 'Selene', 'Bianca', 'Amina', 'Sophie', 'Eleanor']);
+const VOICE_GENDER_BY_NAME = new Map<string, 'FEMALE' | 'MALE'>([
+  ...['Ashley', 'Lauren', 'Jessica', 'Veronica', 'Victoria', 'Miranda', 'Kelsey', 'Kayla', 'Chloe', 'Serena', 'Celeste', 'Evelyn', 'Pippa', 'Tessa', 'Anjali', 'Saanvi', 'Claire', 'Abby', 'Luna', 'Loretta', 'Darlene', 'Marlene', 'Elizabeth', 'Julia', 'Pixie', 'Olivia', 'Priya', 'Wendy', 'Deborah', 'Hana', 'Riley', 'Mia', 'Naomi', 'Nadia', 'Selene', 'Bianca', 'Amina', 'Sophie', 'Eleanor', 'Rachel', 'Bella', 'nova', 'shimmer', 'en-US-Wavenet-F', 'en-GB-Wavenet-F'].map((voice) => [voice.toLowerCase(), 'FEMALE'] as const),
+  ...['Marcus', 'David', 'Mortimer', 'Snik', 'Hades', 'Dominus', 'Victor', 'Lucian', 'Sebastian', 'Malcolm', 'Vinny', 'Conrad', 'Damon', 'Levi', 'Theodore', 'Ronald', 'Rupert', 'Graham', 'Hank', 'Oliver', 'Simon', 'Elliot', 'James', 'Gareth', 'Nate', 'Brian', 'Ethan', 'Tyler', 'Jason', 'Jake', 'Liam', 'Callum', 'Hamish', 'Arjun', 'Craig', 'Dennis', 'Edward', 'Mark', 'Shaun', 'Timothy', 'Clive', 'Carter', 'Blake', 'Cedric', 'Jonah', 'Avery', 'Brandon', 'Trevor', 'Alex', 'Derek', 'Evan', 'Grant', 'Tristan', 'Reed', 'Duncan', 'Felix', 'Antoni', 'Josh', 'Arnold', 'Adam', 'Sam', 'Algieba', 'alloy', 'echo', 'fable', 'onyx', 'en-US-Wavenet-M', 'en-GB-Wavenet-M'].map((voice) => [voice.toLowerCase(), 'MALE'] as const),
+]);
+
+function getEdenAIVoiceOption(voice: string): 'FEMALE' | 'MALE' {
+  return VOICE_GENDER_BY_NAME.get(voice.toLowerCase()) || 'MALE';
+}
 
 async function generateEdenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
-  const gender = INWORLD_FEMALE_VOICES.has(voice) ? 'FEMALE' : 'MALE';
+  const gender = getEdenAIVoiceOption(voice);
   const response = await fetch('https://api.edenai.run/v2/audio/text_to_speech', {
     method: 'POST',
     headers: {
@@ -243,4 +273,3 @@ async function sendToDiscordBridge(audioDataUri: string, text: string, voice: st
     throw error;
   }
 }
-

@@ -222,7 +222,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 const configRes = await fetch('/api/user-config');
                 if (configRes.ok) {
                     const configData = await configRes.json();
-                    const cfg = configData.data || configData;
+                    const cfg = configData.config || configData.data || configData;
                     if (cfg.AI_BOT_NAME && !savedName) setBotName(cfg.AI_BOT_NAME);
                     else if (cfg.AI_BOT_NAME) setBotName(cfg.AI_BOT_NAME);
                     if (cfg.AI_BOT_PERSONALITY && !savedPersonality) setBotPersonality(cfg.AI_BOT_PERSONALITY);
@@ -282,15 +282,15 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 console.warn('Failed to sync with server:', error);
             }
             
-            // Send current settings to server when page loads
-            if (savedPersonality || savedVoice || savedName) {
+            // Sync identity on load, but do not sync a browser-local voice.
+            // The stream's saved TTS_VOICE is the source of truth unless the user changes it.
+            if (savedPersonality || savedName) {
                 const sendToServer = () => {
                     if (typeof window !== 'undefined' && (window as any).ws) {
                         (window as any).ws.send(JSON.stringify({
                             type: 'update-bot-settings',
                             payload: { 
                                 personality: savedPersonality || botPersonality,
-                                voice: savedVoice || ttsVoice,
                                 name: savedName || botName,
                                 skipShoutoutOverlay: savedSkipShoutoutOverlay === 'true'
                             }
