@@ -32,7 +32,7 @@ export async function initiateTrade(initiator: string, target: string, tenantId?
   activeTrades.set(tid, tenantTrades);
 
   if (tenantTrades.has(key)) {
-    await sendChatMessage(`@${initiator}, you already have an active trade with @${target}!`, 'broadcaster');
+    await sendChatMessage(`@${initiator}, you already have an active trade with @${target}!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -47,7 +47,9 @@ export async function initiateTrade(initiator: string, target: string, tenantId?
 
   await sendChatMessage(
     `@${initiator} wants to trade with @${target}! Both use !offer <name> <number> or !offer <set>-<number> to select a card.`,
-    'broadcaster'
+    'broadcaster',
+    undefined,
+    tenantId
   );
 }
 
@@ -55,7 +57,7 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
   const tid = tenantId || 'global';
   const tenantTrades = activeTrades.get(tid);
   if (!tenantTrades) {
-    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -64,7 +66,7 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
   );
 
   if (!trade) {
-    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -72,7 +74,7 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
   const userCards = await getUserCards(username);
 
   if (userCards.length === 0) {
-    await sendChatMessage(`@${username}, you don't have any cards!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have any cards!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -94,18 +96,18 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
         (card.name.toLowerCase().includes(nameOrSet) || card.setCode.toLowerCase() === nameOrSet)
       );
   } else {
-    await sendChatMessage(`@${username}, use: !offer <name> <number> or !offer <set>-<number>`, 'broadcaster');
+    await sendChatMessage(`@${username}, use: !offer <name> <number> or !offer <set>-<number>`, 'broadcaster', undefined, tenantId);
     return;
   }
 
   if (matches.length === 0) {
-    await sendChatMessage(`@${username}, card not found in your collection!`, 'broadcaster');
+    await sendChatMessage(`@${username}, card not found in your collection!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
   if (matches.length > 1) {
     const list = matches.slice(0, 5).map(m => `${m.card.name} (${m.card.setCode}-${m.card.number})`).join(', ');
-    await sendChatMessage(`@${username}, multiple matches: ${list}. Be more specific!`, 'broadcaster');
+    await sendChatMessage(`@${username}, multiple matches: ${list}. Be more specific!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -118,12 +120,14 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
     session.targetCard = offered;
   }
 
-  await sendChatMessage(`@${username} offered ${card.name} (${card.setCode}-${card.number})!`, 'broadcaster');
+  await sendChatMessage(`@${username} offered ${card.name} (${card.setCode}-${card.number})!`, 'broadcaster', undefined, tenantId);
 
   if (session.initiatorCard && session.targetCard) {
     await sendChatMessage(
       `Trade ready! @${session.initiator} (${session.initiatorCard.name}) ↔ @${session.target} (${session.targetCard.name}). Both type !accept to confirm!`,
-      'broadcaster'
+      'broadcaster',
+      undefined,
+      tenantId
     );
 
     const broadcast = (global as any).broadcast;
@@ -143,7 +147,7 @@ export async function acceptTrade(username: string, tenantId?: string): Promise<
   const tid = tenantId || 'global';
   const tenantTrades = activeTrades.get(tid);
   if (!tenantTrades) {
-    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -152,21 +156,21 @@ export async function acceptTrade(username: string, tenantId?: string): Promise<
   );
 
   if (!trade) {
-    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
   const [key, session] = trade;
 
   if (!session.initiatorCard || !session.targetCard) {
-    await sendChatMessage(`@${username}, both users must offer cards first!`, 'broadcaster');
+    await sendChatMessage(`@${username}, both users must offer cards first!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
   if (session.initiator === username) session.initiatorAccepted = true;
   else session.targetAccepted = true;
 
-  await sendChatMessage(`@${username} accepted the trade!`, 'broadcaster');
+  await sendChatMessage(`@${username} accepted the trade!`, 'broadcaster', undefined, tenantId);
 
   if (session.initiatorAccepted && session.targetAccepted) {
     await executeTrade(session);
@@ -178,7 +182,7 @@ export async function cancelTrade(username: string, tenantId?: string): Promise<
   const tid = tenantId || 'global';
   const tenantTrades = activeTrades.get(tid);
   if (!tenantTrades) {
-    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
@@ -187,13 +191,13 @@ export async function cancelTrade(username: string, tenantId?: string): Promise<
   );
 
   if (!trade) {
-    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster');
+    await sendChatMessage(`@${username}, you don't have an active trade!`, 'broadcaster', undefined, tenantId);
     return;
   }
 
   const [key, session] = trade;
   tenantTrades.delete(key);
-  await sendChatMessage(`Trade between @${session.initiator} and @${session.target} cancelled!`, 'broadcaster');
+  await sendChatMessage(`Trade between @${session.initiator} and @${session.target} cancelled!`, 'broadcaster', undefined, tenantId);
 }
 
 async function executeTrade(session: TradeSession): Promise<void> {
@@ -209,11 +213,11 @@ async function executeTrade(session: TradeSession): Promise<void> {
   const realB = collB.cards[cardB.index];
 
   if (!realA || realA.setCode !== cardA.setCode || realA.number !== cardA.number) {
-    await sendChatMessage(`Trade failed — ${session.initiator}'s card is no longer available!`, 'broadcaster');
+    await sendChatMessage(`Trade failed — ${session.initiator}'s card is no longer available!`, 'broadcaster', undefined, session.tenantId);
     return;
   }
   if (!realB || realB.setCode !== cardB.setCode || realB.number !== cardB.number) {
-    await sendChatMessage(`Trade failed — ${session.target}'s card is no longer available!`, 'broadcaster');
+    await sendChatMessage(`Trade failed — ${session.target}'s card is no longer available!`, 'broadcaster', undefined, session.tenantId);
     return;
   }
 
@@ -241,7 +245,9 @@ async function executeTrade(session: TradeSession): Promise<void> {
 
   await sendChatMessage(
     `✅ Trade complete! @${session.initiator} got ${removedB.name}, @${session.target} got ${removedA.name}!`,
-    'broadcaster'
+    'broadcaster',
+    undefined,
+    session.tenantId
   );
 }
 
@@ -254,7 +260,9 @@ setInterval(() => {
         tenantTrades.delete(key);
         sendChatMessage(
           `Trade between @${session.initiator} and @${session.target} expired!`,
-          'broadcaster'
+          'broadcaster',
+          undefined,
+          session.tenantId
         ).catch(() => {});
       }
     }

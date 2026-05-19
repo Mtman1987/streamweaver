@@ -26,6 +26,8 @@ import { resolve } from 'path';
 import { tenantPath } from '../lib/tenant';
 import type { StorageContext } from './storage';
 
+const CORE_POKEMON_CONFIRMATION_COMMANDS = new Set(['accept', 'cancel', 'swap']);
+
 // Track processed messages to prevent duplicates
 const processedMessages = new Set<string>();
 
@@ -247,8 +249,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
         const configuredCommand = commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName);
         if (configuredCommand && configuredCommand.enabled === false) {
-            console.log(`[Dispatcher] Command ${cmdName} is disabled; skipping built-in and action handling.`);
-            return;
+            if (!CORE_POKEMON_CONFIRMATION_COMMANDS.has(cmdName)) {
+                console.log(`[Dispatcher] Command ${cmdName} is disabled; skipping built-in and action handling.`);
+                return;
+            }
+            console.log(`[Dispatcher] Command ${cmdName} is disabled as a custom command; continuing with core Pokemon handler.`);
         }
 
         // Handle check-in commands (process early)

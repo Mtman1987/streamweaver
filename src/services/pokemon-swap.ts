@@ -36,11 +36,11 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
   const toIdx = toCardNum - 1;
 
   if (!fromCards[fromIdx]) {
-    await sendChatMessage(`@${fromUser}, you don't have card #${fromCardNum}!`, 'broadcaster').catch(() => {});
+    await sendChatMessage(`@${fromUser}, you don't have card #${fromCardNum}!`, 'broadcaster', undefined, tenantId).catch(() => {});
     return;
   }
   if (!toCards[toIdx]) {
-    await sendChatMessage(`@${fromUser}, ${toUser} doesn't have card #${toCardNum}!`, 'broadcaster').catch(() => {});
+    await sendChatMessage(`@${fromUser}, ${toUser} doesn't have card #${toCardNum}!`, 'broadcaster', undefined, tenantId).catch(() => {});
     return;
   }
 
@@ -88,7 +88,9 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
 
   await sendChatMessage(
     `🔄 @${fromUser} wants to swap their ${fc.name} (${fc.rarity || 'Common'}) for @${toUser}'s ${tc.name} (${tc.rarity || 'Common'}). @${toUser} type !accept or !cancel (60s)`,
-    'broadcaster'
+    'broadcaster',
+    undefined,
+    tenantId
   ).catch(() => {});
 
   if (typeof (global as any).broadcast === 'function') {
@@ -124,11 +126,11 @@ export async function acceptSwap(username: string, tenantId?: string): Promise<b
   const toCards = await getUserCards(swap.to);
 
   if (!fromCards[swap.fromIdx] || fromCards[swap.fromIdx].name !== swap.fromCard.name) {
-    await sendChatMessage(`Swap failed — ${swap.from}'s card is no longer available.`, 'broadcaster').catch(() => {});
+    await sendChatMessage(`Swap failed — ${swap.from}'s card is no longer available.`, 'broadcaster', undefined, tenantId).catch(() => {});
     return true;
   }
   if (!toCards[swap.toIdx] || toCards[swap.toIdx].name !== swap.toCard.name) {
-    await sendChatMessage(`Swap failed — ${swap.to}'s card is no longer available.`, 'broadcaster').catch(() => {});
+    await sendChatMessage(`Swap failed — ${swap.to}'s card is no longer available.`, 'broadcaster', undefined, tenantId).catch(() => {});
     return true;
   }
 
@@ -137,7 +139,7 @@ export async function acceptSwap(username: string, tenantId?: string): Promise<b
   const removedTo = await removeCardFromUser(swap.to, swap.toIdx > swap.fromIdx && swap.from === swap.to ? swap.toIdx - 1 : swap.toIdx);
 
   if (!removedFrom || !removedTo) {
-    await sendChatMessage(`Swap failed — could not remove cards.`, 'broadcaster').catch(() => {});
+    await sendChatMessage(`Swap failed — could not remove cards.`, 'broadcaster', undefined, tenantId).catch(() => {});
     return true;
   }
 
@@ -152,7 +154,9 @@ export async function acceptSwap(username: string, tenantId?: string): Promise<b
 
   await sendChatMessage(
     `✅ Swap complete! ${swap.from} got ${swap.toCard.name} (${swap.toCard.rarity}) ↔ ${swap.to} got ${swap.fromCard.name} (${swap.fromCard.rarity})`,
-    'broadcaster'
+    'broadcaster',
+    undefined,
+    tenantId
   ).catch(() => {});
 
   if (typeof (global as any).broadcast === 'function') {
@@ -190,14 +194,14 @@ export async function cancelSwap(username: string, tenantId?: string): Promise<b
     for (const [k, s] of tenantSwaps) {
       if (s.from === key) {
         tenantSwaps.delete(k);
-        await sendChatMessage(`🚫 Swap cancelled by ${username}.`, 'broadcaster').catch(() => {});
+        await sendChatMessage(`🚫 Swap cancelled by ${username}.`, 'broadcaster', undefined, tenantId).catch(() => {});
         return true;
       }
     }
     return false;
   }
   tenantSwaps.delete(key);
-  await sendChatMessage(`🚫 Swap declined by ${username}.`, 'broadcaster').catch(() => {});
+  await sendChatMessage(`🚫 Swap declined by ${username}.`, 'broadcaster', undefined, tenantId).catch(() => {});
   return true;
 }
 
