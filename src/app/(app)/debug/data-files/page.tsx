@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards';
+type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
 
 type FileSnapshot = {
   file: FileKey;
@@ -29,6 +29,7 @@ export default function DebugDataFilesPage() {
   const [polling, setPolling] = useState(true);
   const [snapshot, setSnapshot] = useState<FileSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streamerFilter, setStreamerFilter] = useState('');
 
   const lastUpdated = useMemo(() => {
     if (!snapshot) return '—';
@@ -44,6 +45,10 @@ export default function DebugDataFilesPage() {
       setError(e?.message || 'Failed to load file');
     }
   };
+
+  const downloadUrl = selected === 'shoutout-audit'
+    ? `/api/shoutout-audit/download${streamerFilter.trim() ? `?username=${encodeURIComponent(streamerFilter.trim().replace(/^@/, ''))}` : ''}`
+    : null;
 
   useEffect(() => {
     void load();
@@ -112,6 +117,13 @@ export default function DebugDataFilesPage() {
             >
               channel-point-rewards.json
             </Button>
+            <Button
+              variant={selected === 'shoutout-audit' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelected('shoutout-audit')}
+            >
+              shoutout-audit.jsonl
+            </Button>
             <Button variant="outline" size="sm" onClick={load}>
               Refresh now
             </Button>
@@ -123,6 +135,23 @@ export default function DebugDataFilesPage() {
               {polling ? 'Polling: On' : 'Polling: Off'}
             </Button>
           </div>
+
+          {selected === 'shoutout-audit' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={streamerFilter}
+                onChange={(event) => setStreamerFilter(event.target.value)}
+                placeholder="streamer username"
+                className="h-9 w-56 rounded-md border bg-background px-3 text-sm"
+              />
+              <Button asChild size="sm" variant="outline">
+                <a href="/api/shoutout-audit/download">Download all</a>
+              </Button>
+              <Button asChild size="sm" variant="outline" disabled={!downloadUrl}>
+                <a href={downloadUrl || '/api/shoutout-audit/download'}>Download filtered</a>
+              </Button>
+            </div>
+          )}
 
           <div className="text-sm text-muted-foreground space-y-1">
             <div>Last update: {lastUpdated}</div>

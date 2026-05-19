@@ -4,6 +4,7 @@ import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
 import { tenantPath } from '../lib/tenant';
 import { canShoutoutUser, getShoutoutCount, recordShoutout } from './welcome-wagon-tracker';
+import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import { readUserConfigSync } from '../lib/user-config';
@@ -36,6 +37,13 @@ type ShoutoutMode = 'full' | 'overlay' | 'chat';
 type ShoutoutOptions = {
     chatReply?: (message: string) => Promise<void>;
     linkMessage?: string;
+    source?: 'auto-welcome' | 'manual' | 'voice' | 'recovery' | 'unknown';
+};
+
+type AuditContext = {
+    username: string;
+    displayName: string;
+    source: NonNullable<ShoutoutOptions['source']>;
 };
 
 function normalizeTenantId(tenantId?: string): string | undefined {
@@ -315,7 +323,7 @@ Rules:
 // GREETING OUTPUT
 // ============================
 
-async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: string, options: ShoutoutOptions = {}): Promise<void> {
+async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: string, options: ShoutoutOptions = {}, audit?: AuditContext): Promise<void> {
     const realTenantId = normalizeTenantId(tenantId);
     const botName = getBotName(realTenantId);
 
@@ -325,6 +333,17 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
         markTtsHandled(aiGreeting);
         if (options.chatReply) await options.chatReply(aiGreeting);
         else await sendChatMessage(aiGreeting, 'bot', undefined, tenantId);
+        if (audit) {
+            await recordShoutoutAudit({
+                status: 'phase',
+                phase: 'chat-message-sent',
+                username: audit.username,
+                displayName: audit.displayName,
+                tenantId: realTenantId,
+                source: audit.source,
+                mode,
+            });
+        }
     }
 
     // Overlay broadcast: overlay mode shows on overlay instead of chat
@@ -334,6 +353,17 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
                 type: 'greeting-overlay',
                 payload: { text: aiGreeting, botName }
             }, realTenantId);
+            if (audit) {
+                await recordShoutoutAudit({
+                    status: 'phase',
+                    phase: 'overlay-broadcast',
+                    username: audit.username,
+                    displayName: audit.displayName,
+                    tenantId: realTenantId,
+                    source: audit.source,
+                    mode,
+                });
+            }
         }
     }
 
@@ -367,9 +397,32 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
                         console.error('[WalkOn] Avatar trigger failed:', avatarErr);
                     }
                 }
+                if (audit) {
+                    await recordShoutoutAudit({
+                        status: 'phase',
+                        phase: 'tts-ready',
+                        username: audit.username,
+                        displayName: audit.displayName,
+                        tenantId: realTenantId,
+                        source: audit.source,
+                        mode,
+                    });
+                }
             }
         } catch (error) {
             console.error('[WalkOn] TTS failed:', error);
+            if (audit) {
+                await recordShoutoutAudit({
+                    status: 'phase',
+                    phase: 'tts-failed',
+                    username: audit.username,
+                    displayName: audit.displayName,
+                    tenantId: realTenantId,
+                    source: audit.source,
+                    mode,
+                    error: auditError(error),
+                });
+            }
         }
     }
 
@@ -378,9 +431,33 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
         const discordChannelId = await getDiscordShoutoutChannelId(realTenantId);
         if (discordChannelId) {
             await sendDiscordMessage(discordChannelId, `**${botName}:** ${aiGreeting}`);
+            if (audit) {
+                await recordShoutoutAudit({
+                    status: 'phase',
+                    phase: 'discord-message-sent',
+                    username: audit.username,
+                    displayName: audit.displayName,
+                    tenantId: realTenantId,
+                    source: audit.source,
+                    mode,
+                    metadata: { discordChannelId },
+                });
+            }
         }
     } catch (error) {
         console.error('[WalkOn] Discord send failed:', error);
+        if (audit) {
+            await recordShoutoutAudit({
+                status: 'phase',
+                phase: 'discord-send-failed',
+                username: audit.username,
+                displayName: audit.displayName,
+                tenantId: realTenantId,
+                source: audit.source,
+                mode,
+                error: auditError(error),
+            });
+        }
     }
 }
 
@@ -405,22 +482,57 @@ async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | 
 export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false, tenantId?: string, options: ShoutoutOptions = {}): Promise<boolean> {
     const user = username.toLowerCase();
     const realTenantId = normalizeTenantId(tenantId);
+    const auditSource = options.source || (skipCooldown ? 'manual' : 'auto-welcome');
 
     if (!skipCooldown && !(await canShoutoutUser(user, realTenantId))) {
         console.log(`[WalkOn] Skipping shoutout for ${user} — on cooldown or excluded.`);
+        await recordShoutoutAudit({
+            status: 'skipped',
+            username: user,
+            displayName,
+            tenantId: realTenantId,
+            source: auditSource,
+            reason: 'cooldown-or-excluded',
+        });
         return false;
     }
 
     console.log(`[WalkOn] Processing walk-on shoutout for ${displayName}`);
+    await recordShoutoutAudit({
+        status: 'started',
+        username: user,
+        displayName,
+        tenantId: realTenantId,
+        source: auditSource,
+        metadata: { skipCooldown },
+    });
 
     const mode = await getShoutoutMode(realTenantId);
     console.log(`[WalkOn] Shoutout mode: ${mode}`);
+    await recordShoutoutAudit({
+        status: 'phase',
+        phase: 'mode-resolved',
+        username: user,
+        displayName,
+        tenantId: realTenantId,
+        source: auditSource,
+        mode,
+    });
 
     // Build persona and generate AI greeting
     const persona = await buildPersona(user, displayName, profileImage, realTenantId);
     console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
     const aiGreeting = await generateAIGreeting(persona, realTenantId);
     console.log(`[WalkOn] AI greeting generated`);
+    await recordShoutoutAudit({
+        status: 'phase',
+        phase: 'ai-greeting-generated',
+        username: user,
+        displayName,
+        tenantId: realTenantId,
+        source: auditSource,
+        mode,
+    });
 
     // === MODE: CHAT ===
     // Single clean message: AI greeting + link. No clip, no TTS, no overlay.
@@ -431,6 +543,15 @@ export async function handleWalkOnShoutout(username: string, displayName: string
         else await sendChatMessage(fullMsg, 'bot', undefined, tenantId);
         if (!skipCooldown) await recordShoutout(user, realTenantId);
         console.log(`[WalkOn] Completed chat-only shoutout for ${displayName}`);
+        await recordShoutoutAudit({
+            status: 'completed',
+            username: user,
+            displayName,
+            tenantId: realTenantId,
+            source: auditSource,
+            mode,
+            phase: 'chat-only',
+        });
         return true;
     }
 
@@ -441,8 +562,27 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     // shoutout moving so the bot greeting can still fire.
     try {
         await sendBroadcasterWelcome(displayName, tenantId, options);
+        await recordShoutoutAudit({
+            status: 'phase',
+            phase: 'broadcaster-link-sent',
+            username: user,
+            displayName,
+            tenantId: realTenantId,
+            source: auditSource,
+            mode,
+        });
     } catch (error) {
         console.error(`[WalkOn] Broadcaster welcome send failed for ${displayName}:`, error);
+        await recordShoutoutAudit({
+            status: 'phase',
+            phase: 'broadcaster-link-failed',
+            username: user,
+            displayName,
+            tenantId: realTenantId,
+            source: auditSource,
+            mode,
+            error: auditError(error),
+        });
     }
 
     // Fetch and play clip (errors won't prevent greeting from firing)
@@ -452,17 +592,53 @@ export async function handleWalkOnShoutout(username: string, displayName: string
             console.log(`[WalkOn] Playing clip for ${displayName}`);
             await playClip(clip, displayName, profileImage, realTenantId);
             console.log(`[WalkOn] Clip finished for ${displayName}`);
+            await recordShoutoutAudit({
+                status: 'phase',
+                phase: 'clip-played',
+                username: user,
+                displayName,
+                tenantId: realTenantId,
+                source: auditSource,
+                mode,
+            });
         } else {
             console.log(`[WalkOn] No clips found for ${displayName}, skipping video`);
+            await recordShoutoutAudit({
+                status: 'phase',
+                phase: 'clip-not-found',
+                username: user,
+                displayName,
+                tenantId: realTenantId,
+                source: auditSource,
+                mode,
+            });
         }
     } catch (err) {
         console.error(`[WalkOn] Clip playback failed for ${displayName}:`, err);
+        await recordShoutoutAudit({
+            status: 'phase',
+            phase: 'clip-failed',
+            username: user,
+            displayName,
+            tenantId: realTenantId,
+            source: auditSource,
+            mode,
+            error: auditError(err),
+        });
     }
 
     // Fire greeting after clip (full = chat + TTS, overlay = overlay + TTS)
-    await fireGreeting(aiGreeting, mode, tenantId, options);
+    await fireGreeting(aiGreeting, mode, tenantId, options, { username: user, displayName, source: auditSource });
 
     if (!skipCooldown) await recordShoutout(user, realTenantId);
     console.log(`[WalkOn] Completed ${mode} shoutout for ${displayName}`);
+    await recordShoutoutAudit({
+        status: 'completed',
+        username: user,
+        displayName,
+        tenantId: realTenantId,
+        source: auditSource,
+        mode,
+    });
     return true;
 }

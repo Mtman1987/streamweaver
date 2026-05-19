@@ -8,8 +8,9 @@ import { getPublicChatFilePath } from '@/lib/public-chat-store';
 import { isDebugRoutesEnabled } from '@/lib/local-config/service';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
+import { tenantPath } from '@/lib/tenant';
 
-type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards';
+type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
 
 function resolveFilePath(file: FileKey, tenantId?: string): string {
   if (file === 'actions') return ACTIONS_FILE_PATH;
@@ -19,6 +20,9 @@ function resolveFilePath(file: FileKey, tenantId?: string): string {
   if (file === 'points') return getUserDataPath('points.json', tenantId);
   if (file === 'point-settings') return getUserDataPath('point-settings.json', tenantId);
   if (file === 'channel-point-rewards') return getUserDataPath('channel-point-rewards.json', tenantId);
+  if (file === 'shoutout-audit') return tenantId
+    ? tenantPath(tenantId, 'logs/shoutout-audit.jsonl')
+    : path.resolve(process.cwd(), 'logs', 'shoutout-audit.jsonl');
   throw new Error(`Unknown file: ${file}`);
 }
 
@@ -45,8 +49,8 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const file = (url.searchParams.get('file') || '').toLowerCase() as FileKey;
 
-    if (!['actions', 'commands', 'private-chat', 'public-chat', 'points', 'point-settings', 'channel-point-rewards'].includes(file)) {
-      return apiError('Invalid file. Use ?file=actions, ?file=commands, ?file=private-chat, ?file=public-chat, ?file=points, ?file=point-settings, or ?file=channel-point-rewards', { status: 400, code: 'INVALID_QUERY' });
+    if (!['actions', 'commands', 'private-chat', 'public-chat', 'points', 'point-settings', 'channel-point-rewards', 'shoutout-audit'].includes(file)) {
+      return apiError('Invalid file. Use ?file=actions, ?file=commands, ?file=private-chat, ?file=public-chat, ?file=points, ?file=point-settings, ?file=channel-point-rewards, or ?file=shoutout-audit', { status: 400, code: 'INVALID_QUERY' });
     }
 
     const session = getTenantFromRequest(request);
@@ -74,8 +78,12 @@ export async function GET(request: NextRequest) {
     // Best-effort count (don’t fail the endpoint if JSON is temporarily invalid while editing)
     let count: number | null = null;
     try {
-      const parsed = JSON.parse(raw);
-      count = Array.isArray(parsed) ? parsed.length : null;
+      if (file === 'shoutout-audit') {
+        count = raw.split(/\r?\n/).filter(Boolean).length;
+      } else {
+        const parsed = JSON.parse(raw);
+        count = Array.isArray(parsed) ? parsed.length : null;
+      }
     } catch {
       count = null;
     }
