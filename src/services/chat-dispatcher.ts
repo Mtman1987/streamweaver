@@ -543,11 +543,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const arg = actualMessage.substring('!shoutoutaudit'.length).trim().replace(/^@/, '');
             const { getConfiguredAppUrl } = require('../lib/runtime-origin');
             const baseUrl = getConfiguredAppUrl();
-            const allUrl = `${baseUrl}/api/shoutout-audit/download`;
+            const tenantQuery = tenantId ? `tenantId=${encodeURIComponent(tenantId)}` : '';
+            const allUrl = `${baseUrl}/api/shoutout-audit/download${tenantQuery ? `?${tenantQuery}` : ''}`;
             const filteredUrl = arg && arg.toLowerCase() !== 'all'
-                ? `${baseUrl}/api/shoutout-audit/download?username=${encodeURIComponent(arg)}`
+                ? `${baseUrl}/api/shoutout-audit/download?${tenantQuery ? `${tenantQuery}&` : ''}username=${encodeURIComponent(arg)}`
                 : '';
-            const liveFilesUrl = `${baseUrl}/debug/data-files`;
+            const liveFilesUrl = `${baseUrl}/debug/data-files${tenantQuery ? `?${tenantQuery}` : ''}`;
             const message = filteredUrl
                 ? `Shoutout audit for ${arg}: ${filteredUrl} | All: ${allUrl} | Live Files: ${liveFilesUrl}`
                 : `Shoutout audit downloads: ${allUrl} | Per streamer: !shoutoutaudit @username | Live Files: ${liveFilesUrl}`;

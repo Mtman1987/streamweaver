@@ -8,7 +8,7 @@ import { getPublicChatFilePath } from '@/lib/public-chat-store';
 import { isDebugRoutesEnabled } from '@/lib/local-config/service';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
-import { tenantPath } from '@/lib/tenant';
+import { isAdmin, tenantPath } from '@/lib/tenant';
 
 type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
 
@@ -54,7 +54,12 @@ export async function GET(request: NextRequest) {
     }
 
     const session = getTenantFromRequest(request);
-    const filePath = resolveFilePath(file, session?.tenantId);
+    const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
+    if (requestedTenantId && requestedTenantId !== session?.tenantId && !isAdmin(session?.tenantId || '')) {
+      return apiError('Admin only', { status: 403, code: 'FORBIDDEN' });
+    }
+    const tenantId = requestedTenantId || session?.tenantId;
+    const filePath = resolveFilePath(file, tenantId);
 
     // Handle missing files gracefully
     try {
@@ -62,6 +67,7 @@ export async function GET(request: NextRequest) {
     } catch {
       return apiOk({
         file,
+        path: filePath,
         mtimeMs: 0,
         size: 0,
         count: 0,
@@ -86,6 +92,7 @@ export async function GET(request: NextRequest) {
 
     return apiOk({
       file,
+      path: filePath,
       mtimeMs: stat.mtimeMs,
       size: stat.size,
       count,

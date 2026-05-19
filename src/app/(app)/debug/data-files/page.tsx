@@ -15,8 +15,10 @@ type FileSnapshot = {
   preview: string;
 };
 
-async function fetchSnapshot(file: FileKey): Promise<FileSnapshot> {
-  const res = await fetch(`/api/debug/data-files?file=${file}`, { cache: 'no-store' });
+async function fetchSnapshot(file: FileKey, tenantId?: string): Promise<FileSnapshot> {
+  const params = new URLSearchParams({ file });
+  if (tenantId) params.set('tenantId', tenantId);
+  const res = await fetch(`/api/debug/data-files?${params.toString()}`, { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.error || res.statusText || 'Failed to fetch');
@@ -30,6 +32,10 @@ export default function DebugDataFilesPage() {
   const [snapshot, setSnapshot] = useState<FileSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [streamerFilter, setStreamerFilter] = useState('');
+  const [tenantId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('tenantId') || '';
+  });
 
   const lastUpdated = useMemo(() => {
     if (!snapshot) return '—';
@@ -39,7 +45,7 @@ export default function DebugDataFilesPage() {
   const load = async () => {
     try {
       setError(null);
-      const next = await fetchSnapshot(selected);
+      const next = await fetchSnapshot(selected, tenantId);
       setSnapshot(next);
     } catch (e: any) {
       setError(e?.message || 'Failed to load file');
@@ -47,7 +53,13 @@ export default function DebugDataFilesPage() {
   };
 
   const downloadUrl = selected === 'shoutout-audit'
-    ? `/api/shoutout-audit/download${streamerFilter.trim() ? `?username=${encodeURIComponent(streamerFilter.trim().replace(/^@/, ''))}` : ''}`
+    ? `/api/shoutout-audit/download${(() => {
+        const params = new URLSearchParams();
+        if (tenantId) params.set('tenantId', tenantId);
+        if (streamerFilter.trim()) params.set('username', streamerFilter.trim().replace(/^@/, ''));
+        const query = params.toString();
+        return query ? `?${query}` : '';
+      })()}`
     : null;
 
   useEffect(() => {
@@ -145,7 +157,7 @@ export default function DebugDataFilesPage() {
                 className="h-9 w-56 rounded-md border bg-background px-3 text-sm"
               />
               <Button asChild size="sm" variant="outline">
-                <a href="/api/shoutout-audit/download">Download all</a>
+                <a href={`/api/shoutout-audit/download${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`}>Download all</a>
               </Button>
               <Button asChild size="sm" variant="outline" disabled={!downloadUrl}>
                 <a href={downloadUrl || '/api/shoutout-audit/download'}>Download filtered</a>
