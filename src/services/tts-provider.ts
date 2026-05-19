@@ -191,7 +191,10 @@ async function generateGoogleTTS(text: string, config: TTSConfig): Promise<strin
   throw new Error('Google TTS not implemented yet');
 }
 
+const INWORLD_FEMALE_VOICES = new Set(['Ashley', 'Lauren', 'Jessica', 'Veronica', 'Victoria', 'Miranda', 'Kelsey', 'Kayla', 'Chloe', 'Serena', 'Celeste', 'Evelyn', 'Pippa', 'Tessa', 'Anjali', 'Saanvi', 'Claire', 'Abby', 'Luna', 'Loretta', 'Darlene', 'Marlene', 'Elizabeth', 'Julia', 'Pixie', 'Olivia', 'Priya', 'Wendy', 'Deborah', 'Hana', 'Riley', 'Mia', 'Naomi', 'Nadia', 'Selene', 'Bianca', 'Amina', 'Sophie', 'Eleanor']);
+
 async function generateEdenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
+  const gender = INWORLD_FEMALE_VOICES.has(voice) ? 'FEMALE' : 'MALE';
   const response = await fetch('https://api.edenai.run/v2/audio/text_to_speech', {
     method: 'POST',
     headers: {
@@ -202,7 +205,7 @@ async function generateEdenAITTS(text: string, voice: string, apiKey: string): P
       providers: 'openai',
       language: 'en',
       text,
-      option: 'FEMALE',
+      option: gender,
     }),
   });
 
