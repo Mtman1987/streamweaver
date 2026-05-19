@@ -7,7 +7,7 @@ import { promises as fsp } from 'fs';
 const PERSIST_ROOT = process.env.PERSIST_ROOT || path.resolve(process.cwd(), 'data', 'runtime');
 
 // Admin Twitch ID — only this user can connect the community bot
-const ADMIN_TWITCH_ID = process.env.ADMIN_TWITCH_ID || '';
+const ADMIN_TWITCH_ID = process.env.ADMIN_TWITCH_ID || process.env.NEXT_PUBLIC_HARDCODED_ADMIN_TWITCH_ID || '94371378';
 
 /**
  * Returns the root path for data shared across ALL tenants.
