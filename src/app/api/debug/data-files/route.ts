@@ -55,11 +55,12 @@ export async function GET(request: NextRequest) {
 
     const session = getTenantFromRequest(request);
     const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
+    const auditFile = file === 'shoutout-audit';
     const admin = isAdmin(session?.tenantId || '');
-    if (requestedTenantId && requestedTenantId !== 'all' && requestedTenantId !== session?.tenantId && !admin) {
+    if (!auditFile && requestedTenantId && requestedTenantId !== session?.tenantId && !admin) {
       return apiError('Admin only', { status: 403, code: 'FORBIDDEN' });
     }
-    const readAllShoutoutAudit = file === 'shoutout-audit' && admin && (!requestedTenantId || requestedTenantId === 'all');
+    const readAllShoutoutAudit = auditFile && (!requestedTenantId || requestedTenantId === 'all');
     if (readAllShoutoutAudit) {
       const tenantIds = await listTenants();
       const files = tenantIds.map((tenantId) => tenantPath(tenantId, 'logs/shoutout-audit.json'));

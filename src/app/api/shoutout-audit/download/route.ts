@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiError } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { isAdmin } from '@/lib/tenant';
 import { readAllTenantShoutoutAuditText, readShoutoutAuditText } from '@/services/shoutout-audit';
 
 function safeFilePart(value: string): string {
@@ -16,12 +15,8 @@ export async function GET(request: NextRequest) {
     }
 
     const url = new URL(request.url);
-    const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
-    const admin = isAdmin(session.tenantId);
-    if (requestedTenantId && requestedTenantId !== 'all' && requestedTenantId !== session.tenantId && !admin) {
-      return apiError('Admin only', { status: 403, code: 'FORBIDDEN' });
-    }
-    const readAll = admin && (!requestedTenantId || requestedTenantId === 'all');
+    const requestedTenantId = url.searchParams.get('tenantId')?.trim() || 'all';
+    const readAll = requestedTenantId === 'all';
     const tenantId = readAll ? 'all' : requestedTenantId || session.tenantId;
     const username = url.searchParams.get('username')?.trim().replace(/^@/, '') || undefined;
     const text = readAll
