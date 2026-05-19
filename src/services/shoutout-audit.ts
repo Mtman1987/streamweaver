@@ -27,8 +27,8 @@ export interface ShoutoutAuditEvent {
 const MAX_AUDIT_LINES = Number(process.env.SHOUTOUT_AUDIT_MAX_LINES || 5000);
 
 function auditPath(tenantId?: string): string {
-  if (tenantId) return tenantPath(tenantId, 'logs/shoutout-audit.jsonl');
-  return resolve(process.cwd(), 'logs', 'shoutout-audit.jsonl');
+  if (tenantId) return tenantPath(tenantId, 'logs/shoutout-audit.json');
+  return resolve(process.cwd(), 'logs', 'shoutout-audit.json');
 }
 
 function stringifyError(error: unknown): string {
@@ -40,13 +40,29 @@ function stringifyError(error: unknown): string {
   }
 }
 
-async function trimAuditFile(filePath: string): Promise<void> {
+function parseAuditRecords(raw: string): Record<string, unknown>[] {
+  if (!raw.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === 'object') : [];
+  } catch {
+    return [];
+  }
+}
+
+async function readAuditRecords(filePath: string): Promise<Record<string, unknown>[]> {
   try {
     const raw = await fs.readFile(filePath, 'utf-8');
-    const lines = raw.split(/\r?\n/).filter(Boolean);
-    if (lines.length <= MAX_AUDIT_LINES) return;
-    await fs.writeFile(filePath, `${lines.slice(-MAX_AUDIT_LINES).join('\n')}\n`, 'utf-8');
-  } catch {}
+    return parseAuditRecords(raw);
+  } catch {
+    return [];
+  }
+}
+
+async function writeAuditRecords(filePath: string, records: Record<string, unknown>[]): Promise<void> {
+  const trimmed = records.slice(-MAX_AUDIT_LINES);
+  await fs.writeFile(filePath, `${JSON.stringify(trimmed, null, 2)}\n`, 'utf-8');
 }
 
 export async function recordShoutoutAudit(event: ShoutoutAuditEvent): Promise<void> {
@@ -61,12 +77,9 @@ export async function recordShoutoutAudit(event: ShoutoutAuditEvent): Promise<vo
 
   try {
     await fs.mkdir(dirname(filePath), { recursive: true });
-    await fs.appendFile(filePath, `${JSON.stringify(record)}\n`, 'utf-8');
-
-    const stats = await fs.stat(filePath);
-    if (stats.size > 2 * 1024 * 1024) {
-      await trimAuditFile(filePath);
-    }
+    const records = await readAuditRecords(filePath);
+    records.push(record);
+    await writeAuditRecords(filePath, records);
   } catch (error) {
     console.error('[ShoutoutAudit] Failed to write audit event:', stringifyError(error));
   }
@@ -74,18 +87,9 @@ export async function recordShoutoutAudit(event: ShoutoutAuditEvent): Promise<vo
 
 export async function readRecentShoutoutAudit(tenantId?: string, limit = 200): Promise<Record<string, unknown>[]> {
   try {
-    const raw = await fs.readFile(auditPath(tenantId), 'utf-8');
-    return raw
-      .split(/\r?\n/)
-      .filter(Boolean)
+    const records = await readAuditRecords(auditPath(tenantId));
+    return records
       .slice(-Math.max(1, Math.min(limit, 1000)))
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return { timestamp: null, status: 'invalid', raw: line };
-        }
-      })
       .reverse();
   } catch {
     return [];
@@ -94,25 +98,17 @@ export async function readRecentShoutoutAudit(tenantId?: string, limit = 200): P
 
 export async function readShoutoutAuditText(tenantId?: string, username?: string): Promise<string> {
   try {
-    const raw = await fs.readFile(auditPath(tenantId), 'utf-8');
+    const records = await readAuditRecords(auditPath(tenantId));
     const normalizedUser = String(username || '').trim().replace(/^@/, '').toLowerCase();
-    if (!normalizedUser) return raw;
+    if (!normalizedUser) return `${JSON.stringify(records, null, 2)}\n`;
 
-    const filtered = raw
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .filter((line) => {
-        try {
-          const parsed = JSON.parse(line);
-          return String(parsed.username || '').toLowerCase() === normalizedUser;
-        } catch {
-          return false;
-        }
-      });
+    const filtered = records.filter((record) => (
+      String(record.username || '').toLowerCase() === normalizedUser
+    ));
 
-    return filtered.length > 0 ? `${filtered.join('\n')}\n` : '';
+    return `${JSON.stringify(filtered, null, 2)}\n`;
   } catch {
-    return '';
+    return '[]\n';
   }
 }
 

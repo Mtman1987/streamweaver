@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
     return new NextResponse(text, {
       status: 200,
       headers: {
-        'Content-Type': 'application/x-ndjson; charset=utf-8',
-        'Content-Disposition': `attachment; filename="shoutout-audit-${scope}-${date}.jsonl"`,
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="shoutout-audit-${scope}-${date}.json"`,
         'Cache-Control': 'no-store',
       },
     });

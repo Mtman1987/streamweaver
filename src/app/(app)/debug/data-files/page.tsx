@@ -122,7 +122,7 @@ export default function DebugDataFilesPage() {
               size="sm"
               onClick={() => setSelected('shoutout-audit')}
             >
-              shoutout-audit.jsonl
+              shoutout-audit.json
             </Button>
             <Button variant="outline" size="sm" onClick={load}>
               Refresh now

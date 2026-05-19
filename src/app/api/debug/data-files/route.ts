@@ -21,8 +21,8 @@ function resolveFilePath(file: FileKey, tenantId?: string): string {
   if (file === 'point-settings') return getUserDataPath('point-settings.json', tenantId);
   if (file === 'channel-point-rewards') return getUserDataPath('channel-point-rewards.json', tenantId);
   if (file === 'shoutout-audit') return tenantId
-    ? tenantPath(tenantId, 'logs/shoutout-audit.jsonl')
-    : path.resolve(process.cwd(), 'logs', 'shoutout-audit.jsonl');
+    ? tenantPath(tenantId, 'logs/shoutout-audit.json')
+    : path.resolve(process.cwd(), 'logs', 'shoutout-audit.json');
   throw new Error(`Unknown file: ${file}`);
 }
 
@@ -78,12 +78,8 @@ export async function GET(request: NextRequest) {
     // Best-effort count (don’t fail the endpoint if JSON is temporarily invalid while editing)
     let count: number | null = null;
     try {
-      if (file === 'shoutout-audit') {
-        count = raw.split(/\r?\n/).filter(Boolean).length;
-      } else {
-        const parsed = JSON.parse(raw);
-        count = Array.isArray(parsed) ? parsed.length : null;
-      }
+      const parsed = JSON.parse(raw);
+      count = Array.isArray(parsed) ? parsed.length : null;
     } catch {
       count = null;
     }
