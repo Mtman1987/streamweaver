@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import { dirname, resolve } from 'path';
-import { tenantPath } from '../lib/tenant';
+import { listTenants, tenantPath } from '../lib/tenant';
 
 export type ShoutoutAuditStatus =
   | 'triggered'
@@ -96,6 +96,19 @@ export async function readRecentShoutoutAudit(tenantId?: string, limit = 200): P
   }
 }
 
+export async function readRecentShoutoutAuditForAllTenants(limit = 200): Promise<Record<string, unknown>[]> {
+  const tenantIds = await listTenants();
+  const records = (
+    await Promise.all(
+      tenantIds.map((tenantId) => readAuditRecords(auditPath(tenantId)))
+    )
+  ).flat();
+
+  return records
+    .sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')))
+    .slice(0, Math.max(1, Math.min(limit, 1000)));
+}
+
 export async function readShoutoutAuditText(tenantId?: string, username?: string): Promise<string> {
   try {
     const records = await readAuditRecords(auditPath(tenantId));
@@ -106,6 +119,25 @@ export async function readShoutoutAuditText(tenantId?: string, username?: string
       String(record.username || '').toLowerCase() === normalizedUser
     ));
 
+    return `${JSON.stringify(filtered, null, 2)}\n`;
+  } catch {
+    return '[]\n';
+  }
+}
+
+export async function readAllTenantShoutoutAuditText(username?: string): Promise<string> {
+  try {
+    const tenantIds = await listTenants();
+    const records = (
+      await Promise.all(
+        tenantIds.map((tenantId) => readAuditRecords(auditPath(tenantId)))
+      )
+    ).flat();
+    const normalizedUser = String(username || '').trim().replace(/^@/, '').toLowerCase();
+    const filtered = normalizedUser
+      ? records.filter((record) => String(record.username || '').toLowerCase() === normalizedUser)
+      : records;
+    filtered.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
     return `${JSON.stringify(filtered, null, 2)}\n`;
   } catch {
     return '[]\n';

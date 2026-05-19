@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { apiError } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { isAdmin } from '@/lib/tenant';
-import { readShoutoutAuditText } from '@/services/shoutout-audit';
+import { readAllTenantShoutoutAuditText, readShoutoutAuditText } from '@/services/shoutout-audit';
 
 function safeFilePart(value: string): string {
   return value.replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'all';
@@ -17,12 +17,16 @@ export async function GET(request: NextRequest) {
 
     const url = new URL(request.url);
     const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
-    if (requestedTenantId && requestedTenantId !== session.tenantId && !isAdmin(session.tenantId)) {
+    const admin = isAdmin(session.tenantId);
+    if (requestedTenantId && requestedTenantId !== 'all' && requestedTenantId !== session.tenantId && !admin) {
       return apiError('Admin only', { status: 403, code: 'FORBIDDEN' });
     }
-    const tenantId = requestedTenantId || session.tenantId;
+    const readAll = admin && (!requestedTenantId || requestedTenantId === 'all');
+    const tenantId = readAll ? 'all' : requestedTenantId || session.tenantId;
     const username = url.searchParams.get('username')?.trim().replace(/^@/, '') || undefined;
-    const text = await readShoutoutAuditText(tenantId, username);
+    const text = readAll
+      ? await readAllTenantShoutoutAuditText(username)
+      : await readShoutoutAuditText(tenantId, username);
     const scope = username ? safeFilePart(username.toLowerCase()) : 'all';
     const date = new Date().toISOString().slice(0, 10);
 

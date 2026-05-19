@@ -8,7 +8,7 @@ import { getPublicChatFilePath } from '@/lib/public-chat-store';
 import { isDebugRoutesEnabled } from '@/lib/local-config/service';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
-import { isAdmin, tenantPath } from '@/lib/tenant';
+import { isAdmin, listTenants, tenantPath } from '@/lib/tenant';
 
 type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
 
@@ -55,9 +55,43 @@ export async function GET(request: NextRequest) {
 
     const session = getTenantFromRequest(request);
     const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
-    if (requestedTenantId && requestedTenantId !== session?.tenantId && !isAdmin(session?.tenantId || '')) {
+    const admin = isAdmin(session?.tenantId || '');
+    if (requestedTenantId && requestedTenantId !== 'all' && requestedTenantId !== session?.tenantId && !admin) {
       return apiError('Admin only', { status: 403, code: 'FORBIDDEN' });
     }
+    const readAllShoutoutAudit = file === 'shoutout-audit' && admin && (!requestedTenantId || requestedTenantId === 'all');
+    if (readAllShoutoutAudit) {
+      const tenantIds = await listTenants();
+      const files = tenantIds.map((tenantId) => tenantPath(tenantId, 'logs/shoutout-audit.json'));
+      const snapshots = await Promise.all(files.map(async (filePath) => {
+        try {
+          const [stat, raw] = await Promise.all([
+            fsp.stat(filePath),
+            fsp.readFile(filePath, 'utf-8'),
+          ]);
+          const parsed = JSON.parse(raw);
+          return {
+            stat,
+            records: Array.isArray(parsed) ? parsed : [],
+          };
+        } catch {
+          return { stat: null, records: [] as unknown[] };
+        }
+      }));
+      const records = snapshots.flatMap((snapshot) => snapshot.records);
+      records.sort((a: any, b: any) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+      const latestMtime = Math.max(0, ...snapshots.map((snapshot) => snapshot.stat?.mtimeMs || 0));
+      const preview = `${JSON.stringify(records, null, 2)}\n`;
+      return apiOk({
+        file,
+        path: '/data/runtime/tenants/*/logs/shoutout-audit.json',
+        mtimeMs: latestMtime,
+        size: Buffer.byteLength(preview, 'utf-8'),
+        count: records.length,
+        preview: preview.slice(0, 8000),
+      });
+    }
+
     const tenantId = requestedTenantId || session?.tenantId;
     const filePath = resolveFilePath(file, tenantId);
 

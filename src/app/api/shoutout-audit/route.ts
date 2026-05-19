@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { isAdmin } from '@/lib/tenant';
-import { readRecentShoutoutAudit } from '@/services/shoutout-audit';
+import { readRecentShoutoutAudit, readRecentShoutoutAuditForAllTenants } from '@/services/shoutout-audit';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,11 +13,15 @@ export async function GET(request: NextRequest) {
       return apiError('Login required', { status: 401, code: 'UNAUTHORIZED' });
     }
     const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
-    if (requestedTenantId && requestedTenantId !== session.tenantId && !isAdmin(session.tenantId)) {
+    const admin = isAdmin(session.tenantId);
+    if (requestedTenantId && requestedTenantId !== 'all' && requestedTenantId !== session.tenantId && !admin) {
       return apiError('Admin only', { status: 403, code: 'FORBIDDEN' });
     }
-    const tenantId = requestedTenantId || session.tenantId;
-    const events = await readRecentShoutoutAudit(tenantId, limit);
+    const readAll = admin && (!requestedTenantId || requestedTenantId === 'all');
+    const tenantId = readAll ? 'all' : requestedTenantId || session.tenantId;
+    const events = readAll
+      ? await readRecentShoutoutAuditForAllTenants(limit)
+      : await readRecentShoutoutAudit(tenantId, limit);
 
     return apiOk({
       tenantId: tenantId || 'global',
