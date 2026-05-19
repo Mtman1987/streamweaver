@@ -3,6 +3,8 @@ import { getTwitchUser } from './twitch';
 import { readJsonFile, writeJsonFile } from './storage';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import { readUserConfig } from '../lib/user-config';
+import { isKnownBot } from './known-bots';
+import { getExcludedUsers } from './welcome-wagon-tracker';
 
 let isPlaying = false;
 let stopRequested = false;
@@ -18,9 +20,9 @@ function bc(msg: object, tenantId?: string) {
   }
 }
 
-async function getClipModeFromStorage(): Promise<boolean> {
+async function getClipModeFromStorage(tenantId?: string): Promise<boolean> {
   const { getMode } = await import('./modes-manager');
-  const clipMode = await getMode('clipmode');
+  const clipMode = await getMode('clipmode', tenantId);
   return clipMode === 'viewer';
 }
 
@@ -81,6 +83,28 @@ async function getChatters(tenantId?: string): Promise<string[]> {
   } catch { return []; }
 }
 
+async function getEligibleViewerClipTargets(chatters: string[], broadcasterName: string, tenantId?: string): Promise<string[]> {
+  const broadcaster = broadcasterName.toLowerCase();
+  const excluded = new Set((await getExcludedUsers(tenantId).catch(() => [])).map(u => u.toLowerCase()));
+  const eligible: string[] = [];
+
+  for (const chatter of chatters) {
+    const lower = chatter.toLowerCase();
+    if (!lower || lower === broadcaster) continue;
+    if (excluded.has(lower)) {
+      console.log(`[BRB] Skipping ${chatter}: excluded from welcome/shoutout list`);
+      continue;
+    }
+    if (await isKnownBot(lower, tenantId)) {
+      console.log(`[BRB] Skipping ${chatter}: known/ignored bot`);
+      continue;
+    }
+    eligible.push(chatter);
+  }
+
+  return [...new Set(eligible.map(u => u.toLowerCase()))];
+}
+
 export async function startBRB(broadcasterName: string, tenantId?: string): Promise<void> {
   if (isPlaying) { console.log('[BRB] Already playing'); return; }
 
@@ -111,12 +135,12 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
   await new Promise(r => setTimeout(r, 2000));
 
   while (!stopRequested) {
-    const useViewerClips = await getClipModeFromStorage();
+    const useViewerClips = await getClipModeFromStorage(tenantId);
     let targetUsers: string[];
 
     if (useViewerClips) {
       const chatters = await getChatters(tenantId);
-      const viewers = chatters.filter(u => u.toLowerCase() !== broadcasterName.toLowerCase());
+      const viewers = await getEligibleViewerClipTargets(chatters, broadcasterName, tenantId);
       targetUsers = viewers.length > 0 ? viewers : [broadcasterName];
       console.log(`[BRB] Viewer mode: ${targetUsers.length} targets`);
     } else {

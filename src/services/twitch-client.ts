@@ -134,6 +134,7 @@ async function ensureCommunityBotForChannel(
           await handleTwitchMessage(channel, tags, message, self);
         } catch (error) {
           console.error('[Twitch:community-bot] Message handler failed:', error);
+          return;
         }
       });
 

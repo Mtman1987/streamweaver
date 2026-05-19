@@ -4,6 +4,7 @@ import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { handleDiscordMessage } from './chat-dispatcher';
 import { tenantPath } from '../lib/tenant';
+import { isDiscordApiError } from './discord-local';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -12,6 +13,8 @@ let recentlySentMessages = new Set<string>();
 let isLoadingHistory: Map<string, boolean> = new Map();
 
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId', tenantId?: string): Promise<string | null> {
     const SETTINGS_FILE = tenantId 
@@ -59,8 +62,24 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
         try {
             messages = await getChannelMessages(logChannelId, 50);
         } catch (error) {
-            console.log(`[Discord:${key}] Failed to load chat history, continuing without it:`, (error as Error).message);
-            return [];
+            if (isDiscordApiError(error) && error.status === 404) {
+                console.warn(`[Discord:${key}] Chat history channel is unavailable; continuing without history.`);
+                return [];
+            }
+            if (isDiscordApiError(error) && error.status === 429) {
+                const waitMs = Math.min(error.retryAfterMs ?? 2500, 10000);
+                console.warn(`[Discord:${key}] Chat history rate limited; retrying after ${waitMs}ms.`);
+                await delay(waitMs);
+                try {
+                    messages = await getChannelMessages(logChannelId, 50);
+                } catch {
+                    console.warn(`[Discord:${key}] Chat history still rate limited; continuing without history.`);
+                    return [];
+                }
+            } else {
+                console.warn(`[Discord:${key}] Chat history unavailable; continuing without it.`);
+                return [];
+            }
         }
         const chatHistory: ChatHistoryMessage[] = [];
         
@@ -123,7 +142,7 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
         }
         return chatHistory;
     } catch (error) {
-        console.error(`Failed to load chat history from Discord for ${key}:`, error);
+        console.warn(`Discord chat history unavailable for ${key}; continuing without it.`);
         return [];
     } finally {
         isLoadingHistory.set(key, false);

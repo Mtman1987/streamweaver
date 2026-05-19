@@ -63,6 +63,24 @@ export async function POST(request: NextRequest) {
 
   const updated = stripRole(tokens, role);
 
+  if (role === 'broadcaster' && tenantId) {
+    try {
+      const wsPort = process.env.WS_PORT || '8090';
+      await fetch(`http://127.0.0.1:${wsPort}/api/twitch/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId }),
+      }).catch(() => {});
+      await fetch(`http://127.0.0.1:${wsPort}/api/kick/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId }),
+      }).catch(() => {});
+    } catch {
+      // Runtime disconnect is best-effort; token removal below remains source of truth.
+    }
+  }
+
   if (!hasAnyTwitchTokens(updated)) {
     const tokensFile = tenantId
       ? tenantPath(tenantId, 'tokens/twitch-tokens.json')

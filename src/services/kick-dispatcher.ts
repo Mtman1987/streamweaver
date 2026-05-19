@@ -5,7 +5,7 @@
  */
 
 import { KickMessage, getKickService } from './kick';
-import { getPoints, setPoints, addPoints, addPointsToAll, setPointsToAll, resetAllPoints, awardChatPoints } from './points';
+import { getPoints, getPointBalance, setPoints, addPoints, addPointsToAll, setPointsToAll, resetAllPoints, awardChatPoints } from './points';
 import { getAllCommands } from '../lib/commands-store';
 import { incrementMetric } from './metrics';
 import { givePoints, stealPoints } from './points-transfer';
@@ -25,6 +25,20 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
 
   // Community channels only support SPMT commands (no points/storage)
   const isCommunityChannel = tenantId.startsWith('kick_community_');
+  if (!isCommunityChannel) {
+    try {
+      const { getStoredTokens } = require('../lib/token-utils.server');
+      const tokens = await getStoredTokens(tenantId);
+      if (!tokens?.broadcasterToken || !tokens?.broadcasterRefreshToken) {
+        console.log(`[KickDispatcher] Tenant ${tenantId} has no Twitch broadcaster auth; disconnecting Kick and ignoring message.`);
+        getKickService(tenantId).disconnect();
+        return;
+      }
+    } catch (e: any) {
+      console.warn(`[KickDispatcher] Could not verify tenant auth for ${tenantId}; ignoring Kick message:`, e?.message || e);
+      return;
+    }
+  }
 
   // Resolve linked Twitch username for points (use Kick username as fallback)
   let pointsUsername = username;
@@ -244,8 +258,9 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       case 'stealpoints': {
         const parts = args.split(/\s+/);
         const targetUser = parts[0]?.replace('@', '');
-        const amount = parseInt(parts[1], 10);
-        if (!targetUser || isNaN(amount)) {
+        const amountText = parts[1] || '';
+        const amount = /^\d+$/.test(amountText) ? Number(amountText) : NaN;
+        if (!targetUser || !Number.isSafeInteger(amount)) {
           await reply(`@${username}, usage: !stealpoints @user amount`);
           return;
         }
@@ -396,26 +411,25 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       case 'gamble': {
         const { handleGamble } = require('./gamble/classic-gamble');
         const betInput = args;
-        const userPts = await getPoints(pointsUsername, ctx);
-        const result = await handleGamble(pointsUsername, betInput, userPts.points, silentTenantId);
+        const userPts = await getPointBalance(pointsUsername, ctx);
+        const result = await handleGamble(pointsUsername, betInput, userPts, silentTenantId);
         if (result) {
           await setPoints(pointsUsername, result.newTotal, ctx);
-          const changeStr = result.change >= 0 ? `+${result.change}` : `${result.change}`;
           const outcomeEmoji = result.outcome === 'jackpot' ? '🎰 JACKPOT!' : result.outcome === 'win' ? '🎉 Win!' : '💀 Loss!';
-          await reply(`${outcomeEmoji} @${username} ${changeStr} points (Total: ${result.newTotal})`);
+          await reply(`${outcomeEmoji} @${username} ${result.changeDisplay} points (Total: ${result.newTotalDisplay})`);
         }
         return;
       }
       case 'roll': {
         const { handleRoll } = require('./gamble/classic-gamble');
-        const userPts = await getPoints(pointsUsername, ctx);
-        const result = await handleRoll(pointsUsername, args, userPts.points, silentTenantId);
+        const userPts = await getPointBalance(pointsUsername, ctx);
+        const result = await handleRoll(pointsUsername, args, userPts, silentTenantId);
         if (result) {
           await setPoints(pointsUsername, result.newTotal, ctx);
           // Store double-or-nothing state for !double (30 second window)
           if (!(global as any).kickDoubleStates) (global as any).kickDoubleStates = new Map();
-          (global as any).kickDoubleStates.set(username.toLowerCase(), { wager: Math.abs(result.change) || parseInt(args), expires: Date.now() + 30000 });
-          await reply(`🎲 @${username} rolled a ${result.roll}! ${result.outcome} (${result.change >= 0 ? '+' : ''}${result.change} pts, Total: ${result.newTotal}) | Type !double to double or nothing!`);
+          (global as any).kickDoubleStates.set(username.toLowerCase(), { wager: result.change.startsWith('-') ? result.change.slice(1) : result.change || args, expires: Date.now() + 30000 });
+          await reply(`🎲 @${username} rolled a ${result.roll}! ${result.outcome} (${result.changeDisplay} pts, Total: ${result.newTotalDisplay}) | Type !double to double or nothing!`);
         }
         return;
       }
@@ -427,13 +441,13 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
           return;
         }
         const { handleDouble } = require('./gamble/classic-gamble');
-        const dblPts = await getPoints(username, ctx);
-        const dblResult = await handleDouble(username, doubleState.wager, dblPts.points, silentTenantId);
+        const dblPts = await getPointBalance(username, ctx);
+        const dblResult = await handleDouble(username, doubleState.wager, dblPts, silentTenantId);
         if (dblResult) {
           await setPoints(username, dblResult.newTotal, ctx);
           const dblMsg = dblResult.won
-            ? `🎉 @${username} DOUBLE OR NOTHING WIN! +${doubleState.wager * 2} pts! (Total: ${dblResult.newTotal})`
-            : `💀 @${username} Double or nothing failed. -${doubleState.wager * 2} pts. (Total: ${dblResult.newTotal})`;
+            ? `🎉 @${username} DOUBLE OR NOTHING WIN! ${dblResult.changeDisplay} pts! (Total: ${dblResult.newTotalDisplay})`
+            : `💀 @${username} Double or nothing failed. ${dblResult.changeDisplay} pts. (Total: ${dblResult.newTotalDisplay})`;
           await reply(dblMsg);
         }
         states?.delete(username.toLowerCase());

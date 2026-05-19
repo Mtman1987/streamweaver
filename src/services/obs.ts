@@ -9,10 +9,18 @@ type ObsSettings = {
     password: string;
 };
 
+function isLocalObsUrl(url: string): boolean {
+    return /^wss?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/i.test(url);
+}
+
 async function resolveObsSettings(tenantId?: string): Promise<ObsSettings | null> {
     const envUrl = process.env.OBS_WS_URL?.trim();
     const envPassword = (process.env.OBS_WS_PASSWORD || '').trim();
     if (envUrl) {
+        if (process.env.FLY_APP_NAME && isLocalObsUrl(envUrl) && process.env.OBS_ALLOW_LOCAL_ON_FLY !== 'true') {
+            console.warn('[OBS] Local OBS URL configured on Fly; OBS control disabled for this runtime.');
+            return null;
+        }
         return { url: envUrl, password: envPassword };
     }
 
@@ -27,6 +35,10 @@ async function resolveObsSettings(tenantId?: string): Promise<ObsSettings | null
 
         const url = explicitUrl || (ip && port ? `ws://${ip}:${port}` : '');
         if (!url) return null;
+        if (process.env.FLY_APP_NAME && isLocalObsUrl(url)) {
+            console.warn('[OBS] Local OBS vault setting ignored on Fly; OBS control disabled for this runtime.');
+            return null;
+        }
         return { url, password };
     } catch {
         return null;
@@ -73,8 +85,8 @@ export async function setupObsWebSocket(): Promise<void> {
 
             OBSHandlers.setOBSConnection('default', obsClient);
             console.log('[OBS] Connected and registered with automation engine');
-        } catch (error) {
-            console.error('[OBS] Failed to connect:', error);
+        } catch {
+            console.warn('[OBS] Connection unavailable; OBS control disabled for now.');
             obsClient = null;
         } finally {
             connectInFlight = null;

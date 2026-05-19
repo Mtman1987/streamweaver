@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { handleGamble, getSettings, updateSettings } from '@/services/gamble/classic-gamble';
-import { getUserPoints, updateUserPoints } from '@/services/points';
+import { getPointBalance, updateUserPoints } from '@/services/points';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { z } from 'zod';
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
                 return apiError('User required', { status: 400, code: 'USER_REQUIRED' });
             }
             
-            const userPoints = await getUserPoints(user, ctx);
+            const userPoints = await getPointBalance(user, ctx);
             const result = await handleGamble(user, betInput || '', userPoints);
             
             if (result) {

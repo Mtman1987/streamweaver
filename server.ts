@@ -7,6 +7,9 @@ console.log('[Server] ALLOW_DATA_FILE_IO from .env:', process.env.ALLOW_DATA_FIL
 import { applyUserConfigToProcessEnvSync } from './src/lib/user-config';
 applyUserConfigToProcessEnvSync();
 
+import { installRuntimeLogBuffer } from './src/services/runtime-log-buffer';
+installRuntimeLogBuffer();
+
 import * as http from 'http';
 import { spawn } from 'child_process';
 import { WebSocketServer } from 'ws';
@@ -351,6 +354,14 @@ async function startServer() {
             } catch (e) {
                 console.warn(`[STEP 4] ⚠️ Welcome session load failed for tenant ${tenantId}:`, e);
             }
+        }
+
+        try {
+            const { startWalkOnRecoveryScheduler } = require('./src/services/walk-on-recovery');
+            startWalkOnRecoveryScheduler();
+            console.log('[STEP 4] ✅ Walk-on recovery scheduler started');
+        } catch (e) {
+            console.warn('[STEP 4] ⚠️ Walk-on recovery scheduler failed:', e);
         }
 
         // Load chat history for all tenants

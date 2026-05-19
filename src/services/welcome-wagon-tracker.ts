@@ -1,5 +1,5 @@
 import * as fs from 'fs/promises';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { tenantPath } from '../lib/tenant';
 
 interface WelcomeWagonData {
@@ -35,7 +35,7 @@ async function loadWelcomeWagonData(tenantId?: string): Promise<WelcomeWagonData
 
 async function saveWelcomeWagonData(data: WelcomeWagonData, tenantId?: string): Promise<void> {
   const filePath = trackerPath(tenantId);
-  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+  await fs.mkdir(dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));
 }
 
@@ -47,6 +47,11 @@ export async function canShoutoutUser(username: string, tenantId?: string): Prom
   const last = data.shoutouts[lower];
   if (last && Date.now() - last < 24 * 60 * 60 * 1000) return false;
   return true;
+}
+
+export async function getShoutoutCount(username: string, tenantId?: string): Promise<number> {
+  const data = await loadWelcomeWagonData(tenantId);
+  return data.shoutouts[username.toLowerCase()] ? 1 : 0;
 }
 
 export async function recordShoutout(username: string, tenantId?: string): Promise<void> {

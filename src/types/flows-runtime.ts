@@ -4,7 +4,7 @@ export interface FlowServices {
   sendChatMessage: (message: string, as?: 'bot' | 'broadcaster') => Promise<void>;
   sendDiscordMessage: (channelId: string, message: string) => Promise<void>;
   conversationalResponse: (input: { message: string; personality?: string }) => Promise<{ response: string }>;
-  textToSpeech: (input: { text: string; voice: string }) => Promise<{ audioDataUri: string }>;
+  textToSpeech: (input: { text: string; voice?: string; tenantId?: string }) => Promise<{ audioDataUri: string }>;
   sendPluginCommand: (pluginId: string, command: { command: string; payload?: Record<string, any> }) => Promise<void>;
   broadcast: (payload: any) => void;
   updatePoints: (options: { user: string; amount?: number; operation?: 'add' | 'set' | 'get'; reason?: string }) => Promise<{ points: number; level: number }>;
@@ -36,6 +36,7 @@ export interface FlowExecutionContext {
   lastOutput?: string;
   personality?: string;
   voice?: string;
+  tenantId?: string;
   services: FlowServices;
   logEvent?: (event: FlowLogEvent) => void;
 }

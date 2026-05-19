@@ -41,6 +41,8 @@ export default function ClassicGambleOverlay() {
   if (!visible || !data?.payload) return null;
 
   const { user, outcome, amount, newTotal, currency } = data.payload;
+  const amountDisplay = data.payload.displayAmountDisplay || data.payload.amountDisplay || amount || '0';
+  const totalDisplay = data.payload.newTotalDisplay || newTotal || '0';
   const isJackpot = outcome === 'jackpot';
   const isWin = outcome === 'win';
   const isLoss = outcome === 'loss';
@@ -68,10 +70,10 @@ export default function ClassicGambleOverlay() {
           {user}
         </div>
         <div style={{ fontSize: 36, color: 'white', textShadow: '2px 2px 4px rgba(0,0,0,0.5)', marginBottom: 20 }}>
-          {isLoss ? 'Lost' : 'Won'} {(amount || 0).toLocaleString()} {currency}
+          {isLoss ? 'Lost' : 'Won'} {amountDisplay} {currency}
         </div>
         <div style={{ fontSize: 24, color: 'rgba(255,255,255,0.9)', textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
-          New Total: {(newTotal || 0).toLocaleString()} {currency}
+          New Total: {totalDisplay} {currency}
         </div>
       </div>
       <style>{`

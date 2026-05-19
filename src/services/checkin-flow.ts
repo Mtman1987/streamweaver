@@ -156,11 +156,11 @@ async function playGreeting(greeting: string, tenantId?: string): Promise<void> 
 
   try {
     const { textToSpeech } = await import('../ai/flows/text-to-speech');
-    const ttsResult = await textToSpeech({ text: greeting });
+    const ttsTenantId = normalizeTenantId(tenantId);
+    const ttsResult = await textToSpeech({ text: greeting, tenantId: ttsTenantId });
     if (!ttsResult.audioDataUri) return;
 
     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
-    const ttsTenantId = normalizeTenantId(tenantId);
     if (useTTSPlayer) {
       const tenantQuery = ttsTenantId ? `?tenant=${encodeURIComponent(ttsTenantId)}` : '';
       await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/tts/current${tenantQuery}`, {

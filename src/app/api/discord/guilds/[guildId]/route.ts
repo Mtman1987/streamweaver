@@ -3,9 +3,9 @@ import { apiError, apiOk } from '@/lib/api-response';
 
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
 
-export async function GET(request: NextRequest, { params }: { params: { guildId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ guildId: string }> }) {
   try {
-    const guildId = params.guildId;
+    const { guildId } = await params;
     if (!guildId) return apiError('guildId required', { status: 400, code: 'MISSING_GUILD_ID' });
 
     const botToken = process.env.DISCORD_BOT_TOKEN;

@@ -71,7 +71,6 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
     const audioChunksRef = useRef<Blob[]>([]);
     const ws = useRef<WebSocket | null>(null);
     const personalityRef = useRef<string>("");
-    const voiceRef = useRef<string>("Ashley");
     const audioContextRef = useRef<AudioContext | null>(null);
 
     // Load destination from localStorage after mount
@@ -151,9 +150,9 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             return;
         }
 
-        // Load settings from localStorage first, then fall back to global (set by bot-settings API)
+        // Load local personality for voice commands. TTS voice is owned by the
+        // server-side tenant config so a stale browser value cannot overwrite it.
         let savedPersonality = localStorage.getItem("bot_personality") || "";
-        let savedVoice = localStorage.getItem("bot_tts_voice") || "Ashley";
         
         // If localStorage is empty, try to get from global (set by bot-settings API)
         if (!savedPersonality && typeof window !== 'undefined') {
@@ -164,22 +163,11 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             }
         }
         
-        // If voice is still default, try global
-        if (savedVoice === "Algieba" && typeof window !== 'undefined') {
-            const globalVoice = (window as any).botVoice;
-            if (globalVoice) {
-                savedVoice = globalVoice;
-                console.log('[VoiceCommander] Loaded voice from global:', savedVoice);
-            }
-        }
-        
         console.log('[VoiceCommander] Loaded settings:', { 
-            savedPersonality: savedPersonality ? '(set)' : '(empty)', 
-            savedVoice 
+            savedPersonality: savedPersonality ? '(set)' : '(empty)'
         });
         
         personalityRef.current = savedPersonality;
-        voiceRef.current = savedVoice;
 
         let isCancelled = false;
         
@@ -190,11 +178,11 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             console.log('[VoiceCommander] Text to speak:', textToSpeak);
             
             try {
-                console.log('[VoiceCommander] Generating TTS with voice:', voiceRef.current);
+                console.log('[VoiceCommander] Generating TTS with tenant default voice');
                 const ttsRes = await fetch('/api/tts', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: textToSpeak, voice: voiceRef.current })
+                    body: JSON.stringify({ text: textToSpeak })
                 });
                 if (!ttsRes.ok) {
                     console.error('[VoiceCommander] TTS failed for bot message:', ttsRes.status);
@@ -257,8 +245,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 }
                 console.log('[VoiceCommander] WebSocket connected to server');
                 const botSettings = { 
-                    personality: personalityRef.current,
-                    voice: voiceRef.current
+                    personality: personalityRef.current
                 };
                 console.log('[VoiceCommander] Sending bot settings:', botSettings);
                 ws.current?.send(JSON.stringify({
@@ -337,14 +324,6 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                  ws.current?.send(JSON.stringify({
                     type: 'update-bot-settings',
                     payload: { personality: e.newValue }
-                }));
-            }
-             if (e.key === 'bot_tts_voice' && e.newValue) {
-                voiceRef.current = e.newValue;
-                console.log('[VoiceCommander] Updated voice from storage:', e.newValue);
-                 ws.current?.send(JSON.stringify({
-                    type: 'update-bot-settings',
-                    payload: { voice: e.newValue }
                 }));
             }
         }
@@ -685,7 +664,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         const ttsRes = await fetch('/api/tts', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ text: reply, voice: voiceRef.current })
+                            body: JSON.stringify({ text: reply })
                         });
                         if (ttsRes.ok) {
                             const ttsData = await ttsRes.json();
@@ -743,7 +722,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         const ttsRes = await fetch('/api/tts', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ text: reply, voice: voiceRef.current })
+                            body: JSON.stringify({ text: reply })
                         });
                         if (ttsRes.ok) {
                             const ttsData = await ttsRes.json();
@@ -879,7 +858,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         const ttsRes = await fetch('/api/tts', { 
                             method: 'POST', 
                             headers: { 'Content-Type': 'application/json' }, 
-                            body: JSON.stringify({ text: reply, voice: voiceRef.current }) 
+                            body: JSON.stringify({ text: reply })
                         });
                         if (ttsRes.ok) {
                             const ttsData = await ttsRes.json();

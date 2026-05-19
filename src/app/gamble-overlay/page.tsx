@@ -45,7 +45,15 @@ export default function GambleOverlay() {
   const user = p.user || p.playerName || '';
   const newTotal = p.newTotal ?? 0;
   const change = p.change ?? 0;
-  const oldTotal = (newTotal - change) || 0;
+  const changeDisplay = p.changeDisplay || `${String(change).startsWith('-') ? '' : '+'}${change}`;
+  const newTotalDisplay = p.newTotalDisplay || String(newTotal);
+  let oldTotalDisplay = '0';
+  try {
+    oldTotalDisplay = (BigInt(newTotal) - BigInt(change)).toLocaleString();
+  } catch {
+    oldTotalDisplay = String((Number(newTotal) || 0) - (Number(change) || 0));
+  }
+  const numericChange = Number(change);
 
   let title = '';
   let isJackpot = false;
@@ -56,14 +64,14 @@ export default function GambleOverlay() {
     isWin = p.outcome === 'win';
     title = isJackpot ? '🎰 JACKPOT!' : isWin ? '🎉 WON!' : '💀 LOST!';
   } else if (eventType === 'roll-result') {
-    isWin = change > 0;
+    isWin = numericChange > 0;
     isJackpot = p.roll === 6;
     title = isJackpot ? '🎲 JACKPOT ROLL!' : isWin ? `🎲 Rolled ${p.roll}!` : `🎲 Rolled ${p.roll}!`;
   } else if (eventType === 'double-result') {
     isWin = p.won;
     title = isWin ? '🔥 DOUBLE WIN!' : '💀 DOUBLE FAIL!';
   } else if (eventType === 'steal-result') {
-    isWin = change > 0;
+    isWin = numericChange > 0;
     title = isWin ? '💰 STOLEN!' : '💰 STEAL FAILED!';
   }
 
@@ -88,10 +96,10 @@ export default function GambleOverlay() {
           {title}
         </div>
         <div style={{ fontSize: 64 }}>
-          {change > 0 ? '+' : ''}{change.toLocaleString()} Points
+          {changeDisplay} Points
         </div>
         <div style={{ fontSize: 48, marginTop: 20, opacity: 0.8 }}>
-          {oldTotal.toLocaleString()} → {newTotal.toLocaleString()}
+          {oldTotalDisplay} → {newTotalDisplay}
         </div>
       </div>
       <style>{`

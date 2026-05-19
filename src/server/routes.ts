@@ -280,6 +280,26 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 return;
             }
 
+            if (pathname === '/api/kick/disconnect' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                    try {
+                        const { tenantId } = JSON.parse(body || '{}');
+                        const { getKickService } = require('../services/kick');
+                        getKickService(tenantId).disconnect();
+                        console.log(`[HTTP] ✅ Kick disconnected (tenant: ${tenantId || 'global'})`);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true }));
+                    } catch (e: any) {
+                        console.error('[HTTP] Kick disconnect failed:', e);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+
             if (pathname === '/api/twitch/reconnect' && req.method === 'POST') {
                 let body = '';
                 req.on('data', chunk => body += chunk);
@@ -299,6 +319,32 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         res.end(JSON.stringify({ success: true }));
                     } catch (e: any) {
                         console.error('[HTTP] Twitch reconnect failed:', e);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+
+            if (pathname === '/api/twitch/disconnect' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                    try {
+                        const { tenantId } = JSON.parse(body || '{}');
+                        if (!tenantId) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'tenantId required' }));
+                            return;
+                        }
+                        console.log(`[HTTP] Disconnecting Twitch IRC for tenant ${tenantId}...`);
+                        const { disconnectTenant } = twitchClientModule;
+                        await disconnectTenant(tenantId);
+                        console.log(`[HTTP] Twitch IRC disconnected for tenant ${tenantId}`);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true }));
+                    } catch (e: any) {
+                        console.error('[HTTP] Twitch disconnect failed:', e);
                         res.writeHead(500, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ error: e.message }));
                     }

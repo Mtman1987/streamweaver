@@ -1,12 +1,74 @@
 import { DiscordMessage } from '../types/game-types';
 
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
+const DISCORD_API_MIN_INTERVAL_MS = Math.max(0, Number(process.env.DISCORD_API_MIN_INTERVAL_MS || 350));
+const DISCORD_API_MAX_RETRY_MS = Math.max(1000, Number(process.env.DISCORD_API_MAX_RETRY_MS || 15000));
 
-async function discordRequest(endpoint: string, options: RequestInit = {}) {
+let discordRequestQueue: Promise<unknown> = Promise.resolve();
+let lastDiscordRequestAt = 0;
+
+export class DiscordApiError extends Error {
+    status: number;
+    body: string;
+    retryAfterMs?: number;
+
+    constructor(status: number, body: string, retryAfterMs?: number) {
+        super(`Discord API ${status}: ${body}`);
+        this.name = 'DiscordApiError';
+        this.status = status;
+        this.body = body;
+        this.retryAfterMs = retryAfterMs;
+    }
+}
+
+export function isDiscordApiError(error: unknown): error is DiscordApiError {
+    return error instanceof DiscordApiError;
+}
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function throttleDiscordRequest() {
+    const elapsed = Date.now() - lastDiscordRequestAt;
+    const waitMs = DISCORD_API_MIN_INTERVAL_MS - elapsed;
+    if (waitMs > 0) {
+        await delay(waitMs);
+    }
+    lastDiscordRequestAt = Date.now();
+}
+
+async function enqueueDiscordRequest<T>(operation: () => Promise<T>): Promise<T> {
+    const run = discordRequestQueue.then(operation, operation);
+    discordRequestQueue = run.catch(() => undefined);
+    return run;
+}
+
+function getRetryAfterMs(response: Response, body: string): number | undefined {
+    const header = response.headers.get('retry-after');
+    const headerSeconds = header ? Number(header) : NaN;
+    if (Number.isFinite(headerSeconds)) {
+        return Math.max(0, Math.ceil(headerSeconds * 1000));
+    }
+
+    try {
+        const parsed = JSON.parse(body);
+        const retryAfterSeconds = Number(parsed?.retry_after);
+        if (Number.isFinite(retryAfterSeconds)) {
+            return Math.max(0, Math.ceil(retryAfterSeconds * 1000));
+        }
+    } catch {
+        // Body is not always JSON.
+    }
+
+    return undefined;
+}
+
+async function performDiscordRequest(endpoint: string, options: RequestInit = {}) {
     const token = process.env.DISCORD_BOT_TOKEN;
     if (!token) {
         throw new Error('DISCORD_BOT_TOKEN is not configured');
     }
+
+    await throttleDiscordRequest();
 
     const response = await fetch(`${DISCORD_API_BASE}${endpoint}`, {
         ...options,
@@ -18,8 +80,9 @@ async function discordRequest(endpoint: string, options: RequestInit = {}) {
     });
 
     if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Discord API error: ${response.status} ${error}`);
+        const body = await response.text();
+        const retryAfterMs = getRetryAfterMs(response, body);
+        throw new DiscordApiError(response.status, body, retryAfterMs);
     }
 
     // Some Discord endpoints (e.g. DELETE) return 204 with no body.
@@ -37,6 +100,23 @@ async function discordRequest(endpoint: string, options: RequestInit = {}) {
     } catch {
         return text;
     }
+}
+
+async function discordRequest(endpoint: string, options: RequestInit = {}) {
+    return enqueueDiscordRequest(async () => {
+        try {
+            return await performDiscordRequest(endpoint, options);
+        } catch (error) {
+            if (!isDiscordApiError(error) || error.status !== 429) {
+                throw error;
+            }
+
+            const waitMs = Math.min(error.retryAfterMs ?? 2500, DISCORD_API_MAX_RETRY_MS);
+            console.warn(`[Discord] API rate limited; retrying ${endpoint} after ${waitMs}ms.`);
+            await delay(waitMs);
+            return performDiscordRequest(endpoint, options);
+        }
+    });
 }
 
 export async function sendDiscordMessage(channelId: string, message: string): Promise<void> {

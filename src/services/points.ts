@@ -2,20 +2,111 @@ import path from 'path';
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 
 const POINTS_FILE = 'points.json';
+const MAX_SAFE_POINTS = BigInt(Number.MAX_SAFE_INTEGER);
+
+export type PointAmount = number | string | bigint;
 
 type PointsRecord = Record<
   string,
   {
-    points: number;
+    points: number | string;
     level: number;
     updatedAt: string;
     lastActivity: string;
-    totalEarned: number;
+    totalEarned: number | string;
   }
 >;
 
-function calculateLevel(points: number): number {
-  return Math.max(1, Math.floor(points / 100) + 1);
+function parseDecimalToBigInt(value: string, multiplier: bigint): bigint | null {
+  const match = value.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match) return null;
+
+  const whole = BigInt(match[1]);
+  const fraction = match[2] || '';
+  if (!fraction) return whole * multiplier;
+
+  const scale = 10n ** BigInt(fraction.length);
+  const fractional = BigInt(fraction);
+  return whole * multiplier + (fractional * multiplier) / scale;
+}
+
+export function parsePointAmount(value: PointAmount): bigint {
+  if (typeof value === 'bigint') return value;
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Unsafe point amount: ${value}`);
+    }
+    // Legacy points.json files may already contain large JSON numbers such as 1e+21.
+    // Convert them best-effort so the next write stores an exact decimal string.
+    return BigInt(Math.trunc(value));
+  }
+
+  const raw = String(value || '').trim().toLowerCase().replace(/,/g, '').replace(/_/g, '');
+  if (!raw) throw new Error('Point amount is required');
+
+  const sign = raw.startsWith('-') ? -1n : 1n;
+  const unsigned = raw.replace(/^[+-]/, '');
+  const powerMatch = unsigned.match(/^(\d+)(?:\^|\*\*)(\d+)$/);
+  if (powerMatch) {
+    return sign * (BigInt(powerMatch[1]) ** BigInt(powerMatch[2]));
+  }
+
+  const scientificMatch = unsigned.match(/^(\d+(?:\.\d+)?)e\+?(\d+)$/);
+  if (scientificMatch) {
+    const parsed = parseDecimalToBigInt(scientificMatch[1], 10n ** BigInt(scientificMatch[2]));
+    if (parsed === null) throw new Error(`Invalid point amount: ${value}`);
+    return sign * parsed;
+  }
+
+  const suffixMatch = unsigned.match(/^(\d+(?:\.\d+)?)(k|m|b|t|q|qa|quad|quadrillion|qi|quin|quint|quintillion|sx|sex|sext|sextillion)?$/);
+  if (!suffixMatch) throw new Error(`Invalid point amount: ${value}`);
+
+  const suffix = suffixMatch[2] || '';
+  const multipliers: Record<string, bigint> = {
+    k: 1_000n,
+    m: 1_000_000n,
+    b: 1_000_000_000n,
+    t: 1_000_000_000_000n,
+    q: 1_000_000_000_000_000n,
+    qa: 1_000_000_000_000_000n,
+    quad: 1_000_000_000_000_000n,
+    quadrillion: 1_000_000_000_000_000n,
+    qi: 1_000_000_000_000_000_000n,
+    quin: 1_000_000_000_000_000_000n,
+    quint: 1_000_000_000_000_000_000n,
+    quintillion: 1_000_000_000_000_000_000n,
+    sx: 1_000_000_000_000_000_000_000n,
+    sex: 1_000_000_000_000_000_000_000n,
+    sext: 1_000_000_000_000_000_000_000n,
+    sextillion: 1_000_000_000_000_000_000_000n,
+  };
+
+  const parsed = parseDecimalToBigInt(suffixMatch[1], suffix ? multipliers[suffix] : 1n);
+  if (parsed === null) throw new Error(`Invalid point amount: ${value}`);
+  return sign * parsed;
+}
+
+function normalizePoints(value: PointAmount): bigint {
+  const parsed = parsePointAmount(value);
+  return parsed < 0n ? 0n : parsed;
+}
+
+function toSafeNumber(value: bigint): number {
+  if (value > MAX_SAFE_POINTS) return Number.MAX_SAFE_INTEGER;
+  if (value < -MAX_SAFE_POINTS) return -Number.MAX_SAFE_INTEGER;
+  return Number(value);
+}
+
+export function formatPointAmount(value: PointAmount): string {
+  const parsed = parsePointAmount(value);
+  const sign = parsed < 0n ? '-' : '';
+  const digits = (parsed < 0n ? -parsed : parsed).toString();
+  return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function calculateLevel(points: bigint): number {
+  return Math.max(1, toSafeNumber(points / 100n + 1n));
 }
 
 async function loadPoints(ctx?: StorageContext): Promise<PointsRecord> {
@@ -26,53 +117,73 @@ async function savePoints(data: PointsRecord, ctx?: StorageContext): Promise<voi
   await writeJsonFile(POINTS_FILE, data, ctx);
 }
 
-export async function getPoints(userId: string, ctx?: StorageContext): Promise<{ points: number; level: number; totalEarned: number }> {
+export async function getPoints(userId: string, ctx?: StorageContext): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
   const store = await loadPoints(ctx);
   const entry = store[userId.toLowerCase()];
-  return entry ? { points: entry.points, level: entry.level, totalEarned: entry.totalEarned || 0 } : { points: 0, level: 1, totalEarned: 0 };
+  if (!entry) return { points: 0, pointsRaw: '0', pointsDisplay: '0', level: 1, totalEarned: 0, totalEarnedRaw: '0' };
+
+  const points = normalizePoints(entry.points ?? 0);
+  const totalEarned = normalizePoints(entry.totalEarned ?? 0);
+  return {
+    points: toSafeNumber(points),
+    pointsRaw: points.toString(),
+    pointsDisplay: formatPointAmount(points),
+    level: calculateLevel(points),
+    totalEarned: toSafeNumber(totalEarned),
+    totalEarnedRaw: totalEarned.toString(),
+  };
+}
+
+export async function getPointBalance(userId: string, ctx?: StorageContext): Promise<bigint> {
+  const store = await loadPoints(ctx);
+  const entry = store[userId.toLowerCase()];
+  return normalizePoints(entry?.points ?? 0);
 }
 
 export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {
   return loadPoints(ctx);
 }
 
-export async function addPointsToAll(amount: number, ctx?: StorageContext): Promise<number> {
+export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
   const store = await loadPoints(ctx);
   const now = new Date().toISOString();
+  const delta = parsePointAmount(amount);
   let count = 0;
   
   for (const key in store) {
     const current = store[key];
-    const newPoints = Math.max(0, current.points + amount);
+    const oldPoints = normalizePoints(current.points);
+    const oldEarned = normalizePoints(current.totalEarned || 0);
+    const newPoints = oldPoints + delta < 0n ? 0n : oldPoints + delta;
     const level = calculateLevel(newPoints);
-    const totalEarned = current.totalEarned + (amount > 0 ? amount : 0);
+    const totalEarned = oldEarned + (delta > 0n ? delta : 0n);
     
     store[key] = {
-      points: newPoints,
+      points: newPoints.toString(),
       level,
       updatedAt: now,
       lastActivity: current.lastActivity,
-      totalEarned
+      totalEarned: totalEarned.toString()
     };
     count++;
   }
   
   await savePoints(store, ctx);
-  console.log(`Added ${amount} points to ${count} users`);
+  console.log(`Added ${formatPointAmount(delta)} points to ${count} users`);
   return count;
 }
 
-export async function setPointsToAll(amount: number, ctx?: StorageContext): Promise<number> {
+export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
   const store = await loadPoints(ctx);
   const now = new Date().toISOString();
-  const points = Math.max(0, amount);
+  const points = normalizePoints(amount);
   const level = calculateLevel(points);
   let count = 0;
   
   for (const key in store) {
     const current = store[key];
     store[key] = {
-      points,
+      points: points.toString(),
       level,
       updatedAt: now,
       lastActivity: current.lastActivity,
@@ -82,7 +193,7 @@ export async function setPointsToAll(amount: number, ctx?: StorageContext): Prom
   }
   
   await savePoints(store, ctx);
-  console.log(`Set ${count} users to ${amount} points`);
+  console.log(`Set ${count} users to ${formatPointAmount(points)} points`);
   return count;
 }
 
@@ -94,7 +205,7 @@ export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
   for (const key in store) {
     const current = store[key];
     store[key] = {
-      points: 0,
+      points: '0',
       level: 1,
       updatedAt: now,
       lastActivity: current.lastActivity,
@@ -110,45 +221,56 @@ export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
 
 export async function addPoints(
   userId: string,
-  amount: number,
+  amount: PointAmount,
   reason?: string,
   ctx?: StorageContext
-): Promise<{ points: number; level: number; totalEarned: number }> {
+): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
   const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date().toISOString();
-  const current = store[key] ?? { points: 0, level: 1, updatedAt: now, lastActivity: now, totalEarned: 0 };
-  const newPoints = Math.max(0, current.points + amount);
+  const current = store[key] ?? { points: '0', level: 1, updatedAt: now, lastActivity: now, totalEarned: '0' };
+  const delta = parsePointAmount(amount);
+  const currentPoints = normalizePoints(current.points);
+  const currentEarned = normalizePoints(current.totalEarned || 0);
+  const newPoints = currentPoints + delta < 0n ? 0n : currentPoints + delta;
   const level = calculateLevel(newPoints);
-  const totalEarned = current.totalEarned + (amount > 0 ? amount : 0);
+  const totalEarned = currentEarned + (delta > 0n ? delta : 0n);
   
   store[key] = { 
-    points: newPoints, 
+    points: newPoints.toString(), 
     level, 
     updatedAt: now, 
     lastActivity: now,
-    totalEarned
+    totalEarned: totalEarned.toString()
   };
   
   await savePoints(store, ctx);
-  console.log(`Points updated: ${userId} ${amount > 0 ? '+' : ''}${amount} (${reason || 'manual'}) -> ${newPoints} total`);
-  return { points: newPoints, level, totalEarned };
+  console.log(`Points updated: ${userId} ${delta > 0n ? '+' : ''}${formatPointAmount(delta)} (${reason || 'manual'}) -> ${formatPointAmount(newPoints)} total`);
+  return {
+    points: toSafeNumber(newPoints),
+    pointsRaw: newPoints.toString(),
+    pointsDisplay: formatPointAmount(newPoints),
+    level,
+    totalEarned: toSafeNumber(totalEarned),
+    totalEarnedRaw: totalEarned.toString(),
+  };
 }
 
 export async function setPoints(
   userId: string,
-  value: number,
+  value: PointAmount,
   ctx?: StorageContext
-): Promise<{ points: number; level: number; totalEarned: number }> {
+): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
   const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date().toISOString();
-  const current = store[key] ?? { points: 0, level: 1, updatedAt: now, lastActivity: now, totalEarned: 0 };
-  const points = Math.max(0, value);
+  const current = store[key] ?? { points: '0', level: 1, updatedAt: now, lastActivity: now, totalEarned: '0' };
+  const points = normalizePoints(value);
   const level = calculateLevel(points);
+  const totalEarned = normalizePoints(current.totalEarned || 0);
   
   store[key] = { 
-    points, 
+    points: points.toString(), 
     level, 
     updatedAt: now, 
     lastActivity: current.lastActivity,
@@ -156,14 +278,37 @@ export async function setPoints(
   };
   
   await savePoints(store, ctx);
-  return { points, level, totalEarned: current.totalEarned };
+  return {
+    points: toSafeNumber(points),
+    pointsRaw: points.toString(),
+    pointsDisplay: formatPointAmount(points),
+    level,
+    totalEarned: toSafeNumber(totalEarned),
+    totalEarnedRaw: totalEarned.toString(),
+  };
 }
 
-export async function getLeaderboard(limit = 10, ctx?: StorageContext): Promise<Array<{ user: string; points: number; level: number; totalEarned: number }>> {
+export async function getLeaderboard(limit = 10, ctx?: StorageContext): Promise<Array<{ user: string; points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }>> {
   const store = await loadPoints(ctx);
   return Object.entries(store)
-    .map(([user, data]) => ({ user, points: data.points, level: data.level, totalEarned: data.totalEarned || 0 }))
-    .sort((a, b) => b.points - a.points)
+    .map(([user, data]) => {
+      const points = normalizePoints(data.points);
+      const totalEarned = normalizePoints(data.totalEarned || 0);
+      return {
+        user,
+        points: toSafeNumber(points),
+        pointsRaw: points.toString(),
+        pointsDisplay: formatPointAmount(points),
+        level: calculateLevel(points),
+        totalEarned: toSafeNumber(totalEarned),
+        totalEarnedRaw: totalEarned.toString(),
+      };
+    })
+    .sort((a, b) => {
+      const left = parsePointAmount(a.pointsRaw);
+      const right = parsePointAmount(b.pointsRaw);
+      return left === right ? 0 : left > right ? -1 : 1;
+    })
     .slice(0, limit);
 }
 
@@ -354,7 +499,7 @@ export async function getUserPoints(userId: string, ctx?: StorageContext): Promi
   return data.points;
 }
 
-export async function updateUserPoints(userId: string, value: number, ctx?: StorageContext): Promise<void> {
+export async function updateUserPoints(userId: string, value: PointAmount, ctx?: StorageContext): Promise<void> {
   await setPoints(userId, value, ctx);
 }
 

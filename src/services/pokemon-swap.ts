@@ -22,6 +22,12 @@ function normalizeTenantId(tenantId?: string): string | undefined {
   return tenantId;
 }
 
+function tenantLookupOrder(tenantId?: string): string[] {
+  const ids = [tenantId || 'global'];
+  if (ids[0] !== 'global') ids.push('global');
+  return ids;
+}
+
 export async function proposeSwap(fromUser: string, toUser: string, fromCardNum: number, toCardNum: number, tenantId?: string): Promise<void> {
   const fromCards = await getUserCards(fromUser);
   const toCards = await getUserCards(toUser);
@@ -101,7 +107,8 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
 }
 
 export async function acceptSwap(username: string, tenantId?: string): Promise<boolean> {
-  const tid = tenantId || 'global';
+  const tid = tenantLookupOrder(tenantId).find((id) => pendingSwaps.get(id)?.has(username.toLowerCase()));
+  if (!tid) return false;
   const broadcastTid = normalizeTenantId(tenantId);
   const tenantSwaps = pendingSwaps.get(tid);
   if (!tenantSwaps) return false;
@@ -162,7 +169,17 @@ export async function acceptSwap(username: string, tenantId?: string): Promise<b
 }
 
 export async function cancelSwap(username: string, tenantId?: string): Promise<boolean> {
-  const tid = tenantId || 'global';
+  const tid = tenantLookupOrder(tenantId).find((id) => {
+    const tenantSwaps = pendingSwaps.get(id);
+    if (!tenantSwaps) return false;
+    const key = username.toLowerCase();
+    if (tenantSwaps.has(key)) return true;
+    for (const swap of tenantSwaps.values()) {
+      if (swap.from === key) return true;
+    }
+    return false;
+  });
+  if (!tid) return false;
   const tenantSwaps = pendingSwaps.get(tid);
   if (!tenantSwaps) return false;
 
@@ -185,14 +202,14 @@ export async function cancelSwap(username: string, tenantId?: string): Promise<b
 }
 
 export function hasPendingSwap(username: string, tenantId?: string): boolean {
-  const tid = tenantId || 'global';
-  const tenantSwaps = pendingSwaps.get(tid);
-  if (!tenantSwaps) return false;
-
   const key = username.toLowerCase();
-  if (tenantSwaps.has(key)) return true;
-  for (const s of tenantSwaps.values()) {
-    if (s.from === key) return true;
+  for (const tid of tenantLookupOrder(tenantId)) {
+    const tenantSwaps = pendingSwaps.get(tid);
+    if (!tenantSwaps) continue;
+    if (tenantSwaps.has(key)) return true;
+    for (const s of tenantSwaps.values()) {
+      if (s.from === key) return true;
+    }
   }
   return false;
 }

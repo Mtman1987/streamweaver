@@ -129,7 +129,7 @@ function loadEeveePool(): any[] {
   return pool;
 }
 
-export async function openEeveePack(username: string) {
+export async function openEeveePack(username: string, tenantId?: string) {
   const pool = loadEeveePool();
   if (pool.length < 9) return null;
 
@@ -158,8 +158,9 @@ export async function openEeveePack(username: string) {
 
   if (typeof (global as any).broadcast === 'function') {
     const payload = { pack, setName: 'Eevee Booster', username };
-    (global as any).broadcast({ type: 'pokemon-pack-open', payload });
-    (global as any).broadcast({ type: 'pokemon-pack-opened', payload });
+    const broadcastTenantId = normalizeTenantId(tenantId);
+    (global as any).broadcast({ type: 'pokemon-pack-open', payload }, broadcastTenantId);
+    (global as any).broadcast({ type: 'pokemon-pack-opened', payload }, broadcastTenantId);
   }
 
   return { pack, setName: 'Eevee Booster', username };

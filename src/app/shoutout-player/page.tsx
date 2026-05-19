@@ -11,15 +11,15 @@ export default function ShoutoutPlayer() {
 
   const playClip = async (clipUrl: string, thumbnailUrl: string, user: string, profileImage: string) => {
     setError(null);
-    const match = clipUrl.match(/clip=([^&]+)/);
+    let match = clipUrl.match(/clip=([^&]+)/);
     if (!match) {
       // Try treating clipUrl as a direct slug/URL
       const slugMatch = clipUrl.match(/(?:clips\.twitch\.tv\/|twitch\.tv\/\w+\/clip\/)([^?&/]+)/);
       if (!slugMatch) { setError('Invalid clip URL'); return; }
-      match[1] = slugMatch[1];
+      match = slugMatch;
     }
 
-    const clipId = match![1].split('/').pop()!;
+    const clipId = match[1].split('/').pop()!;
 
     try {
       const response = await fetch('https://gql.twitch.tv/gql', {

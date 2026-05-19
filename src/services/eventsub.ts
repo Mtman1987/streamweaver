@@ -572,69 +572,8 @@ async function handlePackOpen(username: string, setNumber: number, pointCost: nu
                 await sendChatMessage(`@${username} opened a ${result.setName} pack: ${cardNames} | Balance: ${newBalance} pts`, 'broadcaster', undefined, tenantId);
             }
 
-            // 2. AI reaction to the pack
-            const rares = result.pack.filter((c: any) => c.rarity === 'Rare' || c.rarity === 'Rare Holo');
-            const { getBotName: gbn2, getBotPersonality: gbp2 } = require('../lib/bot-settings-store');
-            const botName = gbn2(tenantId);
-            const botPersonality = gbp2(tenantId);
-            let aiReaction = rares.length > 0
-                ? `Nice pull, ${username}! You got ${rares.map((c: any) => c.name).join(' and ')}!`
-                : `Good pack, ${username}! ${result.setName} cards added to your collection!`;
-
-            const edenaiKey = process.env.EDENAI_API_KEY;
-            if (edenaiKey) {
-                try {
-                    const rareList = rares.length > 0 ? `Notable pulls: ${rares.map((c: any) => `${c.name} (${c.rarity})`).join(', ')}` : 'No rare pulls this time.';
-                    const resp = await fetch('https://api.edenai.run/v2/text/chat', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${edenaiKey}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            providers: 'openai',
-                            text: `You are ${botName}. ${username} just opened a ${result.setName} Pokemon card pack on stream. ${rareList} Write a short, excited 1-2 sentence reaction to their pull. If they got a rare or holo, hype it up! Stay in character.`,
-                            chatbot_global_action: botPersonality,
-                            temperature: 0.8,
-                            max_tokens: 150,
-                        }),
-                    });
-                    if (resp.ok) {
-                        const data = await resp.json() as any;
-                        const text = data.openai?.generated_text?.trim();
-                        if (text) aiReaction = text;
-                    }
-                } catch (err) {
-                    console.error('[PokePack] AI reaction failed, using fallback:', err);
-                }
-            }
-
-            // 3. Post as bot with TTS (chat mode only)
-            if (pokeMode === 'chat') {
-                const { markTtsHandled } = require('./chat-dispatcher');
-                markTtsHandled(aiReaction);
-                await sendChatMessage(aiReaction, 'bot', undefined, tenantId);
-            }
-
-            if (pokeMode === 'chat') {
-                try {
-                    const { textToSpeech } = await import('../ai/flows/text-to-speech');
-                const ttsResult = await textToSpeech({ text: aiReaction });
-                if (ttsResult.audioDataUri) {
-                    const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
-                    if (useTTSPlayer) {
-                        const ttsTenantId = normalizeTenantId(tenantId);
-                        const tenantQuery = ttsTenantId ? `?tenant=${encodeURIComponent(ttsTenantId)}` : '';
-                        await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
-                        }).catch(() => {});
-                    } else if ((global as any).broadcast) {
-                        (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, normalizeTenantId(tenantId));
-                    }
-                }
-            } catch (err: unknown) {
-                console.error('[PokePack] TTS error:', err);
-            }
-            }
+            // Pokemon pack opens should not create a second bot reaction/TTS.
+            // The pack result above is the only chat message for this flow.
         }
     } catch (error) {
         console.error('[PokePack] Error:', error);

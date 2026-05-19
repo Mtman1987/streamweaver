@@ -20,7 +20,7 @@ async function main() {
       console.log(`    slug: ${data.slug}`);
       console.log(`    Keys: ${Object.keys(data).join(', ')}`);
     } else {
-      console.log(`    Body: ${await res.text().slice(0, 200)}`);
+      console.log(`    Body: ${(await res.text()).slice(0, 200)}`);
     }
   } catch (e) {
     console.log(`    Error: ${e}`);

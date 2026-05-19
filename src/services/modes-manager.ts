@@ -85,7 +85,8 @@ export async function toggleMode(
   const currentIndex = options.indexOf(current);
   next = options[(currentIndex + 1) % options.length];
   
-  modes[modeName] = next as any;  await saveModes(modes, tenantId);
+  (modes as Record<keyof StreamWeaverModes, string>)[modeName] = next;
+  await saveModes(modes, tenantId);
   
   // Broadcast to overlays/dashboard
   if (typeof (global as any).broadcast === 'function') {

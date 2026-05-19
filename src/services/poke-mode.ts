@@ -12,7 +12,7 @@ function modePath(tenantId?: string): string {
   return path.resolve(process.cwd(), 'data', 'poke-mode.json');
 }
 
-export async function getPokeMode(tenantId?: string): PokeMode {
+export async function getPokeMode(tenantId?: string): Promise<PokeMode> {
   const { getMode } = await import('./modes-manager');
   const mode = await getMode('pokemode', tenantId);
   return mode as PokeMode;

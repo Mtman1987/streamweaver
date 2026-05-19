@@ -5,7 +5,7 @@ import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 // Store PKCE verifiers temporarily (in production, use a session/cookie)
 const pkceStore = new Map<string, string>();
 
-export function getPkceVerifier(state: string): string | undefined {
+function getPkceVerifier(state: string): string | undefined {
   const v = pkceStore.get(state);
   if (v) pkceStore.delete(state);
   return v;

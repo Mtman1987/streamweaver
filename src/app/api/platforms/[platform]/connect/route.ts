@@ -110,6 +110,25 @@ export async function DELETE(
 
     const platform = parsedPlatform.data;
 
+    if (platform === 'kick') {
+      const session = getTenantFromRequest(request);
+      const tenantId = session?.tenantId;
+      try {
+        const wsPort = process.env.WS_PORT || '8090';
+        const response = await fetch(`http://127.0.0.1:${wsPort}/api/kick/disconnect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenantId }),
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          console.warn('[Kick] Server disconnect failed:', response.status, text);
+        }
+      } catch (e) {
+        console.warn('[Kick] Server disconnect request failed:', e);
+      }
+    }
+
     multiPlatform.disconnect(platform);
 
     return NextResponse.json({ success: true, platform });

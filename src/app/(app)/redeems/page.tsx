@@ -27,7 +27,7 @@ interface DiscordRole { id: string; name: string; color: number }
 interface Partner { id: number; name: string; discordUserId: string; avatarUrl: string; inviteLink: string; communityCheckins: number }
 interface CheckinStats { userCounts: Record<string, number>; partnerCounts: Record<string, number> }
 interface CheckinEntry { id: number; key: string; name: string; imageUrl?: string; inviteLink?: string; }
-interface CheckinSourceResult { kind: 'partner' | 'crew' | 'mod' | 'space-mountain'; label: string; sourceLabel: string; selectionMode: 'pick' | 'bulk'; entries: CheckinEntry[]; }
+interface CheckinSourceResult { kind: 'partner' | 'crew' | 'mod' | 'space-mountain'; label: string; sourceLabel: string; selectionMode: 'pick' | 'bulk'; entries: CheckinEntry[]; error?: string; }
 
 const selectClass = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 

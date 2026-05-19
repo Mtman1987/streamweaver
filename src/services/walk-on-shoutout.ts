@@ -3,7 +3,7 @@ import { sendChatMessage } from './twitch';
 import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
 import { tenantPath } from '../lib/tenant';
-import { canShoutoutUser, recordShoutout } from './welcome-wagon-tracker';
+import { canShoutoutUser, getShoutoutCount, recordShoutout } from './welcome-wagon-tracker';
 import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import { readUserConfigSync } from '../lib/user-config';
@@ -41,6 +41,21 @@ type ShoutoutOptions = {
 function normalizeTenantId(tenantId?: string): string | undefined {
     if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
     return tenantId;
+}
+
+async function getTenantStorageUsername(tenantId?: string): Promise<string> {
+    if (!tenantId) {
+        const cfg = readUserConfigSync();
+        return cfg.TWITCH_BROADCASTER_USERNAME || 'default';
+    }
+    try {
+        const raw = await fs.readFile(tenantPath(tenantId, 'tokens/twitch-tokens.json'), 'utf-8');
+        const tokens = JSON.parse(raw);
+        return tokens.broadcasterUsername || tokens.loginUsername || 'default';
+    } catch {
+        const cfg = readUserConfigSync(tenantId);
+        return cfg.TWITCH_BROADCASTER_USERNAME || 'default';
+    }
 }
 
 // ============================
@@ -90,6 +105,11 @@ async function sendBroadcasterWelcome(displayName: string, tenantId?: string, op
 async function fetchClip(username: string): Promise<TwitchClip | null> {
     try {
         const clientId = process.env.TWITCH_CLIENT_ID;
+        const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+        if (!clientId || !clientSecret) {
+            console.warn('[WalkOn] Twitch client credentials missing; skipping clip fetch');
+            return null;
+        }
         const user = await getTwitchUser(username, 'login');
 
         if (!user?.id) {
@@ -98,10 +118,15 @@ async function fetchClip(username: string): Promise<TwitchClip | null> {
         }
 
         const tokenResponse = await fetch(
-            `https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${process.env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
+            `https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`,
             { method: 'POST' }
         );
+        if (!tokenResponse.ok) {
+            console.warn(`[WalkOn] Twitch app token request failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
+            return null;
+        }
         const { access_token } = await tokenResponse.json();
+        if (!access_token) return null;
 
         const endDate = new Date();
         const startDate = new Date();
@@ -165,7 +190,12 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
 // ============================
 
 async function buildPersona(username: string, displayName: string, profileImage: string, tenantId?: string): Promise<Persona> {
-    const user = await getTwitchUser(username, 'login');
+    let user: Awaited<ReturnType<typeof getTwitchUser>> = null;
+    try {
+        user = await getTwitchUser(username, 'login');
+    } catch (error) {
+        console.warn(`[WalkOn] Twitch profile lookup failed for ${username}; using fallback persona`, error);
+    }
 
     let memory = null;
     try {
@@ -180,20 +210,14 @@ async function buildPersona(username: string, displayName: string, profileImage:
         }
     } catch {}
 
-    let shoutoutCount = 0;
-    try {
-        const wwPath = tenantId
-            ? tenantPath(tenantId, 'tokens/welcome-wagon.json')
-            : resolve(process.cwd(), 'tokens', 'welcome-wagon.json');
-        const welcomeData = JSON.parse(await fs.readFile(wwPath, 'utf-8'));
-        shoutoutCount = welcomeData.shoutouts[username.toLowerCase()] ? 1 : 0;
-    } catch {}
+    const shoutoutCount = await getShoutoutCount(username, tenantId).catch(() => 0);
 
     let pointsData = null;
     try {
         const { getPoints } = require('./points');
-        const points = await getPoints(username);
-        pointsData = { points: points.points, rank: points.rank };
+        const storageUsername = await getTenantStorageUsername(tenantId);
+        const points = await getPoints(username, tenantId ? { tenantId, username: storageUsername } : undefined);
+        pointsData = { points: points.points, rank: `level ${points.level}` };
     } catch {}
 
     return {
@@ -273,14 +297,18 @@ function buildPrompt(p: Persona, tenantId?: string): string {
     return `You are ${botName}. Your personality and speaking style:
 ${botPersonality}
 
-Stay fully in character as ${botName} and greet @${p.displayName} (${welcomeType}).
+Write a fresh walk-on greeting for @${p.displayName}, who is a ${welcomeType}.
 
 ${selectedData.length > 0 ? `Weave this info naturally into the greeting: ${selectedData.join(', ')}` : ''}
 
 Rules:
 - 2-3 sentences max
 - ${isFirstTime ? 'Say "welcome" not "welcome back"' : 'Acknowledge they\'ve been here before'}
-- Write the greeting in YOUR voice and style, not generic`;
+- Sound like ${botName}, not a generic assistant
+- Do not say "my designation", "it is an honor", "thrilled", or "whenever you're ready"
+- Do not mention being here to explore unless that is part of the configured personality
+- Do not repeat the same sentence structure as prior greetings
+- Address the viewer directly`;
 }
 
 // ============================
@@ -374,13 +402,13 @@ async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | 
 // MAIN EXECUTION
 // ============================
 
-export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false, tenantId?: string, options: ShoutoutOptions = {}): Promise<void> {
+export async function handleWalkOnShoutout(username: string, displayName: string, profileImage: string, skipCooldown: boolean = false, tenantId?: string, options: ShoutoutOptions = {}): Promise<boolean> {
     const user = username.toLowerCase();
     const realTenantId = normalizeTenantId(tenantId);
 
     if (!skipCooldown && !(await canShoutoutUser(user, realTenantId))) {
         console.log(`[WalkOn] Skipping shoutout for ${user} — on cooldown or excluded.`);
-        return;
+        return false;
     }
 
     console.log(`[WalkOn] Processing walk-on shoutout for ${displayName}`);
@@ -403,14 +431,19 @@ export async function handleWalkOnShoutout(username: string, displayName: string
         else await sendChatMessage(fullMsg, 'bot', undefined, tenantId);
         if (!skipCooldown) await recordShoutout(user, realTenantId);
         console.log(`[WalkOn] Completed chat-only shoutout for ${displayName}`);
-        return;
+        return true;
     }
 
     // === MODE: FULL or OVERLAY ===
     // Both play the clip first, then fire the greeting after
 
-    // Broadcaster drops the link
-    await sendBroadcasterWelcome(displayName, tenantId, options);
+    // Broadcaster drops the link. If that identity is unavailable, keep the
+    // shoutout moving so the bot greeting can still fire.
+    try {
+        await sendBroadcasterWelcome(displayName, tenantId, options);
+    } catch (error) {
+        console.error(`[WalkOn] Broadcaster welcome send failed for ${displayName}:`, error);
+    }
 
     // Fetch and play clip (errors won't prevent greeting from firing)
     try {
@@ -431,4 +464,5 @@ export async function handleWalkOnShoutout(username: string, displayName: string
 
     if (!skipCooldown) await recordShoutout(user, realTenantId);
     console.log(`[WalkOn] Completed ${mode} shoutout for ${displayName}`);
+    return true;
 }

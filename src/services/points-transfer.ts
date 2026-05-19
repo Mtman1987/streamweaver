@@ -3,6 +3,7 @@ import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 
 const COOLDOWN_FILE = 'steal-cooldowns.json';
 const STEAL_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_STEAL_AMOUNT = 1_000_000;
 
 type CooldownRecord = Record<string, number>;
 
@@ -74,8 +75,12 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     return { success: false, message: `@${fromUser}, you can't steal from yourself!` };
   }
   
-  if (amount <= 0) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
     return { success: false, message: `@${fromUser}, amount must be positive!` };
+  }
+
+  if (amount > MAX_STEAL_AMOUNT) {
+    return { success: false, message: `@${fromUser}, you can steal at most ${MAX_STEAL_AMOUNT.toLocaleString('en-US')} points at a time!` };
   }
   
   // Check cooldown
@@ -88,6 +93,11 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     return { success: false, message: `@${fromUser}, you're on cooldown! Wait ${remaining} more minutes.` };
   }
   
+  const fromPoints = await getPoints(from, ctx);
+  if (fromPoints.points < amount) {
+    return { success: false, message: `@${fromUser}, you can only risk points you already have. You have ${fromPoints.points} points!` };
+  }
+
   const targetPoints = await getPoints(to, ctx);
   
   if (targetPoints.points < amount) {
@@ -123,17 +133,15 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
   } else if (roll < 95) {
     // Critical fail - lose the amount
     outcome = scenario.fail;
-    const fromPoints = await getPoints(from, ctx);
     const penalty = Math.min(amount, fromPoints.points);
     if (penalty > 0) {
       await addPoints(from, -penalty, 'heist backfired', ctx);
     }
     message = `@${fromUser} ${outcome}! Lost ${penalty} points in the attempt! 💥`;
   } else {
-    // Critical fail - lose double
+    // Catastrophic fail - lose the staked amount. Never risk more than the steal amount.
     outcome = scenario.fail;
-    const fromPoints = await getPoints(from, ctx);
-    const penalty = Math.min(amount * 2, fromPoints.points);
+    const penalty = Math.min(amount, fromPoints.points);
     if (penalty > 0) {
       await addPoints(from, -penalty, 'heist catastrophe', ctx);
     }

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { handleRoll, handleYes, handleNo, handleGambleMode } from '@/services/gamble/space-mountain';
-import { getUserPoints, updateUserPoints } from '@/services/points';
+import { getPointBalance, updateUserPoints } from '@/services/points';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { z } from 'zod';
@@ -8,7 +8,7 @@ import { z } from 'zod';
 const gambleSchema = z.object({
     command: z.enum(['gamblemode', 'roll', 'yes', 'no']),
     user: z.string().trim().optional(),
-    wager: z.number().positive().optional(),
+    wager: z.union([z.number().int().positive().safe(), z.string().trim().min(1)]).optional(),
     mode: z.string().trim().optional(),
 });
 
@@ -35,16 +35,16 @@ export async function POST(req: NextRequest) {
             return apiOk({ success: true });
         }
 
-        const userPoints = await getUserPoints(user, ctx);
+        const userPoints = await getPointBalance(user, ctx);
 
         if (command === 'roll') {
-            if (!wager || wager <= 0) {
+            if (!wager) {
                 return apiError('Valid wager required', { status: 400, code: 'INVALID_WAGER' });
             }
             
             const result = await handleRoll(user, wager, userPoints);
             if (result) {
-                await updateUserPoints(user, userPoints + result.change, ctx);
+                await updateUserPoints(user, result.newTotal, ctx);
             }
             return apiOk({ success: true, result });
         }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
         if (command === 'yes') {
             const result = await handleYes(user, userPoints);
             if (result) {
-                await updateUserPoints(user, userPoints + result.change, ctx);
+                await updateUserPoints(user, result.newTotal, ctx);
             }
             return apiOk({ success: true, result });
         }

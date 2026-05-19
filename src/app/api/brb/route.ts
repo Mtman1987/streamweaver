@@ -46,13 +46,13 @@ export async function POST(req: NextRequest) {
         }
         
         if (action === 'toggle-mode') {
-            toggleClipMode();
-            const mode = getClipMode();
+            await toggleClipMode(tenantId);
+            const mode = await getClipMode(tenantId);
             return apiOk({ success: true, mode });
         }
         
         if (action === 'get-mode') {
-            const mode = getClipMode();
+            const mode = await getClipMode(tenantId);
             return apiOk({ success: true, mode });
         }
         

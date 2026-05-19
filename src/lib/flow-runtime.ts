@@ -72,9 +72,12 @@ const nodeExecutors: Record<string, NodeExecutor> = {
     if (!text) {
       throw new Error('TTS node requires text to speak.');
     }
-    const voice =
-      node.data?.voice || context.voice || process.env.NEXT_DEFAULT_TTS_VOICE || 'Algieba';
-    const audio = await context.services.textToSpeech({ text, voice });
+    const voice = node.data?.voice || context.voice;
+    const audio = await context.services.textToSpeech({
+      text,
+      ...(voice ? { voice } : {}),
+      tenantId: context.tenantId,
+    });
     context.services.broadcast({
       type: 'play-tts',
       payload: { audioDataUri: audio.audioDataUri },
@@ -379,5 +382,4 @@ export function defaultFlowServices(): Services {
 }
 
 export type { FlowExecutionContext } from '@/types/flows-runtime';
-
 

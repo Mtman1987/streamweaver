@@ -13,7 +13,7 @@ import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation } f
 import { handleLeaderboardCommand } from './leaderboard-commands';
 import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
-import { getPoints, setPoints } from './points';
+import { getPoints, getPointBalance, setPoints } from './points';
 import { getAIConfig } from './ai-provider';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
@@ -30,6 +30,10 @@ const processedMessages = new Set<string>();
 
 // Track messages that already have TTS (e.g. from shoutout flow) to prevent double TTS
 const ttsHandledMessages = new Set<string>();
+
+// Track auto welcome shoutouts already in flight so rapid first messages do not
+// launch duplicate walk-ons while we wait for Twitch/AI/TTS work to finish.
+const pendingWelcomeUsers = new Set<string>();
 
 export function markTtsHandled(message: string) {
     ttsHandledMessages.add(message.slice(0, 100));
@@ -737,9 +741,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase().startsWith('!stealpoints ')) {
             const args = actualMessage.substring(13).trim().split(/\s+/);
             const targetUser = args[0]?.replace('@', '');
-            const amount = parseInt(args[1]);
+            const amountText = args[1] || '';
+            const amount = /^\d+$/.test(amountText) ? Number(amountText) : NaN;
             
-            if (!targetUser || isNaN(amount)) {
+            if (!targetUser || !Number.isSafeInteger(amount)) {
                 await reply(`@${actualUsername}, usage: !stealpoints @user amount`, 'bot').catch(() => {});
                 return;
             }
@@ -809,8 +814,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !gamble command (Classic Chat Gamble)
         if (actualMessage.toLowerCase().startsWith('!gamble ')) {
             const betInput = actualMessage.substring(8).trim();
-            const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleClassicGamble(actualUsername, betInput, userPointsData.points, tenantId);
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleClassicGamble(actualUsername, betInput, userPoints, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
             }
@@ -819,8 +824,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         
         // Handle !gamble with no args (use default)
         if (actualMessage.toLowerCase() === '!gamble') {
-            const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleClassicGamble(actualUsername, '', userPointsData.points, tenantId);
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleClassicGamble(actualUsername, '', userPoints, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
             }
@@ -832,12 +837,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !roll command
         if (actualMessage.toLowerCase().startsWith('!roll ')) {
             const betInput = actualMessage.substring(6).trim();
-            const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleRoll(actualUsername, betInput, userPointsData.points, tenantId);
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleRoll(actualUsername, betInput, userPoints, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
                 // Store double-or-nothing state (30 second window)
-                const doubleState = { username: actualUsername, wager: Math.abs(result.change) || parseInt(betInput), expires: Date.now() + 30000 };
+                const doubleState = { username: actualUsername, wager: result.change.startsWith('-') ? result.change.slice(1) : result.change || betInput, expires: Date.now() + 30000 };
                 if (!(global as any).doubleOrNothingStates) (global as any).doubleOrNothingStates = new Map();
                 (global as any).doubleOrNothingStates.set(actualUsername.toLowerCase(), doubleState);
             }
@@ -853,8 +858,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             
-            const userPointsData = await getPoints(actualUsername, tenantCtx);
-            const result = await handleDouble(actualUsername, doubleState.wager, userPointsData.points, tenantId);
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleDouble(actualUsername, doubleState.wager, userPoints, tenantId);
             if (result) {
                 await setPoints(actualUsername, result.newTotal, tenantCtx);
             }
@@ -1053,7 +1058,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             const { proposeSwap } = require('./pokemon-swap');
-            await proposeSwap(actualUsername, targetUser, myCard, theirCard);
+            await proposeSwap(actualUsername, targetUser, myCard, theirCard, tenantId);
             return;
         }
 
@@ -1442,7 +1447,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             try {
                 const { openEeveePack } = require('./pokemon-packs');
-                const result = await openEeveePack(actualUsername);
+                const result = await openEeveePack(actualUsername, tenantId);
                 if (result) {
                     const { getUserCards } = require('./pokemon-collection');
                     const allCards = await getUserCards(actualUsername);
@@ -1578,17 +1583,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     // Execute custom handlers
                     if (handler === 'pokemon-pack-open') {
                         const PACK_COST = 1000;
-                        const userPoints = await getPoints(actualUsername);
+                        const userPoints = await getPointBalance(actualUsername);
                         
-                        if (userPoints.points < PACK_COST) {
-                            await reply(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.points})`, 'broadcaster').catch(() => {});
+                        if (userPoints < BigInt(PACK_COST)) {
+                            await reply(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.toString()})`, 'broadcaster').catch(() => {});
                             return;
                         }
                         
-                        await setPoints(actualUsername, userPoints.points - PACK_COST);
+                        await addPoints(actualUsername, -PACK_COST);
                         
                         const { openPack } = require('./pokemon-packs');
-                        const result = await openPack(1, actualUsername);
+                        const result = await openPack(1, actualUsername, undefined, tenantId);
                         if (result) {
                             const cardInfo = result.pack.map((c: any) => {
                               const isHolo = c.rarity && c.rarity.includes('Holo');
@@ -1621,17 +1626,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     await reply(response, 'broadcaster').catch(() => {});
                 } else if (actionType === 'pokemon-pack-open') {
                     const PACK_COST = 1000;
-                    const userPoints = await getPoints(actualUsername);
+                    const userPoints = await getPointBalance(actualUsername);
                     
-                    if (userPoints.points < PACK_COST) {
-                        await reply(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.points})`, 'broadcaster').catch(() => {});
+                    if (userPoints < BigInt(PACK_COST)) {
+                        await reply(`@${actualUsername}, you need ${PACK_COST} points to open a pack! (You have ${userPoints.toString()})`, 'broadcaster').catch(() => {});
                         return;
                     }
                     
-                    await setPoints(actualUsername, userPoints.points - PACK_COST);
+                    await addPoints(actualUsername, -PACK_COST);
                     
                     const { openPack } = require('./pokemon-packs');
-                    const result = await openPack(1, actualUsername);
+                    const result = await openPack(1, actualUsername, undefined, tenantId);
                     if (result) {
                         const cardInfo = result.pack.map((c: any) => {
                           const isHolo = c.rarity && c.rarity.includes('Holo');
@@ -1725,7 +1730,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase() ||
                                     message.includes('🌟');
             
-                if (!skipWelcome && await shouldWelcomeUser(actualUsername, tenantId)) {
+                const welcomeKey = `${tenantId || '__global__'}:${actualUsername.toLowerCase()}`;
+                if (!skipWelcome && !pendingWelcomeUsers.has(welcomeKey) && await shouldWelcomeUser(actualUsername, tenantId)) {
                     const welcomeMode = await getWelcomeMode(tenantId);
                 
                     if (String(welcomeMode).toLowerCase() === 'off') {
@@ -1734,12 +1740,30 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     } else {
                         // Let handleWalkOnShoutout use greetingmode to decide behavior
                         const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
-                        handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId).catch(err => {
-                            console.error('[Dispatcher] Walk-on shoutout failed:', err);
-                        });
+                        pendingWelcomeUsers.add(welcomeKey);
+                        handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId)
+                            .then((completed) => {
+                                if (completed) {
+                                    return markUserWelcomed(actualUsername, tenantId);
+                                }
+                            })
+                            .catch(err => {
+                                console.error('[Dispatcher] Walk-on shoutout failed:', err);
+                                const { queueWalkOnRetry } = require('./walk-on-recovery');
+                                return queueWalkOnRetry({
+                                    tenantId,
+                                    username: actualUsername,
+                                    displayName,
+                                    profileImage,
+                                    error: err,
+                                }).catch((queueErr: any) => {
+                                    console.error('[Dispatcher] Failed to queue walk-on recovery:', queueErr);
+                                });
+                            })
+                            .finally(() => {
+                                pendingWelcomeUsers.delete(welcomeKey);
+                            });
                     }
-                
-                    markUserWelcomed(actualUsername, tenantId).catch(() => {});
                 }
             }
         }
