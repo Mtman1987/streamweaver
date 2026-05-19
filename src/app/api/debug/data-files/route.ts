@@ -12,6 +12,12 @@ import { isAdmin, listTenants, tenantPath } from '@/lib/tenant';
 
 type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
 
+function filterAuditRecords(records: unknown[], username?: string): unknown[] {
+  const normalizedUser = String(username || '').trim().replace(/^@/, '').toLowerCase();
+  if (!normalizedUser) return records;
+  return records.filter((record: any) => String(record?.username || '').toLowerCase() === normalizedUser);
+}
+
 function resolveFilePath(file: FileKey, tenantId?: string): string {
   if (file === 'actions') return ACTIONS_FILE_PATH;
   if (file === 'commands') return COMMANDS_FILE_PATH;
@@ -55,6 +61,7 @@ export async function GET(request: NextRequest) {
 
     const session = getTenantFromRequest(request);
     const requestedTenantId = url.searchParams.get('tenantId')?.trim() || '';
+    const usernameFilter = url.searchParams.get('username')?.trim().replace(/^@/, '') || '';
     const auditFile = file === 'shoutout-audit';
     const admin = isAdmin(session?.tenantId || '');
     if (!auditFile && requestedTenantId && requestedTenantId !== session?.tenantId && !admin) {
@@ -79,7 +86,7 @@ export async function GET(request: NextRequest) {
           return { stat: null, records: [] as unknown[] };
         }
       }));
-      const records = snapshots.flatMap((snapshot) => snapshot.records);
+      const records = filterAuditRecords(snapshots.flatMap((snapshot) => snapshot.records), usernameFilter);
       records.sort((a: any, b: any) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
       const latestMtime = Math.max(0, ...snapshots.map((snapshot) => snapshot.stat?.mtimeMs || 0));
       const preview = `${JSON.stringify(records, null, 2)}\n`;
@@ -118,9 +125,16 @@ export async function GET(request: NextRequest) {
 
     // Best-effort count (don’t fail the endpoint if JSON is temporarily invalid while editing)
     let count: number | null = null;
+    let previewRaw = raw;
     try {
       const parsed = JSON.parse(raw);
-      count = Array.isArray(parsed) ? parsed.length : null;
+      if (auditFile && Array.isArray(parsed) && usernameFilter) {
+        const filtered = filterAuditRecords(parsed, usernameFilter);
+        count = filtered.length;
+        previewRaw = `${JSON.stringify(filtered, null, 2)}\n`;
+      } else {
+        count = Array.isArray(parsed) ? parsed.length : null;
+      }
     } catch {
       count = null;
     }
@@ -132,7 +146,7 @@ export async function GET(request: NextRequest) {
       size: stat.size,
       count,
       // Keep output lightweight and avoid exposing full file content in API responses.
-      preview: raw.slice(0, 8000),
+      preview: previewRaw.slice(0, 8000),
     });
   } catch (error) {
     console.error('[debug/data-files] Error:', error);

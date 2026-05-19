@@ -15,9 +15,12 @@ type FileSnapshot = {
   preview: string;
 };
 
-async function fetchSnapshot(file: FileKey, tenantId?: string): Promise<FileSnapshot> {
+async function fetchSnapshot(file: FileKey, tenantId?: string, username?: string): Promise<FileSnapshot> {
   const params = new URLSearchParams({ file });
   if (tenantId) params.set('tenantId', tenantId);
+  if (file === 'shoutout-audit' && username?.trim()) {
+    params.set('username', username.trim().replace(/^@/, ''));
+  }
   const res = await fetch(`/api/debug/data-files?${params.toString()}`, { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -45,7 +48,7 @@ export default function DebugDataFilesPage() {
   const load = async () => {
     try {
       setError(null);
-      const next = await fetchSnapshot(selected, tenantId);
+      const next = await fetchSnapshot(selected, tenantId, streamerFilter);
       setSnapshot(next);
     } catch (e: any) {
       setError(e?.message || 'Failed to load file');
@@ -65,7 +68,7 @@ export default function DebugDataFilesPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, streamerFilter]);
 
   useEffect(() => {
     if (!polling) return;
@@ -74,7 +77,7 @@ export default function DebugDataFilesPage() {
     }, 1000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [polling, selected]);
+  }, [polling, selected, streamerFilter]);
 
   return (
     <div className="container mx-auto p-6 space-y-4">
