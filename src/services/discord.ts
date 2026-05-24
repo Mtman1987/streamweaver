@@ -3,14 +3,8 @@
 import * as local from './discord-local';
 import { sendWebhookMessage } from './discord-webhooks';
 
-// Try webhook first, fallback to bot message
 export async function sendDiscordMessage(channelId: string, message: string, username?: string, avatarUrl?: string): Promise<void> {
-    try {
-        await sendWebhookMessage(channelId, message, username, avatarUrl);
-    } catch (error) {
-        console.warn('[Discord] Webhook failed, using bot message:', error);
-        await local.sendDiscordMessage(channelId, message);
-    }
+    await sendWebhookMessage(channelId, message, username, avatarUrl);
 }
 export async function getDiscordUser(
     userId: string

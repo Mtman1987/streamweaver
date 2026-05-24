@@ -119,30 +119,24 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: false, error: 'empty-response' });
     }
 
-    // Send response via webhook to Discord only (no Twitch, no TTS — conversation stays in Discord)
+    // Send response to Discord only (no Twitch, no TTS — conversation stays in Discord)
+    let discordReplySent = false;
     if (channelId) {
       const avatarUrl = getAvatarUrl(botTenantId || tenantId);
       try {
         await sendWebhookMessage(channelId, aiReply, botName, avatarUrl);
-        console.log(`[Discord Chat] Bot responded in channel ${channelId}`);
-      } catch (e) {
-        console.error('[Discord Chat] Webhook send failed:', e);
-        try {
-          const botToken = process.env.DISCORD_BOT_TOKEN;
-          if (botToken) {
-            await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bot ${botToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: aiReply }),
-            });
-          }
-        } catch {}
+        discordReplySent = true;
+        console.log(`[Discord Chat] Bot responded via webhook in channel ${channelId}`);
+      } catch (webhookError) {
+        console.error('[Discord Chat] Webhook send failed:', webhookError);
       }
+    } else {
+      console.warn('[Discord Chat] Cannot send bot response: missing channelId');
     }
 
     return apiOk({
       success: true,
-      botResponded: true,
+      botResponded: discordReplySent,
       response: aiReply,
       botName,
       tenantId: botTenantId || tenantId || null,
