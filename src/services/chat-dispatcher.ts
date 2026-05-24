@@ -23,7 +23,7 @@ import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
 import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
-import { tenantPath } from '../lib/tenant';
+import { globalPath, tenantPath } from '../lib/tenant';
 import type { StorageContext } from './storage';
 
 const CORE_POKEMON_CONFIRMATION_COMMANDS = new Set(['accept', 'cancel', 'swap']);
@@ -51,6 +51,92 @@ export async function handleKickMessage(message: KickMessage, tenantId: string) 
 // Pagination state for card listings
 const cardListings = new Map<string, { cards: string[], page: number }>();
 
+async function sendTwitchCrossBotFollowUp(input: {
+    channel: string;
+    userName: string;
+    triggerMessage: string;
+    speakerName: string;
+    speakerStableId?: string;
+    speakerTenantId?: string;
+    speakerReply: string;
+}) {
+    try {
+        const { getBotShareMode, appendBotInteraction } = await import('../lib/bot-interactions-store');
+        if (await getBotShareMode(input.speakerTenantId) !== 'on') return;
+
+        const { readWorldLore } = await import('../lib/world-lore-store');
+        const lore = await readWorldLore();
+        const characters = Object.values(lore?.characters || {});
+        if (!characters.length) return;
+
+        const replyLower = input.speakerReply.toLowerCase();
+        const speakerId = input.speakerStableId || '';
+        const targets = characters.filter((character: any) => {
+            if (character.stableId === speakerId) return false;
+            const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])]
+                .filter(Boolean)
+                .map((value: string) => value.toLowerCase());
+            return names.some((name: string) => new RegExp(`(^|[^a-z0-9_])@?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9_]|$)`, 'i').test(replyLower));
+        });
+        if (!targets.length) return;
+
+        const target: any = targets[0];
+        const targetTenantId = await resolveTenantForLoreBot(target, input.speakerTenantId);
+        const targetPersonality = [
+            `You are ${target.currentName}.`,
+            target.archetype ? `Archetype: ${target.archetype}.` : '',
+            target.summary || '',
+            target.personalityNotes?.length ? target.personalityNotes.join(' ') : '',
+            'Stay in this bot identity for this single Twitch follow-up.',
+        ].filter(Boolean).join('\n');
+        const prompt = [
+            'Cross-bot follow-up on Twitch.',
+            `${input.speakerName} replied: "${input.speakerReply}"`,
+            `${input.userName} originally asked: "${input.triggerMessage}"`,
+            'Answer as yourself in 1 short Twitch-friendly sentence. Do not impersonate the other bot. Do not keep the chain going.',
+        ].join('\n');
+
+        const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: input.userName,
+                message: prompt,
+                personality: targetPersonality,
+                responseName: target.currentName,
+                tenantId: targetTenantId,
+                context: 'twitch-cross-bot',
+            }),
+        });
+        if (!response.ok) {
+            console.error('[Dispatcher] Twitch cross-bot AI failed:', response.status, await response.text().catch(() => ''));
+            return;
+        }
+
+        const data = await response.json();
+        const reply = data.response?.trim() || data.data?.response?.trim() || '';
+        if (!reply) return;
+
+        await sendChatMessage(reply, 'bot', input.channel, targetTenantId).catch((error) => {
+            console.error('[Dispatcher] Twitch cross-bot send failed:', error);
+        });
+        await appendBotInteraction({
+            platform: 'twitch',
+            tenantId: targetTenantId,
+            channelId: input.channel,
+            sourceUser: input.userName,
+            speakerBotId: target.stableId,
+            speakerBotName: target.currentName,
+            targetBotIds: speakerId ? [speakerId] : [],
+            targetBotNames: [input.speakerName],
+            triggerMessage: input.triggerMessage,
+            responseMessage: reply,
+        }).catch(() => {});
+    } catch (error) {
+        console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error);
+    }
+}
+
 async function getDiscordLogChannelId(tenantId?: string): Promise<string | null> {
     try {
         const p = tenantId
@@ -61,6 +147,72 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
         if (config.discordBridgeEnabled === false) return null;
         return config.logChannelId;
     } catch { return null; }
+}
+
+const ATHENA_EVERYWHERE_TENANT_ID = '94371378';
+const ATHENA_STABLE_ID = `${ATHENA_EVERYWHERE_TENANT_ID}:athena`;
+
+async function getAthenaEverywhereMode(): Promise<'on' | 'off'> {
+    if (process.env.ATHENA_EVERYWHERE_MODE === 'false') return 'off';
+    try {
+        const raw = await fs.readFile(globalPath('athena-everywhere-mode.json'), 'utf-8');
+        const parsed = JSON.parse(raw);
+        return parsed.mode === 'off' ? 'off' : 'on';
+    } catch {
+        return 'on';
+    }
+}
+
+async function setAthenaEverywhereMode(mode: 'on' | 'off'): Promise<'on' | 'off'> {
+    const filePath = globalPath('athena-everywhere-mode.json');
+    await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify({ mode }, null, 2));
+    return mode;
+}
+
+async function toggleAthenaEverywhereMode(): Promise<'on' | 'off'> {
+    const current = await getAthenaEverywhereMode();
+    return setAthenaEverywhereMode(current === 'on' ? 'off' : 'on');
+}
+
+async function getFirstMentionedLoreBot(message: string) {
+    try {
+        const { readWorldLore } = await import('../lib/world-lore-store');
+        const { firstMentionedCharacter } = await import('../lib/bot-interactions-store');
+        const lore = await readWorldLore();
+        const characters = Object.values(lore?.characters || {});
+        return firstMentionedCharacter(message, characters);
+    } catch {
+        return null;
+    }
+}
+
+async function resolveTenantForLoreBot(character: any, fallbackTenantId?: string): Promise<string | undefined> {
+    const stableId = String(character?.stableId || '');
+    const [stableTenant] = stableId.split(':');
+    if (stableTenant && stableTenant !== 'unknown' && stableTenant !== 'discordUserId' && stableTenant !== 'twitchUserId') {
+        return stableTenant;
+    }
+
+    try {
+        const { listTenants } = await import('../lib/tenant');
+        const { getBotName, getBotAliases } = await import('../lib/bot-settings-store');
+        const names = [
+            character?.currentName,
+            ...(character?.aliases || []),
+            ...(character?.previousNames || []),
+        ].filter(Boolean).map((value: string) => value.toLowerCase());
+
+        for (const tid of await listTenants()) {
+            const botName = getBotName(tid).toLowerCase();
+            const aliases = String(getBotAliases(tid) || '').toLowerCase().split(',').map((v) => v.trim());
+            if (names.includes(botName) || aliases.some((alias) => alias && names.includes(alias))) {
+                return tid;
+            }
+        }
+    } catch {}
+
+    return fallbackTenantId;
 }
 
 export async function handleTwitchMessage(channel: string, tags: any, message: string, self: boolean) {
@@ -953,6 +1105,34 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
+
+        // Handle !botshare command - opt-in controlled bot-to-bot lore interactions
+        if (actualMessage.toLowerCase() === '!botshare') {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const { toggleBotShareMode } = await import('../lib/bot-interactions-store');
+                const mode = await toggleBotShareMode(tenantId);
+                await reply(`Bot share mode: ${mode.toUpperCase()} - cross-bot replies are ${mode === 'on' ? 'enabled' : 'disabled'}.`, 'bot').catch(() => {});
+            } else {
+                await reply(`@${actualUsername}, only mods can change bot share mode!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+        // Handle !athenaeverywhere command - global Athena replies in watched/shared Twitch chats
+        const athenaEverywhereMatch = actualMessage.toLowerCase().trim().match(/^!athenaeverywhere(?:\s+(on|off|status))?$/);
+        if (athenaEverywhereMatch) {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const action = athenaEverywhereMatch[1];
+                const mode = action === 'on' || action === 'off'
+                    ? await setAthenaEverywhereMode(action)
+                    : action === 'status'
+                        ? await getAthenaEverywhereMode()
+                        : await toggleAthenaEverywhereMode();
+                await reply(`Athena everywhere mode: ${mode.toUpperCase()} - Athena mentions in watched/shared chats ${mode === 'on' ? 'route to Athenabot87' : 'stay local'}.`, 'bot').catch(() => {});
+            } else {
+                await reply(`@${actualUsername}, only mods can change Athena everywhere mode!`, 'bot').catch(() => {});
+            }
+            return;
+        }
         // Handle !sr command - Re-send as plain !sr so HearMeOut's Twitch bot picks it up
         if (actualMessage.toLowerCase().startsWith('!sr ')) {
             await reply(actualMessage, 'bot').catch(() => {});
@@ -1504,7 +1684,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !admin
         if (actualMessage.toLowerCase() === '!admin') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !brb, !back, !ignore <user>';
+                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>';
                 await reply(adminSummary, 'broadcaster').catch(() => {});
             } else {
                 await reply(`@${actualUsername}, only mods can view admin commands!`, 'broadcaster').catch(() => {});
@@ -1926,7 +2106,20 @@ If no good match, respond with: Could not find matching user`;
             }
             
             const { getBotName, getBotInterests, getBotAliases } = require('../lib/bot-settings-store');
-            const botName = getBotName(tenantId);
+            let botName = getBotName(tenantId);
+            let responseTenantId = tenantId;
+            let responseBotName = botName;
+            const firstLoreBot = await getFirstMentionedLoreBot(actualMessage);
+            if (
+                await getAthenaEverywhereMode() === 'on'
+                && firstLoreBot?.stableId === ATHENA_STABLE_ID
+                && tenantId !== ATHENA_EVERYWHERE_TENANT_ID
+            ) {
+                responseTenantId = ATHENA_EVERYWHERE_TENANT_ID;
+                responseBotName = firstLoreBot.currentName;
+                botName = firstLoreBot.currentName;
+                console.log(`[Dispatcher] Athena everywhere routing "${actualMessage}" from #${replyChannel} to tenant ${ATHENA_EVERYWHERE_TENANT_ID}`);
+            }
             const mentionTriggers = [
                 `@${botUsername.toLowerCase()}`,
                 botUsername.toLowerCase(),
@@ -1941,6 +2134,62 @@ If no good match, respond with: Could not find matching user`;
                 mentionTriggers.push(`hey ${alias}`);
             }
             console.log(`[Dispatcher] mentionTriggers for tenant ${tenantId}:`, mentionTriggers.join(', '));
+
+            try {
+                const { decideBotInteraction, appendBotInteraction } = await import('../lib/bot-interactions-store');
+                const decision = await decideBotInteraction({
+                    message: actualMessage,
+                    currentBotName: responseBotName,
+                    tenantId: responseTenantId,
+                    platform: 'twitch',
+                });
+
+                if (decision?.shouldRespond) {
+                    console.log(`[Dispatcher] Cross-bot interaction triggered: ${decision.reason}`);
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: actualUsername,
+                            message: decision.promptInstruction,
+                            tenantId: responseTenantId || undefined,
+                            context: 'twitch',
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const aiReply = data.response?.trim() || data.data?.response?.trim() || '';
+                        if (aiReply) {
+                            await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
+                            await appendBotInteraction({
+                                platform: 'twitch',
+                                tenantId: responseTenantId,
+                                sourceUser: actualUsername,
+                                speakerBotId: decision.speaker.stableId,
+                                speakerBotName: decision.speaker.currentName,
+                                targetBotIds: decision.targets.map((target: any) => target.stableId),
+                                targetBotNames: decision.targets.map((target: any) => target.currentName),
+                                triggerMessage: actualMessage,
+                                responseMessage: aiReply,
+                            }).catch(() => {});
+                            await sendTwitchCrossBotFollowUp({
+                                channel: replyChannel,
+                                userName: actualUsername,
+                                triggerMessage: actualMessage,
+                                speakerName: decision.speaker.currentName,
+                                speakerStableId: decision.speaker.stableId,
+                                speakerTenantId: responseTenantId,
+                                speakerReply: aiReply,
+                            }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[Dispatcher] Cross-bot interaction failed:', err);
+            }
+
             let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
             
             // Remove hardcoded Athena check - only use dynamic bot name
@@ -1975,7 +2224,7 @@ If no good match, respond with: Could not find matching user`;
                         body: JSON.stringify({
                             username: actualUsername,
                             message: messageToSend,
-                            tenantId: tenantId || undefined,
+                            tenantId: responseTenantId || undefined,
                             context: message.includes('🌟') ? 'voice' : 'twitch',
                         })
                     });
@@ -1989,12 +2238,21 @@ If no good match, respond with: Could not find matching user`;
                         
                         if (aiReply) {
                             // Send the chat message
-                            await reply(aiReply, 'bot').catch(() => {});
+                            await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
+                            await sendTwitchCrossBotFollowUp({
+                                channel: replyChannel,
+                                userName: actualUsername,
+                                triggerMessage: actualMessage,
+                                speakerName: responseBotName,
+                                speakerStableId: firstLoreBot?.stableId,
+                                speakerTenantId: responseTenantId,
+                                speakerReply: aiReply,
+                            }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
                             
                             // Generate TTS for AI response
                             try {
                                 const { textToSpeech } = await import('../ai/flows/text-to-speech');
-                                const ttsResult = await textToSpeech({ text: aiReply, tenantId: tenantId || undefined });
+                                const ttsResult = await textToSpeech({ text: aiReply, tenantId: responseTenantId || undefined });
                                 
                                 if (ttsResult.audioDataUri) {
                                     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
@@ -2035,6 +2293,83 @@ export async function handleDiscordMessage(msg: any, tenantId?: string) {
     if (!logChannelId) return;
     
     const isCommand = msg.content.startsWith('!');
+    const sourceChannelId = msg.channelId || msg.channel_id || logChannelId;
+    const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
+
+    if (/^!botshare(?:\s+(on|off|status))?$/i.test(msg.content.trim())) {
+        const match = msg.content.trim().toLowerCase().match(/^!botshare(?:\s+(on|off|status))?$/);
+        const action = match?.[1];
+        try {
+            const store = await import('../lib/bot-interactions-store');
+            let mode;
+            if (action === 'on' || action === 'off') {
+                mode = await store.setBotShareMode(action, tenantId);
+            } else if (action === 'status') {
+                mode = await store.getBotShareMode(tenantId);
+            } else {
+                mode = await store.toggleBotShareMode(tenantId);
+            }
+            await sendDiscordMessage(
+                sourceChannelId,
+                `Bot share mode: ${String(mode).toUpperCase()} - cross-bot replies are ${mode === 'on' ? 'enabled' : 'disabled'}.`,
+            ).catch((error) => console.error('[Discord Bridge] Failed to reply to !botshare:', error));
+        } catch (error) {
+            console.error('[Discord Bridge] !botshare command failed:', error);
+        }
+        return;
+    }
+
+    if (!msg.content.startsWith('[') && msg.author && !msg.author.bot) {
+        try {
+            const { getBotName } = require('../lib/bot-settings-store');
+            const { decideBotInteraction, appendBotInteraction } = await import('../lib/bot-interactions-store');
+            const botName = getBotName(tenantId);
+            const decision = await decideBotInteraction({
+                message: msg.content,
+                currentBotName: botName,
+                tenantId,
+                platform: 'discord',
+            });
+
+            if (decision?.shouldRespond) {
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: sourceUserName,
+                        message: decision.promptInstruction,
+                        tenantId: tenantId || undefined,
+                        context: 'discord',
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const aiReply = data.response?.trim() || data.data?.response?.trim() || '';
+                    if (aiReply) {
+                        await sendDiscordMessage(sourceChannelId, aiReply).catch((error) => console.error('[Discord Bridge] Failed to send cross-bot reply:', error));
+                        await appendBotInteraction({
+                            platform: 'discord',
+                            tenantId,
+                            channelId: sourceChannelId,
+                            sourceUser: sourceUserName,
+                            speakerBotId: decision.speaker.stableId,
+                            speakerBotName: decision.speaker.currentName,
+                            targetBotIds: decision.targets.map((target: any) => target.stableId),
+                            targetBotNames: decision.targets.map((target: any) => target.currentName),
+                            triggerMessage: msg.content,
+                            responseMessage: aiReply,
+                        }).catch(() => {});
+                        return;
+                    }
+                } else {
+                    console.error('[Discord Bridge] Cross-bot AI failed:', response.status, await response.text().catch(() => ''));
+                }
+            }
+        } catch (error) {
+            console.error('[Discord Bridge] Cross-bot handling failed:', error);
+        }
+    }
     
     // Bridge ALL messages to Twitch (skip if message came from another platform to avoid loop)
     if (!msg.content.startsWith('[')) {
@@ -2052,7 +2387,7 @@ export async function handleDiscordMessage(msg: any, tenantId?: string) {
         processedContent = processedContent.replace(/<:(\w+):(\d+)>/g, ':$1:');
         
         // Send all Discord messages as bot with Discord prefix
-        const twitchMessage = `[Discord] ${msg.author.username}: ${processedContent}`;
+        const twitchMessage = `[Discord] ${sourceUserName}: ${processedContent}`;
         await sendChatMessage(twitchMessage, 'bot', undefined, tenantId).catch(e => console.error('[Bridge] Failed:', e));
     }
 }

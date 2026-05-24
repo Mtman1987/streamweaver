@@ -85,24 +85,18 @@ export default function TTSPlayer() {
       if (!audio) return;
 
       audio.src = audioUrl;
-      audio.muted = true;
+      audio.muted = false;
+      audio.volume = 1.0;
+      audio.preload = 'auto';
       try { await applySavedSink(audio); } catch {}
+      audio.load();
 
       try {
         await audio.play();
-        audio.muted = false;
-        audio.volume = 1.0;
         setStatus('Playing...');
       } catch (err: any) {
-        audio.muted = false;
-        audio.volume = 1.0;
-        try {
-          await audio.play();
-          setStatus('Playing...');
-        } catch {
-          setStatus(`Play failed: ${err.message}`);
-          isPlaying = false;
-        }
+        setStatus(`Click overlay to play: ${err?.message || 'browser blocked autoplay'}`);
+        isPlaying = false;
       }
     };
 
@@ -133,10 +127,18 @@ export default function TTSPlayer() {
       setPlaying(false);
       setStatus('Listening for TTS...');
     };
+    const onPause = () => {
+      if (!audio || audio.ended) return;
+      isPlaying = false;
+      setPlaying(false);
+      const duration = Number.isFinite(audio.duration) ? audio.duration.toFixed(1) : '?';
+      setStatus(`Paused at ${audio.currentTime.toFixed(1)}s / ${duration}s - click overlay to resume`);
+    };
 
     if (audio) {
       audio.addEventListener('ended', onEnded);
       audio.addEventListener('error', onError);
+      audio.addEventListener('pause', onPause);
     }
 
     const interval = setInterval(fetchNext, 500);
@@ -145,6 +147,7 @@ export default function TTSPlayer() {
       if (audio) {
         audio.removeEventListener('ended', onEnded);
         audio.removeEventListener('error', onError);
+        audio.removeEventListener('pause', onPause);
       }
     };
   }, [overlayTenant, tenantQuery]);
@@ -177,9 +180,19 @@ export default function TTSPlayer() {
   };
 
   return (
-    <div style={{ width: '100%', height: '100vh', background: 'transparent', position: 'relative', overflow: 'hidden' }}>
+    <div
+      onClick={() => {
+        const audio = audioRef.current;
+        if (!audio || !audio.paused) return;
+        audio.play().then(() => setStatus('Playing...')).catch((err) => {
+          setStatus(`Play failed: ${err?.message || 'browser blocked playback'}`);
+        });
+      }}
+      style={{ width: '100%', height: '100vh', background: 'transparent', position: 'relative', overflow: 'hidden' }}
+    >
       <audio
         ref={audioRef}
+        playsInline
         onPlay={() => { setPlaying(true); setStatus('Playing...'); }}
       />
       {/* Avatar */}

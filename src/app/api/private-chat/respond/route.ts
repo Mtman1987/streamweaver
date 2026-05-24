@@ -15,6 +15,7 @@ type RequestBody = {
   message: string;
   personality?: string;
   historyLimit?: number;
+  tenantId?: string;
 };
 
 const privateRespondSchema = z.object({
@@ -22,6 +23,7 @@ const privateRespondSchema = z.object({
   message: z.string().trim().min(1, 'message is required').max(5000),
   personality: z.string().trim().max(3000).optional(),
   historyLimit: z.coerce.number().int().min(0).max(100).optional().default(20),
+  tenantId: z.string().trim().max(128).optional(),
 });
 
 function formatHistory(messages: PrivateChatMessage[]): string {
@@ -43,7 +45,8 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || 'http://localhost:3100'}/api/private-ltm/condense`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId }),
       });
       
       if (response.ok) {
@@ -66,9 +69,9 @@ export async function POST(request: NextRequest) {
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { username, message, personality, historyLimit } = parsed.data;
+    const { username, message, personality, historyLimit, tenantId: bodyTenantId } = parsed.data;
     const session = getTenantFromRequest(request);
-    const tenantId = session?.tenantId;
+    const tenantId = session?.tenantId || bodyTenantId;
     const botName = getBotName(tenantId);
     const botPersonality = getBotPersonality(tenantId);
     console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });

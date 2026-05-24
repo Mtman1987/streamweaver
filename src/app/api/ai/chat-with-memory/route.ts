@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { appendPublicChatMessages, readPublicChatMessages } from '@/lib/public-chat-store';
 import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';
+import { formatWorldLoreForPrompt } from '@/lib/world-lore-store';
+import { formatBotInteractionHistoryForPrompt } from '@/lib/bot-interactions-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 
@@ -9,14 +11,16 @@ type RequestBody = {
   username: string;
   message: string;
   personality?: string;
+  responseName?: string;
 };
 
 const chatWithMemorySchema = z.object({
   username: z.string().trim().min(1, 'Missing required fields: username, message').max(128),
   message: z.string().trim().min(1, 'Missing required fields: username, message').max(5000),
   personality: z.string().trim().max(3000).optional(),
+  responseName: z.string().trim().max(128).optional(),
   tenantId: z.string().trim().max(128).optional(),
-  context: z.enum(['twitch', 'discord', 'voice', 'private']).optional().default('twitch'),
+  context: z.enum(['twitch', 'twitch-cross-bot', 'discord', 'discord-cross-bot', 'voice', 'private']).optional().default('twitch'),
 });
 
 type AIChatMessage = {
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { username, message, personality, tenantId: bodyTenantId, context } = parsed.data;
+    const { username, message, personality, responseName, tenantId: bodyTenantId, context } = parsed.data;
     // Resolve tenant: prefer session cookie (browser requests), fall back to body (server-side internal calls)
     const session = (await import('@/lib/tenant-context')).getTenantFromRequest(request);
     const tenantId = session?.tenantId || bodyTenantId;
@@ -59,14 +63,17 @@ export async function POST(request: NextRequest) {
     }
 
     const aiConfig = getAIConfig(tenantId);
+    const botResponseName = (context === 'discord-cross-bot' || context === 'twitch-cross-bot') && responseName ? responseName : aiConfig.botName;
     const { getBotPersonality } = require('@/lib/bot-settings-store');
     const storedPersonality = getBotPersonality(tenantId);
     const DEFAULTS_PERSONALITY_CHECK = 'You are a helpful AI assistant.';
     const history = await readPublicChatMessages(20, tenantId);
 
-    // Priority: stored tenant personality > StreamWeaver87 default (ignore client override to prevent cross-tenant leaks)
+    // Priority: stored tenant personality > StreamWeaver87 default. Cross-bot calls
+    // are internal server calls and may provide a temporary target personality.
     const defaultPersonality = `You are StreamWeaver87, the onboard AI steward of the Space Mountain. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
-    const rawPersonality = (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
+    const rawPersonality = ((context === 'discord-cross-bot' || context === 'twitch-cross-bot') && personality ? personality : null)
+      || (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
       || defaultPersonality;
 
     // Two-tier split: above --- is compact system identity, below is extended guidance
@@ -82,7 +89,9 @@ export async function POST(request: NextRequest) {
       extendedGuidance = '';
     }
 
-    const historyText = formatHistory(history, aiConfig.botName);
+    const historyText = formatHistory(history, botResponseName);
+    const worldLoreText = await formatWorldLoreForPrompt();
+    const botInteractionHistory = await formatBotInteractionHistoryForPrompt();
 
     // Commander override: inject global memory and special system prompt for mtman1987
     let commanderContext = '';
@@ -98,7 +107,9 @@ export async function POST(request: NextRequest) {
     // Context flag so the AI knows where this conversation is happening
     const contextFlags: Record<string, string> = {
       twitch: '[Context: Live Twitch chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
+      'twitch-cross-bot': '[Context: Twitch cross-bot follow-up. Answer as the requested bot only, then stop.]',
       discord: '[Context: Discord server message. Can be slightly longer but stay concise.]',
+      'discord-cross-bot': '[Context: Discord cross-bot follow-up. Answer as the requested bot only, then stop.]',
       voice: `[Context: The broadcaster is speaking to you via voice command. This is ${userIsCommander ? 'the Commander (M.T.)' : 'the streamer'}. Respond conversationally.]`,
       private: '[Context: Private conversation. Not on stream. You can be more detailed and personal.]',
     };
@@ -106,11 +117,13 @@ export async function POST(request: NextRequest) {
 
     const promptParts = [
       extendedGuidance,
+      worldLoreText,
+      botInteractionHistory,
       commanderContext,
       contextFlag,
       historyText,
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : username}: ${message}`,
-      `Respond as ${aiConfig.botName}:`,
+      `Respond as ${botResponseName}:`,
     ].filter(Boolean);
 
     const prompt = promptParts.join('\n\n');
@@ -157,11 +170,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Remove bot name prefix if present
-    const cleanResponse = responseText.replace(new RegExp(`^(${aiConfig.botName}|${aiConfig.botName.toLowerCase()}):\\s*`, 'i'), '').trim();
+    const cleanResponse = responseText.replace(new RegExp(`^(${botResponseName}|${botResponseName.toLowerCase()}):\\s*`, 'i'), '').trim();
 
     const aiEntry = {
       type: 'ai' as const,
-      username: aiConfig.botName,
+      username: botResponseName,
       message: cleanResponse,
       timestamp: new Date().toISOString(),
     };
@@ -172,7 +185,7 @@ export async function POST(request: NextRequest) {
     // Save to global commander memory if this was M.T.
     if (userIsCommander) {
       await appendCommanderMemory({
-        botName: aiConfig.botName,
+        botName: botResponseName,
         tenantId: tenantId || 'global',
         message,
         response: cleanResponse,

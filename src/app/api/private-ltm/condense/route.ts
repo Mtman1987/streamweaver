@@ -3,11 +3,17 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { readPrivateChatMessages } from '@/lib/private-chat-store';
 import { addLTMEntry } from '@/lib/private-ltm-store';
+import { z } from 'zod';
+
+const schema = z.object({
+  tenantId: z.string().trim().max(128).optional(),
+}).optional();
 
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    const tenantId = session?.tenantId;
+    const parsedBody = schema.safeParse(await request.json().catch(() => undefined));
+    const tenantId = session?.tenantId || (parsedBody.success ? parsedBody.data?.tenantId : undefined);
 
     const messages = await readPrivateChatMessages(50, tenantId);
     if (messages.length < 10) {
@@ -42,17 +48,17 @@ export async function POST(request: NextRequest) {
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content?.trim() || '';
 
-    let parsed: { title: string; content: string };
+    let memoryEntry: { title: string; content: string };
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      parsed = JSON.parse(jsonMatch?.[0] || raw);
+      memoryEntry = JSON.parse(jsonMatch?.[0] || raw);
     } catch {
-      parsed = { title: `Memory ${new Date().toLocaleDateString()}`, content: raw };
+      memoryEntry = { title: `Memory ${new Date().toLocaleDateString()}`, content: raw };
     }
 
     await addLTMEntry({
-      title: parsed.title,
-      content: parsed.content,
+      title: memoryEntry.title,
+      content: memoryEntry.content,
       createdAt: new Date().toISOString(),
       messageRange: {
         from: messages[0].timestamp,
@@ -60,8 +66,8 @@ export async function POST(request: NextRequest) {
       },
     }, tenantId);
 
-    console.log(`[Private LTM] Condensed: "${parsed.title}" for tenant ${tenantId || 'global'}`);
-    return apiOk({ success: true, title: parsed.title });
+    console.log(`[Private LTM] Condensed: "${memoryEntry.title}" for tenant ${tenantId || 'global'}`);
+    return apiOk({ success: true, title: memoryEntry.title });
   } catch (error) {
     console.error('[Private LTM] Condense error:', error);
     return apiError('Failed to condense', { status: 500, code: 'INTERNAL_ERROR' });
