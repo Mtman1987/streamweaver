@@ -339,6 +339,7 @@ export async function POST(request: NextRequest) {
           : await decideReplyMentionInteraction({
             speakerBotName: botName,
             speakerTenantId: botTenantId || tenantId || undefined,
+            triggerMessage: message,
             speakerReply: aiReply,
           });
         await sendCrossBotTargetReplies({
@@ -526,14 +527,24 @@ function getAvatarUrl(tenantId?: string): string {
 async function decideReplyMentionInteraction(input: {
   speakerBotName: string;
   speakerTenantId?: string;
+  triggerMessage: string;
   speakerReply: string;
 }): Promise<Awaited<ReturnType<typeof decideBotInteraction>> | null> {
   const mode = await getBotShareMode(input.speakerTenantId);
-  if (mode !== 'on') return null;
+  if (mode !== 'on') {
+    console.log('[Discord Chat] Cross-bot follow-up skipped: botshare is off', {
+      speakerBotName: input.speakerBotName,
+      speakerTenantId: input.speakerTenantId || null,
+    });
+    return null;
+  }
 
   const lore = await readWorldLore();
   const characters = Object.values(lore?.characters || {});
-  if (!characters.length) return null;
+  if (!characters.length) {
+    console.log('[Discord Chat] Cross-bot follow-up skipped: no world lore characters loaded');
+    return null;
+  }
 
   const speaker = findLoreCharacterByName(characters, input.speakerBotName)
     || (input.speakerTenantId ? characters.find((character) => character.stableId.startsWith(`${input.speakerTenantId}:`)) : undefined)
@@ -542,13 +553,27 @@ async function decideReplyMentionInteraction(input: {
       currentName: input.speakerBotName,
     };
 
-  const replyLower = input.speakerReply.toLowerCase();
-  const targets = characters.filter((character) =>
+  const combinedLower = `${input.triggerMessage}\n${input.speakerReply}`.toLowerCase();
+  const directTargets = characters.filter((character) =>
     character.stableId !== speaker.stableId
-    && characterTriggers(character).some((trigger) => triggerMatches(replyLower, trigger.toLowerCase()))
+    && characterTriggers(character).some((trigger) => triggerMatches(combinedLower, trigger.toLowerCase()))
   );
+  const relationshipTargets = inferDiscordRelationshipTargets(combinedLower, speaker, characters, lore?.relationships || {});
+  const targets = uniqueDiscordCharacters([...directTargets, ...relationshipTargets]);
 
-  if (!targets.length) return null;
+  if (!targets.length) {
+    console.log('[Discord Chat] Cross-bot follow-up skipped: no target bot found', {
+      speakerBotName: input.speakerBotName,
+      triggerPreview: input.triggerMessage.slice(0, 120),
+      replyPreview: input.speakerReply.slice(0, 120),
+    });
+    return null;
+  }
+
+  console.log('[Discord Chat] Cross-bot follow-up decision:', {
+    speaker: speaker.currentName,
+    targets: targets.map((target) => target.currentName),
+  });
 
   return {
     shouldRespond: true,
@@ -568,7 +593,10 @@ async function sendCrossBotTargetReplies(input: {
   tenantId?: string;
 }) {
   const decision = input.decision;
-  if (!decision?.shouldRespond || !decision.targets.length) return;
+  if (!decision?.shouldRespond || !decision.targets.length) {
+    console.log('[Discord Chat] Cross-bot follow-up skipped: no decision');
+    return;
+  }
 
   const port = process.env.PORT || 3100;
   const target = decision.targets[0];
@@ -610,9 +638,18 @@ async function sendCrossBotTargetReplies(input: {
 
   const data = await aiRes.json();
   const reply = data.response || data.data?.response || '';
-  if (!reply.trim()) return;
+  if (!reply.trim()) {
+    console.log('[Discord Chat] Cross-bot target AI returned empty response', {
+      target: target.currentName,
+    });
+    return;
+  }
 
   await sendWebhookMessage(input.channelId, reply, target.currentName, getAvatarUrl(targetTenantId));
+  console.log('[Discord Chat] Cross-bot target responded via webhook:', {
+    target: target.currentName,
+    channelId: input.channelId,
+  });
   await appendBotInteraction({
     platform: 'discord',
     tenantId: targetTenantId,
@@ -637,5 +674,58 @@ function findLoreCharacterByName(characters: WorldLoreCharacter[], name: string)
   const normalized = name.toLowerCase();
   return characters.find((character) =>
     characterTriggers(character).some((trigger) => trigger.toLowerCase() === normalized)
+  );
+}
+
+function uniqueDiscordCharacters(characters: WorldLoreCharacter[]): WorldLoreCharacter[] {
+  const seen = new Set<string>();
+  const unique: WorldLoreCharacter[] = [];
+  for (const character of characters) {
+    if (seen.has(character.stableId)) continue;
+    seen.add(character.stableId);
+    unique.push(character);
+  }
+  return unique;
+}
+
+function inferDiscordRelationshipTargets(
+  messageLower: string,
+  speaker: WorldLoreCharacter,
+  characters: WorldLoreCharacter[],
+  relationships: Record<string, { characterIds: string[]; label: string; summary: string }>
+): WorldLoreCharacter[] {
+  const relationshipIds = speaker.relationshipIds || [];
+  if (!relationshipIds.length) return [];
+
+  const targets: WorldLoreCharacter[] = [];
+  for (const relationshipId of relationshipIds) {
+    const relationship = relationships[relationshipId];
+    if (!relationship || !relationship.characterIds.includes(speaker.stableId)) continue;
+    if (!discordRelationshipPhraseMatches(messageLower, relationship.label, relationship.summary)) continue;
+
+    for (const characterId of relationship.characterIds) {
+      if (characterId === speaker.stableId) continue;
+      const target = characters.find((character) => character.stableId === characterId);
+      if (target) targets.push(target);
+    }
+  }
+
+  return targets;
+}
+
+function discordRelationshipPhraseMatches(messageLower: string, label: string, summary: string): boolean {
+  const relationshipText = `${label} ${summary}`.toLowerCase();
+  const phraseGroups = [
+    ['sister', 'sisters', 'sibling', 'siblings'],
+    ['brother', 'brothers', 'sibling', 'siblings'],
+    ['rival', 'rivals'],
+    ['teacher', 'professor', 'dad'],
+    ['soft spot', 'favorite'],
+    ['opposite', 'opposites'],
+  ];
+
+  return phraseGroups.some((phrases) =>
+    phrases.some((phrase) => relationshipText.includes(phrase))
+    && phrases.some((phrase) => messageLower.includes(phrase))
   );
 }
