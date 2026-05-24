@@ -373,6 +373,7 @@ type BotMatch = {
   tenantId?: string;
   botName: string;
   trigger: string;
+  index: number;
 };
 
 function splitAliases(value: string | undefined) {
@@ -396,6 +397,12 @@ function triggerMatches(message: string, trigger: string) {
   return new RegExp(`(^|[^a-z0-9_])${escaped}([^a-z0-9_]|$)`, 'i').test(message);
 }
 
+function triggerIndex(message: string, trigger: string) {
+  const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(^|[^a-z0-9_])${escaped}([^a-z0-9_]|$)`, 'i').exec(message);
+  return match?.index ?? -1;
+}
+
 async function resolveMentionedBot(messageLower: string, guildTenantId?: string): Promise<BotMatch | null> {
   const candidates: BotMatch[] = [];
   const addCandidate = (tenantId: string | undefined) => {
@@ -410,8 +417,9 @@ async function resolveMentionedBot(messageLower: string, guildTenantId?: string)
     ].filter(Boolean)));
 
     for (const trigger of triggers) {
-      if (triggerMatches(messageLower, trigger)) {
-        candidates.push({ tenantId, botName, trigger });
+      const index = triggerIndex(messageLower, trigger);
+      if (index >= 0) {
+        candidates.push({ tenantId, botName, trigger, index });
       }
     }
   };
@@ -425,7 +433,7 @@ async function resolveMentionedBot(messageLower: string, guildTenantId?: string)
     await addLoreCandidate(messageLower, candidates, tenantId);
   }
 
-  candidates.sort((a, b) => b.trigger.length - a.trigger.length);
+  candidates.sort((a, b) => a.index - b.index || b.trigger.length - a.trigger.length);
   return candidates[0] || null;
 }
 
@@ -443,8 +451,9 @@ async function addLoreCandidate(messageLower: string, candidates: BotMatch[], te
     ].filter(Boolean).map((value) => value.toLowerCase())));
 
     for (const trigger of triggers) {
-      if (triggerMatches(messageLower, trigger)) {
-        candidates.push({ tenantId, botName: character.currentName, trigger });
+      const index = triggerIndex(messageLower, trigger);
+      if (index >= 0) {
+        candidates.push({ tenantId, botName: character.currentName, trigger, index });
       }
     }
   }
