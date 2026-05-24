@@ -176,15 +176,52 @@ async function toggleAthenaEverywhereMode(): Promise<'on' | 'off'> {
 }
 
 async function getFirstMentionedLoreBot(message: string) {
+    const lower = message.toLowerCase();
+    const athenaIndex = firstNameIndex(lower, ['athena', 'athenabot87']);
     try {
         const { readWorldLore } = await import('../lib/world-lore-store');
         const { firstMentionedCharacter } = await import('../lib/bot-interactions-store');
         const lore = await readWorldLore();
         const characters = Object.values(lore?.characters || {});
-        return firstMentionedCharacter(message, characters);
+        const first = firstMentionedCharacter(message, characters);
+        if (athenaIndex >= 0) {
+            const firstIndex = first ? firstNameIndex(lower, [
+                first.currentName,
+                ...(first.aliases || []),
+                ...(first.previousNames || []),
+            ]) : -1;
+            if (firstIndex < 0 || athenaIndex <= firstIndex) {
+                return {
+                    stableId: ATHENA_STABLE_ID,
+                    currentName: 'Athena',
+                    aliases: ['Athena', 'Athenabot87'],
+                };
+            }
+        }
+        return first;
     } catch {
+        if (athenaIndex >= 0) {
+            return {
+                stableId: ATHENA_STABLE_ID,
+                currentName: 'Athena',
+                aliases: ['Athena', 'Athenabot87'],
+            };
+        }
         return null;
     }
+}
+
+function firstNameIndex(messageLower: string, names: string[]): number {
+    let best = -1;
+    for (const rawName of names) {
+        const name = String(rawName || '').toLowerCase().replace(/^@/, '').trim();
+        if (!name) continue;
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = new RegExp(`(^|[^a-z0-9_])@?${escaped}([^a-z0-9_]|$)`, 'i').exec(messageLower);
+        if (!match) continue;
+        if (best < 0 || match.index < best) best = match.index;
+    }
+    return best;
 }
 
 async function resolveTenantForLoreBot(character: any, fallbackTenantId?: string): Promise<string | undefined> {
@@ -2110,15 +2147,14 @@ If no good match, respond with: Could not find matching user`;
             let responseTenantId = tenantId;
             let responseBotName = botName;
             const firstLoreBot = await getFirstMentionedLoreBot(actualMessage);
-            if (
-                await getAthenaEverywhereMode() === 'on'
-                && firstLoreBot?.stableId === ATHENA_STABLE_ID
-                && tenantId !== ATHENA_EVERYWHERE_TENANT_ID
-            ) {
-                responseTenantId = ATHENA_EVERYWHERE_TENANT_ID;
-                responseBotName = firstLoreBot.currentName;
-                botName = firstLoreBot.currentName;
-                console.log(`[Dispatcher] Athena everywhere routing "${actualMessage}" from #${replyChannel} to tenant ${ATHENA_EVERYWHERE_TENANT_ID}`);
+            const firstLoreTenantId = firstLoreBot ? await resolveTenantForLoreBot(firstLoreBot, undefined) : undefined;
+            if (firstLoreBot && firstLoreTenantId && firstLoreTenantId !== tenantId) {
+                if (firstLoreBot.stableId !== ATHENA_STABLE_ID || await getAthenaEverywhereMode() === 'on') {
+                    responseTenantId = firstLoreTenantId;
+                    responseBotName = firstLoreBot.currentName;
+                    botName = firstLoreBot.currentName;
+                    console.log(`[Dispatcher] Cross-bot first mention routing "${actualMessage}" from #${replyChannel} to ${firstLoreBot.currentName} tenant ${firstLoreTenantId}`);
+                }
             }
             const mentionTriggers = [
                 `@${botUsername.toLowerCase()}`,
@@ -2127,8 +2163,8 @@ If no good match, respond with: Could not find matching user`;
                 `hey ${botName.toLowerCase()}`
             ].filter(Boolean);
             // Add pet names / aliases (e.g. "annie" for Athena)
-            const petNames = (getBotAliases(tenantId) || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
-            console.log(`[Dispatcher] Loaded aliases for tenant ${tenantId}: [${petNames.join(', ')}]`);
+            const petNames = (getBotAliases(responseTenantId) || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
+            console.log(`[Dispatcher] Loaded aliases for tenant ${responseTenantId}: [${petNames.join(', ')}]`);
             for (const alias of petNames) {
                 mentionTriggers.push(alias);
                 mentionTriggers.push(`hey ${alias}`);
