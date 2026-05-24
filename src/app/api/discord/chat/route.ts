@@ -1,10 +1,9 @@
 import { NextRequest } from 'next/server';
 import { apiOk } from '@/lib/api-response';
-import { getBotName, getBotPersonality, getBotInterests } from '@/lib/bot-settings-store';
+import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { readUserConfigSync } from '@/lib/user-config';
 import { listTenants, tenantPath } from '@/lib/tenant';
-import { isCommander } from '@/lib/commander-memory';
 import { promises as fs } from 'fs';
 
 /**
@@ -61,13 +60,9 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    // Check if bot is mentioned
-    const botName = getBotName(tenantId);
-    const botAliases = (readUserConfigSync(tenantId).AI_BOT_ALIASES || '').toLowerCase().split(',').map((s: string) => s.trim()).filter(Boolean);
-    const allTriggers = [botName.toLowerCase(), ...botAliases];
-
     const msgLower = message.toLowerCase();
-    const botMentioned = allTriggers.some(trigger => trigger && msgLower.includes(trigger));
+    const botMatch = await resolveMentionedBot(msgLower, tenantId);
+    const botMentioned = Boolean(botMatch);
 
     // Bridge to Twitch if enabled, dispatch is true, message is from the configured bridge channel,
     // and the bot is NOT mentioned (bot conversations stay in Discord)
@@ -96,7 +91,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate AI response
-    console.log(`[Discord Chat] Bot mentioned by ${userName}, generating response...`);
+    const botTenantId = botMatch?.tenantId;
+    const botName = botMatch?.botName || getBotName(tenantId);
+    console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
 
     const port = process.env.PORT || 3100;
     const aiRes = await fetch(`http://127.0.0.1:${port}/api/ai/chat-with-memory`, {
@@ -105,7 +102,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         username: userName,
         message,
-        tenantId: tenantId || undefined,
+        tenantId: botTenantId || tenantId || undefined,
         context: 'discord',
       }),
     });
@@ -124,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     // Send response via webhook to Discord only (no Twitch, no TTS — conversation stays in Discord)
     if (channelId) {
-      const avatarUrl = getAvatarUrl(tenantId);
+      const avatarUrl = getAvatarUrl(botTenantId || tenantId);
       try {
         await sendWebhookMessage(channelId, aiReply, botName, avatarUrl);
         console.log(`[Discord Chat] Bot responded in channel ${channelId}`);
@@ -143,11 +140,67 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return apiOk({ success: true, botResponded: true, response: aiReply });
+    return apiOk({
+      success: true,
+      botResponded: true,
+      response: aiReply,
+      botName,
+      tenantId: botTenantId || tenantId || null,
+    });
   } catch (error) {
     console.error('[Discord Chat] Error:', error);
     return apiOk({ success: false, error: 'internal' });
   }
+}
+
+type BotMatch = {
+  tenantId?: string;
+  botName: string;
+  trigger: string;
+};
+
+function splitAliases(value: string | undefined) {
+  return String(value || '')
+    .toLowerCase()
+    .split(',')
+    .map((alias) => alias.trim())
+    .filter(Boolean);
+}
+
+function triggerMatches(message: string, trigger: string) {
+  const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9_])${escaped}([^a-z0-9_]|$)`, 'i').test(message);
+}
+
+async function resolveMentionedBot(messageLower: string, guildTenantId?: string): Promise<BotMatch | null> {
+  const candidates: BotMatch[] = [];
+  const addCandidate = (tenantId: string | undefined) => {
+    const botName = getBotName(tenantId);
+    const configAliases = splitAliases(readUserConfigSync(tenantId).AI_BOT_ALIASES);
+    const settingAliases = splitAliases(getBotAliases(tenantId));
+    const triggers = Array.from(new Set([
+      botName.toLowerCase(),
+      `hey ${botName.toLowerCase()}`,
+      ...configAliases,
+      ...settingAliases,
+    ].filter(Boolean)));
+
+    for (const trigger of triggers) {
+      if (triggerMatches(messageLower, trigger)) {
+        candidates.push({ tenantId, botName, trigger });
+      }
+    }
+  };
+
+  addCandidate(guildTenantId);
+
+  for (const tenantId of await listTenants()) {
+    if (tenantId === guildTenantId) continue;
+    addCandidate(tenantId);
+  }
+
+  candidates.sort((a, b) => b.trigger.length - a.trigger.length);
+  return candidates[0] || null;
 }
 
 /**
