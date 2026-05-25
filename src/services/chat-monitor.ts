@@ -235,7 +235,8 @@ let dmSweepStarted = false;
 export async function checkDmChannelActivity(): Promise<void> {
     if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
     const { listTenants } = await import('../lib/tenant');
-    const { getChannelMessages, sendDiscordMessage } = require('./discord');
+    const { getChannelMessages } = require('./discord');
+    const { sendDiscordMessage } = require('./discord-local');
 
     for (const tenantId of await listTenants()) {
         const dmChannelId = await getDiscordChannelId('dmChannelId', tenantId);
