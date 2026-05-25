@@ -213,6 +213,45 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: false, error: 'tenant-not-found' });
       }
 
+      const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
+      if (imgMatch) {
+        const prompt = (imgMatch[1] || '').trim();
+        if (!prompt) {
+          if (channelId) {
+            await sendDiscordBotMessage(channelId, 'Usage: !img <description>');
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
+        }
+
+        const port = process.env.PORT || 3100;
+        const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+        });
+
+        if (!imageRes.ok) {
+          if (channelId) {
+            await sendDiscordBotMessage(channelId, 'Image generation failed. Try again in a moment.');
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'image-failed' });
+        }
+
+        const imageData = await imageRes.json();
+        const imageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
+        if (!imageUrl) {
+          if (channelId) {
+            await sendDiscordBotMessage(channelId, 'Image generation returned no image URL.');
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'empty-image' });
+        }
+
+        if (channelId) {
+          await sendDiscordBotMessage(channelId, imageUrl);
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', image: imageUrl });
+      }
+
       const port = process.env.PORT || 3100;
       const privateRes = await fetch(`http://127.0.0.1:${port}/api/private-chat/respond`, {
         method: 'POST',

@@ -274,9 +274,12 @@ export async function checkDmChannelActivity(): Promise<void> {
             const port = process.env.PORT || 3100;
             const messageText = String(msg.content || '').trim();
             try {
-                if (messageText.toLowerCase().startsWith('!img ')) {
-                    const prompt = messageText.slice(5).trim();
-                    if (!prompt) continue;
+                if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
+                    const prompt = messageText.replace(/^!img\s*/i, '').trim();
+                    if (!prompt) {
+                        await sendDiscordMessage(dmChannelId, 'Usage: !img <description>');
+                        continue;
+                    }
                     const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -293,14 +296,16 @@ export async function checkDmChannelActivity(): Promise<void> {
                         continue;
                     }
                     const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
-                    const botName = 'Athena';
+                    const botName = '▶ Athena';
                     const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
+                    const ttsUrl = `${baseUrl}/api/tts/play?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
                     await sendDiscordEmbed(dmChannelId, {
                         embeds: [{
                             title: '🎨 Image Generated',
                             description: prompt,
                             image: { url: imageUrl },
-                            author: { name: botName, icon_url: botAvatar },
+                            thumbnail: { url: botAvatar },
+                            author: { name: botName, icon_url: botAvatar, url: ttsUrl },
                             color: 0x5865F2,
                         }],
                     });
@@ -323,12 +328,14 @@ export async function checkDmChannelActivity(): Promise<void> {
                 if (!reply) continue;
 
                 const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
-                const botName = 'Athena';
+                const botName = '▶ Athena';
                 const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
+                const ttsUrl = `${baseUrl}/api/tts/play?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;
                 await sendDiscordEmbed(dmChannelId, {
                     embeds: [{
                         description: reply,
-                        author: { name: botName, icon_url: botAvatar },
+                        thumbnail: { url: botAvatar },
+                        author: { name: botName, icon_url: botAvatar, url: ttsUrl },
                         color: 0x5865F2,
                     }],
                 });
