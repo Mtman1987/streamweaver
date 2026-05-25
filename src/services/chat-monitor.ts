@@ -298,10 +298,13 @@ export async function checkDmChannelActivity(): Promise<void> {
                     const port = process.env.PORT || 3100;
                     const prompt = newestText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
-                        await sendDiscordMessage(dmChannelId, 'Usage: !img <description>');
+                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
+                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
                     } else {
                         try {
-                            const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                            await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
+                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
@@ -345,9 +348,12 @@ export async function checkDmChannelActivity(): Promise<void> {
                 if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
                     const prompt = messageText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
-                        await sendDiscordMessage(dmChannelId, 'Usage: !img <description>');
+                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
+                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
                         continue;
                     }
+                    await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
                     const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

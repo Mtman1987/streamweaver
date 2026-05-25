@@ -218,12 +218,16 @@ export async function POST(request: NextRequest) {
         const prompt = (imgMatch[1] || '').trim();
         if (!prompt) {
           if (channelId) {
-            await sendDiscordBotMessage(channelId, 'Usage: !img <description>');
+            const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+            await sendDiscordBotMessage(channelId, `Usage: !img <description>\nImage library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`);
           }
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
         }
 
         const port = process.env.PORT || 3100;
+        if (channelId) {
+          await sendDiscordBotMessage(channelId, "I'm processing your image now, Commander.");
+        }
         const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
