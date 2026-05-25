@@ -11,6 +11,7 @@ const discordChannelsSchema = z.object({
   logChannelId: z.string().trim().max(64).optional().default(''),
   aiChatChannelId: z.string().trim().max(64).optional().default(''),
   shoutoutChannelId: z.string().trim().max(64).optional().default(''),
+  dmChannelId: z.string().trim().max(64).optional().default(''),
   discordBridgeEnabled: z.boolean().optional(),
 });
 
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
       logChannelId: parsed.logChannelId || '',
       aiChatChannelId: parsed.aiChatChannelId || '',
       shoutoutChannelId: parsed.shoutoutChannelId || '',
+      dmChannelId: parsed.dmChannelId || '',
       discordBridgeEnabled: parsed.discordBridgeEnabled !== false,
     });
   } catch {
@@ -38,6 +40,7 @@ export async function GET(request: NextRequest) {
       logChannelId: '',
       aiChatChannelId: '',
       shoutoutChannelId: '',
+      dmChannelId: '',
       discordBridgeEnabled: true,
     });
   }
