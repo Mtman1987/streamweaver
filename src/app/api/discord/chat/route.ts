@@ -487,9 +487,14 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
   if (!guildId) {
     try {
       const tenants = await listTenants();
+      if (tenants.length === 0) return undefined;
       if (tenants.length === 1) return tenants[0];
-      const adminTenant = tenants.includes('94371378') ? '94371378' : undefined;
-      if (adminTenant) return adminTenant;
+
+      // DM payloads may not include guild context; default to owner tenant for reliability.
+      // Owner requested hardcoded fallback routing when guild context is missing.
+      const ownerTenantId = '94371378';
+      if (tenants.includes(ownerTenantId)) return ownerTenantId;
+      return [...tenants].sort((a, b) => a.localeCompare(b))[0];
     } catch {}
     return undefined;
   }
