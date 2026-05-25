@@ -38,6 +38,26 @@ async function persistImageFromUrl(imageUrl: string, tenantId?: string): Promise
   }
 }
 
+async function persistImageFromDataUri(dataUri: string, tenantId?: string): Promise<string | null> {
+  try {
+    const match = String(dataUri).match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i);
+    if (!match) return null;
+    const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase();
+    const bytes = Buffer.from(match[2], 'base64');
+    if (!bytes.length) return null;
+    const id = randomUUID();
+    const relDir = tenantId ? tenantPath(tenantId, 'data/generated-images') : `${process.cwd()}/data/generated-images`;
+    await fs.mkdir(relDir, { recursive: true });
+    const filename = `${id}.${ext}`;
+    await fs.writeFile(`${relDir}/${filename}`, bytes);
+    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+    const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
+    return base ? `${base}${path}` : path;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const parsed = imageSchema.safeParse(await request.json().catch(() => null));
@@ -61,11 +81,15 @@ export async function POST(request: NextRequest) {
       providerParams: parsed.data.providerParams,
     });
 
-    const upstreamUrl = result.image || result.imageResourceUrl || '';
-    const persistedUrl = await persistImageFromUrl(String(upstreamUrl), tenantId);
+    // Prefer provider-hosted URL first; some providers return gigantic base64 data URIs in `image`.
+    const sourceValue = result.imageResourceUrl || result.image || '';
+    const source = String(sourceValue);
+    const persistedUrl = source.startsWith('data:image/')
+      ? await persistImageFromDataUri(source, tenantId)
+      : await persistImageFromUrl(source, tenantId);
 
     return apiOk({
-      image: persistedUrl || result.image,
+      image: persistedUrl || result.imageResourceUrl || result.image,
       imageResourceUrl: result.imageResourceUrl,
       persistedImageUrl: persistedUrl || null,
     });
