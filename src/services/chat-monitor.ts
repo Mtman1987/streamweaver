@@ -16,6 +16,35 @@ const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function isDiscordEmbeddableImageUrl(value: unknown): value is string {
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > 2048) return false;
+    if (!/^https?:\/\//i.test(trimmed)) return false;
+    try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+async function maybeShortenUrl(url: string): Promise<string> {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return trimmed;
+    if (trimmed.length <= 1900) return trimmed;
+    if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+    try {
+        const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(trimmed)}`);
+        if (!tinyRes.ok) return trimmed;
+        const tiny = (await tinyRes.text()).trim();
+        if (!tiny || !/^https?:\/\//i.test(tiny)) return trimmed;
+        return tiny;
+    } catch {
+        return trimmed;
+    }
+}
+
 async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId' | 'dmChannelId', tenantId?: string): Promise<string | null> {
     const SETTINGS_FILE = tenantId 
         ? tenantPath(tenantId, 'tokens/discord-channels.json')
@@ -269,10 +298,13 @@ export async function checkDmChannelActivity(): Promise<void> {
                     const port = process.env.PORT || 3100;
                     const prompt = newestText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
-                        await sendDiscordMessage(dmChannelId, 'Usage: !img <description>');
+                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
+                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
                     } else {
                         try {
-                            const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                            await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
+                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
@@ -316,9 +348,12 @@ export async function checkDmChannelActivity(): Promise<void> {
                 if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
                     const prompt = messageText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
-                        await sendDiscordMessage(dmChannelId, 'Usage: !img <description>');
+                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
+                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
                         continue;
                     }
+                    await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
                     const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -331,26 +366,32 @@ export async function checkDmChannelActivity(): Promise<void> {
                         continue;
                     }
                     const imageData = await imageRes.json();
-                    const imageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
-                    if (!imageUrl) {
+                    const rawImageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
+                    if (!rawImageUrl) {
                         console.warn(`[DM Sweep:${tenantId}] !img returned empty image payload:`, JSON.stringify(imageData).slice(0, 400));
                         await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
                         continue;
                     }
+                    const imageUrl = await maybeShortenUrl(String(rawImageUrl).trim());
+                    const embeddableImageUrl = isDiscordEmbeddableImageUrl(imageUrl) ? imageUrl : null;
                     const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
                     const botName = '▶ Athena';
                     const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
                     const ttsUrl = `${baseUrl}/api/tts/play?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
-                    await sendDiscordEmbed(dmChannelId, {
-                        embeds: [{
-                            title: '🎨 Image Generated',
-                            description: prompt,
-                            image: { url: imageUrl },
-                            thumbnail: { url: botAvatar },
-                            author: { name: botName, icon_url: botAvatar, url: ttsUrl },
-                            color: 0x5865F2,
-                        }],
-                    });
+                    if (embeddableImageUrl) {
+                        await sendDiscordEmbed(dmChannelId, {
+                            embeds: [{
+                                title: '🎨 Image Generated',
+                                description: prompt,
+                                image: { url: embeddableImageUrl },
+                                thumbnail: { url: botAvatar },
+                                author: { name: botName, icon_url: botAvatar, url: ttsUrl },
+                                color: 0x5865F2,
+                            }],
+                        });
+                    } else {
+                        console.warn(`[DM Sweep:${tenantId}] !img returned non-embeddable URL (len=${imageUrl.length}); sending link only.`);
+                    }
                     await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
                     continue;
                 }
