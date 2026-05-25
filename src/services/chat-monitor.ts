@@ -258,6 +258,45 @@ export async function checkDmChannelActivity(): Promise<void> {
 
         const lastId = lastDiscordMessageId.get(stateKey);
         if (!lastId) {
+            // First-run bootstrap: don't silently drop a fresh command message.
+            // If the newest message is user-authored and looks like a DM command,
+            // process it once before establishing baseline.
+            const newest = messages[0];
+            if (newest?.content && !newest?.author?.bot) {
+                const newestText = String(newest.content).trim();
+                if (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img ')) {
+                    console.log(`[DM Sweep:${tenantId}] First-run processing newest !img command:`, newestText.slice(0, 120));
+                    const port = process.env.PORT || 3100;
+                    const prompt = newestText.replace(/^!img\s*/i, '').trim();
+                    if (!prompt) {
+                        await sendDiscordMessage(dmChannelId, 'Usage: !img <description>');
+                    } else {
+                        try {
+                            const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+                            });
+                            if (!imageRes.ok) {
+                                const errText = await imageRes.text().catch(() => '');
+                                console.warn(`[DM Sweep:${tenantId}] !img failed:`, imageRes.status, errText.slice(0, 200));
+                                await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
+                            } else {
+                                const imageData = await imageRes.json();
+                                const imageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
+                                if (imageUrl) {
+                                    await sendDiscordMessage(dmChannelId, imageUrl);
+                                } else {
+                                    await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
+                                }
+                            }
+                        } catch (error) {
+                            console.warn(`[DM Sweep:${tenantId}] !img exception:`, error);
+                        }
+                    }
+                }
+            }
+
             lastDiscordMessageId.set(stateKey, messages[0].id);
             await saveDmLastMessageId(tenantId, messages[0].id);
             continue;
@@ -286,12 +325,15 @@ export async function checkDmChannelActivity(): Promise<void> {
                         body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
                     });
                     if (!imageRes.ok) {
+                        const errText = await imageRes.text().catch(() => '');
+                        console.warn(`[DM Sweep:${tenantId}] !img failed:`, imageRes.status, errText.slice(0, 400));
                         await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
                         continue;
                     }
                     const imageData = await imageRes.json();
                     const imageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
                     if (!imageUrl) {
+                        console.warn(`[DM Sweep:${tenantId}] !img returned empty image payload:`, JSON.stringify(imageData).slice(0, 400));
                         await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
                         continue;
                     }
@@ -309,6 +351,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                             color: 0x5865F2,
                         }],
                     });
+                    await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
                     continue;
                 }
 
@@ -339,7 +382,9 @@ export async function checkDmChannelActivity(): Promise<void> {
                         color: 0x5865F2,
                     }],
                 });
-            } catch {}
+            } catch (error) {
+                console.warn(`[DM Sweep:${tenantId}] Failed to process DM message`, error);
+            }
         }
 
         if (messages[0]?.id && messages[0].id !== lastId) {
