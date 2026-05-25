@@ -266,6 +266,7 @@ export async function checkDmChannelActivity(): Promise<void> {
     const { listTenants } = await import('../lib/tenant');
     const { getChannelMessages } = require('./discord');
     const { sendDiscordMessage, sendDiscordEmbed } = require('./discord-local');
+    const { getGenMode, setGenMode, toggleGenMode } = await import('../lib/gen-mode-store');
 
     for (const tenantId of await listTenants()) {
         const dmChannelId = await getDiscordChannelId('dmChannelId', tenantId);
@@ -393,6 +394,18 @@ export async function checkDmChannelActivity(): Promise<void> {
                         console.warn(`[DM Sweep:${tenantId}] !img returned non-embeddable URL (len=${imageUrl.length}); sending link only.`);
                     }
                     await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
+                    continue;
+                }
+
+                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|status))?$/i);
+                if (genModeMatch) {
+                    const action = (genModeMatch[1] || '').toLowerCase();
+                    const mode = action === 'eden' || action === 'seaart'
+                        ? await setGenMode(action, tenantId)
+                        : action === 'status'
+                            ? await getGenMode(tenantId)
+                            : await toggleGenMode(tenantId);
+                    await sendDiscordMessage(dmChannelId, `Generation mode: ${String(mode).toUpperCase()}`);
                     continue;
                 }
 

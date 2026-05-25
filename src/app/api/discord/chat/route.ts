@@ -8,6 +8,7 @@ import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotS
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
+import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -214,6 +215,17 @@ export async function POST(request: NextRequest) {
       }
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
+      const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|status))?$/i);
+      if (genModeMatch) {
+        const action = (genModeMatch[1] || '').toLowerCase();
+        const mode = action === 'eden' || action === 'seaart'
+          ? await setGenMode(action, tenantId)
+          : action === 'status'
+            ? await getGenMode(tenantId)
+            : await toggleGenMode(tenantId);
+        if (channelId) await sendDiscordBotMessage(channelId, `Generation mode: ${mode.toUpperCase()}`);
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-genmode', mode });
+      }
       if (imgMatch) {
         const prompt = (imgMatch[1] || '').trim();
         if (!prompt) {

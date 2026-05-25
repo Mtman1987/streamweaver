@@ -5,6 +5,8 @@ import { randomUUID } from 'crypto';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { generateImageWithEdenAI } from '@/services/image-provider';
+import { generateImageWithSeaArt } from '@/services/image-provider';
+import { getGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
 const imageSchema = z.object({
@@ -72,7 +74,8 @@ export async function POST(request: NextRequest) {
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId || parsed.data.tenantId;
 
-    const result = await generateImageWithEdenAI({
+    const genMode = await getGenMode(tenantId);
+    const result = await (genMode === 'seaart' ? generateImageWithSeaArt : generateImageWithEdenAI)({
       prompt: parsed.data.prompt,
       tenantId,
       model: parsed.data.model,
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
       image: persistedUrl || result.imageResourceUrl || result.image,
       imageResourceUrl: result.imageResourceUrl,
       persistedImageUrl: persistedUrl || null,
+      provider: genMode,
     });
   } catch (error: any) {
     console.error('[AI Image] Error:', error);
