@@ -236,7 +236,7 @@ export async function checkDmChannelActivity(): Promise<void> {
     if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
     const { listTenants } = await import('../lib/tenant');
     const { getChannelMessages } = require('./discord');
-    const { sendDiscordMessage } = require('./discord-local');
+    const { sendDiscordMessage, sendDiscordEmbed } = require('./discord-local');
 
     for (const tenantId of await listTenants()) {
         const dmChannelId = await getDiscordChannelId('dmChannelId', tenantId);
@@ -272,7 +272,41 @@ export async function checkDmChannelActivity(): Promise<void> {
         for (const msg of newMessages.reverse()) {
             if (!msg?.content || msg?.author?.bot) continue;
             const port = process.env.PORT || 3100;
+            const messageText = String(msg.content || '').trim();
             try {
+                if (messageText.toLowerCase().startsWith('!img ')) {
+                    const prompt = messageText.slice(5).trim();
+                    if (!prompt) continue;
+                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+                    });
+                    if (!imageRes.ok) {
+                        await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
+                        continue;
+                    }
+                    const imageData = await imageRes.json();
+                    const imageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
+                    if (!imageUrl) {
+                        await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
+                        continue;
+                    }
+                    const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                    const botName = 'Athena';
+                    const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
+                    await sendDiscordEmbed(dmChannelId, {
+                        embeds: [{
+                            title: '🎨 Image Generated',
+                            description: prompt,
+                            image: { url: imageUrl },
+                            author: { name: botName, icon_url: botAvatar },
+                            color: 0x5865F2,
+                        }],
+                    });
+                    continue;
+                }
+
                 const res = await fetch(`http://127.0.0.1:${port}/api/private-chat/respond`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -287,7 +321,17 @@ export async function checkDmChannelActivity(): Promise<void> {
                 const data = await res.json();
                 const reply = data.response || data.data?.response || '';
                 if (!reply) continue;
-                await sendDiscordMessage(dmChannelId, reply);
+
+                const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                const botName = 'Athena';
+                const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
+                await sendDiscordEmbed(dmChannelId, {
+                    embeds: [{
+                        description: reply,
+                        author: { name: botName, icon_url: botAvatar },
+                        color: 0x5865F2,
+                    }],
+                });
             } catch {}
         }
 
