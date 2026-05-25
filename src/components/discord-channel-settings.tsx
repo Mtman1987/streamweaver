@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 interface ChannelSettings {
   logChannelId: string;
   shoutoutChannelId: string;
+  dmChannelId: string;
   discordBridgeEnabled?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function DiscordChannelSettings() {
   const [settings, setSettings] = useState<ChannelSettings>({
     logChannelId: '',
     shoutoutChannelId: '',
+    dmChannelId: '1416041303707353119',
     discordBridgeEnabled: false
   });
   const [loading, setLoading] = useState(false);
@@ -32,6 +34,7 @@ export function DiscordChannelSettings() {
         setSettings({
           logChannelId: typeof data?.logChannelId === 'string' ? data.logChannelId : '',
           shoutoutChannelId: typeof data?.shoutoutChannelId === 'string' ? data.shoutoutChannelId : '',
+          dmChannelId: typeof data?.dmChannelId === 'string' ? data.dmChannelId : '1416041303707353119',
           discordBridgeEnabled: Boolean(data?.discordBridgeEnabled),
         });
       })
@@ -134,6 +137,17 @@ export function DiscordChannelSettings() {
             Clear Channel
           </Button>
         </div>
+        <div>
+          <Label htmlFor="dmChannel">DM Channel ID</Label>
+          <Input
+            id="dmChannel"
+            value={settings.dmChannelId || ''}
+            onChange={(e) => setSettings(prev => ({ ...prev, dmChannelId: e.target.value }))}
+            placeholder="1416041303707353119"
+          />
+          <p className="text-xs text-muted-foreground mt-1">Used for DM fallback polling/routing when external DM webhooks are unavailable.</p>
+        </div>
+
         <div className="flex items-center space-x-2">
           <Switch 
             id="discordBridge" 
