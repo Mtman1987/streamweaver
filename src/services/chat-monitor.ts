@@ -16,7 +16,7 @@ const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId', tenantId?: string): Promise<string | null> {
+async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId' | 'dmChannelId', tenantId?: string): Promise<string | null> {
     const SETTINGS_FILE = tenantId 
         ? tenantPath(tenantId, 'tokens/discord-channels.json')
         : resolve(process.cwd(), 'tokens', 'discord-channels.json');
@@ -205,6 +205,107 @@ export async function checkChatActivity() {
         // Silently handle errors to prevent spam
     }
 }
+
+
+
+async function getDmSweepStatePath(tenantId: string): Promise<string> {
+    return tenantPath(tenantId, 'data/discord-dm-sweep-state.json');
+}
+
+async function loadDmLastMessageId(tenantId: string): Promise<string | null> {
+    try {
+        const raw = await fs.readFile(await getDmSweepStatePath(tenantId), 'utf-8');
+        const parsed = JSON.parse(raw);
+        return typeof parsed?.lastMessageId === 'string' ? parsed.lastMessageId : null;
+    } catch {
+        return null;
+    }
+}
+
+async function saveDmLastMessageId(tenantId: string, lastMessageId: string): Promise<void> {
+    try {
+        const statePath = await getDmSweepStatePath(tenantId);
+        await fs.mkdir(resolve(statePath, '..'), { recursive: true });
+        await fs.writeFile(statePath, JSON.stringify({ lastMessageId }, null, 2), 'utf-8');
+    } catch {}
+}
+
+let dmSweepStarted = false;
+
+export async function checkDmChannelActivity(): Promise<void> {
+    if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
+    const { listTenants } = await import('../lib/tenant');
+    const { getChannelMessages, sendDiscordMessage } = require('./discord');
+
+    for (const tenantId of await listTenants()) {
+        const dmChannelId = await getDiscordChannelId('dmChannelId', tenantId);
+        if (!dmChannelId || !dmChannelId.trim()) continue;
+
+        const stateKey = `dm:${tenantId}`;
+        if (!lastDiscordMessageId.has(stateKey)) {
+            const saved = await loadDmLastMessageId(tenantId);
+            lastDiscordMessageId.set(stateKey, saved);
+        }
+
+        let messages: any[] = [];
+        try {
+            messages = await getChannelMessages(dmChannelId, 20);
+        } catch {
+            continue;
+        }
+        if (!messages?.length) continue;
+
+        const lastId = lastDiscordMessageId.get(stateKey);
+        if (!lastId) {
+            lastDiscordMessageId.set(stateKey, messages[0].id);
+            await saveDmLastMessageId(tenantId, messages[0].id);
+            continue;
+        }
+
+        const newMessages: any[] = [];
+        for (const msg of messages) {
+            if (msg.id === lastId) break;
+            newMessages.push(msg);
+        }
+
+        for (const msg of newMessages.reverse()) {
+            if (!msg?.content || msg?.author?.bot) continue;
+            const port = process.env.PORT || 3100;
+            try {
+                const res = await fetch(`http://127.0.0.1:${port}/api/private-chat/respond`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: msg.author?.global_name || msg.author?.username || 'DiscordUser',
+                        message: msg.content,
+                        tenantId,
+                        historyLimit: 30,
+                    }),
+                });
+                if (!res.ok) continue;
+                const data = await res.json();
+                const reply = data.response || data.data?.response || '';
+                if (!reply) continue;
+                await sendDiscordMessage(dmChannelId, reply);
+            } catch {}
+        }
+
+        if (messages[0]?.id && messages[0].id !== lastId) {
+            lastDiscordMessageId.set(stateKey, messages[0].id);
+            await saveDmLastMessageId(tenantId, messages[0].id);
+        }
+    }
+}
+
+export function startDmChannelSweeper() {
+    if (dmSweepStarted) return;
+    dmSweepStarted = true;
+    setInterval(() => {
+        checkDmChannelActivity().catch(() => {});
+    }, 120000);
+}
+
+startDmChannelSweeper();
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';
