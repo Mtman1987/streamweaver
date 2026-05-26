@@ -799,6 +799,7 @@ async function sendCrossBotTargetReplies(input: {
   const MAX_CHAIN = 6;
   let count = 0;
   const allSentIds: string[] = [];
+  let lastSpeakerId = decision.speaker.stableId;
   let lastSpeakerName = decision.speaker.currentName;
   let lastReply = input.speakerReply;
 
@@ -870,13 +871,14 @@ async function sendCrossBotTargetReplies(input: {
       sourceUser: input.userName,
       speakerBotId: target.stableId,
       speakerBotName: target.currentName,
-      targetBotIds: [decision.speaker.stableId],
+      targetBotIds: [lastSpeakerId],
       targetBotNames: [lastSpeakerName],
       triggerMessage: input.triggerMessage,
       responseMessage: reply,
     }).catch(() => {});
     if (sentReply?.id) allSentIds.push(sentReply.id);
     count++;
+    lastSpeakerId = target.stableId;
     lastSpeakerName = target.currentName;
     lastReply = reply;
 

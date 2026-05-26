@@ -108,6 +108,7 @@ async function sendTwitchCrossBotFollowUp(input: {
         const MAX_CHAIN = 6;
         let count = 0;
         let lastSpeakerName = input.speakerName;
+        let lastSpeakerId = speakerId;
         let lastReply = input.speakerReply;
 
         while (queue.length > 0 && count < MAX_CHAIN) {
@@ -161,12 +162,13 @@ async function sendTwitchCrossBotFollowUp(input: {
                 sourceUser: input.userName,
                 speakerBotId: target.stableId,
                 speakerBotName: target.currentName,
-                targetBotIds: speakerId ? [speakerId] : [],
+                targetBotIds: lastSpeakerId ? [lastSpeakerId] : [],
                 targetBotNames: [lastSpeakerName],
                 triggerMessage: input.triggerMessage,
                 responseMessage: reply,
             }).catch(() => {});
             count++;
+            lastSpeakerId = target.stableId;
             lastSpeakerName = target.currentName;
             lastReply = reply;
 
