@@ -107,7 +107,7 @@ export function BotBlacklist() {
         <div className="space-y-2 border-b pb-3">
           <div>
             <p className="text-xs font-medium">Athena whitelist</p>
-            <p className="text-[11px] text-muted-foreground">Only these users, plus the broadcaster, can make Athena answer in tracked chats.</p>
+            <p className="text-[11px] text-muted-foreground">Only these users, plus Mtman1987, can make Athena answer in tracked Twitch chats.</p>
           </div>
           <div className="flex gap-2">
             <Input

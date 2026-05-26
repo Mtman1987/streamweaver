@@ -37,14 +37,10 @@ export async function removeAthenaWhitelistUser(username: string, tenantId?: str
 
 export async function canUseAthenaEverywhere(input: {
   username: string;
-  broadcasterUsername?: string;
-  isBroadcaster?: boolean;
   tenantId?: string;
 }): Promise<boolean> {
   const username = normalizeUsername(input.username);
   if (!username) return false;
-  if (input.isBroadcaster) return true;
-  if (input.broadcasterUsername && username === normalizeUsername(input.broadcasterUsername)) return true;
   if (username === 'mtman1987') return true;
   return (await readWhitelist(input.tenantId)).has(username);
 }

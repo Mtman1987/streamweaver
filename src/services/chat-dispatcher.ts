@@ -177,8 +177,6 @@ async function toggleAthenaEverywhereMode(): Promise<'on' | 'off'> {
 
 async function canRouteAthenaForUser(input: {
     username: string;
-    broadcasterUsername: string;
-    isBroadcaster: boolean;
     tenantId?: string;
 }): Promise<boolean> {
     try {
@@ -2187,9 +2185,7 @@ If no good match, respond with: Could not find matching user`;
                     await getAthenaEverywhereMode() === 'on'
                     && await canRouteAthenaForUser({
                         username: actualUsername,
-                        broadcasterUsername,
-                        isBroadcaster: Boolean(tags.badges?.broadcaster),
-                        tenantId,
+                        tenantId: ATHENA_EVERYWHERE_TENANT_ID,
                     })
                 );
                 if (canUseAthena) {
