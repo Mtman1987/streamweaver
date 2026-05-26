@@ -81,33 +81,78 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   if (!token) throw new Error('SEAART_TOKEN not configured');
 
   const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai/api';
-  const endpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/task/text2img';
-  const taskResultEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/task/result';
+  const createEndpoints = (
+    process.env.SEAART_TEXT2IMG_ENDPOINTS
+      || process.env.SEAART_TEXT2IMG_ENDPOINT
+      || '/task/text2img,/v1/task/text2img,/task/create/text2img,/task/create'
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  const create = await fetch(`${base}${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Cookie: `T=${token}`,
-      'Content-Type': 'application/json',
-      Origin: 'https://www.seaart.ai',
-      Referer: 'https://www.seaart.ai/',
-    },
-    body: JSON.stringify({ prompt: options.prompt }),
-  });
-  const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
-  if (!create.ok) throw new Error(`SeaArt create failed: ${create.status} ${JSON.stringify(createData).slice(0, 300)}`);
-  const taskId = createData?.taskId || createData?.data?.taskId;
-  if (!taskId) throw new Error('SeaArt create returned no taskId');
+  const taskResultEndpoints = (
+    process.env.SEAART_TASK_RESULT_ENDPOINTS
+      || process.env.SEAART_TASK_RESULT_ENDPOINT
+      || '/task/result,/v1/task/result,/task/status'
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const headers = {
+    Cookie: `T=${token}`,
+    'Content-Type': 'application/json',
+    Origin: 'https://www.seaart.ai',
+    Referer: 'https://www.seaart.ai/',
+  };
+
+  let taskId = '';
+  let createErrorSummary = '';
+  let createEndpointUsed = '';
+  for (const endpoint of createEndpoints) {
+    const create = await fetch(`${base}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt: options.prompt }),
+    });
+    const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
+    if (!create.ok) {
+      createErrorSummary = `${endpoint} -> ${create.status} ${JSON.stringify(createData).slice(0, 180)}`;
+      continue;
+    }
+    taskId = createData?.taskId || createData?.data?.taskId || createData?.result?.taskId || '';
+    if (taskId) {
+      createEndpointUsed = endpoint;
+      break;
+    }
+    createErrorSummary = `${endpoint} -> ok but no taskId (${JSON.stringify(createData).slice(0, 180)})`;
+  }
+
+  if (!taskId) {
+    throw new Error(`SeaArt create failed across endpoints. Last error: ${createErrorSummary || 'unknown'}`);
+  }
+
+  console.info(`[SeaArt] create endpoint succeeded: ${createEndpointUsed}`);
 
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
-    const statusRes = await fetch(`${base}${taskResultEndpoint}?taskId=${encodeURIComponent(taskId)}`, {
-      headers: { Cookie: `T=${token}` },
-    });
-    const statusData = await statusRes.json().catch(async () => ({ error: await statusRes.text().catch(() => '') }));
-    const status = statusData?.status || statusData?.data?.status;
-    if (status === 'success') return extractImageResult(statusData);
-    if (status === 'failed') throw new Error('SeaArt task failed');
+    let lastStatusError = '';
+    for (const statusEndpoint of taskResultEndpoints) {
+      const statusRes = await fetch(`${base}${statusEndpoint}?taskId=${encodeURIComponent(taskId)}`, {
+        headers: { Cookie: `T=${token}` },
+      });
+      const statusData = await statusRes.json().catch(async () => ({ error: await statusRes.text().catch(() => '') }));
+      if (!statusRes.ok) {
+        lastStatusError = `${statusEndpoint} -> ${statusRes.status} ${JSON.stringify(statusData).slice(0, 180)}`;
+        continue;
+      }
+      const status = statusData?.status || statusData?.data?.status || statusData?.result?.status;
+      if (status === 'success') return extractImageResult(statusData);
+      if (status === 'failed') throw new Error('SeaArt task failed');
+    }
+    if (lastStatusError) {
+      console.info(`[SeaArt] status probe (pending/fallback): ${lastStatusError}`);
+    }
     await new Promise((r) => setTimeout(r, 2500));
   }
   throw new Error('SeaArt task timed out');
