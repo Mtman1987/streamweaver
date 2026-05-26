@@ -345,10 +345,6 @@ export async function checkDmChannelActivity(): Promise<void> {
                             console.warn(`[DM Sweep:${tenantId}] !img exception:`, error);
                         }
                     }
-                } else if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img '))) {
-                    lastDiscordMessageId.set(stateKey, messages[0].id);
-                    await saveDmLastMessageId(tenantId, messages[0].id);
-                    continue;
                 }
             }
 

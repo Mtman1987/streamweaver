@@ -22,7 +22,8 @@ export type DiscordBotEmbed = {
 function buildBotAvatarUrl(tenantId?: string): string {
     const baseUrl = getConfiguredAppUrl();
     const tenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-    return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}&v=${Date.now()}`;
+    const cacheVersion = Math.floor(Date.now() / 3_600_000);
+    return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}&v=${cacheVersion}`;
 }
 
 function buildStreamWeaverLogoUrl(): string {
