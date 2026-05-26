@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import { tenantPath } from '@/lib/tenant';
 
-export async function GET(request: NextRequest, { params }: { params: { name: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const tenantId = (new URL(request.url).searchParams.get('tenantId') || '').trim();
-  const name = params.name || '';
+  const { name: nameParam } = await params;
+  const name = nameParam || '';
   if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
     return NextResponse.json({ error: 'invalid file' }, { status: 400 });
   }

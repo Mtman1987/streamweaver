@@ -33,9 +33,9 @@ async function persistImageFromUrl(imageUrl: string, tenantId?: string): Promise
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return base ? `${base}${path}` : path;
+    return `${base}${path}`;
   } catch {
     return null;
   }
@@ -53,9 +53,9 @@ async function persistImageFromDataUri(dataUri: string, tenantId?: string): Prom
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return base ? `${base}${path}` : path;
+    return `${base}${path}`;
   } catch {
     return null;
   }

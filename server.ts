@@ -403,10 +403,13 @@ async function startServer() {
         console.log('[STEP 5] Starting polling services...');
         const pollingModule = require('./src/services/polling');
         pollingService = pollingModule.pollingService;
-        const { checkChatActivity } = require('./src/services/chat-monitor');
+        const { checkChatActivity, checkDmChannelActivity } = require('./src/services/chat-monitor');
         pollingService.addTask('chat-monitor', async () => {
             try { await checkChatActivity(); } catch (e) { /* silent */ }
         }, 10000);
+        pollingService.addTask('dm-sweep', async () => {
+            try { await checkDmChannelActivity(); } catch (e) { /* silent */ }
+        }, 120000);
         pollingService.addTask('twitch-live', async () => {
             try {
                 const { checkTwitchLiveStatus } = require('./src/services/twitch');

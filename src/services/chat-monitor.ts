@@ -305,7 +305,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     } else {
                         try {
                             await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
-                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                            const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
