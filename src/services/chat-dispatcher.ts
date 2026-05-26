@@ -88,10 +88,16 @@ async function sendTwitchCrossBotFollowUp(input: {
             });
         };
 
+        const tenantFromStableId = (stableId: string): string | undefined => {
+            const [prefix] = stableId.split(':');
+            if (!prefix || prefix === 'unknown' || prefix === 'discordUserId' || prefix === 'twitchUserId') return undefined;
+            return prefix;
+        };
+
         const allFound = findTargets(replyLower, new Set());
         const initialTargets: any[] = [];
         for (const t of allFound) {
-            if (!(await isBotTriggerIgnored({ tenantId: input.speakerTenantId, stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
+            if (!(await isBotTriggerIgnored({ tenantId: tenantFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
                 initialTargets.push(t);
             }
         }
@@ -101,6 +107,8 @@ async function sendTwitchCrossBotFollowUp(input: {
         const queue = [...initialTargets];
         const MAX_CHAIN = 6;
         let count = 0;
+        let lastSpeakerName = input.speakerName;
+        let lastReply = input.speakerReply;
 
         while (queue.length > 0 && count < MAX_CHAIN) {
             const target: any = queue.shift();
@@ -117,7 +125,7 @@ async function sendTwitchCrossBotFollowUp(input: {
             ].filter(Boolean).join('\n');
             const prompt = [
                 'Cross-bot follow-up on Twitch.',
-                `${input.speakerName} replied: "${input.speakerReply}"`,
+                `${lastSpeakerName} replied: "${lastReply}"`,
                 `${input.userName} originally asked: "${input.triggerMessage}"`,
                 'Answer as yourself in 1 short Twitch-friendly sentence. Do not impersonate the other bot. Do not keep the chain going.',
             ].join('\n');
@@ -154,15 +162,17 @@ async function sendTwitchCrossBotFollowUp(input: {
                 speakerBotId: target.stableId,
                 speakerBotName: target.currentName,
                 targetBotIds: speakerId ? [speakerId] : [],
-                targetBotNames: [input.speakerName],
+                targetBotNames: [lastSpeakerName],
                 triggerMessage: input.triggerMessage,
                 responseMessage: reply,
             }).catch(() => {});
             count++;
+            lastSpeakerName = target.currentName;
+            lastReply = reply;
 
             const newTargets = findTargets(reply.toLowerCase(), responded);
             for (const t of newTargets) {
-                if (!(await isBotTriggerIgnored({ tenantId: input.speakerTenantId, stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
+                if (!(await isBotTriggerIgnored({ tenantId: tenantFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
                     queue.push(t);
                 }
             }
@@ -2184,8 +2194,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             
             // Check for shoutout command (without bot name)
             // Skip messages that look like the formatted shoutout output to prevent re-triggering
+            // Skip shoutout processing for known bots to prevent automated messages from triggering shoutouts
             const isShoutoutOutput = lowerMessage.includes('go check out') && lowerMessage.includes('twitch.tv/');
-            if (!isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
+            if (!botShareEnabled && !isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
                 console.log('[Dispatcher] Shoutout command detected');
                 try {
                     const chattersResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/chat/chatters`);

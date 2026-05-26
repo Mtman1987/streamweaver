@@ -799,6 +799,8 @@ async function sendCrossBotTargetReplies(input: {
   const MAX_CHAIN = 6;
   let count = 0;
   const allSentIds: string[] = [];
+  let lastSpeakerName = decision.speaker.currentName;
+  let lastReply = input.speakerReply;
 
   while (queue.length > 0 && count < MAX_CHAIN) {
     const target = queue.shift()!;
@@ -818,7 +820,7 @@ async function sendCrossBotTargetReplies(input: {
       `You are ${target.currentName}.`,
       target.summary ? `Your lore: ${target.summary}` : '',
       target.personalityNotes?.length ? `Personality notes: ${target.personalityNotes.join(' ')}` : '',
-      `${decision.speaker.currentName} was asked to contact you and replied: "${input.speakerReply}"`,
+      `${lastSpeakerName} was asked to contact you and replied: "${lastReply}"`,
       `${input.userName} originally asked: "${input.triggerMessage}"`,
       'Answer as yourself in 1-2 short sentences. If this asks about a real streamer schedule and you do not know, say you are not sure and point them to the streamer or channel info. Do not impersonate the other bot.',
     ].filter(Boolean).join('\n');
@@ -869,12 +871,14 @@ async function sendCrossBotTargetReplies(input: {
       speakerBotId: target.stableId,
       speakerBotName: target.currentName,
       targetBotIds: [decision.speaker.stableId],
-      targetBotNames: [decision.speaker.currentName],
+      targetBotNames: [lastSpeakerName],
       triggerMessage: input.triggerMessage,
       responseMessage: reply,
     }).catch(() => {});
     if (sentReply?.id) allSentIds.push(sentReply.id);
     count++;
+    lastSpeakerName = target.currentName;
+    lastReply = reply;
 
     const newTargets = findMentionedTargets(reply, responded);
     for (const t of newTargets) {
