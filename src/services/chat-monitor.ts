@@ -378,7 +378,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
                     const botName = '▶ Athena';
                     const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
-                    const ttsUrl = `${baseUrl}/api/tts/play?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
+                    const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
                     if (embeddableImageUrl) {
                         await sendDiscordEmbed(dmChannelId, {
                             embeds: [{
@@ -427,7 +427,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                 const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
                 const botName = '▶ Athena';
                 const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
-                const ttsUrl = `${baseUrl}/api/tts/play?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;
+                const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;
                 await sendDiscordEmbed(dmChannelId, {
                     embeds: [{
                         description: reply,

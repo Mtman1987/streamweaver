@@ -77,7 +77,7 @@ export async function generateImageWithEdenAI(options: ImageGenerationOptions): 
 }
 
 export async function generateImageWithSeaArt(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
-  const token = process.env.SEAART_TOKEN || '';
+  const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
   if (!token) throw new Error('SEAART_TOKEN not configured');
 
   const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai/api';

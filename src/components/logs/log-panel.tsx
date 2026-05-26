@@ -23,11 +23,18 @@ export function LogPanel() {
     if (!visible) return;
 
     const wsPort = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || "8090";
-    const wsHost = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_HOST || "127.0.0.1";
+    const wsHost = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_HOST || window.location.hostname;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     let ws: WebSocket | null = null;
 
     try {
-      ws = new WebSocket(`ws://${wsHost}:${wsPort}`);
+      ws = new WebSocket(`${wsProtocol}://${wsHost}:${wsPort}`);
+      ws.onopen = () => {
+        setLogs((prev) => ([...prev, { id: nextId++, timestamp: new Date().toLocaleTimeString(), message: `[log-panel] connected to ${wsProtocol}://${wsHost}:${wsPort}` }]).slice(-500));
+      };
+      ws.onerror = () => {
+        setLogs((prev) => ([...prev, { id: nextId++, timestamp: new Date().toLocaleTimeString(), message: `[log-panel] websocket connection error` }]).slice(-500));
+      };
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

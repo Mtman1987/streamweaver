@@ -9,8 +9,9 @@ import { isDebugRoutesEnabled } from '@/lib/local-config/service';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
 import { isAdmin, listTenants, tenantPath } from '@/lib/tenant';
+import { globalPath } from '@/lib/tenant';
 
-type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
+type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit' | 'fly-logs';
 
 function filterAuditRecords(records: unknown[], username?: string): unknown[] {
   const normalizedUser = String(username || '').trim().replace(/^@/, '').toLowerCase();
@@ -26,6 +27,7 @@ function resolveFilePath(file: FileKey, tenantId?: string): string {
   if (file === 'points') return getUserDataPath('points.json', tenantId);
   if (file === 'point-settings') return getUserDataPath('point-settings.json', tenantId);
   if (file === 'channel-point-rewards') return getUserDataPath('channel-point-rewards.json', tenantId);
+  if (file === 'fly-logs') return globalPath('fly-logs.txt');
   if (file === 'shoutout-audit') return tenantId
     ? tenantPath(tenantId, 'logs/shoutout-audit.json')
     : path.resolve(process.cwd(), 'logs', 'shoutout-audit.json');
@@ -55,8 +57,8 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const file = (url.searchParams.get('file') || '').toLowerCase() as FileKey;
 
-    if (!['actions', 'commands', 'private-chat', 'public-chat', 'points', 'point-settings', 'channel-point-rewards', 'shoutout-audit'].includes(file)) {
-      return apiError('Invalid file. Use ?file=actions, ?file=commands, ?file=private-chat, ?file=public-chat, ?file=points, ?file=point-settings, ?file=channel-point-rewards, or ?file=shoutout-audit', { status: 400, code: 'INVALID_QUERY' });
+    if (!['actions', 'commands', 'private-chat', 'public-chat', 'points', 'point-settings', 'channel-point-rewards', 'shoutout-audit', 'fly-logs'].includes(file)) {
+      return apiError('Invalid file. Use ?file=actions, ?file=commands, ?file=private-chat, ?file=public-chat, ?file=points, ?file=point-settings, ?file=channel-point-rewards, ?file=shoutout-audit, or ?file=fly-logs', { status: 400, code: 'INVALID_QUERY' });
     }
 
     const session = getTenantFromRequest(request);

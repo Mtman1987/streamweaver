@@ -1,0 +1,104 @@
+StreamWeaver Roadmap (Incremental Deploy Plan)
+
+Phase A (now)
+- SeaArt/Eden dual provider with !genmode toggle (done)
+- Persist generated images and provide stable app-hosted URLs (done)
+- DM !img improvements: progress message + library link (done)
+
+Phase B (next)
+- Generation Settings Modal with clear field descriptions:
+  - Provider mode
+  - Model
+  - LoRA
+  - LoRA strength
+  - Image count (1-4)
+  - Aspect ratio / resolution
+  - Steps / CFG / Seed
+- Persist these settings per tenant and use as defaults in !img.
+
+Phase C
+- Clickable registries for fields:
+  - /generation/models
+  - /generation/loras
+- Each page should show:
+  - Name
+  - Description
+  - Preview images (if available)
+  - Select/Apply action
+
+Phase D
+- Live Files enhancements:
+  - Add gen mode file
+  - Add generated image metadata index
+  - Add DM sweep state
+  - Add Fly logs file view (fly-logs.txt)
+- Logs panel reliability fix so logs are visible across pages.
+
+Phase E
+- SeaArt asset sync/import:
+  - Pull historical images/videos
+  - Checkpointed import jobs
+  - Dedup by external ID/hash
+- Backup strategy:
+  - Keep local recent cache
+  - Archive to external storage (Google Drive / object storage)
+
+Phase F (later)
+- TTS provider mode switch + fallback chain
+- Chat provider mode switch + fallback chain
+- Usage/cost controls per tenant (quota + premium tiers)
+
+
+Phase G (in progress)
+- Browser-first TTS player UX (no Discord embed patching):
+  - Author link opens /tts/player
+  - In-page idle/talking avatar swap during audio playback
+  - Animated status text while speaking
+- Native Discord TTS lifecycle (delete/repost + single revert patch) will follow after browser model is stable.
+
+Phase H (future) — Unified Auth/Token Authority Worker (cross-app)
+- Build a dedicated Fly worker service as a centralized auth authority for all 8 apps.
+- Purpose: single source of truth for high-use tokens/sessions and provider auth state.
+
+Scope
+- SeaArt relay/session manager (bootstrap creds + runtime session refresh)
+- Twitch token authority (broadcaster/bot refresh + lease/rotation)
+- Discord token authority (bot/session refresh and scoped access)
+- Kick token authority (oauth refresh + health)
+- Optional extension to other providers used across the app suite
+
+Core capabilities
+- Token vault (encrypted at rest, versioned, audit-friendly)
+- Runtime leases for apps (short-lived access tokens, revocable)
+- Refresh scheduler with jitter/backoff and circuit breakers
+- Health endpoints + status snapshots per provider/app
+- Webhook/event fanout for token updates to dependent apps
+
+Architecture
+- Fly worker runs 24/7 independent of web app request lifecycle
+- APIs for:
+  - issueTokenLease(appId, provider, scope)
+  - refreshNow(provider, accountRef)
+  - providerHealth(provider)
+  - revokeLease(leaseId)
+- Store long-lived bootstrap material in Fly secrets
+- Store short-lived runtime tokens in encrypted store (not constantly rewriting Fly secrets)
+
+Migration plan
+1) SeaArt session authority first (prove pattern)
+2) Move Twitch refresh logic into authority
+3) Move Discord/Kick refresh logic
+4) Roll all 8 apps to authority-issued leases
+5) Remove duplicated token-refresh code paths app-by-app
+
+Operational controls
+- Multi-instance leader lock to avoid refresh races
+- Retry limits + dead-letter queue for failing refresh jobs
+- Metrics: refresh success rate, expiry horizon, lease usage, last failure reason
+- Alerting hooks (log + optional Discord/admin channel)
+
+Security
+- Per-app identity and scoped permissions
+- Encrypted token storage + key rotation plan
+- Audit logs for token read/issue/revoke events
+- Emergency kill switch per provider/app
