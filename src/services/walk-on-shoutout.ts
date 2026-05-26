@@ -3,7 +3,7 @@ import { sendChatMessage } from './twitch';
 import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
 import { tenantPath } from '../lib/tenant';
-import { canShoutoutUser, getShoutoutCount, recordShoutout } from './welcome-wagon-tracker';
+import { getShoutoutEligibility, getShoutoutCount, recordShoutout } from './welcome-wagon-tracker';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
@@ -484,15 +484,20 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     const realTenantId = normalizeTenantId(tenantId);
     const auditSource = options.source || (skipCooldown ? 'manual' : 'auto-welcome');
 
-    if (!skipCooldown && !(await canShoutoutUser(user, realTenantId))) {
-        console.log(`[WalkOn] Skipping shoutout for ${user} — on cooldown or excluded.`);
+    const shoutoutEligibility = skipCooldown ? { eligible: true as const } : await getShoutoutEligibility(user, realTenantId);
+    if (!shoutoutEligibility.eligible) {
+        const remainingMinutes = shoutoutEligibility.remainingMs
+            ? Math.ceil(shoutoutEligibility.remainingMs / 60_000)
+            : undefined;
+        console.log(`[WalkOn] Skipping shoutout for ${user} — ${shoutoutEligibility.reason}.`);
         await recordShoutoutAudit({
             status: 'skipped',
             username: user,
             displayName,
             tenantId: realTenantId,
             source: auditSource,
-            reason: 'cooldown-or-excluded',
+            reason: shoutoutEligibility.reason,
+            metadata: remainingMinutes ? { remainingMinutes } : undefined,
         });
         return false;
     }

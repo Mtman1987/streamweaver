@@ -14,6 +14,9 @@ type WelcomeRecord = {
 
 type WelcomeMode = 'chat' | 'overlay';
 type GreetingMode = 'chat' | 'overlay';
+type WelcomeEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: 'already-welcomed-this-stream' | 'known-bot' };
 
 // Per-tenant state
 const tenantSessions = new Map<string, WelcomeRecord>();
@@ -99,34 +102,20 @@ export async function resetWelcomeSession(tenantId?: string): Promise<void> {
   await saveWelcomeSession(tenantId);
 }
 
-export async function shouldWelcomeUser(username: string, tenantId?: string): Promise<boolean> {
+export async function getWelcomeEligibility(username: string, tenantId?: string): Promise<WelcomeEligibility> {
   const key = username.toLowerCase();
   const session = getSession(tenantId);
 
-  if (session.welcomedUsers.has(key)) return false;
+  if (session.welcomedUsers.has(key)) return { eligible: false, reason: 'already-welcomed-this-stream' };
 
   // Skip known bots
-  if (await isKnownBot(key, tenantId)) return false;
+  if (await isKnownBot(key, tenantId)) return { eligible: false, reason: 'known-bot' };
 
-  try {
-    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/live`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.isLive && data.startedAt) {
-        const streamStart = new Date(data.startedAt);
-        const now = new Date();
-        const streamDuration = now.getTime() - streamStart.getTime();
-        if (streamDuration < 5 * 60 * 1000) {
-          const sessionStart = new Date(session.streamStartTime);
-          if (sessionStart > new Date(now.getTime() - 2 * 60 * 60 * 1000)) {
-            return false;
-          }
-        }
-      }
-    }
-  } catch {}
+  return { eligible: true };
+}
 
-  return true;
+export async function shouldWelcomeUser(username: string, tenantId?: string): Promise<boolean> {
+  return (await getWelcomeEligibility(username, tenantId)).eligible;
 }
 
 export async function markUserWelcomed(username: string, tenantId?: string): Promise<void> {

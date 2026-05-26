@@ -7,6 +7,12 @@ interface WelcomeWagonData {
   excludedUsers: string[];
 }
 
+export type ShoutoutEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: 'known-bot' | 'excluded-user' | 'cooldown'; remainingMs?: number };
+
+const SHOUTOUT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
 function trackerPath(tenantId?: string): string {
   if (tenantId) return tenantPath(tenantId, 'tokens/welcome-wagon-tracker.json');
   return resolve(process.cwd(), 'tokens', 'welcome-wagon-tracker.json');
@@ -39,14 +45,23 @@ async function saveWelcomeWagonData(data: WelcomeWagonData, tenantId?: string): 
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));
 }
 
-export async function canShoutoutUser(username: string, tenantId?: string): Promise<boolean> {
+export async function getShoutoutEligibility(username: string, tenantId?: string): Promise<ShoutoutEligibility> {
   const data = await loadWelcomeWagonData(tenantId);
   const lower = username.toLowerCase();
-  if (BLACKLISTED_BOTS.includes(lower)) return false;
-  if (data.excludedUsers.includes(lower)) return false;
+  if (BLACKLISTED_BOTS.includes(lower)) return { eligible: false, reason: 'known-bot' };
+  if (data.excludedUsers.includes(lower)) return { eligible: false, reason: 'excluded-user' };
   const last = data.shoutouts[lower];
-  if (last && Date.now() - last < 24 * 60 * 60 * 1000) return false;
-  return true;
+  if (last) {
+    const elapsed = Date.now() - last;
+    if (elapsed < SHOUTOUT_COOLDOWN_MS) {
+      return { eligible: false, reason: 'cooldown', remainingMs: SHOUTOUT_COOLDOWN_MS - elapsed };
+    }
+  }
+  return { eligible: true };
+}
+
+export async function canShoutoutUser(username: string, tenantId?: string): Promise<boolean> {
+  return (await getShoutoutEligibility(username, tenantId)).eligible;
 }
 
 export async function getShoutoutCount(username: string, tenantId?: string): Promise<number> {

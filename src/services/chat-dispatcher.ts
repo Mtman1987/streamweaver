@@ -6,7 +6,7 @@ import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints } from './points';
 import { givePoints, stealPoints } from './points-transfer';
-import { shouldWelcomeUser, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
+import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
@@ -2045,79 +2045,82 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         source: 'auto-welcome',
                         reason: 'already-pending',
                     });
-                } else if (await shouldWelcomeUser(actualUsername, tenantId)) {
-                    const welcomeMode = await getWelcomeMode(tenantId);
-                
-                    if (String(welcomeMode).toLowerCase() === 'off') {
-                        // Welcome disabled — do nothing
+                } else {
+                    const welcomeEligibility = await getWelcomeEligibility(actualUsername, tenantId);
+                    if (!welcomeEligibility.eligible) {
                         await recordShoutoutAudit({
                             status: 'skipped',
                             username: actualUsername,
                             displayName,
                             tenantId,
                             source: 'auto-welcome',
-                            reason: 'welcome-mode-off',
+                            reason: welcomeEligibility.reason,
                         });
                     } else {
-                        // Let handleWalkOnShoutout use greetingmode to decide behavior
-                        const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
-                        pendingWelcomeUsers.add(welcomeKey);
-                        await recordShoutoutAudit({
-                            status: 'triggered',
-                            username: actualUsername,
-                            displayName,
-                            tenantId,
-                            source: 'auto-welcome',
-                            metadata: { welcomeMode },
-                        });
-                        handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId, { source: 'auto-welcome' })
-                            .then((completed) => {
-                                if (completed) {
-                                    return markUserWelcomed(actualUsername, tenantId);
-                                }
-                                return recordShoutoutAudit({
-                                    status: 'skipped',
-                                    username: actualUsername,
-                                    displayName,
-                                    tenantId,
-                                    source: 'auto-welcome',
-                                    reason: 'handler-returned-false',
-                                });
-                            })
-                            .catch(err => {
-                                console.error('[Dispatcher] Walk-on shoutout failed:', err);
-                                recordShoutoutAudit({
-                                    status: 'failed',
-                                    username: actualUsername,
-                                    displayName,
-                                    tenantId,
-                                    source: 'auto-welcome',
-                                    error: auditError(err),
-                                }).catch(() => {});
-                                const { queueWalkOnRetry } = require('./walk-on-recovery');
-                                return queueWalkOnRetry({
-                                    tenantId,
-                                    username: actualUsername,
-                                    displayName,
-                                    profileImage,
-                                    error: err,
-                                }).catch((queueErr: any) => {
-                                    console.error('[Dispatcher] Failed to queue walk-on recovery:', queueErr);
-                                });
-                            })
-                            .finally(() => {
-                                pendingWelcomeUsers.delete(welcomeKey);
+                        const welcomeMode = await getWelcomeMode(tenantId);
+
+                        if (String(welcomeMode).toLowerCase() === 'off') {
+                            // Welcome disabled — do nothing
+                            await recordShoutoutAudit({
+                                status: 'skipped',
+                                username: actualUsername,
+                                displayName,
+                                tenantId,
+                                source: 'auto-welcome',
+                                reason: 'welcome-mode-off',
                             });
+                        } else {
+                            // Let handleWalkOnShoutout use greetingmode to decide behavior
+                            const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
+                            pendingWelcomeUsers.add(welcomeKey);
+                            await recordShoutoutAudit({
+                                status: 'triggered',
+                                username: actualUsername,
+                                displayName,
+                                tenantId,
+                                source: 'auto-welcome',
+                                metadata: { welcomeMode },
+                            });
+                            handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId, { source: 'auto-welcome' })
+                                .then((completed) => {
+                                    if (completed) {
+                                        return markUserWelcomed(actualUsername, tenantId);
+                                    }
+                                    return recordShoutoutAudit({
+                                        status: 'skipped',
+                                        username: actualUsername,
+                                        displayName,
+                                        tenantId,
+                                        source: 'auto-welcome',
+                                        reason: 'handler-returned-false',
+                                    });
+                                })
+                                .catch(err => {
+                                    console.error('[Dispatcher] Walk-on shoutout failed:', err);
+                                    recordShoutoutAudit({
+                                        status: 'failed',
+                                        username: actualUsername,
+                                        displayName,
+                                        tenantId,
+                                        source: 'auto-welcome',
+                                        error: auditError(err),
+                                    }).catch(() => {});
+                                    const { queueWalkOnRetry } = require('./walk-on-recovery');
+                                    return queueWalkOnRetry({
+                                        tenantId,
+                                        username: actualUsername,
+                                        displayName,
+                                        profileImage,
+                                        error: err,
+                                    }).catch((queueErr: any) => {
+                                        console.error('[Dispatcher] Failed to queue walk-on recovery:', queueErr);
+                                    });
+                                })
+                                .finally(() => {
+                                    pendingWelcomeUsers.delete(welcomeKey);
+                                });
+                        }
                     }
-                } else {
-                    await recordShoutoutAudit({
-                        status: 'skipped',
-                        username: actualUsername,
-                        displayName,
-                        tenantId,
-                        source: 'auto-welcome',
-                        reason: 'not-eligible',
-                    });
                 }
             }
         }
