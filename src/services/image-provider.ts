@@ -147,7 +147,13 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
         continue;
       }
       const status = statusData?.status || statusData?.data?.status || statusData?.result?.status;
-      if (status === 'success') return extractImageResult(statusData);
+      if (status === 'success') {
+        const result = extractImageResult(statusData);
+        if (!result.image && !result.imageResourceUrl) {
+          throw new Error(`SeaArt task succeeded but returned no image: ${JSON.stringify(statusData).slice(0, 500)}`);
+        }
+        return result;
+      }
       if (status === 'failed') throw new Error('SeaArt task failed');
     }
     if (lastStatusError) {
@@ -161,7 +167,7 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
 export async function generateImageWithPerchance(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
   const generator = String(options.providerParams?.generator || process.env.PERCHANCE_GENERATOR || 'ai-text-to-image').trim();
   const count = Number(options.providerParams?.count || 1);
-  const endpoint = `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${Math.max(1, Math.min(4, count))}`;
+  const endpoint = `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${Math.max(1, Math.min(4, count))}&prompt=${encodeURIComponent(options.prompt)}`;
 
   const response = await fetch(endpoint, { method: 'GET' });
   const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
