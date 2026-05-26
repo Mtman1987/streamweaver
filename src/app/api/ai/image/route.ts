@@ -6,6 +6,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
+import { generateImageWithPerchance } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
@@ -32,9 +33,9 @@ async function persistImageFromUrl(imageUrl: string, tenantId?: string): Promise
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return base ? `${base}${path}` : path;
+    return `${base}${path}`;
   } catch {
     return null;
   }
@@ -52,9 +53,9 @@ async function persistImageFromDataUri(dataUri: string, tenantId?: string): Prom
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return base ? `${base}${path}` : path;
+    return `${base}${path}`;
   } catch {
     return null;
   }
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
     const tenantId = session?.tenantId || parsed.data.tenantId;
 
     const genMode = await getGenMode(tenantId);
-    const result = await (genMode === 'seaart' ? generateImageWithSeaArt : generateImageWithEdenAI)({
+    const generator = genMode === 'seaart' ? generateImageWithSeaArt : genMode === 'perchance' ? generateImageWithPerchance : generateImageWithEdenAI;
+    const result = await generator({
       prompt: parsed.data.prompt,
       tenantId,
       model: parsed.data.model,

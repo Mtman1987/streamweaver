@@ -2,6 +2,7 @@ StreamWeaver Roadmap (Incremental Deploy Plan)
 
 Phase A (now)
 - SeaArt/Eden dual provider with !genmode toggle (done)
+- Added Perchance as third generation mode option for rapid/free experimentation (done)
 - Persist generated images and provide stable app-hosted URLs (done)
 - DM !img improvements: progress message + library link (done)
 

@@ -215,10 +215,10 @@ export async function POST(request: NextRequest) {
       }
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
-      const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|status))?$/i);
+      const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
       if (genModeMatch) {
         const action = (genModeMatch[1] || '').toLowerCase();
-        const mode = action === 'eden' || action === 'seaart'
+        const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
           ? await setGenMode(action, tenantId)
           : action === 'status'
             ? await getGenMode(tenantId)

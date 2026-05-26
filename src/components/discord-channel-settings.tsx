@@ -22,7 +22,7 @@ export function DiscordChannelSettings() {
   const [settings, setSettings] = useState<ChannelSettings>({
     logChannelId: '',
     shoutoutChannelId: '',
-    dmChannelId: '1416041303707353119',
+    dmChannelId: '',
     discordBridgeEnabled: false
   });
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,7 @@ export function DiscordChannelSettings() {
         setSettings({
           logChannelId: typeof data?.logChannelId === 'string' ? data.logChannelId : '',
           shoutoutChannelId: typeof data?.shoutoutChannelId === 'string' ? data.shoutoutChannelId : '',
-          dmChannelId: typeof data?.dmChannelId === 'string' ? data.dmChannelId : '1416041303707353119',
+          dmChannelId: typeof data?.dmChannelId === 'string' ? data.dmChannelId : '',
           discordBridgeEnabled: Boolean(data?.discordBridgeEnabled),
         });
       })

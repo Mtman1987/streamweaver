@@ -305,7 +305,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     } else {
                         try {
                             await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
-                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                            const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
@@ -397,10 +397,10 @@ export async function checkDmChannelActivity(): Promise<void> {
                     continue;
                 }
 
-                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|status))?$/i);
+                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
                 if (genModeMatch) {
                     const action = (genModeMatch[1] || '').toLowerCase();
-                    const mode = action === 'eden' || action === 'seaart'
+                    const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
                         ? await setGenMode(action, tenantId)
                         : action === 'status'
                             ? await getGenMode(tenantId)
@@ -456,7 +456,7 @@ export function startDmChannelSweeper() {
     }, 120000);
 }
 
-startDmChannelSweeper();
+// startDmChannelSweeper() should be called explicitly by the server entrypoint
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';
