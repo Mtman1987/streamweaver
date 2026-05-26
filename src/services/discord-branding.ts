@@ -50,13 +50,14 @@ export async function buildDiscordBotEmbed(input: {
     tenantId?: string;
     footerText?: string;
     authorUrl?: string;
+    authorName?: string;
 }): Promise<DiscordBotEmbed> {
     const owner = await getTenantOwnerBranding(input.tenantId);
     return {
         description: input.description,
         thumbnail: { url: buildBotAvatarUrl(input.tenantId) },
         author: {
-            name: owner.name,
+            name: input.authorName || owner.name,
             ...(owner.iconUrl ? { icon_url: owner.iconUrl } : {}),
             ...(input.authorUrl ? { url: input.authorUrl } : {}),
         },
@@ -71,6 +72,6 @@ export async function buildDiscordBotEmbed(input: {
 export function getDiscordBotWebhookIdentity(tenantId?: string, botName?: string) {
     return {
         username: botName || getBotName(tenantId),
-        avatarUrl: buildBotAvatarUrl(tenantId),
+        avatarUrl: undefined,
     };
 }

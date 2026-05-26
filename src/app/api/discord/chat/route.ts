@@ -565,6 +565,7 @@ async function sendDiscordBotEmbedReply(channelId: string, message: string, tena
     embeds: [await buildDiscordBotEmbed({
       description: message,
       tenantId,
+      authorName: getBotName(tenantId),
     })],
   });
 }

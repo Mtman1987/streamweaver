@@ -8,6 +8,7 @@ import { isDiscordApiError } from './discord-local';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed } from './discord-branding';
+import { getBotName } from '@/lib/bot-settings-store';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -416,6 +417,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                             description: prompt,
                             tenantId,
                             authorUrl: ttsUrl,
+                            authorName: getBotName(tenantId),
                         });
                         await sendDiscordEmbed(dmChannelId, {
                             embeds: [{
@@ -471,6 +473,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                         description: reply,
                         tenantId,
                         authorUrl: ttsUrl,
+                        authorName: getBotName(tenantId),
                     })],
                 });
             } catch (error) {
