@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { readGenerationSettings, writeGenerationSettings } from '@/lib/gen-settings-store';
+import { setGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -27,5 +28,8 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return apiError('Invalid body', { status: 400, code: 'INVALID_BODY', details: parsed.error.flatten() });
   const session = getTenantFromRequest(request);
   const saved = await writeGenerationSettings(parsed.data, session?.tenantId);
+  if (parsed.data.mode) {
+    await setGenMode(parsed.data.mode, session?.tenantId).catch(() => {});
+  }
   return apiOk(saved);
 }
