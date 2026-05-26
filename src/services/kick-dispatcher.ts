@@ -315,8 +315,36 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         if (!isPrivileged) { await reply(`@${username}, only mods can manage the ignore list!`); return; }
         const targetUser = args.replace('@', '').trim().toLowerCase();
         if (!targetUser) {
-          await reply(`@${username}, usage: !ignore @username`);
+          await reply(`@${username}, usage: !ignore @username, !ignore all, or !ignore bot name`);
           return;
+        }
+        if (targetUser === 'all') {
+          const { toggleBotTriggerIgnoreAll } = await import('../lib/bot-trigger-ignore-store');
+          const config = await toggleBotTriggerIgnoreAll(tenantId);
+          await reply(`@${username}, bot trigger ignore-all is ${config.all ? 'ON' : 'OFF'}.`);
+          return;
+        }
+        try {
+          const { readWorldLore } = await import('../lib/world-lore-store');
+          const { toggleIgnoredBotTrigger } = await import('../lib/bot-trigger-ignore-store');
+          const lore = await readWorldLore();
+          const characters = Object.values(lore?.characters || {});
+          const botCharacter = characters.find((character) => {
+            const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])];
+            return names.some((name) => name.toLowerCase() === targetUser);
+          });
+          if (botCharacter) {
+            const result = await toggleIgnoredBotTrigger({
+              tenantId: botCharacter.stableId.split(':')[0],
+              stableId: botCharacter.stableId,
+              botName: botCharacter.currentName,
+              trigger: targetUser,
+            }, tenantId);
+            await reply(`@${username}, bot trigger ignore for ${botCharacter.currentName}: ${result.ignored ? 'ON' : 'OFF'}.`);
+            return;
+          }
+        } catch (err) {
+          console.warn('[KickDispatcher] Bot trigger ignore lookup failed:', err);
         }
         try {
           const { isKnownBot, addCustomBot, removeCustomBot } = require('./known-bots');

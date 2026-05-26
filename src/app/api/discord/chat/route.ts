@@ -12,6 +12,8 @@ import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity } from '@/services/discord-branding';
+import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
+import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 
@@ -116,6 +118,7 @@ export async function POST(request: NextRequest) {
     const channelId = normalized.channelId;
     const dispatch = normalized.dispatch;
     const isDirectMessage = normalized.isDirectMessage;
+    processDueDiscordMessageCleanups().catch((error) => console.warn('[Discord Chat] Cleanup sweep failed:', error));
     const permissionFieldsPresent =
       normalized.isAdmin !== undefined ||
       normalized.isMod !== undefined ||
@@ -213,6 +216,46 @@ export async function POST(request: NextRequest) {
 
     const botMatch = await resolveMentionedBot(msgLower, tenantId);
     const botMentioned = Boolean(botMatch);
+    const ignoreMatch = message.trim().match(/^!ignore(?:\s+(.+))?$/i);
+    if (ignoreMatch) {
+      const replyChannelId = channelId || await getDiscordLogChannelId(tenantId);
+      if (!tenantId) {
+        return apiOk({ success: true, botResponded: false, error: 'tenant-not-found' });
+      }
+      if (!canManageBotShare) {
+        if (replyChannelId) {
+          await sendDiscordRouteReply(replyChannelId, `@${userName}, only mods/admins can change bot ignore settings.`);
+        }
+        return apiOk({ success: true, botResponded: Boolean(replyChannelId), error: 'not-authorized' });
+      }
+
+      const target = (ignoreMatch[1] || '').trim().toLowerCase().replace(/^@/, '');
+      if (!target) {
+        if (replyChannelId) {
+          await sendDiscordRouteReply(replyChannelId, `@${userName}, usage: !ignore all or !ignore <bot>`);
+        }
+        return apiOk({ success: true, botResponded: Boolean(replyChannelId), error: 'missing-target' });
+      }
+
+      if (target === 'all') {
+        const config = await toggleBotTriggerIgnoreAll(tenantId);
+        if (replyChannelId) {
+          await sendDiscordRouteReply(replyChannelId, `Bot trigger ignore-all is ${config.all ? 'ON' : 'OFF'}.`);
+        }
+        return apiOk({ success: true, botResponded: Boolean(replyChannelId), mode: config.all ? 'all' : 'off' });
+      }
+
+      const targetBot = await resolveMentionedBot(target, tenantId);
+      const result = await toggleIgnoredBotTrigger({
+        tenantId: targetBot?.tenantId || tenantId,
+        botName: targetBot?.botName || target,
+        trigger: targetBot?.trigger || target,
+      }, tenantId);
+      if (replyChannelId) {
+        await sendDiscordRouteReply(replyChannelId, `Bot trigger ignore for ${targetBot?.botName || target}: ${result.ignored ? 'ON' : 'OFF'}.`);
+      }
+      return apiOk({ success: true, botResponded: Boolean(replyChannelId), ignored: result.ignored, target: result.label });
+    }
 
     if (isDirectMessage) {
       if (!tenantId) {
@@ -353,6 +396,18 @@ export async function POST(request: NextRequest) {
     // Generate AI response
     const botTenantId = botMatch?.tenantId;
     const botName = botMatch?.botName || getBotName(tenantId);
+    if (await isBotTriggerIgnored({
+      tenantId: botTenantId || tenantId || undefined,
+      botName,
+      trigger: botMatch?.trigger,
+    }, tenantId)) {
+      console.log('[Discord Chat] Bot trigger ignored:', {
+        tenantId: tenantId || null,
+        botTenantId: botTenantId || null,
+        botName,
+      });
+      return apiOk({ success: true, botResponded: false, ignored: true, botName });
+    }
     console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
 
     const botInteractionDecision = await decideBotInteraction({
@@ -390,7 +445,7 @@ export async function POST(request: NextRequest) {
     if (channelId) {
       const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
       try {
-        await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+        const sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, webhookIdentity.avatarUrl, [
           await buildDiscordBotEmbed({
             description: aiReply,
             tenantId: botTenantId || tenantId || undefined,
@@ -421,7 +476,7 @@ export async function POST(request: NextRequest) {
             triggerMessage: message,
             speakerReply: aiReply,
           });
-        await sendCrossBotTargetReplies({
+        const followUpReplyIds = await sendCrossBotTargetReplies({
           channelId,
           userName,
           triggerMessage: message,
@@ -429,6 +484,21 @@ export async function POST(request: NextRequest) {
           decision: followUpDecision,
           tenantId: botTenantId || tenantId || undefined,
         }).catch((error) => console.error('[Discord Chat] Cross-bot target reply failed:', error));
+        await recordDiscordMessageCleanup({
+          tenantId: botTenantId || tenantId || undefined,
+          channelId,
+          triggerMessageId: normalized.messageId,
+          triggerMessage: message,
+          replyMessageIds: [
+            sentReply?.id || '',
+            ...(followUpReplyIds || []),
+          ],
+          replyMessages: [
+            aiReply,
+          ],
+          sourceUser: userName,
+          botName,
+        }).catch((error) => console.warn('[Discord Chat] Cleanup record failed:', error));
       } catch (webhookError) {
         console.error('[Discord Chat] Webhook send failed:', webhookError);
       }
@@ -657,7 +727,17 @@ async function decideReplyMentionInteraction(input: {
     && characterTriggers(character).some((trigger) => triggerMatches(combinedLower, trigger.toLowerCase()))
   );
   const relationshipTargets = inferDiscordRelationshipTargets(combinedLower, speaker, characters, lore?.relationships || {});
-  const targets = uniqueDiscordCharacters([...directTargets, ...relationshipTargets]);
+  const candidates = uniqueDiscordCharacters([...directTargets, ...relationshipTargets]);
+  const targets: WorldLoreCharacter[] = [];
+  for (const target of candidates) {
+    if (!(await isBotTriggerIgnored({
+      tenantId: tenantIdFromStableId(target.stableId),
+      stableId: target.stableId,
+      botName: target.currentName,
+    }, input.speakerTenantId))) {
+      targets.push(target);
+    }
+  }
 
   if (!targets.length) {
     console.log('[Discord Chat] Cross-bot follow-up skipped: no target bot found', {
@@ -689,11 +769,11 @@ async function sendCrossBotTargetReplies(input: {
   speakerReply: string;
   decision: Awaited<ReturnType<typeof decideBotInteraction>>;
   tenantId?: string;
-}) {
+}): Promise<string[]> {
   const decision = input.decision;
   if (!decision?.shouldRespond || !decision.targets.length) {
     console.log('[Discord Chat] Cross-bot follow-up skipped: no decision');
-    return;
+    return [];
   }
 
   const target = decision.targets[0];
@@ -730,7 +810,7 @@ async function sendCrossBotTargetReplies(input: {
 
   if (!aiRes.ok) {
     console.error('[Discord Chat] Cross-bot target AI failed:', aiRes.status, await aiRes.text().catch(() => ''));
-    return;
+    return [];
   }
 
   const data = await aiRes.json();
@@ -739,11 +819,11 @@ async function sendCrossBotTargetReplies(input: {
     console.log('[Discord Chat] Cross-bot target AI returned empty response', {
       target: target.currentName,
     });
-    return;
+    return [];
   }
 
   const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
-  await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+  const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, webhookIdentity.avatarUrl, [
     await buildDiscordBotEmbed({
       description: reply,
       tenantId: targetTenantId,
@@ -765,6 +845,7 @@ async function sendCrossBotTargetReplies(input: {
     triggerMessage: input.triggerMessage,
     responseMessage: reply,
   }).catch(() => {});
+  return sentReply?.id ? [sentReply.id] : [];
 }
 
 function tenantIdFromStableId(stableId: string): string | undefined {
