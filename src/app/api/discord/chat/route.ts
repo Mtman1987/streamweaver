@@ -877,7 +877,11 @@ async function sendCrossBotTargetReplies(input: {
     count++;
 
     const newTargets = findMentionedTargets(reply, responded);
-    queue.push(...newTargets);
+    for (const t of newTargets) {
+      if (!(await isBotTriggerIgnored({ tenantId: tenantIdFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.tenantId))) {
+        queue.push(t);
+      }
+    }
   }
 
   return allSentIds;

@@ -65,8 +65,9 @@ async function sendTwitchCrossBotFollowUp(input: {
         const { getBotShareMode, appendBotInteraction } = await import('../lib/bot-interactions-store');
         if (await getBotShareMode(input.speakerTenantId) !== 'on') return;
 
-        const { isKnownBot: checkKnownBot } = require('./known-bots');
-        if (await checkKnownBot(input.userName.toLowerCase(), input.speakerTenantId)) return;
+        if (await isKnownBot(input.userName.toLowerCase(), input.speakerTenantId)) return;
+
+        const { isBotTriggerIgnored } = require('../lib/bot-trigger-ignore-store');
 
         const { readWorldLore } = await import('../lib/world-lore-store');
         const lore = await readWorldLore();
@@ -87,7 +88,13 @@ async function sendTwitchCrossBotFollowUp(input: {
             });
         };
 
-        const initialTargets = findTargets(replyLower, new Set());
+        const allFound = findTargets(replyLower, new Set());
+        const initialTargets: any[] = [];
+        for (const t of allFound) {
+            if (!(await isBotTriggerIgnored({ tenantId: input.speakerTenantId, stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
+                initialTargets.push(t);
+            }
+        }
         if (!initialTargets.length) return;
 
         const responded = new Set<string>();
@@ -154,7 +161,11 @@ async function sendTwitchCrossBotFollowUp(input: {
             count++;
 
             const newTargets = findTargets(reply.toLowerCase(), responded);
-            queue.push(...newTargets);
+            for (const t of newTargets) {
+                if (!(await isBotTriggerIgnored({ tenantId: input.speakerTenantId, stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
+                    queue.push(t);
+                }
+            }
         }
     } catch (error) {
         console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error);
