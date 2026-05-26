@@ -1,0 +1,186 @@
+StreamWeaver Production Roadmap (No Worker/Unified-Auth Scope)
+Last updated: 2026-05-26
+
+This roadmap intentionally excludes:
+- Unified Auth/Token Authority Worker
+- Cross-app central token leases/worker architecture
+
+==================================================
+1) CURRENT STATE SNAPSHOT
+==================================================
+Completed foundations already in repo:
+- DM image generation command flow (`!img`) in direct DM route and DM sweeper fallback.
+- Generation mode switching (`eden`, `seaart`, `perchance`) and tenant-scoped defaults.
+- Tenant generation settings API + dashboard modal editing.
+- Model/LoRA registry pages with select/apply actions.
+- Persisted generated image files and tenant image library endpoint.
+- Browser TTS player flow via author-link target.
+- DM channel tenant setting and sweeper state persistence.
+- Fly-logs option exposed in debug file viewer.
+
+Known quality gaps from latest iterations:
+- Some settings UX is still free-text where constrained controls would reduce errors.
+- Registry pages are currently metadata-first and need richer previews/source syncing.
+- DM/Discord embed behavior needs final polish consistency across direct route vs sweeper.
+- Provider adapters (especially SeaArt/Perchance) still need hardening and operational visibility.
+
+==================================================
+2) WHAT'S LEFT (PRIORITIZED)
+==================================================
+
+P0 – Production Hardening (do next)
+1. Settings UX hardening
+   - Replace provider/count free-text with typed controls (select/radio/stepper).
+   - Add inline validation/help text for model/lora/resolution/steps/cfg/seed.
+   - Add “effective config preview” (what !img will actually send).
+
+2. DM image response consistency
+   - Ensure direct DM and sweeper produce identical success/fallback behavior.
+   - Guarantee no duplicate sends when embed succeeds.
+   - Add explicit audit logs for command->provider->persist->send lifecycle.
+
+3. Provider observability
+   - Add provider-specific structured logs: request id, endpoint used, latency, fail class.
+   - Add `/api/gen-settings/health` style status endpoint (mode, provider readiness, last error).
+   - Add dashboard mini-status card for generation provider health.
+
+4. Library integrity
+   - Add generated-image metadata index (prompt/provider/model/timestamp/path).
+   - Show metadata in library endpoint output.
+   - Add retention toggle (keep forever vs prune old local artifacts).
+
+P1 – Feature Completeness
+5. Registry page upgrades
+   - Add preview image support per model/LoRA card.
+   - Add tags/filter/search (style, realism, anime, portrait, etc.).
+   - Add “recommended defaults” badges and one-click apply bundle.
+
+6. Discord embed polish
+   - Standardize avatar slot usage and fallback rules.
+   - Keep browser TTS mode stable while documenting native-discord playback plan.
+   - Add explicit user-facing failure messages for media playback edge cases.
+
+7. Perchance experience
+   - Normalize generator output parsing and failure messaging.
+   - Add selectable generator presets in UI.
+   - Add guardrails for non-image outputs.
+
+P2 – Ops & Safety (without worker refactor)
+8. Debug/Live Files completion
+   - Add gen-mode, gen-settings, dm-sweep-state, image-index files to debug list.
+   - Improve log panel empty-state diagnostics (show connection reason).
+
+9. Backups/import (non-worker path)
+   - Add manual import/export scripts for generated images and metadata.
+   - Add optional external backup target docs (Drive/object storage) without runtime worker.
+
+==================================================
+3) SESSION CHANGELOG (WHAT WE DID)
+==================================================
+This session’s net-new work:
+- Added tenant generation settings persistence + API contract and UI modal wiring.
+- Wired DM `!img` calls to apply tenant defaults in both direct route and sweeper paths.
+- Added generation registry pages (`/generation/models`, `/generation/loras`) with apply actions.
+- Added Browse links from modal fields to those registry pages.
+- Updated roadmap status to reflect Phase B/C progress and remaining gaps.
+
+Also fixed earlier UX bugs in prior turn chain:
+- TTS player tenant avatar URL param handling.
+- DM duplicate image-link send behavior when embed succeeds.
+
+==================================================
+4) NEW DEV TEAM MEMBER NOTES (ONBOARDING QUICKSTART)
+==================================================
+If you just joined this codebase, read in this order:
+1. Discord command entrypoint:
+   - `src/app/api/discord/chat/route.ts`
+2. DM sweeper fallback:
+   - `src/services/chat-monitor.ts`
+3. Generation APIs/providers:
+   - `src/app/api/ai/image/route.ts`
+   - `src/services/image-provider.ts`
+4. Tenant generation settings:
+   - `src/lib/gen-settings-store.ts`
+   - `src/app/api/gen-settings/route.ts`
+5. Dashboard generation UI:
+   - `src/components/discord-channel-settings.tsx`
+6. Catalog pages:
+   - `src/app/(app)/generation/models/page.tsx`
+   - `src/app/(app)/generation/loras/page.tsx`
+   - `src/lib/generation-catalog.ts`
+7. TTS browser flow:
+   - `src/app/tts/player/page.tsx`
+   - `src/app/api/tts/play/route.ts`
+
+Architecture notes:
+- Tenant scope is central: most runtime state/config should resolve by tenant.
+- DM path exists in two forms (direct webhook route + sweeper fallback); keep behavior aligned.
+- Image persistence exists to avoid oversized/unstable provider URLs.
+- Provider integrations are partially experimental; prioritize resilience and transparent logs.
+
+Operational notes:
+- Prefer small, verifiable commits because DM/provider behavior can regress subtly.
+- When changing DM response logic, test both direct route and sweeper route.
+- Never rely on one provider’s response shape; normalize and validate all outputs.
+
+==================================================
+5) DEFINITION OF DONE FOR CURRENT EPIC
+==================================================
+This non-worker roadmap is “production ready” when:
+- Typed/validated settings UI is complete.
+- Direct DM + sweeper behaviors are functionally equivalent.
+- Provider health/status is visible in app and logs.
+- Library metadata and debug files are complete and inspectable.
+- Registry pages provide practical model/LoRA discovery with previews.
+
+
+==================================================
+6) CODEBASE AUDIT FINDINGS (2026-05-26)
+==================================================
+A) High-risk fail points
+1. DM behavior divergence (direct route vs sweeper)
+   - Direct DM path sends plain text URLs/replies while sweeper often sends embeds + TTS link wrappers.
+   - Risk: inconsistent UX and harder debugging when one path works and the other doesn’t.
+
+2. Module-level interval startup in sweeper
+   - DM sweeper starts via module import side effect and setInterval.
+   - Risk: duplicate timers in some runtime patterns or unexpected startup ordering in serverless/hot-reload contexts.
+
+3. HTML rendering in image library endpoint
+   - Library route builds raw HTML directly from filenames into markup.
+   - Risk: malformed output or injection surface if unexpected filenames make it into storage.
+
+4. Generated-images index debug path exists without writer
+   - Debug panel exposes generated-images-index path, but generation pipeline currently persists files without maintaining an index file.
+   - Risk: observability feature appears present but remains empty/stale.
+
+B) Reliability/operability gaps
+5. Provider adapter fragility (SeaArt)
+   - SeaArt path relies on endpoint probing and token cookie assumptions with long poll loop.
+   - Risk: frequent upstream route changes can produce brittle behavior without explicit health telemetry.
+
+6. Perchance output ambiguity
+   - Perchance parser extracts first URL or first string from generated list.
+   - Risk: non-image textual outputs pass through and fail later at persistence/embed stages.
+
+7. Heavy reliance on silent catches in critical paths
+   - Multiple `catch {}` patterns in runtime logic can suppress root-cause signals.
+   - Risk: operators observe “nothing happened” symptoms with low forensic value.
+
+C) Technical-debt / deprecated-style indicators
+8. Mixed dynamic require() and TS import style in runtime services
+   - Frequent runtime `require(...)` patterns inside TS modules.
+   - Risk: weaker type guarantees, harder tree-shaking, and less predictable module loading behavior.
+
+9. Broad `any` usage in UI/runtime pathways
+   - Present across high-traffic app areas and websocket handlers.
+   - Risk: regression risk rises as feature complexity grows, especially in command and automation editors.
+
+D) Action plan to start next session (non-worker scope)
+Priority order:
+- Unify DM response contract between direct route and sweeper (single formatter/send policy).
+- Introduce explicit sweeper lifecycle guard (single-instance timer lock + startup logging).
+- Add generated-image metadata writer and consume it in debug/library surfaces.
+- Add provider health/status endpoint + dashboard indicator (mode, token configured, last error).
+- Harden Perchance output validation to image-only path with user-facing fallback messaging.
+- Replace highest-value silent catches with structured warnings containing tenant/context/message id.
