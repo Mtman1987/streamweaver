@@ -7,6 +7,7 @@ import { addAthenaWhitelistUser, ATHENA_WHITELIST_TENANT_ID, getAthenaWhitelist,
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session) return apiError('Not authenticated', { status: 401 });
+  if (!isAdmin(session.tenantId)) return apiError('Admin only', { status: 403 });
 
   return apiOk({ users: await getAthenaWhitelist(ATHENA_WHITELIST_TENANT_ID) });
 }
