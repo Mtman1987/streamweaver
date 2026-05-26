@@ -197,8 +197,6 @@ Set these as Fly.io secrets:
 
 Build args (in `fly.toml`):
 - `NEXT_PUBLIC_TWITCH_CLIENT_ID`
-- `NEXT_PUBLIC_STREAMWEAVE_URL`
-- `NEXT_PUBLIC_BASE_URL`
 - `NEXT_PUBLIC_STREAMWEAVE_WS_URL`
 
 ## Documentation

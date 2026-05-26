@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CheckCircle2, Circle, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getEnvironmentAppUrl } from "@/lib/app-urls";
 
 // --- Shared sub-row component ---
 function AccountRow({
@@ -53,7 +54,7 @@ function AccountRow({
 
 export default function IntegrationsPage() {
   const { toast } = useToast();
-  const appOrigin = typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_STREAMWEAVE_URL || "http://localhost:3100");
+  const appOrigin = typeof window !== "undefined" ? window.location.origin : getEnvironmentAppUrl();
   const twitchConfigured = !!process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
 
   const [manualCode, setManualCode] = useState("");

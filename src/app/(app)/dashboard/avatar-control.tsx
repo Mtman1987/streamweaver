@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getClientTenantId } from '@/lib/client-tenant';
+import { getEnvironmentAppUrl } from '@/lib/app-urls';
 
 type AnimationType = 'lottie' | 'gif' | 'mp4';
 
@@ -17,11 +18,7 @@ export default function AvatarControl() {
     const [talkingUrl, setTalkingUrl] = useState('');
     const [gestureUrl, setGestureUrl] = useState('');
     const [ws, setWs] = useState<WebSocket | null>(null);
-    const [overlayUrl, setOverlayUrl] = useState(
-        process.env.NEXT_PUBLIC_STREAMWEAVE_URL
-            ? `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL}/overlay/avatar`
-            : 'http://localhost:3100/overlay/avatar'
-    );
+    const [overlayUrl, setOverlayUrl] = useState(`${getEnvironmentAppUrl()}/overlay/avatar`);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {

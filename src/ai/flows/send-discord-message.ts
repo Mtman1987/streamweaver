@@ -1,5 +1,7 @@
 'use server';
 
+import { getInternalAppUrl } from '@/lib/runtime-origin';
+
 export interface SendDiscordMessageInput {
   channelId: string;
   message: string;
@@ -12,7 +14,7 @@ export interface SendDiscordMessageOutput {
 
 export async function sendDiscordMessage(input: SendDiscordMessageInput): Promise<SendDiscordMessageOutput> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3100'}/api/discord/send-message`, {
+    const response = await fetch(`${getInternalAppUrl()}/api/discord/send-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

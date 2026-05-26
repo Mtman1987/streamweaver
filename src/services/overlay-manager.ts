@@ -73,7 +73,7 @@ export async function showOverlay(
     await fs.mkdir(overlayDir(tenantId), { recursive: true });
     await fs.writeFile(dataPath, JSON.stringify({ ...data, timestamp: Date.now() }, null, 2));
 
-    const url = `${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT||3100}`}/overlay/${type}`;
+    const url = `${getConfiguredAppUrl()}/overlay/${type}`;
     await setBrowserSource(config.scene, config.source, url);
 
     // Auto-hide after 15 seconds
@@ -112,4 +112,3 @@ export function getOverlayConfig(type: string): OverlayConfig | null {
   };
   return fallback[type] || null;
 }
-
