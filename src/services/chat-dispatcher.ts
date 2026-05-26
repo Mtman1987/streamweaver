@@ -19,6 +19,7 @@ import { getAIConfig } from './ai-provider';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
+import { ATHENA_WHITELIST_TENANT_ID } from './athena-whitelist';
 import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
 import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
@@ -149,8 +150,7 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
     } catch { return null; }
 }
 
-const ATHENA_EVERYWHERE_TENANT_ID = '94371378';
-const ATHENA_STABLE_ID = `${ATHENA_EVERYWHERE_TENANT_ID}:athena`;
+const ATHENA_STABLE_ID = `${ATHENA_WHITELIST_TENANT_ID}:athena`;
 
 async function getAthenaEverywhereMode(): Promise<'on' | 'off'> {
     if (process.env.ATHENA_EVERYWHERE_MODE === 'false') return 'off';
@@ -2185,7 +2185,7 @@ If no good match, respond with: Could not find matching user`;
                     await getAthenaEverywhereMode() === 'on'
                     && await canRouteAthenaForUser({
                         username: actualUsername,
-                        tenantId: ATHENA_EVERYWHERE_TENANT_ID,
+                        tenantId: ATHENA_WHITELIST_TENANT_ID,
                     })
                 );
                 if (canUseAthena) {
