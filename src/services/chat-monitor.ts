@@ -456,7 +456,7 @@ export function startDmChannelSweeper() {
     }, 120000);
 }
 
-startDmChannelSweeper();
+// startDmChannelSweeper() should be called explicitly by the server entrypoint
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';
