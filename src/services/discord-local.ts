@@ -126,8 +126,8 @@ export async function sendDiscordMessage(channelId: string, message: string): Pr
     });
 }
 
-export async function sendDiscordEmbed(channelId: string, options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[] }): Promise<void> {
-    await discordRequest(`/channels/${channelId}/messages`, {
+export async function sendDiscordEmbed(channelId: string, options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[] }): Promise<Record<string, unknown>> {
+    return await discordRequest(`/channels/${channelId}/messages`, {
         method: 'POST',
         body: JSON.stringify(options),
     });
@@ -192,10 +192,50 @@ export async function getDiscordMessage(channelId: string, messageId: string): P
     return await discordRequest(`/channels/${channelId}/messages/${messageId}`);
 }
 
-export async function editDiscordMessage(channelId: string, messageId: string, newContent: string): Promise<void> {
+export async function editDiscordMessage(
+    channelId: string,
+    messageId: string,
+    payload: string | { content?: string; embeds?: Record<string, unknown>[]; components?: Record<string, unknown>[] },
+): Promise<void> {
+    const body = typeof payload === 'string' ? { content: payload } : payload;
     await discordRequest(`/channels/${channelId}/messages/${messageId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ content: newContent }),
+        body: JSON.stringify(body),
+    });
+}
+
+export async function uploadBinaryFileToDiscord(
+    channelId: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    payload?: { content?: string; embeds?: Record<string, unknown>[] },
+): Promise<Record<string, unknown>> {
+    return enqueueDiscordRequest(async () => {
+        const token = process.env.DISCORD_BOT_TOKEN;
+        if (!token) throw new Error('DISCORD_BOT_TOKEN is not configured');
+
+        await throttleDiscordRequest();
+
+        const formData = new FormData();
+        const bytes = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength) as unknown as BlobPart;
+        const blob = new Blob([bytes], { type: mimeType });
+        formData.append('files[0]', blob, fileName);
+        if (payload) {
+            formData.append('payload_json', JSON.stringify(payload));
+        }
+
+        const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bot ${token}` },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new DiscordApiError(response.status, text);
+        }
+        return await response.json();
     });
 }
 

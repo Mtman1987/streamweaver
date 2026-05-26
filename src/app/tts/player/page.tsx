@@ -60,7 +60,8 @@ export default function TtsPlayerPage() {
         <h1 className="text-xl font-semibold">Athena TTS Player</h1>
         <p className="text-sm text-zinc-400">{status}</p>
         <div className="rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900 p-4 flex items-center gap-4">
-          <img src={isTalking ? talkingAvatar : idleAvatar} alt="Athena avatar" className="w-28 h-28 rounded-lg object-cover" />
+          <img src={isTalking ? talkingAvatar : idleAvatar} alt="Athena avatar" className="w-28 h-28 rounded-lg object-cover"
+            onError={(e) => { const el = e.currentTarget; if (isTalking && !el.dataset.fallbackTried) { el.dataset.fallbackTried = '1'; (el as HTMLImageElement).src = idleAvatar; } }} />
           <div className="flex-1">
             <div className="text-sm text-zinc-400 mb-1">Message</div>
             <div className="text-sm leading-relaxed whitespace-pre-wrap">{text || '(empty)'}</div>
