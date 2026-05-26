@@ -166,7 +166,7 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
 
 export async function generateImageWithPerchance(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
   const generator = String(options.providerParams?.generator || process.env.PERCHANCE_GENERATOR || 'ai-text-to-image').trim();
-  const count = Number(options.providerParams?.count || 1);
+  const count = Number(options.numImages || options.providerParams?.count || 1);
   const endpoint = `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${Math.max(1, Math.min(4, count))}&prompt=${encodeURIComponent(options.prompt)}`;
 
   const response = await fetch(endpoint, { method: 'GET' });
