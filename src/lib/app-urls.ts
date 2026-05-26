@@ -17,7 +17,7 @@ export function getEnvironmentAppUrl(): string {
 export function getRuntimeAppUrl(): string {
   const loopbackPort = new URL(getAppUrlForEnvironment('loopback')).port;
   const runtimePort = process.env.PORT || process.env.NEXT_PUBLIC_STREAMWEAVE_PORT;
-  const environment = process.env.NODE_ENV === 'production' && runtimePort !== loopbackPort
+  const environment = process.env.NODE_ENV === 'production' && (!runtimePort || runtimePort !== loopbackPort)
     ? 'production'
     : 'development';
   return getAppUrlForEnvironment(environment);

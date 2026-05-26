@@ -13,6 +13,20 @@ function normalizeUrl(candidate?: string | null): string | null {
   }
 }
 
+function normalizeLocalOrigin(candidate?: string | null): string | null {
+  const normalized = normalizeUrl(candidate);
+  if (!normalized) return null;
+
+  try {
+    const hostname = new URL(normalized).hostname.toLowerCase();
+    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1'
+      ? normalized
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function extractHostname(value: string): string {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return '';
@@ -29,7 +43,7 @@ export function extractHostname(value: string): string {
 export function getConfiguredAppUrl(fallbackOrigin?: string | null): string {
   const localAppUrl = getInternalAppUrl();
   const candidates = [
-    fallbackOrigin,
+    normalizeLocalOrigin(fallbackOrigin),
     getRuntimeAppUrl(),
     localAppUrl,
   ];
