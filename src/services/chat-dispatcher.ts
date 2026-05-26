@@ -79,7 +79,7 @@ async function sendTwitchCrossBotFollowUp(input: {
 
         const findTargets = (text: string, excludeIds: Set<string>) => {
             return characters.filter((character: any) => {
-                if (character.stableId === speakerId) return false;
+                if (speakerId && character.stableId === speakerId) return false;
                 if (excludeIds.has(character.stableId)) return false;
                 const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])]
                     .filter(Boolean)

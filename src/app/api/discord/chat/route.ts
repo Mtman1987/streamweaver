@@ -854,12 +854,18 @@ async function sendCrossBotTargetReplies(input: {
     }
 
     const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
-    const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, webhookIdentity.avatarUrl, [
-      await buildDiscordBotEmbed({
-        description: reply,
-        tenantId: targetTenantId,
-      }),
-    ]);
+    let sentReply: { id?: string } | null | undefined;
+    try {
+      sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+        await buildDiscordBotEmbed({
+          description: reply,
+          tenantId: targetTenantId,
+        }),
+      ]);
+    } catch (webhookError) {
+      console.error('[Discord Chat] Cross-bot webhook send failed:', webhookError);
+      continue;
+    }
     console.log('[Discord Chat] Cross-bot target responded via webhook:', {
       target: target.currentName,
       channelId: input.channelId,
