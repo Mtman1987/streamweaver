@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { addAthenaWhitelistUser, getAthenaWhitelist, removeAthenaWhitelistUser } from '@/services/athena-whitelist';
+import { addAthenaWhitelistUser, ATHENA_WHITELIST_TENANT_ID, getAthenaWhitelist, removeAthenaWhitelistUser } from '@/services/athena-whitelist';
 
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session) return apiError('Not authenticated', { status: 401 });
 
-  return apiOk({ users: await getAthenaWhitelist(session.tenantId) });
+  return apiOk({ users: await getAthenaWhitelist(ATHENA_WHITELIST_TENANT_ID) });
 }
 
 export async function POST(request: NextRequest) {
@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'remove') {
-    await removeAthenaWhitelistUser(username, session.tenantId);
+    await removeAthenaWhitelistUser(username, ATHENA_WHITELIST_TENANT_ID);
     return apiOk({ removed: username.toLowerCase().replace(/^@/, '') });
   }
 
-  await addAthenaWhitelistUser(username, session.tenantId);
+  await addAthenaWhitelistUser(username, ATHENA_WHITELIST_TENANT_ID);
   return apiOk({ added: username.toLowerCase().replace(/^@/, '') });
 }

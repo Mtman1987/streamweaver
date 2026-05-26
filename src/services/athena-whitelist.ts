@@ -1,6 +1,7 @@
 import { readJsonFile, writeJsonFile, type StorageContext } from './storage';
 
 const ATHENA_WHITELIST_FILE = 'athena-whitelist.json';
+export const ATHENA_WHITELIST_TENANT_ID = '94371378';
 
 function toCtx(tenantId?: string): StorageContext | undefined {
   if (!tenantId) return undefined;
