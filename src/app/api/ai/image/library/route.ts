@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import { tenantPath } from '@/lib/tenant';
 
+// SECURITY NOTE: This endpoint intentionally takes tenantId from the query string
+// without authentication so generated image URLs can be embedded by Discord's
+// CDN proxy (which fetches anonymously). Filenames are UUIDs so direct file
+// access at /api/ai/image/file/[name] is effectively unguessable, but the
+// library listing here exposes the full set of generated images for any
+// known tenantId. Treat tenantIds as semi-public and do NOT store sensitive
+// content in this directory. If auth is added later, the Discord embed flow
+// needs a separate anonymous-fetchable image URL.
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
