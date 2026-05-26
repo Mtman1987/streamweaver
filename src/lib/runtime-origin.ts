@@ -1,5 +1,5 @@
 import { URL } from 'url';
-import { getEnvironmentAppUrl, getKnownAppUrls, getLoopbackAppUrl } from './app-urls';
+import { getKnownAppUrls, getLoopbackAppUrl, getRuntimeAppUrl } from './app-urls';
 
 function normalizeUrl(candidate?: string | null): string | null {
   if (!candidate) return null;
@@ -29,8 +29,8 @@ export function extractHostname(value: string): string {
 export function getConfiguredAppUrl(fallbackOrigin?: string | null): string {
   const localAppUrl = getInternalAppUrl();
   const candidates = [
-    getEnvironmentAppUrl(),
     fallbackOrigin,
+    getRuntimeAppUrl(),
     localAppUrl,
   ];
 
