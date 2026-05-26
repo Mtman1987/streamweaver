@@ -26,10 +26,14 @@ Remaining for Phase B:
   - Steps / CFG / Seed
 - Persist these settings per tenant and use as defaults in !img.
 
-Phase C
+Phase C (in progress)
 - Clickable registries for fields:
   - /generation/models
   - /generation/loras
+Implemented in this pass (Phase C):
+- Added /generation/models page with select/apply action
+- Added /generation/loras page with select/apply action
+- Linked modal fields to these pages via Browse links
 - Each page should show:
   - Name
   - Description

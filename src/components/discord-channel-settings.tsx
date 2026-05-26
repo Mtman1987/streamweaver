@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Save, SlidersHorizontal } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import Link from 'next/link';
 
 interface ChannelSettings {
   logChannelId: string;
@@ -165,11 +166,17 @@ export function DiscordChannelSettings() {
                   <p className="text-xs text-muted-foreground mt-1">Active generator backend default.</p>
                 </div>
                 <div>
-                  <Label>Model</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Model</Label>
+                    <Link href="/generation/models" className="text-xs text-indigo-400 hover:text-indigo-300">Browse models</Link>
+                  </div>
                   <Input value={genSettings.model} onChange={(e) => setGenSettings(prev => ({ ...prev, model: e.target.value }))} placeholder="Model id/name" />
                 </div>
                 <div>
-                  <Label>LoRA</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>LoRA</Label>
+                    <Link href="/generation/loras" className="text-xs text-indigo-400 hover:text-indigo-300">Browse LoRAs</Link>
+                  </div>
                   <Input value={genSettings.lora} onChange={(e) => setGenSettings(prev => ({ ...prev, lora: e.target.value }))} placeholder="LoRA id/name" />
                 </div>
                 <div>
