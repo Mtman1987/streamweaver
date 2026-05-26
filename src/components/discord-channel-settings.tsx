@@ -52,6 +52,7 @@ export function DiscordChannelSettings() {
   });
   const [loading, setLoading] = useState(false);
   const [seaartToken, setSeaartToken] = useState('');
+  const [seaartTokenPreview, setSeaartTokenPreview] = useState('');
   const [genSettings, setGenSettings] = useState<GenerationSettings>(defaultGenSettings);
   const [genDialogOpen, setGenDialogOpen] = useState(false);
 
@@ -71,7 +72,9 @@ export function DiscordChannelSettings() {
     fetch('/api/seaart/token')
       .then(res => res.json())
       .then((data) => {
-        if (data?.configured) setSeaartToken(data?.preview || 'configured');
+        // Never load the masked preview into the input — it would otherwise be
+        // POSTed back as the new token and corrupt SEAART_TOKEN.
+        if (data?.configured) setSeaartTokenPreview(data?.preview || 'configured');
       })
       .catch(console.error);
 
@@ -263,20 +266,36 @@ export function DiscordChannelSettings() {
 
         <div>
           <Label htmlFor="seaartToken">SeaArt Token (T cookie)</Label>
-          <Input id="seaartToken" value={seaartToken} onChange={(e) => setSeaartToken(e.target.value)} placeholder="Paste SeaArt T cookie token" />
+          <Input
+            id="seaartToken"
+            type="password"
+            value={seaartToken}
+            onChange={(e) => setSeaartToken(e.target.value)}
+            placeholder={seaartTokenPreview ? `Currently configured (${seaartTokenPreview}). Paste a new token to replace.` : 'Paste SeaArt T cookie token'}
+          />
           <p className="text-xs text-muted-foreground mt-1">Saved in tenant user-config.json as SEAART_TOKEN for short-term testing.</p>
           <Button
             size="sm"
             className="mt-2"
+            disabled={!seaartToken.trim()}
             onClick={async () => {
+              const next = seaartToken.trim();
+              if (!next) {
+                toast({ variant: 'destructive', title: 'Error', description: 'Paste a token before saving' });
+                return;
+              }
               try {
                 const res = await fetch('/api/seaart/token', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ token: seaartToken }),
+                  body: JSON.stringify({ token: next }),
                 });
                 if (!res.ok) throw new Error('Failed to save');
                 toast({ title: 'SeaArt token saved', description: 'SEAART_TOKEN stored for this tenant.' });
+                setSeaartToken('');
+                // Refresh preview after save
+                const refreshed = await fetch('/api/seaart/token').then(r => r.json()).catch(() => null);
+                if (refreshed?.configured) setSeaartTokenPreview(refreshed?.preview || 'configured');
               } catch {
                 toast({ variant: 'destructive', title: 'Error', description: 'Failed to save SeaArt token' });
               }

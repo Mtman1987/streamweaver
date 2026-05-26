@@ -485,7 +485,10 @@ export function startDmChannelSweeper() {
     }, 120000);
 }
 
-startDmChannelSweeper();
+// NOTE: startDmChannelSweeper() should be called explicitly by the server
+// entrypoint (see server.ts STEP 5). Do not invoke it as a side effect of
+// module import — that causes the sweeper to start during build-time
+// analysis and via unrelated importers (e.g. websocket connection handler).
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';

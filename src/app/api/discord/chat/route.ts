@@ -561,9 +561,10 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
       if (tenants.length === 1) return tenants[0];
 
       // DM payloads may not include guild context; default to owner tenant for reliability.
-      // Owner requested hardcoded fallback routing when guild context is missing.
-      const ownerTenantId = '94371378';
-      if (tenants.includes(ownerTenantId)) return ownerTenantId;
+      // Configurable via DISCORD_DM_OWNER_TENANT_ID (falls back to legacy hardcoded value
+      // for backwards compatibility with existing deployments).
+      const ownerTenantId = (process.env.DISCORD_DM_OWNER_TENANT_ID || '94371378').trim();
+      if (ownerTenantId && tenants.includes(ownerTenantId)) return ownerTenantId;
       return [...tenants].sort((a, b) => a.localeCompare(b))[0];
     } catch {}
     return undefined;
