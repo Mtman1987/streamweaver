@@ -2225,46 +2225,46 @@ If no good match, respond with: Could not find matching user`;
                 if (decision?.shouldRespond) {
                     if (athenaDenied && decision.speaker.stableId === ATHENA_STABLE_ID) {
                         console.log(`[Dispatcher] Athena cross-bot response suppressed for non-whitelisted user ${actualUsername} in #${replyChannel}`);
-                        return;
-                    }
-                    console.log(`[Dispatcher] Cross-bot interaction triggered: ${decision.reason}`);
-                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            username: actualUsername,
-                            message: decision.promptInstruction,
-                            tenantId: responseTenantId || undefined,
-                            context: 'twitch',
-                        })
-                    });
+                    } else {
+                        console.log(`[Dispatcher] Cross-bot interaction triggered: ${decision.reason}`);
+                        const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                username: actualUsername,
+                                message: decision.promptInstruction,
+                                tenantId: responseTenantId || undefined,
+                                context: 'twitch',
+                            })
+                        });
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        const aiReply = data.response?.trim() || data.data?.response?.trim() || '';
-                        if (aiReply) {
-                            await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
-                            await appendBotInteraction({
-                                platform: 'twitch',
-                                tenantId: responseTenantId,
-                                sourceUser: actualUsername,
-                                speakerBotId: decision.speaker.stableId,
-                                speakerBotName: decision.speaker.currentName,
-                                targetBotIds: decision.targets.map((target: any) => target.stableId),
-                                targetBotNames: decision.targets.map((target: any) => target.currentName),
-                                triggerMessage: actualMessage,
-                                responseMessage: aiReply,
-                            }).catch(() => {});
-                            await sendTwitchCrossBotFollowUp({
-                                channel: replyChannel,
-                                userName: actualUsername,
-                                triggerMessage: actualMessage,
-                                speakerName: decision.speaker.currentName,
-                                speakerStableId: decision.speaker.stableId,
-                                speakerTenantId: responseTenantId,
-                                speakerReply: aiReply,
-                            }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
-                            return;
+                        if (response.ok) {
+                            const data = await response.json();
+                            const aiReply = data.response?.trim() || data.data?.response?.trim() || '';
+                            if (aiReply) {
+                                await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
+                                await appendBotInteraction({
+                                    platform: 'twitch',
+                                    tenantId: responseTenantId,
+                                    sourceUser: actualUsername,
+                                    speakerBotId: decision.speaker.stableId,
+                                    speakerBotName: decision.speaker.currentName,
+                                    targetBotIds: decision.targets.map((target: any) => target.stableId),
+                                    targetBotNames: decision.targets.map((target: any) => target.currentName),
+                                    triggerMessage: actualMessage,
+                                    responseMessage: aiReply,
+                                }).catch(() => {});
+                                await sendTwitchCrossBotFollowUp({
+                                    channel: replyChannel,
+                                    userName: actualUsername,
+                                    triggerMessage: actualMessage,
+                                    speakerName: decision.speaker.currentName,
+                                    speakerStableId: decision.speaker.stableId,
+                                    speakerTenantId: responseTenantId,
+                                    speakerReply: aiReply,
+                                }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
+                                return;
+                            }
                         }
                     }
                 }
