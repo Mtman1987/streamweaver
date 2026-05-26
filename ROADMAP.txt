@@ -75,7 +75,94 @@ P2 – Ops & Safety (without worker refactor)
    - Add optional external backup target docs (Drive/object storage) without runtime worker.
 
 ==================================================
-3) SESSION CHANGELOG (WHAT WE DID)
+3) EXECUTION PLAN IN BATCHES (CONTINUE HERE)
+==================================================
+Use this as the active implementation sequence. Each batch should be a small PR-sized slice.
+
+Batch 1 (P0.1) – Typed settings controls + validation shell
+Scope:
+- Convert provider/count to constrained controls.
+- Add validation map + inline field-level helper text.
+- Preserve backward compatibility with existing stored tenant config.
+
+Acceptance:
+- Invalid values cannot be submitted from UI.
+- Existing tenants with old free-text values still load (with safe normalization).
+- No API contract regressions.
+
+Batch 2 (P0.1) – Effective config preview
+Scope:
+- Render read-only “effective settings” summary in modal.
+- Show fallback chain: tenant override -> mode default -> hard default.
+- Highlight missing/invalid references (model/lora not in catalog).
+
+Acceptance:
+- Preview reflects what runtime route uses.
+- Unknown model/lora values are surfaced with non-blocking warnings.
+
+Batch 3 (P0.2) – DM behavior parity + lifecycle logs
+Scope:
+- Extract shared helper for DM image response behavior.
+- Ensure one-send guarantee across embed/file/link fallback logic.
+- Add structured lifecycle events for command, provider, persist, send.
+
+Acceptance:
+- Direct route and sweeper follow same helper path for send logic.
+- No duplicate sends in happy-path embed success.
+- Lifecycle logs include request-id correlation.
+
+Batch 4 (P0.3) – Provider health endpoint + dashboard status card
+Scope:
+- Implement `/api/gen-settings/health` endpoint.
+- Track provider readiness + last error snapshot in lightweight state.
+- Add dashboard health card with current mode and provider status.
+
+Acceptance:
+- Endpoint returns deterministic shape for UI + automation.
+- UI degrades gracefully when health endpoint is unavailable.
+
+Batch 5 (P0.4) – Library metadata index
+Scope:
+- Write metadata index entries during image persist.
+- Extend library endpoint response with indexed metadata.
+- Add retention policy toggle and prune utility path.
+
+Acceptance:
+- Existing images still resolve even if metadata is partially missing.
+- Index writes are failure-tolerant (do not block DM response success path).
+
+Batch 6 (P1.5) – Registry discovery improvements
+Scope:
+- Card preview image support.
+- Tag/filter/search UI.
+- Recommended defaults + one-click apply bundle action.
+
+Acceptance:
+- Filtering is client-fast for current catalog size.
+- Apply bundle updates relevant tenant fields consistently.
+
+Batch 7 (P1.6/P1.7) – Embed + Perchance polish
+Scope:
+- Avatar fallback standardization.
+- User-facing playback failure messaging.
+- Perchance preset selector + output guardrails.
+
+Acceptance:
+- Playback and generation failures surface actionable user messages.
+- Perchance non-image outputs are detected and handled cleanly.
+
+Batch 8 (P2.8/P2.9) – Debug + backup tooling
+Scope:
+- Expand debug live-file list coverage.
+- Improve log empty-state diagnostics.
+- Add import/export scripts + docs for optional external backups.
+
+Acceptance:
+- On-call can inspect all key gen-state artifacts without shell access.
+- Backup/export path tested on local dev sample dataset.
+
+==================================================
+4) SESSION CHANGELOG (WHAT WE DID)
 ==================================================
 This session’s net-new work:
 - Added tenant generation settings persistence + API contract and UI modal wiring.
@@ -89,7 +176,7 @@ Also fixed earlier UX bugs in prior turn chain:
 - DM duplicate image-link send behavior when embed succeeds.
 
 ==================================================
-4) NEW DEV TEAM MEMBER NOTES (ONBOARDING QUICKSTART)
+5) NEW DEV TEAM MEMBER NOTES (ONBOARDING QUICKSTART)
 ==================================================
 If you just joined this codebase, read in this order:
 1. Discord command entrypoint:
@@ -124,7 +211,7 @@ Operational notes:
 - Never rely on one provider’s response shape; normalize and validate all outputs.
 
 ==================================================
-5) DEFINITION OF DONE FOR CURRENT EPIC
+6) DEFINITION OF DONE FOR CURRENT EPIC
 ==================================================
 This non-worker roadmap is “production ready” when:
 - Typed/validated settings UI is complete.
@@ -133,54 +220,7 @@ This non-worker roadmap is “production ready” when:
 - Library metadata and debug files are complete and inspectable.
 - Registry pages provide practical model/LoRA discovery with previews.
 
-
 ==================================================
-6) CODEBASE AUDIT FINDINGS (2026-05-26)
+7) NEXT COMMIT TARGET
 ==================================================
-A) High-risk fail points
-1. DM behavior divergence (direct route vs sweeper)
-   - Direct DM path sends plain text URLs/replies while sweeper often sends embeds + TTS link wrappers.
-   - Risk: inconsistent UX and harder debugging when one path works and the other doesn’t.
-
-2. Module-level interval startup in sweeper
-   - DM sweeper starts via module import side effect and setInterval.
-   - Risk: duplicate timers in some runtime patterns or unexpected startup ordering in serverless/hot-reload contexts.
-
-3. HTML rendering in image library endpoint
-   - Library route builds raw HTML directly from filenames into markup.
-   - Risk: malformed output or injection surface if unexpected filenames make it into storage.
-
-4. Generated-images index debug path exists without writer
-   - Debug panel exposes generated-images-index path, but generation pipeline currently persists files without maintaining an index file.
-   - Risk: observability feature appears present but remains empty/stale.
-
-B) Reliability/operability gaps
-5. Provider adapter fragility (SeaArt)
-   - SeaArt path relies on endpoint probing and token cookie assumptions with long poll loop.
-   - Risk: frequent upstream route changes can produce brittle behavior without explicit health telemetry.
-
-6. Perchance output ambiguity
-   - Perchance parser extracts first URL or first string from generated list.
-   - Risk: non-image textual outputs pass through and fail later at persistence/embed stages.
-
-7. Heavy reliance on silent catches in critical paths
-   - Multiple `catch {}` patterns in runtime logic can suppress root-cause signals.
-   - Risk: operators observe “nothing happened” symptoms with low forensic value.
-
-C) Technical-debt / deprecated-style indicators
-8. Mixed dynamic require() and TS import style in runtime services
-   - Frequent runtime `require(...)` patterns inside TS modules.
-   - Risk: weaker type guarantees, harder tree-shaking, and less predictable module loading behavior.
-
-9. Broad `any` usage in UI/runtime pathways
-   - Present across high-traffic app areas and websocket handlers.
-   - Risk: regression risk rises as feature complexity grows, especially in command and automation editors.
-
-D) Action plan to start next session (non-worker scope)
-Priority order:
-- Unify DM response contract between direct route and sweeper (single formatter/send policy).
-- Introduce explicit sweeper lifecycle guard (single-instance timer lock + startup logging).
-- Add generated-image metadata writer and consume it in debug/library surfaces.
-- Add provider health/status endpoint + dashboard indicator (mode, token configured, last error).
-- Harden Perchance output validation to image-only path with user-facing fallback messaging.
-- Replace highest-value silent catches with structured warnings containing tenant/context/message id.
+Immediate next batch to implement: Batch 1 (P0.1 Typed settings controls + validation shell).

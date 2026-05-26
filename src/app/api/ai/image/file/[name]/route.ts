@@ -3,14 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import { tenantPath } from '@/lib/tenant';
 
-export async function GET(request: NextRequest, { params }: { params: { name: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const tenantId = (new URL(request.url).searchParams.get('tenantId') || '').trim();
-  const name = params.name || '';
-  if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
-    return NextResponse.json({ error: 'invalid file' }, { status: 400 });
-  }
   if (tenantId && !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
     return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
+  }
+  const { name: nameParam } = await params;
+  const name = nameParam || '';
+  if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
+    return NextResponse.json({ error: 'invalid file' }, { status: 400 });
   }
   const filePath = tenantId ? tenantPath(tenantId, `data/generated-images/${name}`) : `${process.cwd()}/data/generated-images/${name}`;
   try {

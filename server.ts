@@ -403,10 +403,17 @@ async function startServer() {
         console.log('[STEP 5] Starting polling services...');
         const pollingModule = require('./src/services/polling');
         pollingService = pollingModule.pollingService;
-        const { checkChatActivity } = require('./src/services/chat-monitor');
+        const { checkChatActivity, checkDmChannelActivity, startDmChannelSweeper } = require('./src/services/chat-monitor');
         pollingService.addTask('chat-monitor', async () => {
             try { await checkChatActivity(); } catch (e) { /* silent */ }
         }, 10000);
+        // Start the DM channel sweeper explicitly (no longer auto-started on import).
+        try {
+            startDmChannelSweeper();
+            console.log('[STEP 5] ✅ DM channel sweeper started');
+        } catch (e) {
+            console.warn('[STEP 5] ⚠️ DM channel sweeper failed to start:', e);
+        }
         pollingService.addTask('twitch-live', async () => {
             try {
                 const { checkTwitchLiveStatus } = require('./src/services/twitch');
