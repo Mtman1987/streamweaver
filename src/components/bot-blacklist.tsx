@@ -10,17 +10,27 @@ import { Bot, Plus, X, Loader2 } from "lucide-react"
 export function BotBlacklist() {
   const [bots, setBots] = useState<string[]>([])
   const [customBots, setCustomBots] = useState<string[]>([])
+  const [athenaUsers, setAthenaUsers] = useState<string[]>([])
   const [newBot, setNewBot] = useState("")
+  const [newAthenaUser, setNewAthenaUser] = useState("")
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [addingAthenaUser, setAddingAthenaUser] = useState(false)
 
   const fetchBots = async () => {
     try {
-      const res = await fetch("/api/known-bots")
-      if (res.ok) {
-        const data = await res.json()
+      const [botsRes, athenaRes] = await Promise.all([
+        fetch("/api/known-bots"),
+        fetch("/api/athena-whitelist"),
+      ])
+      if (botsRes.ok) {
+        const data = await botsRes.json()
         setBots(data.bots || [])
         setCustomBots(data.custom || [])
+      }
+      if (athenaRes.ok) {
+        const data = await athenaRes.json()
+        setAthenaUsers(data.users || [])
       }
     } catch {} finally { setLoading(false) }
   }
@@ -55,6 +65,34 @@ export function BotBlacklist() {
     } catch {}
   }
 
+  const addAthenaUser = async () => {
+    const name = newAthenaUser.trim().toLowerCase().replace(/^@/, "")
+    if (!name) return
+    setAddingAthenaUser(true)
+    try {
+      const res = await fetch("/api/athena-whitelist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name }),
+      })
+      if (res.ok) {
+        setNewAthenaUser("")
+        await fetchBots()
+      }
+    } catch {} finally { setAddingAthenaUser(false) }
+  }
+
+  const removeAthenaUser = async (name: string) => {
+    try {
+      await fetch("/api/athena-whitelist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, action: "remove" }),
+      })
+      await fetchBots()
+    } catch {}
+  }
+
   return (
     <Card className="flex flex-col h-full">
       <CardHeader className="pb-3">
@@ -66,6 +104,40 @@ export function BotBlacklist() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-3 min-h-0">
+        <div className="space-y-2 border-b pb-3">
+          <div>
+            <p className="text-xs font-medium">Athena whitelist</p>
+            <p className="text-[11px] text-muted-foreground">Only these users, plus Mtman1987, can make Athena answer in tracked Twitch chats.</p>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder="username"
+              value={newAthenaUser}
+              onChange={(e) => setNewAthenaUser(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addAthenaUser()}
+              className="h-8 text-sm"
+            />
+            <Button size="sm" className="h-8 px-2" onClick={addAthenaUser} disabled={addingAthenaUser || !newAthenaUser.trim()}>
+              {addingAthenaUser ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+            </Button>
+          </div>
+          <div className="space-y-1">
+            {athenaUsers.length === 0 ? (
+              <p className="px-1 text-xs text-muted-foreground italic">No extra users whitelisted.</p>
+            ) : athenaUsers.map((user) => (
+              <div key={user} className="flex items-center justify-between px-2 py-1 rounded hover:bg-muted group">
+                <span className="text-sm">{user}</span>
+                <Button variant="ghost" size="icon" className="h-5 w-5 opacity-0 group-hover:opacity-100" onClick={() => removeAthenaUser(user)}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-medium">Bot blacklist</p>
+          <p className="text-[11px] text-muted-foreground">Ignored for welcome, shoutouts, points &amp; check-ins. Use !ignore in chat too.</p>
+        </div>
         <div className="flex gap-2">
           <Input
             placeholder="username"

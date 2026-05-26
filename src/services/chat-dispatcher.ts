@@ -175,6 +175,19 @@ async function toggleAthenaEverywhereMode(): Promise<'on' | 'off'> {
     return setAthenaEverywhereMode(current === 'on' ? 'off' : 'on');
 }
 
+async function canRouteAthenaForUser(input: {
+    username: string;
+    tenantId?: string;
+}): Promise<boolean> {
+    try {
+        const { canUseAthenaEverywhere } = await import('./athena-whitelist');
+        return canUseAthenaEverywhere(input);
+    } catch (error) {
+        console.error('[Dispatcher] Athena whitelist check failed:', error);
+        return false;
+    }
+}
+
 async function getFirstMentionedLoreBot(message: string) {
     const lower = message.toLowerCase();
     const athenaIndex = firstNameIndex(lower, ['athena', 'athenabot87']);
@@ -2163,14 +2176,26 @@ If no good match, respond with: Could not find matching user`;
             let botName = getBotName(tenantId);
             let responseTenantId = tenantId;
             let responseBotName = botName;
+            let athenaDenied = false;
             const firstLoreBot = await getFirstMentionedLoreBot(actualMessage);
             const firstLoreTenantId = firstLoreBot ? await resolveTenantForLoreBot(firstLoreBot, undefined) : undefined;
             if (firstLoreBot && firstLoreTenantId && firstLoreTenantId !== tenantId) {
-                if (firstLoreBot.stableId !== ATHENA_STABLE_ID || await getAthenaEverywhereMode() === 'on') {
+                const isAthenaEverywhere = firstLoreBot.stableId === ATHENA_STABLE_ID;
+                const canUseAthena = !isAthenaEverywhere || (
+                    await getAthenaEverywhereMode() === 'on'
+                    && await canRouteAthenaForUser({
+                        username: actualUsername,
+                        tenantId: ATHENA_EVERYWHERE_TENANT_ID,
+                    })
+                );
+                if (canUseAthena) {
                     responseTenantId = firstLoreTenantId;
                     responseBotName = firstLoreBot.currentName;
                     botName = firstLoreBot.currentName;
                     console.log(`[Dispatcher] Cross-bot first mention routing "${actualMessage}" from #${replyChannel} to ${firstLoreBot.currentName} tenant ${firstLoreTenantId}`);
+                } else if (isAthenaEverywhere) {
+                    athenaDenied = true;
+                    console.log(`[Dispatcher] Athena mention ignored for non-whitelisted user ${actualUsername} in #${replyChannel}`);
                 }
             }
             const mentionTriggers = [
@@ -2244,6 +2269,9 @@ If no good match, respond with: Could not find matching user`;
             }
 
             let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
+            if (athenaDenied) {
+                mentionsBot = false;
+            }
             
             // Remove hardcoded Athena check - only use dynamic bot name
             if (mentionsBot) {
