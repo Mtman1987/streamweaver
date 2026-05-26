@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
 
-export type GenMode = 'eden' | 'seaart';
+export type GenMode = 'eden' | 'seaart' | 'perchance';
 
 function filePath(tenantId?: string): string {
   if (tenantId) return tenantPath(tenantId, 'data/gen-mode.json');
@@ -13,7 +13,9 @@ export async function getGenMode(tenantId?: string): Promise<GenMode> {
   try {
     const raw = await fs.readFile(filePath(tenantId), 'utf-8');
     const parsed = JSON.parse(raw);
-    return parsed?.mode === 'seaart' ? 'seaart' : 'eden';
+    if (parsed?.mode === 'seaart') return 'seaart';
+    if (parsed?.mode === 'perchance') return 'perchance';
+    return 'eden';
   } catch {
     return 'eden';
   }
@@ -28,5 +30,7 @@ export async function setGenMode(mode: GenMode, tenantId?: string): Promise<GenM
 
 export async function toggleGenMode(tenantId?: string): Promise<GenMode> {
   const current = await getGenMode(tenantId);
-  return setGenMode(current === 'eden' ? 'seaart' : 'eden', tenantId);
+  if (current === 'eden') return setGenMode('seaart', tenantId);
+  if (current === 'seaart') return setGenMode('perchance', tenantId);
+  return setGenMode('eden', tenantId);
 }

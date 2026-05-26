@@ -6,6 +6,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
+import { generateImageWithPerchance } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
     const tenantId = session?.tenantId || parsed.data.tenantId;
 
     const genMode = await getGenMode(tenantId);
-    const result = await (genMode === 'seaart' ? generateImageWithSeaArt : generateImageWithEdenAI)({
+    const generator = genMode === 'seaart' ? generateImageWithSeaArt : genMode === 'perchance' ? generateImageWithPerchance : generateImageWithEdenAI;
+    const result = await generator({
       prompt: parsed.data.prompt,
       tenantId,
       model: parsed.data.model,

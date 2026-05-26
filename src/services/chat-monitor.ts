@@ -397,10 +397,10 @@ export async function checkDmChannelActivity(): Promise<void> {
                     continue;
                 }
 
-                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|status))?$/i);
+                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
                 if (genModeMatch) {
                     const action = (genModeMatch[1] || '').toLowerCase();
-                    const mode = action === 'eden' || action === 'seaart'
+                    const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
                         ? await setGenMode(action, tenantId)
                         : action === 'status'
                             ? await getGenMode(tenantId)
