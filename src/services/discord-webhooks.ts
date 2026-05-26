@@ -13,6 +13,11 @@ interface WebhookData {
   avatarUrl: string;
 }
 
+export type SentWebhookMessage = {
+  id?: string;
+  channel_id?: string;
+};
+
 async function loadWebhooks(tenantId?: string): Promise<Record<string, WebhookData>> {
   try {
     const data = await fs.readFile(webhooksFile(tenantId), 'utf-8');
@@ -65,7 +70,7 @@ export async function getWebhookForChannel(channelId: string): Promise<WebhookDa
   return webhooks[channelId] || null;
 }
 
-export async function sendWebhookMessage(channelId: string, message: string, username?: string, avatarUrl?: string, embeds?: Record<string, unknown>[]): Promise<void> {
+export async function sendWebhookMessage(channelId: string, message: string, username?: string, avatarUrl?: string, embeds?: Record<string, unknown>[]): Promise<SentWebhookMessage | null> {
   let webhook = await getWebhookForChannel(channelId);
   
   // Create webhook if it doesn't exist
@@ -89,7 +94,8 @@ export async function sendWebhookMessage(channelId: string, message: string, use
     body.content = message;
   }
 
-  const response = await fetch(webhook.url, {
+  const separator = webhook.url.includes('?') ? '&' : '?';
+  const response = await fetch(`${webhook.url}${separator}wait=true`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -98,4 +104,5 @@ export async function sendWebhookMessage(channelId: string, message: string, use
   if (!response.ok) {
     throw new Error(`Webhook send failed: ${response.status}`);
   }
+  return await response.json().catch(() => null);
 }

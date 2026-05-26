@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { globalPath, tenantPath } from '@/lib/tenant';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
+import { isBotTriggerIgnored } from '@/lib/bot-trigger-ignore-store';
 
 export type BotShareMode = 'off' | 'on';
 const BOT_SHARE_HOME_TENANT_ID = '94371378';
@@ -170,6 +171,11 @@ export async function decideBotInteraction(input: {
   );
   const speaker = mentioned[0]?.character || currentBotMention?.character;
   if (!speaker) return null;
+  if (await isBotTriggerIgnored({
+    tenantId: input.tenantId,
+    stableId: speaker.stableId,
+    botName: speaker.currentName,
+  }, input.tenantId)) return null;
   if (currentBotMention && speaker.stableId !== currentBotMention.character.stableId) return null;
 
   const explicitTargets = mentioned
@@ -184,15 +190,26 @@ export async function decideBotInteraction(input: {
   const targets = uniqueCharacters([...explicitTargets, ...inferredTargets])
     .filter((character) => character.stableId !== speaker.stableId);
   if (!targets.length) return null;
+  const allowedTargets: WorldLoreCharacter[] = [];
+  for (const target of targets) {
+    if (!(await isBotTriggerIgnored({
+      tenantId: input.tenantId,
+      stableId: target.stableId,
+      botName: target.currentName,
+    }, input.tenantId))) {
+      allowedTargets.push(target);
+    }
+  }
+  if (!allowedTargets.length) return null;
 
   const hasExplicitInteraction = /\b(ask|tell|talk to|reply to|say to|what does|what would|banter|argue with|check on|message|send|find out)\b/i.test(input.message);
   const hasDirectMentionPair = characterTriggers(speaker).some((trigger) => triggerMatches(messageLower, trigger))
-    && targets.some((target) => characterTriggers(target).some((trigger) => triggerMatches(messageLower, trigger)));
+    && allowedTargets.some((target) => characterTriggers(target).some((trigger) => triggerMatches(messageLower, trigger)));
   const hasRelationshipReference = inferredTargets.length > 0;
   if (!hasExplicitInteraction && !hasDirectMentionPair && !hasRelationshipReference) return null;
 
   const recent = await formatBotInteractionHistoryForPrompt(6);
-  const targetNames = targets.map((target) => target.currentName).join(', ');
+  const targetNames = allowedTargets.map((target) => target.currentName).join(', ');
   const promptInstruction = [
     `Cross-bot interaction request on ${input.platform}.`,
     `You are ${speaker.currentName}. Reply directly to or about ${targetNames}.`,
@@ -205,7 +222,7 @@ export async function decideBotInteraction(input: {
     shouldRespond: true,
     reason: hasRelationshipReference ? 'relationship-cross-bot-mention' : 'explicit-cross-bot-mention',
     speaker,
-    targets,
+    targets: allowedTargets,
     promptInstruction,
   };
 }

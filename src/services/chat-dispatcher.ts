@@ -928,8 +928,37 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const args = actualMessage.substring(7).trim();
                 const targetUser = args.replace('@', '').toLowerCase();
                 if (!targetUser) {
-                    await reply(`@${actualUsername}, usage: !ignore @username (toggles bot ignore list)`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, usage: !ignore @username, !ignore all, or !ignore bot name`, 'bot').catch(() => {});
                     return;
+                }
+                if (targetUser === 'all') {
+                    const { toggleBotTriggerIgnoreAll } = await import('../lib/bot-trigger-ignore-store');
+                    const config = await toggleBotTriggerIgnoreAll(tenantId);
+                    await reply(`@${actualUsername}, bot trigger ignore-all is ${config.all ? 'ON' : 'OFF'}.`, 'bot').catch(() => {});
+                    return;
+                }
+                try {
+                    const { readWorldLore } = await import('../lib/world-lore-store');
+                    const { toggleIgnoredBotTrigger } = await import('../lib/bot-trigger-ignore-store');
+                    const lore = await readWorldLore();
+                    const characters = Object.values(lore?.characters || {});
+                    const targetLower = targetUser.toLowerCase();
+                    const botCharacter = characters.find((character) => {
+                        const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])];
+                        return names.some((name) => name.toLowerCase() === targetLower);
+                    });
+                    if (botCharacter) {
+                        const result = await toggleIgnoredBotTrigger({
+                            tenantId: botCharacter.stableId.split(':')[0],
+                            stableId: botCharacter.stableId,
+                            botName: botCharacter.currentName,
+                            trigger: targetUser,
+                        }, tenantId);
+                        await reply(`@${actualUsername}, bot trigger ignore for ${botCharacter.currentName}: ${result.ignored ? 'ON' : 'OFF'}.`, 'bot').catch(() => {});
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('[Dispatcher] Bot trigger ignore lookup failed:', error);
                 }
                 const { isKnownBot: checkBot, addCustomBot, removeCustomBot, clearBotCache } = require('./known-bots');
                 const alreadyIgnored = await checkBot(targetUser, tenantId);
