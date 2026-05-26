@@ -23,6 +23,9 @@ function escapeHtml(value: string): string {
 
 export async function GET(request: NextRequest) {
   const tenantId = (new URL(request.url).searchParams.get('tenantId') || '').trim();
+  if (tenantId && !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+    return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
+  }
   const dir = tenantId ? tenantPath(tenantId, 'data/generated-images') : `${process.cwd()}/data/generated-images`;
   let files: string[] = [];
   try { files = (await fs.readdir(dir)).filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f)).sort().reverse(); } catch {}

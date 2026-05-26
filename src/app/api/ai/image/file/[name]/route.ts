@@ -5,6 +5,9 @@ import { tenantPath } from '@/lib/tenant';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const tenantId = (new URL(request.url).searchParams.get('tenantId') || '').trim();
+  if (tenantId && !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+    return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
+  }
   const { name: nameParam } = await params;
   const name = nameParam || '';
   if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
