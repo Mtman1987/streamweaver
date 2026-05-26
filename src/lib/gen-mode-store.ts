@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
+import { writeGenerationSettings } from '@/lib/gen-settings-store';
 
 export type GenMode = 'eden' | 'seaart' | 'perchance';
 
@@ -25,6 +26,7 @@ export async function setGenMode(mode: GenMode, tenantId?: string): Promise<GenM
   const fp = filePath(tenantId);
   await fs.mkdir(resolve(fp, '..'), { recursive: true });
   await fs.writeFile(fp, JSON.stringify({ mode }, null, 2), 'utf-8');
+  await writeGenerationSettings({ mode }, tenantId).catch(() => {});
   return mode;
 }
 
