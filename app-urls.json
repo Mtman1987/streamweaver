@@ -1,0 +1,5 @@
+{
+  "production": "https://streamweaver-new.fly.dev",
+  "development": "http://127.0.0.1:3100",
+  "loopback": "http://127.0.0.1:3100"
+}

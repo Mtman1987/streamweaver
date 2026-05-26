@@ -8,6 +8,7 @@ import { getPrivateLTMTitles, incrementPrivateMessageCount, getPrivateMessageCou
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
+import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -43,7 +44,7 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
     if (messageCount > 0 && messageCount % 50 === 0) {
       console.log(`[Private LTM] Message count reached ${messageCount}, condensing history...`);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_STREAMWEAVE_URL || 'http://localhost:3100'}/api/private-ltm/condense`, {
+      const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenantId }),

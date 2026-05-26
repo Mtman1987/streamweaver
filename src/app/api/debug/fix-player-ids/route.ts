@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isDebugRoutesEnabled } from '@/lib/local-config/service';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getInternalAppUrl } from '@/lib/runtime-origin';
 
 export async function POST(request: NextRequest) {
   if (!(await isDebugRoutesEnabled())) {
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     
     // Fetch real Twitch user IDs
     const usernames = playersToFix.map((p: any) => p.username);
-    const response = await fetch('http://127.0.0.1:3100/api/twitch/live', {
+    const response = await fetch(`${getInternalAppUrl()}/api/twitch/live`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usernames })

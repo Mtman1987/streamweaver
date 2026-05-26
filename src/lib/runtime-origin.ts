@@ -1,7 +1,5 @@
 import { URL } from 'url';
-
-const LOCAL_PORT = process.env.NEXT_PUBLIC_STREAMWEAVE_PORT || process.env.PORT || '3100';
-const LOCAL_APP_URL = `http://127.0.0.1:${LOCAL_PORT}`;
+import { getEnvironmentAppUrl, getKnownAppUrls, getLoopbackAppUrl } from './app-urls';
 
 function normalizeUrl(candidate?: string | null): string | null {
   if (!candidate) return null;
@@ -29,13 +27,11 @@ export function extractHostname(value: string): string {
 }
 
 export function getConfiguredAppUrl(fallbackOrigin?: string | null): string {
+  const localAppUrl = getInternalAppUrl();
   const candidates = [
-    process.env.NEXT_PUBLIC_STREAMWEAVE_URL,
-    process.env.NEXT_PUBLIC_BASE_URL,
-    process.env.APP_URL,
-    process.env.PUBLIC_APP_URL,
+    getEnvironmentAppUrl(),
     fallbackOrigin,
-    LOCAL_APP_URL,
+    localAppUrl,
   ];
 
   for (const candidate of candidates) {
@@ -43,11 +39,11 @@ export function getConfiguredAppUrl(fallbackOrigin?: string | null): string {
     if (normalized) return normalized;
   }
 
-  return LOCAL_APP_URL;
+  return localAppUrl;
 }
 
 export function getInternalAppUrl(): string {
-  return LOCAL_APP_URL;
+  return getLoopbackAppUrl(process.env.PORT);
 }
 
 export function getOAuthRedirectUri(provider: 'twitch' | 'discord' | 'youtube' | 'kick', fallbackOrigin?: string | null): string {
@@ -68,12 +64,7 @@ export function getOAuthRedirectUri(provider: 'twitch' | 'discord' | 'youtube' |
 
 export function getAllowedHostnames(extraHosts: string[] = []): Set<string> {
   const hostnames = new Set<string>(['127.0.0.1', 'localhost', '::1']);
-  const candidates = [
-    process.env.NEXT_PUBLIC_STREAMWEAVE_URL,
-    process.env.NEXT_PUBLIC_BASE_URL,
-    process.env.APP_URL,
-    process.env.PUBLIC_APP_URL,
-  ];
+  const candidates = getKnownAppUrls();
 
   for (const candidate of candidates) {
     const normalized = normalizeUrl(candidate);

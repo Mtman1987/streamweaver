@@ -10,6 +10,7 @@ import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
+import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -231,18 +232,17 @@ export async function POST(request: NextRequest) {
         const prompt = (imgMatch[1] || '').trim();
         if (!prompt) {
           if (channelId) {
-            const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+            const baseUrl = getConfiguredAppUrl();
             await sendDiscordBotMessage(channelId, `Usage: !img <description>\nImage library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`);
           }
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
         }
 
-        const port = process.env.PORT || 3100;
         const genDefaults = await readGenerationSettings(tenantId);
         if (channelId) {
           await sendDiscordBotMessage(channelId, "I'm processing your image now, Commander.");
         }
-        const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+        const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -283,8 +283,7 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', image: imageUrl });
       }
 
-      const port = process.env.PORT || 3100;
-      const privateRes = await fetch(`http://127.0.0.1:${port}/api/private-chat/respond`, {
+      const privateRes = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -357,8 +356,7 @@ export async function POST(request: NextRequest) {
       platform: 'discord',
     });
 
-    const port = process.env.PORT || 3100;
-    const aiRes = await fetch(`http://127.0.0.1:${port}/api/ai/chat-with-memory`, {
+    const aiRes = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -592,7 +590,7 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
  * Uses the idle avatar if available, falls back to a default.
  */
 function getAvatarUrl(tenantId?: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+  const baseUrl = getConfiguredAppUrl();
   // Use the avatar API endpoint which serves the idle image
   if (tenantId) {
     return `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
@@ -689,7 +687,6 @@ async function sendCrossBotTargetReplies(input: {
     return;
   }
 
-  const port = process.env.PORT || 3100;
   const target = decision.targets[0];
   const targetTenantId = tenantIdFromStableId(target.stableId);
   const targetPersonality = [
@@ -709,7 +706,7 @@ async function sendCrossBotTargetReplies(input: {
     'Answer as yourself in 1-2 short sentences. If this asks about a real streamer schedule and you do not know, say you are not sure and point them to the streamer or channel info. Do not impersonate the other bot.',
   ].filter(Boolean).join('\n');
 
-  const aiRes = await fetch(`http://127.0.0.1:${port}/api/ai/chat-with-memory`, {
+  const aiRes = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

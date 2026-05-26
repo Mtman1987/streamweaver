@@ -15,12 +15,8 @@ RUN npm ci --include=dev
 
 FROM base AS builder
 ARG NEXT_PUBLIC_TWITCH_CLIENT_ID
-ARG NEXT_PUBLIC_STREAMWEAVE_URL
-ARG NEXT_PUBLIC_BASE_URL
 ARG NEXT_PUBLIC_STREAMWEAVE_WS_URL
 ENV NEXT_PUBLIC_TWITCH_CLIENT_ID=$NEXT_PUBLIC_TWITCH_CLIENT_ID
-ENV NEXT_PUBLIC_STREAMWEAVE_URL=$NEXT_PUBLIC_STREAMWEAVE_URL
-ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL
 ENV NEXT_PUBLIC_STREAMWEAVE_WS_URL=$NEXT_PUBLIC_STREAMWEAVE_WS_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -37,6 +33,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
+COPY --from=builder /app/app-urls.json ./app-urls.json
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/public ./public

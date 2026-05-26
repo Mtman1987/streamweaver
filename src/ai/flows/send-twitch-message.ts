@@ -1,5 +1,7 @@
 'use server';
 
+import { getInternalAppUrl } from '@/lib/runtime-origin';
+
 export interface SendTwitchMessageInput {
   message: string;
   as: 'broadcaster' | 'bot';
@@ -12,7 +14,7 @@ export interface SendTwitchMessageOutput {
 
 export async function sendTwitchMessage(input: SendTwitchMessageInput): Promise<SendTwitchMessageOutput> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3100'}/api/chat/send`, {
+    const response = await fetch(`${getInternalAppUrl()}/api/chat/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -122,6 +122,7 @@
     "assets": [
       "public/**/*",
       ".next/**/*",
+      "app-urls.json",
       "config/**/*",
       "data/**/*",
       "tokens/**/*",

@@ -6,6 +6,7 @@ import { handleDiscordMessage } from './chat-dispatcher';
 import { tenantPath } from '../lib/tenant';
 import { isDiscordApiError } from './discord-local';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
+import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -297,17 +298,16 @@ export async function checkDmChannelActivity(): Promise<void> {
                 const newestText = String(newest.content).trim();
                 if (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img ')) {
                     console.log(`[DM Sweep:${tenantId}] First-run processing newest !img command:`, newestText.slice(0, 120));
-                    const port = process.env.PORT || 3100;
                     const prompt = newestText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
-                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const baseUrl = getConfiguredAppUrl();
                         const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
                         await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
                     } else {
                         try {
                             await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
                     const genDefaults = await readGenerationSettings(tenantId);
-                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                    const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -358,20 +358,19 @@ export async function checkDmChannelActivity(): Promise<void> {
 
         for (const msg of newMessages.reverse()) {
             if (!msg?.content || msg?.author?.bot) continue;
-            const port = process.env.PORT || 3100;
             const messageText = String(msg.content || '').trim();
             try {
                 if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
                     const prompt = messageText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
-                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const baseUrl = getConfiguredAppUrl();
                         const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
                         await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
                         continue;
                     }
                     await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
                     const genDefaults = await readGenerationSettings(tenantId);
-                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                    const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -404,7 +403,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     }
                     const imageUrl = await maybeShortenUrl(String(rawImageUrl).trim());
                     const embeddableImageUrl = isDiscordEmbeddableImageUrl(imageUrl) ? imageUrl : null;
-                    const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                    const baseUrl = getConfiguredAppUrl();
                     const botName = '▶ Athena';
                     const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
                     const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
@@ -438,7 +437,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     continue;
                 }
 
-                const res = await fetch(`http://127.0.0.1:${port}/api/private-chat/respond`, {
+                const res = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -453,7 +452,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                 const reply = data.response || data.data?.response || '';
                 if (!reply) continue;
 
-                const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                const baseUrl = getConfiguredAppUrl();
                 const botName = '▶ Athena';
                 const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
                 const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;

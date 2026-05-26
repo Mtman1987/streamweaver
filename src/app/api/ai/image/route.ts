@@ -9,6 +9,7 @@ import { generateImageWithSeaArt } from '@/services/image-provider';
 import { generateImageWithPerchance } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
+import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { z } from 'zod';
 
 const imageSchema = z.object({
@@ -20,18 +21,6 @@ const imageSchema = z.object({
   tenantId: z.string().trim().max(128).optional(),
 });
 
-
-function resolveBaseUrl(request?: NextRequest): string {
-  const fromEnv = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
-  if (fromEnv) return fromEnv.replace(/\/$/, '');
-  if (request) {
-    try {
-      const u = new URL(request.url);
-      return `${u.protocol}//${u.host}`;
-    } catch {}
-  }
-  return '';
-}
 
 async function persistImageFromUrl(imageUrl: string, tenantId?: string, request?: NextRequest): Promise<string | null> {
   try {
@@ -46,7 +35,7 @@ async function persistImageFromUrl(imageUrl: string, tenantId?: string, request?
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = resolveBaseUrl(request);
+    const base = getConfiguredAppUrl(request?.nextUrl.origin);
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
     return base ? `${base}${path}` : path;
   } catch {
@@ -66,7 +55,7 @@ async function persistImageFromDataUri(dataUri: string, tenantId?: string, reque
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = resolveBaseUrl(request);
+    const base = getConfiguredAppUrl(request?.nextUrl.origin);
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
     return base ? `${base}${path}` : path;
   } catch {
