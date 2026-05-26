@@ -13,7 +13,7 @@ import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
-import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity } from '@/services/discord-branding';
+import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 
@@ -452,6 +452,7 @@ export async function POST(request: NextRequest) {
           await buildDiscordBotEmbed({
             description: aiReply,
             tenantId: botTenantId || tenantId || undefined,
+            botName,
           }),
         ]);
         discordReplySent = true;
@@ -486,6 +487,7 @@ export async function POST(request: NextRequest) {
           speakerReply: aiReply,
           decision: followUpDecision,
           tenantId: botTenantId || tenantId || undefined,
+          maxReplies: randomCrossBotReplyBudget() - 1,
         }).catch((error) => console.error('[Discord Chat] Cross-bot target reply failed:', error));
         await recordDiscordMessageCleanup({
           tenantId: botTenantId || tenantId || undefined,
@@ -834,84 +836,110 @@ async function sendCrossBotTargetReplies(input: {
   speakerReply: string;
   decision: Awaited<ReturnType<typeof decideBotInteraction>>;
   tenantId?: string;
+  maxReplies: number;
 }): Promise<string[]> {
   const decision = input.decision;
   if (!decision?.shouldRespond || !decision.targets.length) {
     console.log('[Discord Chat] Cross-bot follow-up skipped: no decision');
     return [];
   }
-
-  const target = decision.targets[0];
-  const targetTenantId = tenantIdFromStableId(target.stableId);
-  const targetPersonality = [
-    `You are ${target.currentName}.`,
-    target.archetype ? `Archetype: ${target.archetype}.` : '',
-    target.summary || '',
-    target.personalityNotes?.length ? target.personalityNotes.join(' ') : '',
-    'Stay in this bot identity for this single Discord follow-up.',
-  ].filter(Boolean).join('\n');
-  const prompt = [
-    `Cross-bot follow-up on Discord.`,
-    `You are ${target.currentName}.`,
-    target.summary ? `Your lore: ${target.summary}` : '',
-    target.personalityNotes?.length ? `Personality notes: ${target.personalityNotes.join(' ')}` : '',
-    `${decision.speaker.currentName} was asked to contact you and replied: "${input.speakerReply}"`,
-    `${input.userName} originally asked: "${input.triggerMessage}"`,
-    'Answer as yourself in 1-2 short sentences. If this asks about a real streamer schedule and you do not know, say you are not sure and point them to the streamer or channel info. Do not impersonate the other bot.',
-  ].filter(Boolean).join('\n');
-
-  const aiRes = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username: input.userName,
-      message: prompt,
-      personality: targetPersonality,
-      responseName: target.currentName,
-      tenantId: targetTenantId,
-      context: 'discord-cross-bot',
-    }),
-  });
-
-  if (!aiRes.ok) {
-    console.error('[Discord Chat] Cross-bot target AI failed:', aiRes.status, await aiRes.text().catch(() => ''));
+  const maxReplies = Math.max(0, Math.min(3, Math.floor(input.maxReplies)));
+  if (maxReplies <= 0) {
+    console.log('[Discord Chat] Cross-bot follow-up skipped: reply budget rolled 1');
     return [];
   }
 
-  const data = await aiRes.json();
-  const reply = data.response || data.data?.response || '';
-  if (!reply.trim()) {
-    console.log('[Discord Chat] Cross-bot target AI returned empty response', {
-      target: target.currentName,
+  const replyIds: string[] = [];
+  let previousSpeaker = decision.speaker;
+  let previousReply = input.speakerReply;
+  let currentTarget = decision.targets[0];
+
+  for (let index = 0; index < maxReplies; index++) {
+    const target = currentTarget;
+    const targetTenantId = await resolveDiscordBotTenantId(target.currentName, tenantIdFromStableId(target.stableId));
+    const targetPersonality = [
+      `You are ${target.currentName}.`,
+      target.archetype ? `Archetype: ${target.archetype}.` : '',
+      target.summary || '',
+      target.personalityNotes?.length ? target.personalityNotes.join(' ') : '',
+      'Stay in this bot identity for this single Discord follow-up.',
+    ].filter(Boolean).join('\n');
+    const prompt = [
+      `Cross-bot follow-up on Discord.`,
+      `You are ${target.currentName}.`,
+      target.summary ? `Your lore: ${target.summary}` : '',
+      target.personalityNotes?.length ? `Personality notes: ${target.personalityNotes.join(' ')}` : '',
+      `${previousSpeaker.currentName} replied: "${previousReply}"`,
+      `${input.userName} originally asked: "${input.triggerMessage}"`,
+      index < maxReplies - 1
+        ? 'Answer as yourself in 1 short sentence and leave a natural opening for the other bot to respond. Do not impersonate the other bot.'
+        : 'Answer as yourself in 1-2 short sentences and wrap up naturally. If this asks about a real streamer schedule and you do not know, say you are not sure and point them to the streamer or channel info. Do not impersonate the other bot.',
+    ].filter(Boolean).join('\n');
+
+    const aiRes = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: input.userName,
+        message: prompt,
+        personality: targetPersonality,
+        responseName: target.currentName,
+        tenantId: targetTenantId,
+        context: 'discord-cross-bot',
+      }),
     });
-    return [];
+
+    if (!aiRes.ok) {
+      console.error('[Discord Chat] Cross-bot target AI failed:', aiRes.status, await aiRes.text().catch(() => ''));
+      break;
+    }
+
+    const data = await aiRes.json();
+    const reply = data.response || data.data?.response || '';
+    if (!reply.trim()) {
+      console.log('[Discord Chat] Cross-bot target AI returned empty response', {
+        target: target.currentName,
+      });
+      break;
+    }
+
+    const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
+    const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(targetTenantId);
+    const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, avatarUrl, [
+      await buildDiscordBotEmbed({
+        description: reply,
+        tenantId: targetTenantId,
+        botName: target.currentName,
+      }),
+    ]);
+    console.log('[Discord Chat] Cross-bot target responded via webhook:', {
+      target: target.currentName,
+      channelId: input.channelId,
+    });
+    await appendBotInteraction({
+      platform: 'discord',
+      tenantId: targetTenantId,
+      channelId: input.channelId,
+      sourceUser: input.userName,
+      speakerBotId: target.stableId,
+      speakerBotName: target.currentName,
+      targetBotIds: [previousSpeaker.stableId],
+      targetBotNames: [previousSpeaker.currentName],
+      triggerMessage: input.triggerMessage,
+      responseMessage: reply,
+    }).catch(() => {});
+    if (sentReply?.id) replyIds.push(sentReply.id);
+
+    currentTarget = previousSpeaker as WorldLoreCharacter;
+    previousSpeaker = target;
+    previousReply = reply;
   }
 
-  const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
-  const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(targetTenantId);
-  const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, avatarUrl, [
-    await buildDiscordBotEmbed({
-      description: reply,
-      tenantId: targetTenantId,
-    }),
-  ]);
-  console.log('[Discord Chat] Cross-bot target responded via webhook:', {
-    target: target.currentName,
-    channelId: input.channelId,
-  });
-  await appendBotInteraction({
-    platform: 'discord',
-    tenantId: targetTenantId,
-    channelId: input.channelId,
-    sourceUser: input.userName,
-    speakerBotId: target.stableId,
-    speakerBotName: target.currentName,
-    targetBotIds: [decision.speaker.stableId],
-    targetBotNames: [decision.speaker.currentName],
-    triggerMessage: input.triggerMessage,
-    responseMessage: reply,
-  }).catch(() => {});
-  return sentReply?.id ? [sentReply.id] : [];
+  return replyIds;
+}
+
+function randomCrossBotReplyBudget(): number {
+  return 1 + Math.floor(Math.random() * 4);
 }
 
 function tenantIdFromStableId(stableId: string): string | undefined {
