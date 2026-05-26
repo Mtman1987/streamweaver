@@ -23,7 +23,13 @@ export interface StoredTokens {
   communityBotUsername?: string;
   loginUsername?: string;
   broadcasterProfileImageUrl?: string;
+  botProfileImageUrl?: string;
+  communityBotProfileImageUrl?: string;
   loginProfileImageUrl?: string;
+  broadcasterAvatarUrl?: string;
+  botAvatarUrl?: string;
+  communityBotAvatarUrl?: string;
+  loginAvatarUrl?: string;
   twitchClientId?: string;
   twitchClientSecret?: string;
   broadcasterTokenExpiry?: number;

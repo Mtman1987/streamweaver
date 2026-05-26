@@ -7,6 +7,8 @@ import { listTenants, tenantPath } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
+import { getTwitchUser } from '@/services/twitch';
+import { getStoredTokens } from '@/lib/token-utils.server';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
@@ -444,8 +446,9 @@ export async function POST(request: NextRequest) {
     let discordReplySent = false;
     if (channelId) {
       const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
+      const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(botTenantId || tenantId);
       try {
-        const sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+        const sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, avatarUrl, [
           await buildDiscordBotEmbed({
             description: aiReply,
             tenantId: botTenantId || tenantId || undefined,
@@ -692,6 +695,68 @@ async function maybeShortenUrl(url: string): Promise<string> {
   }
 }
 
+/**
+ * Get the bot's profile avatar URL for Discord webhook impersonation.
+ * Discord expects a direct image URL here. The overlay avatar endpoint can be
+ * video/GIF-backed and is not reliable for webhook profile pictures.
+ */
+const DEFAULT_DISCORD_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
+const avatarCache = new Map<string, { url: string; expiresAt: number }>();
+
+function firstUrl(...values: unknown[]): string {
+  for (const value of values) {
+    const text = firstString(value);
+    if (/^https?:\/\//i.test(text)) return text;
+  }
+  return '';
+}
+
+async function getAvatarUrl(tenantId?: string): Promise<string> {
+  const cacheKey = tenantId || 'global';
+  const cached = avatarCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  let avatarUrl = '';
+  const config = readUserConfigSync(tenantId);
+  const tokens = (await getStoredTokens(tenantId).catch(() => null)) as Record<string, any> | null;
+
+  avatarUrl = firstUrl(
+    tokens?.botAvatarUrl,
+    tokens?.botProfileImageUrl,
+    tokens?.botProfileImage,
+    config.TWITCH_BOT_AVATAR_URL,
+    config.TWITCH_BOT_PROFILE_IMAGE_URL,
+    config.BOT_AVATAR_URL,
+    tokens?.broadcasterAvatarUrl,
+    tokens?.broadcasterProfileImageUrl,
+    tokens?.loginAvatarUrl,
+    tokens?.loginProfileImageUrl,
+    config.TWITCH_BROADCASTER_AVATAR_URL
+  );
+
+  if (!avatarUrl) {
+    const botUsername = firstString(tokens?.botUsername, config.TWITCH_BOT_USERNAME);
+    const broadcasterUsername = firstString(tokens?.broadcasterUsername, config.TWITCH_BROADCASTER_USERNAME);
+    const username = botUsername || broadcasterUsername;
+    if (username) {
+      try {
+        const twitchUser = await getTwitchUser(username);
+        avatarUrl = twitchUser?.profileImageUrl || '';
+      } catch (error) {
+        console.warn('[Discord Chat] Failed to fetch Twitch avatar for webhook:', {
+          tenantId: tenantId || null,
+          username,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  const resolved = avatarUrl || DEFAULT_DISCORD_AVATAR;
+  avatarCache.set(cacheKey, { url: resolved, expiresAt: Date.now() + 60 * 60 * 1000 });
+  return resolved;
+}
+
 async function decideReplyMentionInteraction(input: {
   speakerBotName: string;
   speakerTenantId?: string;
@@ -854,9 +919,10 @@ async function sendCrossBotTargetReplies(input: {
     }
 
     const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
+    const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(targetTenantId);
     let sentReply: { id?: string } | null | undefined;
     try {
-      sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+      sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, avatarUrl, [
         await buildDiscordBotEmbed({
           description: reply,
           tenantId: targetTenantId,
