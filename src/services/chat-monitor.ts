@@ -7,6 +7,8 @@ import { tenantPath } from '../lib/tenant';
 import { isDiscordApiError } from './discord-local';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
+import { buildDiscordBotEmbed } from './discord-branding';
+import { getBotName } from '@/lib/bot-settings-store';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -17,6 +19,7 @@ let isLoadingHistory: Map<string, boolean> = new Map();
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 
 function isDiscordEmbeddableImageUrl(value: unknown): value is string {
     if (typeof value !== 'string') return false;
@@ -296,7 +299,7 @@ export async function checkDmChannelActivity(): Promise<void> {
             const newest = messages[0];
             if (newest?.content && !newest?.author?.bot) {
                 const newestText = String(newest.content).trim();
-                if (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img ')) {
+                if (DISCORD_DM_IMAGE_COMMANDS_ENABLED && (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img '))) {
                     console.log(`[DM Sweep:${tenantId}] First-run processing newest !img command:`, newestText.slice(0, 120));
                     const prompt = newestText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
@@ -360,7 +363,7 @@ export async function checkDmChannelActivity(): Promise<void> {
             if (!msg?.content || msg?.author?.bot) continue;
             const messageText = String(msg.content || '').trim();
             try {
-                if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
+                if (DISCORD_DM_IMAGE_COMMANDS_ENABLED && (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img '))) {
                     const prompt = messageText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
                         const baseUrl = getConfiguredAppUrl();
@@ -404,18 +407,19 @@ export async function checkDmChannelActivity(): Promise<void> {
                     const imageUrl = await maybeShortenUrl(String(rawImageUrl).trim());
                     const embeddableImageUrl = isDiscordEmbeddableImageUrl(imageUrl) ? imageUrl : null;
                     const baseUrl = getConfiguredAppUrl();
-                    const botName = '▶ Athena';
-                    const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
                     const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
                     if (embeddableImageUrl) {
+                        const embed = await buildDiscordBotEmbed({
+                            description: prompt,
+                            tenantId,
+                            authorUrl: ttsUrl,
+                            authorName: getBotName(tenantId),
+                        });
                         await sendDiscordEmbed(dmChannelId, {
                             embeds: [{
+                                ...embed,
                                 title: '🎨 Image Generated',
-                                description: prompt,
                                 image: { url: embeddableImageUrl },
-                                thumbnail: { url: botAvatar },
-                                author: { name: botName, icon_url: botAvatar, url: ttsUrl },
-                                color: 0x5865F2,
                             }],
                         });
                     } else {
@@ -424,8 +428,14 @@ export async function checkDmChannelActivity(): Promise<void> {
                     }
                     continue;
                 }
+                if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img '))) {
+                    continue;
+                }
 
                 const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
+                if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && genModeMatch) {
+                    continue;
+                }
                 if (genModeMatch) {
                     const action = (genModeMatch[1] || '').toLowerCase();
                     const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
@@ -453,51 +463,15 @@ export async function checkDmChannelActivity(): Promise<void> {
                 if (!reply) continue;
 
                 const baseUrl = getConfiguredAppUrl();
-                const botName = '▶ Athena';
-                const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
                 const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;
-                const embedMsg = await sendDiscordEmbed(dmChannelId, {
-                    embeds: [{
+                await sendDiscordEmbed(dmChannelId, {
+                    embeds: [await buildDiscordBotEmbed({
                         description: reply,
-                        thumbnail: { url: botAvatar },
-                        author: { name: botName, icon_url: botAvatar, url: ttsUrl },
-                        color: 0x5865F2,
-                    }],
+                        tenantId,
+                        authorUrl: ttsUrl,
+                        authorName: getBotName(tenantId),
+                    })],
                 });
-
-                // Native Discord MP3 TTS: generate audio and attach as playable file
-                const embedMsgId = typeof embedMsg?.id === 'string' ? embedMsg.id : '';
-                if (embedMsgId) {
-                    try {
-                        const { generateTTS } = await import('./tts-provider');
-                        const { editDiscordMessage, uploadBinaryFileToDiscord } = require('./discord-local');
-                        const audioDataUri = await generateTTS(reply.slice(0, 500), undefined, tenantId);
-                        const base64Match = audioDataUri.match(/^data:audio\/[^;]+;base64,(.+)$/);
-                        if (base64Match) {
-                            const mp3Buffer = Buffer.from(base64Match[1], 'base64');
-                            const audioMsg = await uploadBinaryFileToDiscord(dmChannelId, mp3Buffer, 'athena-tts.mp3', 'audio/mpeg', {
-                                embeds: [{
-                                    description: '🔊 Voice response attached above',
-                                    color: 0x57F287,
-                                }],
-                            });
-                            const audioMsgId = typeof audioMsg?.id === 'string' ? audioMsg.id : '';
-                            if (audioMsgId) {
-                                await editDiscordMessage(dmChannelId, embedMsgId, {
-                                    embeds: [{
-                                        description: reply,
-                                        thumbnail: { url: botAvatar },
-                                        author: { name: `${botName} 🔊`, icon_url: botAvatar, url: ttsUrl },
-                                        color: 0x5865F2,
-                                        footer: { text: '🔊 Audio attached below' },
-                                    }],
-                                });
-                            }
-                        }
-                    } catch (ttsErr) {
-                        console.warn(`[DM Sweep:${tenantId}] Native TTS failed (non-blocking):`, ttsErr);
-                    }
-                }
             } catch (error) {
                 console.warn(`[DM Sweep:${tenantId}] Failed to process DM message`, error);
             }

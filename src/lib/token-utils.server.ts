@@ -22,6 +22,8 @@ export interface StoredTokens {
   botUsername?: string;
   communityBotUsername?: string;
   loginUsername?: string;
+  broadcasterProfileImageUrl?: string;
+  loginProfileImageUrl?: string;
   twitchClientId?: string;
   twitchClientSecret?: string;
   broadcasterTokenExpiry?: number;

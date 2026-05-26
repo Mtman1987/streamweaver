@@ -11,6 +11,9 @@ import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
+import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity } from '@/services/discord-branding';
+
+const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -218,6 +221,9 @@ export async function POST(request: NextRequest) {
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
       const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
+      if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (imgMatch || genModeMatch)) {
+        return apiOk({ success: true, botResponded: false, tenantId, context: 'private-image-dev-mode' });
+      }
       if (genModeMatch) {
         const action = (genModeMatch[1] || '').toLowerCase();
         const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
@@ -228,7 +234,7 @@ export async function POST(request: NextRequest) {
         if (channelId) await sendDiscordBotMessage(channelId, `Generation mode: ${mode.toUpperCase()}`);
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-genmode', mode });
       }
-      if (imgMatch) {
+      if (DISCORD_DM_IMAGE_COMMANDS_ENABLED && imgMatch) {
         const prompt = (imgMatch[1] || '').trim();
         if (!prompt) {
           if (channelId) {
@@ -306,7 +312,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (channelId) {
-        await sendDiscordBotMessage(channelId, privateReply);
+        await sendDiscordBotEmbedReply(channelId, privateReply, tenantId);
       }
 
       return apiOk({
@@ -382,9 +388,14 @@ export async function POST(request: NextRequest) {
     // Send response to Discord only (no Twitch, no TTS — conversation stays in Discord)
     let discordReplySent = false;
     if (channelId) {
-      const avatarUrl = getAvatarUrl(botTenantId || tenantId);
+      const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
       try {
-        await sendWebhookMessage(channelId, aiReply, botName, avatarUrl);
+        await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+          await buildDiscordBotEmbed({
+            description: aiReply,
+            tenantId: botTenantId || tenantId || undefined,
+          }),
+        ]);
         discordReplySent = true;
         console.log(`[Discord Chat] Bot responded via webhook in channel ${channelId}`);
         if (botInteractionDecision?.shouldRespond) {
@@ -548,6 +559,17 @@ async function sendDiscordRouteReply(channelId: string, message: string, usernam
   }
 }
 
+async function sendDiscordBotEmbedReply(channelId: string, message: string, tenantId?: string) {
+  const { sendDiscordEmbed } = await import('@/services/discord-local');
+  await sendDiscordEmbed(channelId, {
+    embeds: [await buildDiscordBotEmbed({
+      description: message,
+      tenantId,
+      authorName: getBotName(tenantId),
+    })],
+  });
+}
+
 /**
  * Resolve which tenant a Discord guild belongs to by checking discord-channels.json files.
  */
@@ -583,19 +605,6 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
     if (tenants.length === 1) return tenants[0];
   } catch {}
   return undefined;
-}
-
-/**
- * Get the bot's avatar URL for Discord webhook impersonation.
- * Uses the idle avatar if available, falls back to a default.
- */
-function getAvatarUrl(tenantId?: string): string {
-  const baseUrl = getConfiguredAppUrl();
-  // Use the avatar API endpoint which serves the idle image
-  if (tenantId) {
-    return `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
-  }
-  return `${baseUrl}/api/avatars?type=idle&format=gif`;
 }
 
 async function maybeShortenUrl(url: string): Promise<string> {
@@ -733,7 +742,13 @@ async function sendCrossBotTargetReplies(input: {
     return;
   }
 
-  await sendWebhookMessage(input.channelId, reply, target.currentName, getAvatarUrl(targetTenantId));
+  const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
+  await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, webhookIdentity.avatarUrl, [
+    await buildDiscordBotEmbed({
+      description: reply,
+      tenantId: targetTenantId,
+    }),
+  ]);
   console.log('[Discord Chat] Cross-bot target responded via webhook:', {
     target: target.currentName,
     channelId: input.channelId,
