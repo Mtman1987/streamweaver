@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit' | 'fly-logs';
+type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit' | 'fly-logs' | 'gen-mode' | 'gen-settings' | 'dm-sweep-state' | 'generated-images-index';
 
 type FileSnapshot = {
   file: FileKey;
@@ -138,6 +138,35 @@ export default function DebugDataFilesPage() {
               onClick={() => setSelected('shoutout-audit')}
             >
               shoutout-audit.json
+            </Button>
+
+            <Button
+              variant={selected === 'gen-mode' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelected('gen-mode')}
+            >
+              gen-mode.json
+            </Button>
+            <Button
+              variant={selected === 'gen-settings' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelected('gen-settings')}
+            >
+              gen-settings.json
+            </Button>
+            <Button
+              variant={selected === 'dm-sweep-state' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelected('dm-sweep-state')}
+            >
+              dm-sweep-state.json
+            </Button>
+            <Button
+              variant={selected === 'generated-images-index' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelected('generated-images-index')}
+            >
+              generated-images-index.json
             </Button>
             <Button
               variant={selected === 'fly-logs' ? 'default' : 'outline'}

@@ -5,6 +5,7 @@ import { resolve } from 'path';
 import { handleDiscordMessage } from './chat-dispatcher';
 import { tenantPath } from '../lib/tenant';
 import { isDiscordApiError } from './discord-local';
+import { readGenerationSettings } from '@/lib/gen-settings-store';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -305,10 +306,24 @@ export async function checkDmChannelActivity(): Promise<void> {
                     } else {
                         try {
                             await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
-                            const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                    const genDefaults = await readGenerationSettings(tenantId);
+                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+                                body: JSON.stringify({
+            prompt,
+            tenantId,
+            model: genDefaults.model || undefined,
+            resolution: genDefaults.resolution || undefined,
+            numImages: genDefaults.imageCount || 1,
+            providerParams: {
+              lora: genDefaults.lora || undefined,
+              loraStrength: genDefaults.loraStrength,
+              steps: genDefaults.steps,
+              cfg: genDefaults.cfg,
+              seed: genDefaults.seed,
+            },
+          }),
                             });
                             if (!imageRes.ok) {
                                 const errText = await imageRes.text().catch(() => '');
@@ -355,10 +370,24 @@ export async function checkDmChannelActivity(): Promise<void> {
                         continue;
                     }
                     await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
+                    const genDefaults = await readGenerationSettings(tenantId);
                     const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+                        body: JSON.stringify({
+            prompt,
+            tenantId,
+            model: genDefaults.model || undefined,
+            resolution: genDefaults.resolution || undefined,
+            numImages: genDefaults.imageCount || 1,
+            providerParams: {
+              lora: genDefaults.lora || undefined,
+              loraStrength: genDefaults.loraStrength,
+              steps: genDefaults.steps,
+              cfg: genDefaults.cfg,
+              seed: genDefaults.seed,
+            },
+          }),
                     });
                     if (!imageRes.ok) {
                         const errText = await imageRes.text().catch(() => '');
@@ -392,8 +421,8 @@ export async function checkDmChannelActivity(): Promise<void> {
                         });
                     } else {
                         console.warn(`[DM Sweep:${tenantId}] !img returned non-embeddable URL (len=${imageUrl.length}); sending link only.`);
+                        await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
                     }
-                    await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
                     continue;
                 }
 
@@ -431,7 +460,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                 await sendDiscordEmbed(dmChannelId, {
                     embeds: [{
                         description: reply,
-                        thumbnail: { url: botAvatar },
+                        image: { url: botAvatar },
                         author: { name: botName, icon_url: botAvatar, url: ttsUrl },
                         color: 0x5865F2,
                     }],
@@ -456,7 +485,10 @@ export function startDmChannelSweeper() {
     }, 120000);
 }
 
-// startDmChannelSweeper() should be called explicitly by the server entrypoint
+// NOTE: startDmChannelSweeper() should be called explicitly by the server
+// entrypoint (see server.ts STEP 5). Do not invoke it as a side effect of
+// module import — that causes the sweeper to start during build-time
+// analysis and via unrelated importers (e.g. websocket connection handler).
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';

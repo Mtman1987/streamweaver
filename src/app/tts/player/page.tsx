@@ -17,8 +17,9 @@ export default function TtsPlayerPage() {
   }, []);
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const idleAvatar = `${baseUrl}/api/avatars?type=idle&format=gif${tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : ''}`;
-  const talkingAvatar = `${baseUrl}/api/avatars?type=talking&format=gif${tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : ''}`;
+  const avatarTenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
+  const idleAvatar = `${baseUrl}/api/avatars?type=idle&format=gif${avatarTenantParam}`;
+  const talkingAvatar = `${baseUrl}/api/avatars?type=talking&format=gif${avatarTenantParam}`;
   const audioUrl = `${baseUrl}/api/tts/play?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(text.slice(0, 500))}`;
 
   useEffect(() => {

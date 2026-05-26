@@ -9,6 +9,7 @@ import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
+import { readGenerationSettings } from '@/lib/gen-settings-store';
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -237,13 +238,27 @@ export async function POST(request: NextRequest) {
         }
 
         const port = process.env.PORT || 3100;
+        const genDefaults = await readGenerationSettings(tenantId);
         if (channelId) {
           await sendDiscordBotMessage(channelId, "I'm processing your image now, Commander.");
         }
         const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+          body: JSON.stringify({
+            prompt,
+            tenantId,
+            model: genDefaults.model || undefined,
+            resolution: genDefaults.resolution || undefined,
+            numImages: genDefaults.imageCount || 1,
+            providerParams: {
+              lora: genDefaults.lora || undefined,
+              loraStrength: genDefaults.loraStrength,
+              steps: genDefaults.steps,
+              cfg: genDefaults.cfg,
+              seed: genDefaults.seed,
+            },
+          }),
         });
 
         if (!imageRes.ok) {
@@ -546,9 +561,10 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
       if (tenants.length === 1) return tenants[0];
 
       // DM payloads may not include guild context; default to owner tenant for reliability.
-      // Owner requested hardcoded fallback routing when guild context is missing.
-      const ownerTenantId = '94371378';
-      if (tenants.includes(ownerTenantId)) return ownerTenantId;
+      // Configurable via DISCORD_DM_OWNER_TENANT_ID (falls back to legacy hardcoded value
+      // for backwards compatibility with existing deployments).
+      const ownerTenantId = (process.env.DISCORD_DM_OWNER_TENANT_ID || '94371378').trim();
+      if (ownerTenantId && tenants.includes(ownerTenantId)) return ownerTenantId;
       return [...tenants].sort((a, b) => a.localeCompare(b))[0];
     } catch {}
     return undefined;

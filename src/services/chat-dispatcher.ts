@@ -2087,10 +2087,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
             // Guardrail: in channels that are NOT the broadcaster's own channel,
             // Athena should only respond when the broadcaster themself is speaking.
-            const isOwnChannel = replyChannel.toLowerCase() === (broadcasterUsername || '').toLowerCase();
-            const isBroadcasterSpeaker = actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase();
-            if (!isOwnChannel && !isBroadcasterSpeaker) {
-                return;
+            // Skip the guardrail entirely if broadcasterUsername was never resolved
+            // (still the default 'broadcaster'); otherwise we would silently suppress
+            // ALL bot mention responses, which is very hard to debug.
+            const resolvedBroadcaster = (broadcasterUsername || '').toLowerCase();
+            const hasResolvedBroadcaster = resolvedBroadcaster && resolvedBroadcaster !== 'broadcaster';
+            if (hasResolvedBroadcaster) {
+                const isOwnChannel = replyChannel.toLowerCase() === resolvedBroadcaster;
+                const isBroadcasterSpeaker = actualUsername.toLowerCase() === resolvedBroadcaster;
+                if (!isOwnChannel && !isBroadcasterSpeaker) {
+                    return;
+                }
+            } else {
+                console.warn('[Dispatcher] broadcasterUsername unresolved (config/tokens unreadable); skipping foreign-channel guardrail for', { tenantId, replyChannel });
             }
             
             // Check for shoutout command (without bot name)

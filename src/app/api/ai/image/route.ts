@@ -8,6 +8,7 @@ import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
 import { generateImageWithPerchance } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
+import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { z } from 'zod';
 
 const imageSchema = z.object({
@@ -20,7 +21,19 @@ const imageSchema = z.object({
 });
 
 
-async function persistImageFromUrl(imageUrl: string, tenantId?: string): Promise<string | null> {
+function resolveBaseUrl(request?: NextRequest): string {
+  const fromEnv = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || '';
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (request) {
+    try {
+      const u = new URL(request.url);
+      return `${u.protocol}//${u.host}`;
+    } catch {}
+  }
+  return '';
+}
+
+async function persistImageFromUrl(imageUrl: string, tenantId?: string, request?: NextRequest): Promise<string | null> {
   try {
     if (!/^https?:\/\//i.test(imageUrl)) return null;
     const res = await fetch(imageUrl);
@@ -33,15 +46,15 @@ async function persistImageFromUrl(imageUrl: string, tenantId?: string): Promise
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+    const base = resolveBaseUrl(request);
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return `${base}${path}`;
+    return base ? `${base}${path}` : path;
   } catch {
     return null;
   }
 }
 
-async function persistImageFromDataUri(dataUri: string, tenantId?: string): Promise<string | null> {
+async function persistImageFromDataUri(dataUri: string, tenantId?: string, request?: NextRequest): Promise<string | null> {
   try {
     const match = String(dataUri).match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i);
     if (!match) return null;
@@ -53,9 +66,9 @@ async function persistImageFromDataUri(dataUri: string, tenantId?: string): Prom
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+    const base = resolveBaseUrl(request);
     const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return `${base}${path}`;
+    return base ? `${base}${path}` : path;
   } catch {
     return null;
   }
@@ -75,7 +88,13 @@ export async function POST(request: NextRequest) {
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId || parsed.data.tenantId;
 
-    const genMode = await getGenMode(tenantId);
+    // Resolve effective mode: prefer tenant gen-settings (UI source of truth),
+    // fall back to legacy gen-mode.json toggled by !genmode.
+    const [settingsMode, legacyMode] = await Promise.all([
+      readGenerationSettings(tenantId).then((s) => s.mode).catch(() => undefined),
+      getGenMode(tenantId).catch(() => 'eden' as const),
+    ]);
+    const genMode = settingsMode || legacyMode;
     const generator = genMode === 'seaart' ? generateImageWithSeaArt : genMode === 'perchance' ? generateImageWithPerchance : generateImageWithEdenAI;
     const result = await generator({
       prompt: parsed.data.prompt,
@@ -90,8 +109,8 @@ export async function POST(request: NextRequest) {
     const sourceValue = result.imageResourceUrl || result.image || '';
     const source = String(sourceValue);
     const persistedUrl = source.startsWith('data:image/')
-      ? await persistImageFromDataUri(source, tenantId)
-      : await persistImageFromUrl(source, tenantId);
+      ? await persistImageFromDataUri(source, tenantId, request)
+      : await persistImageFromUrl(source, tenantId, request);
 
     return apiOk({
       image: persistedUrl || result.imageResourceUrl || result.image,

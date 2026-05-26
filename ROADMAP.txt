@@ -1,105 +1,134 @@
-StreamWeaver Roadmap (Incremental Deploy Plan)
+StreamWeaver Production Roadmap (No Worker/Unified-Auth Scope)
+Last updated: 2026-05-26
 
-Phase A (now)
-- SeaArt/Eden dual provider with !genmode toggle (done)
-- Added Perchance as third generation mode option for rapid/free experimentation (done)
-- Persist generated images and provide stable app-hosted URLs (done)
-- DM !img improvements: progress message + library link (done)
+This roadmap intentionally excludes:
+- Unified Auth/Token Authority Worker
+- Cross-app central token leases/worker architecture
 
-Phase B (next)
-- Generation Settings Modal with clear field descriptions:
-  - Provider mode
-  - Model
-  - LoRA
-  - LoRA strength
-  - Image count (1-4)
-  - Aspect ratio / resolution
-  - Steps / CFG / Seed
-- Persist these settings per tenant and use as defaults in !img.
+==================================================
+1) CURRENT STATE SNAPSHOT
+==================================================
+Completed foundations already in repo:
+- DM image generation command flow (`!img`) in direct DM route and DM sweeper fallback.
+- Generation mode switching (`eden`, `seaart`, `perchance`) and tenant-scoped defaults.
+- Tenant generation settings API + dashboard modal editing.
+- Model/LoRA registry pages with select/apply actions.
+- Persisted generated image files and tenant image library endpoint.
+- Browser TTS player flow via author-link target.
+- DM channel tenant setting and sweeper state persistence.
+- Fly-logs option exposed in debug file viewer.
 
-Phase C
-- Clickable registries for fields:
-  - /generation/models
-  - /generation/loras
-- Each page should show:
-  - Name
-  - Description
-  - Preview images (if available)
-  - Select/Apply action
+Known quality gaps from latest iterations:
+- Some settings UX is still free-text where constrained controls would reduce errors.
+- Registry pages are currently metadata-first and need richer previews/source syncing.
+- DM/Discord embed behavior needs final polish consistency across direct route vs sweeper.
+- Provider adapters (especially SeaArt/Perchance) still need hardening and operational visibility.
 
-Phase D
-- Live Files enhancements:
-  - Add gen mode file
-  - Add generated image metadata index
-  - Add DM sweep state
-  - Add Fly logs file view (fly-logs.txt)
-- Logs panel reliability fix so logs are visible across pages.
+==================================================
+2) WHAT'S LEFT (PRIORITIZED)
+==================================================
 
-Phase E
-- SeaArt asset sync/import:
-  - Pull historical images/videos
-  - Checkpointed import jobs
-  - Dedup by external ID/hash
-- Backup strategy:
-  - Keep local recent cache
-  - Archive to external storage (Google Drive / object storage)
+P0 – Production Hardening (do next)
+1. Settings UX hardening
+   - Replace provider/count free-text with typed controls (select/radio/stepper).
+   - Add inline validation/help text for model/lora/resolution/steps/cfg/seed.
+   - Add “effective config preview” (what !img will actually send).
 
-Phase F (later)
-- TTS provider mode switch + fallback chain
-- Chat provider mode switch + fallback chain
-- Usage/cost controls per tenant (quota + premium tiers)
+2. DM image response consistency
+   - Ensure direct DM and sweeper produce identical success/fallback behavior.
+   - Guarantee no duplicate sends when embed succeeds.
+   - Add explicit audit logs for command->provider->persist->send lifecycle.
 
+3. Provider observability
+   - Add provider-specific structured logs: request id, endpoint used, latency, fail class.
+   - Add `/api/gen-settings/health` style status endpoint (mode, provider readiness, last error).
+   - Add dashboard mini-status card for generation provider health.
 
-Phase G (in progress)
-- Browser-first TTS player UX (no Discord embed patching):
-  - Author link opens /tts/player
-  - In-page idle/talking avatar swap during audio playback
-  - Animated status text while speaking
-- Native Discord TTS lifecycle (delete/repost + single revert patch) will follow after browser model is stable.
+4. Library integrity
+   - Add generated-image metadata index (prompt/provider/model/timestamp/path).
+   - Show metadata in library endpoint output.
+   - Add retention toggle (keep forever vs prune old local artifacts).
 
-Phase H (future) — Unified Auth/Token Authority Worker (cross-app)
-- Build a dedicated Fly worker service as a centralized auth authority for all 8 apps.
-- Purpose: single source of truth for high-use tokens/sessions and provider auth state.
+P1 – Feature Completeness
+5. Registry page upgrades
+   - Add preview image support per model/LoRA card.
+   - Add tags/filter/search (style, realism, anime, portrait, etc.).
+   - Add “recommended defaults” badges and one-click apply bundle.
 
-Scope
-- SeaArt relay/session manager (bootstrap creds + runtime session refresh)
-- Twitch token authority (broadcaster/bot refresh + lease/rotation)
-- Discord token authority (bot/session refresh and scoped access)
-- Kick token authority (oauth refresh + health)
-- Optional extension to other providers used across the app suite
+6. Discord embed polish
+   - Standardize avatar slot usage and fallback rules.
+   - Keep browser TTS mode stable while documenting native-discord playback plan.
+   - Add explicit user-facing failure messages for media playback edge cases.
 
-Core capabilities
-- Token vault (encrypted at rest, versioned, audit-friendly)
-- Runtime leases for apps (short-lived access tokens, revocable)
-- Refresh scheduler with jitter/backoff and circuit breakers
-- Health endpoints + status snapshots per provider/app
-- Webhook/event fanout for token updates to dependent apps
+7. Perchance experience
+   - Normalize generator output parsing and failure messaging.
+   - Add selectable generator presets in UI.
+   - Add guardrails for non-image outputs.
 
-Architecture
-- Fly worker runs 24/7 independent of web app request lifecycle
-- APIs for:
-  - issueTokenLease(appId, provider, scope)
-  - refreshNow(provider, accountRef)
-  - providerHealth(provider)
-  - revokeLease(leaseId)
-- Store long-lived bootstrap material in Fly secrets
-- Store short-lived runtime tokens in encrypted store (not constantly rewriting Fly secrets)
+P2 – Ops & Safety (without worker refactor)
+8. Debug/Live Files completion
+   - Add gen-mode, gen-settings, dm-sweep-state, image-index files to debug list.
+   - Improve log panel empty-state diagnostics (show connection reason).
 
-Migration plan
-1) SeaArt session authority first (prove pattern)
-2) Move Twitch refresh logic into authority
-3) Move Discord/Kick refresh logic
-4) Roll all 8 apps to authority-issued leases
-5) Remove duplicated token-refresh code paths app-by-app
+9. Backups/import (non-worker path)
+   - Add manual import/export scripts for generated images and metadata.
+   - Add optional external backup target docs (Drive/object storage) without runtime worker.
 
-Operational controls
-- Multi-instance leader lock to avoid refresh races
-- Retry limits + dead-letter queue for failing refresh jobs
-- Metrics: refresh success rate, expiry horizon, lease usage, last failure reason
-- Alerting hooks (log + optional Discord/admin channel)
+==================================================
+3) SESSION CHANGELOG (WHAT WE DID)
+==================================================
+This session’s net-new work:
+- Added tenant generation settings persistence + API contract and UI modal wiring.
+- Wired DM `!img` calls to apply tenant defaults in both direct route and sweeper paths.
+- Added generation registry pages (`/generation/models`, `/generation/loras`) with apply actions.
+- Added Browse links from modal fields to those registry pages.
+- Updated roadmap status to reflect Phase B/C progress and remaining gaps.
 
-Security
-- Per-app identity and scoped permissions
-- Encrypted token storage + key rotation plan
-- Audit logs for token read/issue/revoke events
-- Emergency kill switch per provider/app
+Also fixed earlier UX bugs in prior turn chain:
+- TTS player tenant avatar URL param handling.
+- DM duplicate image-link send behavior when embed succeeds.
+
+==================================================
+4) NEW DEV TEAM MEMBER NOTES (ONBOARDING QUICKSTART)
+==================================================
+If you just joined this codebase, read in this order:
+1. Discord command entrypoint:
+   - `src/app/api/discord/chat/route.ts`
+2. DM sweeper fallback:
+   - `src/services/chat-monitor.ts`
+3. Generation APIs/providers:
+   - `src/app/api/ai/image/route.ts`
+   - `src/services/image-provider.ts`
+4. Tenant generation settings:
+   - `src/lib/gen-settings-store.ts`
+   - `src/app/api/gen-settings/route.ts`
+5. Dashboard generation UI:
+   - `src/components/discord-channel-settings.tsx`
+6. Catalog pages:
+   - `src/app/(app)/generation/models/page.tsx`
+   - `src/app/(app)/generation/loras/page.tsx`
+   - `src/lib/generation-catalog.ts`
+7. TTS browser flow:
+   - `src/app/tts/player/page.tsx`
+   - `src/app/api/tts/play/route.ts`
+
+Architecture notes:
+- Tenant scope is central: most runtime state/config should resolve by tenant.
+- DM path exists in two forms (direct webhook route + sweeper fallback); keep behavior aligned.
+- Image persistence exists to avoid oversized/unstable provider URLs.
+- Provider integrations are partially experimental; prioritize resilience and transparent logs.
+
+Operational notes:
+- Prefer small, verifiable commits because DM/provider behavior can regress subtly.
+- When changing DM response logic, test both direct route and sweeper route.
+- Never rely on one provider’s response shape; normalize and validate all outputs.
+
+==================================================
+5) DEFINITION OF DONE FOR CURRENT EPIC
+==================================================
+This non-worker roadmap is “production ready” when:
+- Typed/validated settings UI is complete.
+- Direct DM + sweeper behaviors are functionally equivalent.
+- Provider health/status is visible in app and logs.
+- Library metadata and debug files are complete and inspectable.
+- Registry pages provide practical model/LoRA discovery with previews.
