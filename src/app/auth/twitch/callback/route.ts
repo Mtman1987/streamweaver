@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
         loginTokenExpiry: tokenExpiry,
         loginUsername: username,
         loginProfileImageUrl: userInfo.profile_image_url,
+        loginAvatarUrl: userInfo.profile_image_url,
         // Also store as broadcaster token — the login user IS the broadcaster
         // for their own tenant. This prevents a second OAuth grant from
         // invalidating the login refresh token.
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
         broadcasterTokenExpiry: tokenExpiry,
         broadcasterUsername: username,
         broadcasterProfileImageUrl: userInfo.profile_image_url,
+        broadcasterAvatarUrl: userInfo.profile_image_url,
         lastUpdated: new Date().toISOString(),
       };
       await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
@@ -147,11 +149,13 @@ export async function GET(request: NextRequest) {
           loginTokenExpiry: tokenExpiry,
           loginUsername: username,
           loginProfileImageUrl: userInfo.profile_image_url,
+          loginAvatarUrl: userInfo.profile_image_url,
           broadcasterToken: tokenData.access_token,
           broadcasterRefreshToken: tokenData.refresh_token,
           broadcasterTokenExpiry: tokenExpiry,
           broadcasterUsername: username,
           broadcasterProfileImageUrl: userInfo.profile_image_url,
+          broadcasterAvatarUrl: userInfo.profile_image_url,
           lastUpdated: new Date().toISOString(),
         };
         await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
@@ -238,10 +242,13 @@ export async function GET(request: NextRequest) {
             broadcasterTokenExpiry: tokenExpiry,
             broadcasterUsername: username,
             broadcasterProfileImageUrl: userInfo?.profile_image_url,
+            broadcasterAvatarUrl: userInfo?.profile_image_url,
             // Keep login token in sync to prevent stale refresh tokens
             loginToken: tokenData.access_token,
             loginRefreshToken: tokenData.refresh_token,
             loginTokenExpiry: tokenExpiry,
+            loginProfileImageUrl: userInfo?.profile_image_url,
+            loginAvatarUrl: userInfo?.profile_image_url,
           }
         : isBot
           ? {
@@ -249,6 +256,8 @@ export async function GET(request: NextRequest) {
               botRefreshToken: tokenData.refresh_token,
               botTokenExpiry: tokenExpiry,
               botUsername: username,
+              botProfileImageUrl: userInfo?.profile_image_url,
+              botAvatarUrl: userInfo?.profile_image_url,
             }
           : {}),
       lastUpdated: new Date().toISOString(),

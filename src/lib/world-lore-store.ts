@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
+import { globalPath } from './tenant';
 
 export type WorldLoreCharacter = {
   stableId: string;
@@ -46,20 +47,27 @@ export type WorldLore = {
 };
 
 function getWorldLoreFilePath(): string {
-  return resolve(process.cwd(), 'data', 'runtime', 'global', 'world-lore.json');
+  return globalPath('world-lore.json');
+}
+
+function getDefaultWorldLoreFilePath(): string {
+  return resolve(process.cwd(), 'src', 'data', 'world-lore-default.json');
 }
 
 export async function readWorldLore(): Promise<WorldLore | null> {
-  try {
-    const raw = await fs.readFile(getWorldLoreFilePath(), 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.worldId !== 'string') {
-      return null;
+  for (const filePath of [getWorldLoreFilePath(), getDefaultWorldLoreFilePath()]) {
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.worldId !== 'string') {
+        continue;
+      }
+      return parsed as WorldLore;
+    } catch {
+      // Try the next source.
     }
-    return parsed as WorldLore;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 export async function formatWorldLoreForPrompt(): Promise<string> {
@@ -121,4 +129,4 @@ export async function formatWorldLoreForPrompt(): Promise<string> {
   return lines.join('\n');
 }
 
-export { getWorldLoreFilePath };
+export { getWorldLoreFilePath, getDefaultWorldLoreFilePath };
