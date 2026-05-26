@@ -8,6 +8,7 @@ import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
 import { generateImageWithPerchance } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
+import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { z } from 'zod';
 
 const imageSchema = z.object({
@@ -75,7 +76,13 @@ export async function POST(request: NextRequest) {
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId || parsed.data.tenantId;
 
-    const genMode = await getGenMode(tenantId);
+    // Resolve effective mode: prefer tenant gen-settings (UI source of truth),
+    // fall back to legacy gen-mode.json toggled by !genmode.
+    const [settingsMode, legacyMode] = await Promise.all([
+      readGenerationSettings(tenantId).then((s) => s.mode).catch(() => undefined),
+      getGenMode(tenantId).catch(() => 'eden' as const),
+    ]);
+    const genMode = settingsMode || legacyMode;
     const generator = genMode === 'seaart' ? generateImageWithSeaArt : genMode === 'perchance' ? generateImageWithPerchance : generateImageWithEdenAI;
     const result = await generator({
       prompt: parsed.data.prompt,
