@@ -162,7 +162,11 @@ export function DiscordChannelSettings() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <Label>Provider mode</Label>
-                  <Input value={genSettings.mode} onChange={(e) => setGenSettings(prev => ({ ...prev, mode: (e.target.value as any) }))} placeholder="eden | seaart | perchance" />
+                  <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={genSettings.mode} onChange={(e) => setGenSettings(prev => ({ ...prev, mode: e.target.value as GenerationSettings['mode'] }))}>
+                    <option value="eden">eden</option>
+                    <option value="seaart">seaart</option>
+                    <option value="perchance">perchance</option>
+                  </select>
                   <p className="text-xs text-muted-foreground mt-1">Active generator backend default.</p>
                 </div>
                 <div>
@@ -181,11 +185,17 @@ export function DiscordChannelSettings() {
                 </div>
                 <div>
                   <Label>LoRA strength</Label>
-                  <Input type="number" step="0.1" value={genSettings.loraStrength} onChange={(e) => setGenSettings(prev => ({ ...prev, loraStrength: Number(e.target.value) || 0 }))} />
+                  <Input type="number" step="0.1" min={0} max={2} value={genSettings.loraStrength} onChange={(e) => setGenSettings(prev => ({ ...prev, loraStrength: Number(e.target.value) || 0 }))} />
+                  <p className="text-xs text-muted-foreground mt-1">Range: 0.0 to 2.0</p>
                 </div>
                 <div>
                   <Label>Image count (1-4)</Label>
-                  <Input type="number" min={1} max={4} value={genSettings.imageCount} onChange={(e) => setGenSettings(prev => ({ ...prev, imageCount: Number(e.target.value) || 1 }))} />
+                  <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={genSettings.imageCount} onChange={(e) => setGenSettings(prev => ({ ...prev, imageCount: Number(e.target.value) || 1 }))}>
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                  </select>
                 </div>
                 <div>
                   <Label>Resolution</Label>
@@ -193,16 +203,23 @@ export function DiscordChannelSettings() {
                 </div>
                 <div>
                   <Label>Steps</Label>
-                  <Input type="number" value={genSettings.steps} onChange={(e) => setGenSettings(prev => ({ ...prev, steps: Number(e.target.value) || 30 }))} />
+                  <Input type="number" min={1} max={150} value={genSettings.steps} onChange={(e) => setGenSettings(prev => ({ ...prev, steps: Number(e.target.value) || 30 }))} />
+                  <p className="text-xs text-muted-foreground mt-1">Typical: 20-40</p>
                 </div>
                 <div>
                   <Label>CFG</Label>
-                  <Input type="number" step="0.1" value={genSettings.cfg} onChange={(e) => setGenSettings(prev => ({ ...prev, cfg: Number(e.target.value) || 7 }))} />
+                  <Input type="number" step="0.1" min={1} max={30} value={genSettings.cfg} onChange={(e) => setGenSettings(prev => ({ ...prev, cfg: Number(e.target.value) || 7 }))} />
+                  <p className="text-xs text-muted-foreground mt-1">Range: 1 to 30</p>
                 </div>
                 <div className="col-span-2">
                   <Label>Seed</Label>
                   <Input type="number" value={genSettings.seed} onChange={(e) => setGenSettings(prev => ({ ...prev, seed: Number(e.target.value) || 0 }))} />
                 </div>
+              </div>
+              <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-1">
+                <div className="font-medium">Effective !img defaults preview</div>
+                <div>mode={genSettings.mode} | model={genSettings.model || "(provider default)"} | lora={genSettings.lora || "(none)"}</div>
+                <div>count={genSettings.imageCount} | resolution={genSettings.resolution} | steps={genSettings.steps} | cfg={genSettings.cfg} | seed={genSettings.seed || 0}</div>
               </div>
               <DialogFooter>
                 <Button

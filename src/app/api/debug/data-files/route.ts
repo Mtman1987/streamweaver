@@ -11,7 +11,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { isAdmin, listTenants, tenantPath } from '@/lib/tenant';
 import { globalPath } from '@/lib/tenant';
 
-type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit' | 'fly-logs';
+type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit' | 'fly-logs' | 'gen-mode' | 'gen-settings' | 'dm-sweep-state' | 'generated-images-index';
 
 function filterAuditRecords(records: unknown[], username?: string): unknown[] {
   const normalizedUser = String(username || '').trim().replace(/^@/, '').toLowerCase();
@@ -28,6 +28,11 @@ function resolveFilePath(file: FileKey, tenantId?: string): string {
   if (file === 'point-settings') return getUserDataPath('point-settings.json', tenantId);
   if (file === 'channel-point-rewards') return getUserDataPath('channel-point-rewards.json', tenantId);
   if (file === 'fly-logs') return globalPath('fly-logs.txt');
+
+  if (file === 'gen-mode') return tenantId ? tenantPath(tenantId, 'data/gen-mode.json') : globalPath('data/gen-mode.json');
+  if (file === 'gen-settings') return tenantId ? tenantPath(tenantId, 'data/gen-settings.json') : globalPath('data/gen-settings.json');
+  if (file === 'dm-sweep-state') return tenantId ? tenantPath(tenantId, 'data/discord-dm-sweep-state.json') : globalPath('data/discord-dm-sweep-state.json');
+  if (file === 'generated-images-index') return tenantId ? tenantPath(tenantId, 'data/generated-images/index.json') : globalPath('data/generated-images/index.json');
   if (file === 'shoutout-audit') return tenantId
     ? tenantPath(tenantId, 'logs/shoutout-audit.json')
     : path.resolve(process.cwd(), 'logs', 'shoutout-audit.json');
@@ -57,8 +62,8 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const file = (url.searchParams.get('file') || '').toLowerCase() as FileKey;
 
-    if (!['actions', 'commands', 'private-chat', 'public-chat', 'points', 'point-settings', 'channel-point-rewards', 'shoutout-audit', 'fly-logs'].includes(file)) {
-      return apiError('Invalid file. Use ?file=actions, ?file=commands, ?file=private-chat, ?file=public-chat, ?file=points, ?file=point-settings, ?file=channel-point-rewards, ?file=shoutout-audit, or ?file=fly-logs', { status: 400, code: 'INVALID_QUERY' });
+    if (!['actions', 'commands', 'private-chat', 'public-chat', 'points', 'point-settings', 'channel-point-rewards', 'shoutout-audit', 'fly-logs', 'gen-mode', 'gen-settings', 'dm-sweep-state', 'generated-images-index'].includes(file)) {
+      return apiError('Invalid file. Use ?file=actions, ?file=commands, ?file=private-chat, ?file=public-chat, ?file=points, ?file=point-settings, ?file=channel-point-rewards, ?file=shoutout-audit, ?file=fly-logs, ?file=gen-mode, ?file=gen-settings, ?file=dm-sweep-state, or ?file=generated-images-index', { status: 400, code: 'INVALID_QUERY' });
     }
 
     const session = getTenantFromRequest(request);
