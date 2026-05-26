@@ -211,30 +211,32 @@ export async function uploadBinaryFileToDiscord(
     mimeType: string,
     payload?: { content?: string; embeds?: Record<string, unknown>[] },
 ): Promise<Record<string, unknown>> {
-    const token = process.env.DISCORD_BOT_TOKEN;
-    if (!token) throw new Error('DISCORD_BOT_TOKEN is not configured');
+    return enqueueDiscordRequest(async () => {
+        const token = process.env.DISCORD_BOT_TOKEN;
+        if (!token) throw new Error('DISCORD_BOT_TOKEN is not configured');
 
-    await throttleDiscordRequest();
+        await throttleDiscordRequest();
 
-    const formData = new FormData();
-    const bytes = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength) as unknown as BlobPart;
-    const blob = new Blob([bytes], { type: mimeType });
-    formData.append('files[0]', blob, fileName);
-    if (payload) {
-        formData.append('payload_json', JSON.stringify(payload));
-    }
+        const formData = new FormData();
+        const bytes = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength) as unknown as BlobPart;
+        const blob = new Blob([bytes], { type: mimeType });
+        formData.append('files[0]', blob, fileName);
+        if (payload) {
+            formData.append('payload_json', JSON.stringify(payload));
+        }
 
-    const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bot ${token}` },
-        body: formData,
+        const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bot ${token}` },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new DiscordApiError(response.status, text);
+        }
+        return await response.json();
     });
-
-    if (!response.ok) {
-        const text = await response.text();
-        throw new DiscordApiError(response.status, text);
-    }
-    return await response.json();
 }
 
 export async function deleteMessage(channelId: string, messageId: string): Promise<void> {

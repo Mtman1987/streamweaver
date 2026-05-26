@@ -172,11 +172,11 @@ export default function TTSPlayer() {
     const url = playing ? avatar.talkingUrl : avatar.idleUrl;
     if (avatar.animationType === 'mp4') {
       return <video key={url} src={url} autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        onError={(e) => { if (playing && avatar.talkingUrl !== avatar.idleUrl) (e.currentTarget as HTMLVideoElement).src = avatar.idleUrl; }} />;
+        onError={(e) => { const el = e.currentTarget; if (playing && avatar.talkingUrl !== avatar.idleUrl && el.src !== avatar.idleUrl) el.src = avatar.idleUrl; }} />;
     }
     if (avatar.animationType === 'gif') {
       return <img key={url} src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        onError={(e) => { if (playing && avatar.talkingUrl !== avatar.idleUrl) (e.currentTarget as HTMLImageElement).src = avatar.idleUrl; }} />;
+        onError={(e) => { const el = e.currentTarget; if (playing && avatar.talkingUrl !== avatar.idleUrl && el.src !== avatar.idleUrl) el.src = avatar.idleUrl; }} />;
     }
     return null;
   };
