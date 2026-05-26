@@ -14,6 +14,15 @@ export function getEnvironmentAppUrl(): string {
   return getAppUrlForEnvironment(process.env.NODE_ENV === 'production' ? 'production' : 'development');
 }
 
+export function getRuntimeAppUrl(): string {
+  const loopbackPort = new URL(getAppUrlForEnvironment('loopback')).port;
+  const runtimePort = process.env.PORT || process.env.NEXT_PUBLIC_STREAMWEAVE_PORT;
+  const environment = process.env.NODE_ENV === 'production' && runtimePort !== loopbackPort
+    ? 'production'
+    : 'development';
+  return getAppUrlForEnvironment(environment);
+}
+
 export function getLoopbackAppUrl(port?: string | number | null): string {
   const loopbackUrl = new URL(getAppUrlForEnvironment('loopback'));
   const normalizedPort = port === undefined || port === null ? '' : String(port).trim();
