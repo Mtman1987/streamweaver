@@ -64,9 +64,11 @@ export async function POST(request: NextRequest) {
       },
     });
     let username = '';
+    let profileImageUrl = '';
     if (userResponse.ok) {
       const userData = await userResponse.json();
       username = userData.data[0]?.login || '';
+      profileImageUrl = userData.data[0]?.profile_image_url || '';
     }
 
     // Community bot — admin-only, global storage
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest) {
         broadcasterRefreshToken: tokenData.refresh_token,
         broadcasterTokenExpiry: tokenExpiry,
         broadcasterUsername: username,
+        broadcasterProfileImageUrl: profileImageUrl,
       } : isBot ? {
         botToken: tokenData.access_token,
         botRefreshToken: tokenData.refresh_token,

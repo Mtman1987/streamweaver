@@ -65,7 +65,7 @@ export async function getWebhookForChannel(channelId: string): Promise<WebhookDa
   return webhooks[channelId] || null;
 }
 
-export async function sendWebhookMessage(channelId: string, message: string, username?: string, avatarUrl?: string): Promise<void> {
+export async function sendWebhookMessage(channelId: string, message: string, username?: string, avatarUrl?: string, embeds?: Record<string, unknown>[]): Promise<void> {
   let webhook = await getWebhookForChannel(channelId);
   
   // Create webhook if it doesn't exist
@@ -78,14 +78,21 @@ export async function sendWebhookMessage(channelId: string, message: string, use
 
   if (!webhook) throw new Error('Failed to create webhook');
 
+  const body: Record<string, unknown> = {
+    username: username || webhook.username,
+    avatar_url: avatarUrl || webhook.avatarUrl
+  };
+  if (embeds?.length) {
+    body.content = '';
+    body.embeds = embeds;
+  } else {
+    body.content = message;
+  }
+
   const response = await fetch(webhook.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: message,
-      username: username || webhook.username,
-      avatar_url: avatarUrl || webhook.avatarUrl
-    })
+    body: JSON.stringify(body)
   });
 
   if (!response.ok) {
