@@ -75,3 +75,40 @@ export async function generateImageWithEdenAI(options: ImageGenerationOptions): 
 
   return result;
 }
+
+export async function generateImageWithSeaArt(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
+  if (!token) throw new Error('SEAART_TOKEN not configured');
+
+  const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai/api';
+  const endpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/task/text2img';
+  const taskResultEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/task/result';
+
+  const create = await fetch(`${base}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      Cookie: `T=${token}`,
+      'Content-Type': 'application/json',
+      Origin: 'https://www.seaart.ai',
+      Referer: 'https://www.seaart.ai/',
+    },
+    body: JSON.stringify({ prompt: options.prompt }),
+  });
+  const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
+  if (!create.ok) throw new Error(`SeaArt create failed: ${create.status} ${JSON.stringify(createData).slice(0, 300)}`);
+  const taskId = createData?.taskId || createData?.data?.taskId;
+  if (!taskId) throw new Error('SeaArt create returned no taskId');
+
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    const statusRes = await fetch(`${base}${taskResultEndpoint}?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { Cookie: `T=${token}` },
+    });
+    const statusData = await statusRes.json().catch(async () => ({ error: await statusRes.text().catch(() => '') }));
+    const status = statusData?.status || statusData?.data?.status;
+    if (status === 'success') return extractImageResult(statusData);
+    if (status === 'failed') throw new Error('SeaArt task failed');
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  throw new Error('SeaArt task timed out');
+}

@@ -8,6 +8,7 @@ import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotS
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
+import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -211,6 +212,60 @@ export async function POST(request: NextRequest) {
     if (isDirectMessage) {
       if (!tenantId) {
         return apiOk({ success: true, botResponded: false, error: 'tenant-not-found' });
+      }
+
+      const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
+      const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|status))?$/i);
+      if (genModeMatch) {
+        const action = (genModeMatch[1] || '').toLowerCase();
+        const mode = action === 'eden' || action === 'seaart'
+          ? await setGenMode(action, tenantId)
+          : action === 'status'
+            ? await getGenMode(tenantId)
+            : await toggleGenMode(tenantId);
+        if (channelId) await sendDiscordBotMessage(channelId, `Generation mode: ${mode.toUpperCase()}`);
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-genmode', mode });
+      }
+      if (imgMatch) {
+        const prompt = (imgMatch[1] || '').trim();
+        if (!prompt) {
+          if (channelId) {
+            const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+            await sendDiscordBotMessage(channelId, `Usage: !img <description>\nImage library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`);
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
+        }
+
+        const port = process.env.PORT || 3100;
+        if (channelId) {
+          await sendDiscordBotMessage(channelId, "I'm processing your image now, Commander.");
+        }
+        const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, tenantId, numImages: 1 }),
+        });
+
+        if (!imageRes.ok) {
+          if (channelId) {
+            await sendDiscordBotMessage(channelId, 'Image generation failed. Try again in a moment.');
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'image-failed' });
+        }
+
+        const imageData = await imageRes.json();
+        const imageUrl = await maybeShortenUrl(imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '');
+        if (!imageUrl) {
+          if (channelId) {
+            await sendDiscordBotMessage(channelId, 'Image generation returned no image URL.');
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'empty-image' });
+        }
+
+        if (channelId) {
+          await sendDiscordBotMessage(channelId, imageUrl);
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', image: imageUrl });
       }
 
       const port = process.env.PORT || 3100;
@@ -487,9 +542,14 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
   if (!guildId) {
     try {
       const tenants = await listTenants();
+      if (tenants.length === 0) return undefined;
       if (tenants.length === 1) return tenants[0];
-      const adminTenant = tenants.includes('94371378') ? '94371378' : undefined;
-      if (adminTenant) return adminTenant;
+
+      // DM payloads may not include guild context; default to owner tenant for reliability.
+      // Owner requested hardcoded fallback routing when guild context is missing.
+      const ownerTenantId = '94371378';
+      if (tenants.includes(ownerTenantId)) return ownerTenantId;
+      return [...tenants].sort((a, b) => a.localeCompare(b))[0];
     } catch {}
     return undefined;
   }
@@ -522,6 +582,21 @@ function getAvatarUrl(tenantId?: string): string {
     return `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
   }
   return `${baseUrl}/api/avatars?type=idle&format=gif`;
+}
+
+async function maybeShortenUrl(url: string): Promise<string> {
+  const trimmed = String(url || '').trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.length <= 1900) return trimmed;
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  try {
+    const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(trimmed)}`);
+    if (!tinyRes.ok) return trimmed;
+    const tiny = (await tinyRes.text()).trim();
+    return /^https?:\/\//i.test(tiny) ? tiny : trimmed;
+  } catch {
+    return trimmed;
+  }
 }
 
 async function decideReplyMentionInteraction(input: {

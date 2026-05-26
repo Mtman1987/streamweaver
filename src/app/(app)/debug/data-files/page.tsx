@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit';
+type FileKey = 'actions' | 'commands' | 'private-chat' | 'public-chat' | 'points' | 'point-settings' | 'channel-point-rewards' | 'shoutout-audit' | 'fly-logs';
 
 type FileSnapshot = {
   file: FileKey;
@@ -138,6 +138,13 @@ export default function DebugDataFilesPage() {
               onClick={() => setSelected('shoutout-audit')}
             >
               shoutout-audit.json
+            </Button>
+            <Button
+              variant={selected === 'fly-logs' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelected('fly-logs')}
+            >
+              fly-logs.txt
             </Button>
             <Button variant="outline" size="sm" onClick={load}>
               Refresh now
