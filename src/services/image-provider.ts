@@ -80,9 +80,24 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
   if (!token) throw new Error('SEAART_TOKEN not configured');
 
-  const base = 'https://www.seaart.ai/api';
-  const createEndpoints = ['/task/text2img', '/v1/task/text2img', '/task/create/text2img', '/task/create'];
-  const taskResultEndpoints = ['/task/result', '/v1/task/result', '/task/status'];
+  const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai/api';
+  const createEndpoints = (
+    process.env.SEAART_TEXT2IMG_ENDPOINTS
+      || process.env.SEAART_TEXT2IMG_ENDPOINT
+      || '/task/text2img,/v1/task/text2img,/task/create/text2img,/task/create'
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const taskResultEndpoints = (
+    process.env.SEAART_TASK_RESULT_ENDPOINTS
+      || process.env.SEAART_TASK_RESULT_ENDPOINT
+      || '/task/result,/v1/task/result,/task/status'
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const headers = {
     Cookie: `T=${token}`,
@@ -132,7 +147,13 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
         continue;
       }
       const status = statusData?.status || statusData?.data?.status || statusData?.result?.status;
-      if (status === 'success') return extractImageResult(statusData);
+      if (status === 'success') {
+        const result = extractImageResult(statusData);
+        if (!result.image && !result.imageResourceUrl) {
+          throw new Error(`SeaArt task succeeded but returned no image: ${JSON.stringify(statusData).slice(0, 500)}`);
+        }
+        return result;
+      }
       if (status === 'failed') throw new Error('SeaArt task failed');
     }
     if (lastStatusError) {
@@ -144,20 +165,9 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
 }
 
 export async function generateImageWithPerchance(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
-  const generator = String(options.providerParams?.generator || 'ai-text-to-image').trim();
-  const count = Number(options.providerParams?.count || 1);
-  const prompt = String(options.prompt || '').trim();
-  if (!prompt) {
-    throw new Error('Perchance generation requires a non-empty prompt');
-  }
-  const params = new URLSearchParams({
-    generator,
-    count: String(Math.max(1, Math.min(4, count))),
-    prompt,
-    description: prompt,
-    text: prompt,
-  });
-  const endpoint = `https://perchance.org/api/generateList.php?${params.toString()}`;
+  const generator = String(options.providerParams?.generator || process.env.PERCHANCE_GENERATOR || 'ai-text-to-image').trim();
+  const count = Number(options.numImages || options.providerParams?.count || 1);
+  const endpoint = `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${Math.max(1, Math.min(4, count))}&prompt=${encodeURIComponent(options.prompt)}`;
 
   const response = await fetch(endpoint, { method: 'GET' });
   const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
