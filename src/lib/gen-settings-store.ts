@@ -38,7 +38,7 @@ export function getDefaultGenerationSettings(): GenerationSettings {
 function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
   const mode = input.mode === 'seaart' || input.mode === 'perchance' ? input.mode : 'eden';
   const imageCount = Math.max(1, Math.min(4, Number(input.imageCount || defaults.imageCount) || defaults.imageCount));
-  const loraStrength = Math.max(0, Math.min(2, Number(input.loraStrength || defaults.loraStrength) || defaults.loraStrength));
+  const loraStrength = Math.max(0, Math.min(2, Number(input.loraStrength ?? defaults.loraStrength) || 0));
   const steps = Math.max(1, Math.min(150, Number(input.steps || defaults.steps) || defaults.steps));
   const cfg = Math.max(1, Math.min(30, Number(input.cfg || defaults.cfg) || defaults.cfg));
   const seed = Math.max(0, Math.floor(Number(input.seed || 0) || 0));
