@@ -9,6 +9,9 @@ export async function GET(request: NextRequest, { params }: { params: { name: st
   if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
     return NextResponse.json({ error: 'invalid file' }, { status: 400 });
   }
+  if (tenantId && !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+    return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
+  }
   const filePath = tenantId ? tenantPath(tenantId, `data/generated-images/${name}`) : `${process.cwd()}/data/generated-images/${name}`;
   try {
     const data = await fs.readFile(filePath);
