@@ -457,14 +457,48 @@ export async function checkDmChannelActivity(): Promise<void> {
                 const botName = '▶ Athena';
                 const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
                 const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;
-                await sendDiscordEmbed(dmChannelId, {
+                const embedMsg = await sendDiscordEmbed(dmChannelId, {
                     embeds: [{
                         description: reply,
-                        image: { url: botAvatar },
+                        thumbnail: { url: botAvatar },
                         author: { name: botName, icon_url: botAvatar, url: ttsUrl },
                         color: 0x5865F2,
                     }],
                 });
+
+                // Native Discord MP3 TTS: generate audio and attach as playable file
+                const embedMsgId = typeof embedMsg?.id === 'string' ? embedMsg.id : '';
+                if (embedMsgId) {
+                    try {
+                        const { generateTTS } = await import('./tts-provider');
+                        const { editDiscordMessage, uploadBinaryFileToDiscord } = require('./discord-local');
+                        const audioDataUri = await generateTTS(reply.slice(0, 500), undefined, tenantId);
+                        const base64Match = audioDataUri.match(/^data:audio\/[^;]+;base64,(.+)$/);
+                        if (base64Match) {
+                            const mp3Buffer = Buffer.from(base64Match[1], 'base64');
+                            const audioMsg = await uploadBinaryFileToDiscord(dmChannelId, mp3Buffer, 'athena-tts.mp3', 'audio/mpeg', {
+                                embeds: [{
+                                    description: '🔊 Voice response attached above',
+                                    color: 0x57F287,
+                                }],
+                            });
+                            const audioMsgId = typeof audioMsg?.id === 'string' ? audioMsg.id : '';
+                            if (audioMsgId) {
+                                await editDiscordMessage(dmChannelId, embedMsgId, {
+                                    embeds: [{
+                                        description: reply,
+                                        thumbnail: { url: botAvatar },
+                                        author: { name: `${botName} 🔊`, icon_url: botAvatar, url: ttsUrl },
+                                        color: 0x5865F2,
+                                        footer: { text: '🔊 Audio attached below' },
+                                    }],
+                                });
+                            }
+                        }
+                    } catch (ttsErr) {
+                        console.warn(`[DM Sweep:${tenantId}] Native TTS failed (non-blocking):`, ttsErr);
+                    }
+                }
             } catch (error) {
                 console.warn(`[DM Sweep:${tenantId}] Failed to process DM message`, error);
             }

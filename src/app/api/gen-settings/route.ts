@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   const session = getTenantFromRequest(request);
   const saved = await writeGenerationSettings(parsed.data, session?.tenantId);
   if (parsed.data.mode) {
-    await setGenMode(parsed.data.mode, session?.tenantId).catch(() => {});
+    await setGenMode(parsed.data.mode, session?.tenantId).catch((err) => console.warn('[gen-settings] setGenMode sync failed:', err));
   }
   return apiOk(saved);
 }
