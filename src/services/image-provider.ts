@@ -75,3 +75,91 @@ export async function generateImageWithEdenAI(options: ImageGenerationOptions): 
 
   return result;
 }
+
+export async function generateImageWithSeaArt(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
+  if (!token) throw new Error('SEAART_TOKEN not configured');
+
+  const base = 'https://www.seaart.ai/api';
+  const createEndpoints = ['/task/text2img', '/v1/task/text2img', '/task/create/text2img', '/task/create'];
+  const taskResultEndpoints = ['/task/result', '/v1/task/result', '/task/status'];
+
+  const headers = {
+    Cookie: `T=${token}`,
+    'Content-Type': 'application/json',
+    Origin: 'https://www.seaart.ai',
+    Referer: 'https://www.seaart.ai/',
+  };
+
+  let taskId = '';
+  let createErrorSummary = '';
+  let createEndpointUsed = '';
+  for (const endpoint of createEndpoints) {
+    const create = await fetch(`${base}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt: options.prompt }),
+    });
+    const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
+    if (!create.ok) {
+      createErrorSummary = `${endpoint} -> ${create.status} ${JSON.stringify(createData).slice(0, 180)}`;
+      continue;
+    }
+    taskId = createData?.taskId || createData?.data?.taskId || createData?.result?.taskId || '';
+    if (taskId) {
+      createEndpointUsed = endpoint;
+      break;
+    }
+    createErrorSummary = `${endpoint} -> ok but no taskId (${JSON.stringify(createData).slice(0, 180)})`;
+  }
+
+  if (!taskId) {
+    throw new Error(`SeaArt create failed across endpoints. Last error: ${createErrorSummary || 'unknown'}`);
+  }
+
+  console.info(`[SeaArt] create endpoint succeeded: ${createEndpointUsed}`);
+
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    let lastStatusError = '';
+    for (const statusEndpoint of taskResultEndpoints) {
+      const statusRes = await fetch(`${base}${statusEndpoint}?taskId=${encodeURIComponent(taskId)}`, {
+        headers: { Cookie: `T=${token}` },
+      });
+      const statusData = await statusRes.json().catch(async () => ({ error: await statusRes.text().catch(() => '') }));
+      if (!statusRes.ok) {
+        lastStatusError = `${statusEndpoint} -> ${statusRes.status} ${JSON.stringify(statusData).slice(0, 180)}`;
+        continue;
+      }
+      const status = statusData?.status || statusData?.data?.status || statusData?.result?.status;
+      if (status === 'success') return extractImageResult(statusData);
+      if (status === 'failed') throw new Error('SeaArt task failed');
+    }
+    if (lastStatusError) {
+      console.info(`[SeaArt] status probe (pending/fallback): ${lastStatusError}`);
+    }
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  throw new Error('SeaArt task timed out');
+}
+
+export async function generateImageWithPerchance(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  const generator = String(options.providerParams?.generator || 'ai-text-to-image').trim();
+  const count = Number(options.providerParams?.count || 1);
+  const endpoint = `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${Math.max(1, Math.min(4, count))}`;
+
+  const response = await fetch(endpoint, { method: 'GET' });
+  const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+  if (!response.ok) {
+    throw new Error(`Perchance generation failed: ${response.status} ${JSON.stringify(data).slice(0, 500)}`);
+  }
+
+  const first = Array.isArray(data) ? String(data[0] || '').trim() : '';
+  const urlMatch = first.match(/https?:\/\/\S+/i);
+  const image = urlMatch ? urlMatch[0] : first;
+  if (!image) {
+    throw new Error(`Perchance returned no usable image output: ${JSON.stringify(data).slice(0, 500)}`);
+  }
+
+  return { image, raw: data };
+}

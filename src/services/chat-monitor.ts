@@ -5,6 +5,7 @@ import { resolve } from 'path';
 import { handleDiscordMessage } from './chat-dispatcher';
 import { tenantPath } from '../lib/tenant';
 import { isDiscordApiError } from './discord-local';
+import { readGenerationSettings } from '@/lib/gen-settings-store';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -16,7 +17,36 @@ const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId', tenantId?: string): Promise<string | null> {
+function isDiscordEmbeddableImageUrl(value: unknown): value is string {
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > 2048) return false;
+    if (!/^https?:\/\//i.test(trimmed)) return false;
+    try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+async function maybeShortenUrl(url: string): Promise<string> {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return trimmed;
+    if (trimmed.length <= 1900) return trimmed;
+    if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+    try {
+        const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(trimmed)}`);
+        if (!tinyRes.ok) return trimmed;
+        const tiny = (await tinyRes.text()).trim();
+        if (!tiny || !/^https?:\/\//i.test(tiny)) return trimmed;
+        return tiny;
+    } catch {
+        return trimmed;
+    }
+}
+
+async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId' | 'dmChannelId', tenantId?: string): Promise<string | null> {
     const SETTINGS_FILE = tenantId 
         ? tenantPath(tenantId, 'tokens/discord-channels.json')
         : resolve(process.cwd(), 'tokens', 'discord-channels.json');
@@ -205,6 +235,257 @@ export async function checkChatActivity() {
         // Silently handle errors to prevent spam
     }
 }
+
+
+
+async function getDmSweepStatePath(tenantId: string): Promise<string> {
+    return tenantPath(tenantId, 'data/discord-dm-sweep-state.json');
+}
+
+async function loadDmLastMessageId(tenantId: string): Promise<string | null> {
+    try {
+        const raw = await fs.readFile(await getDmSweepStatePath(tenantId), 'utf-8');
+        const parsed = JSON.parse(raw);
+        return typeof parsed?.lastMessageId === 'string' ? parsed.lastMessageId : null;
+    } catch {
+        return null;
+    }
+}
+
+async function saveDmLastMessageId(tenantId: string, lastMessageId: string): Promise<void> {
+    try {
+        const statePath = await getDmSweepStatePath(tenantId);
+        await fs.mkdir(resolve(statePath, '..'), { recursive: true });
+        await fs.writeFile(statePath, JSON.stringify({ lastMessageId }, null, 2), 'utf-8');
+    } catch {}
+}
+
+let dmSweepStarted = false;
+
+export async function checkDmChannelActivity(): Promise<void> {
+    if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
+    const { listTenants } = await import('../lib/tenant');
+    const { getChannelMessages } = require('./discord');
+    const { sendDiscordMessage, sendDiscordEmbed } = require('./discord-local');
+    const { getGenMode, setGenMode, toggleGenMode } = await import('../lib/gen-mode-store');
+
+    for (const tenantId of await listTenants()) {
+        const dmChannelId = await getDiscordChannelId('dmChannelId', tenantId);
+        if (!dmChannelId || !dmChannelId.trim()) continue;
+
+        const stateKey = `dm:${tenantId}`;
+        if (!lastDiscordMessageId.has(stateKey)) {
+            const saved = await loadDmLastMessageId(tenantId);
+            lastDiscordMessageId.set(stateKey, saved);
+        }
+
+        let messages: any[] = [];
+        try {
+            messages = await getChannelMessages(dmChannelId, 20);
+        } catch {
+            continue;
+        }
+        if (!messages?.length) continue;
+
+        const lastId = lastDiscordMessageId.get(stateKey);
+        if (!lastId) {
+            // First-run bootstrap: don't silently drop a fresh command message.
+            // If the newest message is user-authored and looks like a DM command,
+            // process it once before establishing baseline.
+            const newest = messages[0];
+            if (newest?.content && !newest?.author?.bot) {
+                const newestText = String(newest.content).trim();
+                if (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img ')) {
+                    console.log(`[DM Sweep:${tenantId}] First-run processing newest !img command:`, newestText.slice(0, 120));
+                    const port = process.env.PORT || 3100;
+                    const prompt = newestText.replace(/^!img\s*/i, '').trim();
+                    if (!prompt) {
+                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
+                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
+                    } else {
+                        try {
+                            await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
+                    const genDefaults = await readGenerationSettings(tenantId);
+                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+            prompt,
+            tenantId,
+            model: genDefaults.model || undefined,
+            resolution: genDefaults.resolution || undefined,
+            numImages: genDefaults.imageCount || 1,
+            providerParams: {
+              lora: genDefaults.lora || undefined,
+              loraStrength: genDefaults.loraStrength,
+              steps: genDefaults.steps,
+              cfg: genDefaults.cfg,
+              seed: genDefaults.seed,
+            },
+          }),
+                            });
+                            if (!imageRes.ok) {
+                                const errText = await imageRes.text().catch(() => '');
+                                console.warn(`[DM Sweep:${tenantId}] !img failed:`, imageRes.status, errText.slice(0, 200));
+                                await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
+                            } else {
+                                const imageData = await imageRes.json();
+                                const imageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
+                                if (imageUrl) {
+                                    await sendDiscordMessage(dmChannelId, imageUrl);
+                                } else {
+                                    await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
+                                }
+                            }
+                        } catch (error) {
+                            console.warn(`[DM Sweep:${tenantId}] !img exception:`, error);
+                        }
+                    }
+                }
+            }
+
+            lastDiscordMessageId.set(stateKey, messages[0].id);
+            await saveDmLastMessageId(tenantId, messages[0].id);
+            continue;
+        }
+
+        const newMessages: any[] = [];
+        for (const msg of messages) {
+            if (msg.id === lastId) break;
+            newMessages.push(msg);
+        }
+
+        for (const msg of newMessages.reverse()) {
+            if (!msg?.content || msg?.author?.bot) continue;
+            const port = process.env.PORT || 3100;
+            const messageText = String(msg.content || '').trim();
+            try {
+                if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
+                    const prompt = messageText.replace(/^!img\s*/i, '').trim();
+                    if (!prompt) {
+                        const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
+                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
+                        continue;
+                    }
+                    await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
+                    const genDefaults = await readGenerationSettings(tenantId);
+                    const imageRes = await fetch(`http://127.0.0.1:${port}/api/ai/image`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+            prompt,
+            tenantId,
+            model: genDefaults.model || undefined,
+            resolution: genDefaults.resolution || undefined,
+            numImages: genDefaults.imageCount || 1,
+            providerParams: {
+              lora: genDefaults.lora || undefined,
+              loraStrength: genDefaults.loraStrength,
+              steps: genDefaults.steps,
+              cfg: genDefaults.cfg,
+              seed: genDefaults.seed,
+            },
+          }),
+                    });
+                    if (!imageRes.ok) {
+                        const errText = await imageRes.text().catch(() => '');
+                        console.warn(`[DM Sweep:${tenantId}] !img failed:`, imageRes.status, errText.slice(0, 400));
+                        await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
+                        continue;
+                    }
+                    const imageData = await imageRes.json();
+                    const rawImageUrl = imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '';
+                    if (!rawImageUrl) {
+                        console.warn(`[DM Sweep:${tenantId}] !img returned empty image payload:`, JSON.stringify(imageData).slice(0, 400));
+                        await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
+                        continue;
+                    }
+                    const imageUrl = await maybeShortenUrl(String(rawImageUrl).trim());
+                    const embeddableImageUrl = isDiscordEmbeddableImageUrl(imageUrl) ? imageUrl : null;
+                    const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                    const botName = '▶ Athena';
+                    const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
+                    const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(prompt.slice(0, 500))}`;
+                    if (embeddableImageUrl) {
+                        await sendDiscordEmbed(dmChannelId, {
+                            embeds: [{
+                                title: '🎨 Image Generated',
+                                description: prompt,
+                                image: { url: embeddableImageUrl },
+                                thumbnail: { url: botAvatar },
+                                author: { name: botName, icon_url: botAvatar, url: ttsUrl },
+                                color: 0x5865F2,
+                            }],
+                        });
+                    } else {
+                        console.warn(`[DM Sweep:${tenantId}] !img returned non-embeddable URL (len=${imageUrl.length}); sending link only.`);
+                        await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
+                    }
+                    continue;
+                }
+
+                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
+                if (genModeMatch) {
+                    const action = (genModeMatch[1] || '').toLowerCase();
+                    const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
+                        ? await setGenMode(action, tenantId)
+                        : action === 'status'
+                            ? await getGenMode(tenantId)
+                            : await toggleGenMode(tenantId);
+                    await sendDiscordMessage(dmChannelId, `Generation mode: ${String(mode).toUpperCase()}`);
+                    continue;
+                }
+
+                const res = await fetch(`http://127.0.0.1:${port}/api/private-chat/respond`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: msg.author?.global_name || msg.author?.username || 'DiscordUser',
+                        message: msg.content,
+                        tenantId,
+                        historyLimit: 30,
+                    }),
+                });
+                if (!res.ok) continue;
+                const data = await res.json();
+                const reply = data.response || data.data?.response || '';
+                if (!reply) continue;
+
+                const baseUrl = process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://streamweaver-new.fly.dev';
+                const botName = '▶ Athena';
+                const botAvatar = `${baseUrl}/api/avatars?type=idle&format=gif&tenant=${tenantId}`;
+                const ttsUrl = `${baseUrl}/tts/player?tenantId=${encodeURIComponent(tenantId)}&text=${encodeURIComponent(reply.slice(0, 500))}`;
+                await sendDiscordEmbed(dmChannelId, {
+                    embeds: [{
+                        description: reply,
+                        image: { url: botAvatar },
+                        author: { name: botName, icon_url: botAvatar, url: ttsUrl },
+                        color: 0x5865F2,
+                    }],
+                });
+            } catch (error) {
+                console.warn(`[DM Sweep:${tenantId}] Failed to process DM message`, error);
+            }
+        }
+
+        if (messages[0]?.id && messages[0].id !== lastId) {
+            lastDiscordMessageId.set(stateKey, messages[0].id);
+            await saveDmLastMessageId(tenantId, messages[0].id);
+        }
+    }
+}
+
+export function startDmChannelSweeper() {
+    if (dmSweepStarted) return;
+    dmSweepStarted = true;
+    setInterval(() => {
+        checkDmChannelActivity().catch(() => {});
+    }, 120000);
+}
+
+startDmChannelSweeper();
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';

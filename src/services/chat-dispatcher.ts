@@ -2084,6 +2084,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (!isBot && !self && !(await isKnownBot(actualUsername, tenantId))) {
             const lowerMessage = actualMessage.toLowerCase();
             console.log(`[Dispatcher] Non-command message from ${actualUsername}, checking mentions. lowerMessage: "${lowerMessage.slice(0, 80)}"`);
+
+            // Guardrail: in channels that are NOT the broadcaster's own channel,
+            // Athena should only respond when the broadcaster themself is speaking.
+            const isOwnChannel = replyChannel.toLowerCase() === (broadcasterUsername || '').toLowerCase();
+            const isBroadcasterSpeaker = actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase();
+            if (!isOwnChannel && !isBroadcasterSpeaker) {
+                return;
+            }
             
             // Check for shoutout command (without bot name)
             // Skip messages that look like the formatted shoutout output to prevent re-triggering

@@ -126,6 +126,13 @@ export async function sendDiscordMessage(channelId: string, message: string): Pr
     });
 }
 
+export async function sendDiscordEmbed(channelId: string, options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[] }): Promise<void> {
+    await discordRequest(`/channels/${channelId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(options),
+    });
+}
+
 export async function getDiscordUser(userId: string): Promise<{ username: string; avatarUrl: string } | null> {
     try {
         const user = await discordRequest(`/users/${userId}`);
