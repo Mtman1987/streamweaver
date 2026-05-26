@@ -13,7 +13,7 @@ import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
-import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity } from '@/services/discord-branding';
+import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 
@@ -452,6 +452,7 @@ export async function POST(request: NextRequest) {
           await buildDiscordBotEmbed({
             description: aiReply,
             tenantId: botTenantId || tenantId || undefined,
+            botName,
           }),
         ]);
         discordReplySent = true;
@@ -486,6 +487,7 @@ export async function POST(request: NextRequest) {
           speakerReply: aiReply,
           decision: followUpDecision,
           tenantId: botTenantId || tenantId || undefined,
+          maxReplies: randomCrossBotReplyBudget() - 1,
         }).catch((error) => console.error('[Discord Chat] Cross-bot target reply failed:', error));
         await recordDiscordMessageCleanup({
           tenantId: botTenantId || tenantId || undefined,
@@ -834,6 +836,7 @@ async function sendCrossBotTargetReplies(input: {
   speakerReply: string;
   decision: Awaited<ReturnType<typeof decideBotInteraction>>;
   tenantId?: string;
+  maxReplies: number;
 }): Promise<string[]> {
   const decision = input.decision;
   if (!decision?.shouldRespond || !decision.targets.length) {
@@ -861,7 +864,7 @@ async function sendCrossBotTargetReplies(input: {
 
   const responded = new Set<string>();
   const queue = [...decision.targets];
-  const MAX_CHAIN = 6;
+  const MAX_CHAIN = Math.min(6, Math.max(0, Math.floor(input.maxReplies)));
   let count = 0;
   const allSentIds: string[] = [];
   let lastSpeakerId = decision.speaker.stableId;
@@ -873,7 +876,7 @@ async function sendCrossBotTargetReplies(input: {
     if (responded.has(target.stableId)) continue;
     responded.add(target.stableId);
 
-    const targetTenantId = tenantIdFromStableId(target.stableId);
+    const targetTenantId = await resolveDiscordBotTenantId(target.currentName, tenantIdFromStableId(target.stableId));
     const targetPersonality = [
       `You are ${target.currentName}.`,
       target.archetype ? `Archetype: ${target.archetype}.` : '',
@@ -926,6 +929,7 @@ async function sendCrossBotTargetReplies(input: {
         await buildDiscordBotEmbed({
           description: reply,
           tenantId: targetTenantId,
+          botName: target.currentName,
         }),
       ]);
     } catch (webhookError) {
@@ -963,6 +967,10 @@ async function sendCrossBotTargetReplies(input: {
   }
 
   return allSentIds;
+}
+
+function randomCrossBotReplyBudget(): number {
+  return 1 + Math.floor(Math.random() * 4);
 }
 
 function tenantIdFromStableId(stableId: string): string | undefined {
