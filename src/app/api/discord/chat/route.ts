@@ -17,7 +17,6 @@ import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity, resolveDiscordBotTe
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 
-const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -266,9 +265,6 @@ export async function POST(request: NextRequest) {
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
       const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
-      if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (imgMatch || genModeMatch)) {
-        return apiOk({ success: true, botResponded: false, tenantId, context: 'private-image-dev-mode' });
-      }
       if (genModeMatch) {
         const action = (genModeMatch[1] || '').toLowerCase();
         const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
@@ -279,7 +275,7 @@ export async function POST(request: NextRequest) {
         if (channelId) await sendDiscordBotMessage(channelId, `Generation mode: ${mode.toUpperCase()}`);
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-genmode', mode });
       }
-      if (DISCORD_DM_IMAGE_COMMANDS_ENABLED && imgMatch) {
+      if (imgMatch) {
         const prompt = (imgMatch[1] || '').trim();
         if (!prompt) {
           if (channelId) {
