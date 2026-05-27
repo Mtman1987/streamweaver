@@ -19,7 +19,7 @@ let isLoadingHistory: Map<string, boolean> = new Map();
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
+
 
 function isDiscordEmbeddableImageUrl(value: unknown): value is string {
     if (typeof value !== 'string') return false;
@@ -264,7 +264,6 @@ async function saveDmLastMessageId(tenantId: string, lastMessageId: string): Pro
     } catch {}
 }
 
-let dmSweepStarted = false;
 
 export async function checkDmChannelActivity(): Promise<void> {
     if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
@@ -299,7 +298,7 @@ export async function checkDmChannelActivity(): Promise<void> {
             const newest = messages[0];
             if (newest?.content && !newest?.author?.bot) {
                 const newestText = String(newest.content).trim();
-                if (DISCORD_DM_IMAGE_COMMANDS_ENABLED && (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img '))) {
+                if (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img ')) {
                     console.log(`[DM Sweep:${tenantId}] First-run processing newest !img command:`, newestText.slice(0, 120));
                     const prompt = newestText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
@@ -363,7 +362,7 @@ export async function checkDmChannelActivity(): Promise<void> {
             if (!msg?.content || msg?.author?.bot) continue;
             const messageText = String(msg.content || '').trim();
             try {
-                if (DISCORD_DM_IMAGE_COMMANDS_ENABLED && (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img '))) {
+                if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
                     const prompt = messageText.replace(/^!img\s*/i, '').trim();
                     if (!prompt) {
                         const baseUrl = getConfiguredAppUrl();
@@ -428,14 +427,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     }
                     continue;
                 }
-                if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img '))) {
-                    continue;
-                }
-
                 const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
-                if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && genModeMatch) {
-                    continue;
-                }
                 if (genModeMatch) {
                     const action = (genModeMatch[1] || '').toLowerCase();
                     const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
@@ -483,19 +475,6 @@ export async function checkDmChannelActivity(): Promise<void> {
         }
     }
 }
-
-export function startDmChannelSweeper() {
-    if (dmSweepStarted) return;
-    dmSweepStarted = true;
-    setInterval(() => {
-        checkDmChannelActivity().catch(() => {});
-    }, 120000);
-}
-
-// NOTE: startDmChannelSweeper() should be called explicitly by the server
-// entrypoint (see server.ts STEP 5). Do not invoke it as a side effect of
-// module import — that causes the sweeper to start during build-time
-// analysis and via unrelated importers (e.g. websocket connection handler).
 
 export function getCachedChatHistory(tenantId?: string): ChatHistoryMessage[] {
     const key = tenantId || 'global';
