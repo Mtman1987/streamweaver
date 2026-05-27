@@ -94,7 +94,7 @@ export async function toggleBotShareMode(tenantId?: string): Promise<BotShareMod
 }
 
 export async function resetAllBotShareModes(): Promise<void> {
-  const { listTenants, globalPath } = await import('@/lib/tenant');
+  const { listTenants } = await import('@/lib/tenant');
 
   const markerFile = globalPath('migrations/bot-share-per-tenant-v1.done');
   try {
