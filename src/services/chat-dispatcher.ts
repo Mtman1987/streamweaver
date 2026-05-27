@@ -65,74 +65,120 @@ async function sendTwitchCrossBotFollowUp(input: {
         const { getBotShareMode, appendBotInteraction } = await import('../lib/bot-interactions-store');
         if (await getBotShareMode(input.speakerTenantId) !== 'on') return;
 
+        if (await isKnownBot(input.userName.toLowerCase(), input.speakerTenantId)) return;
+
+        const { isBotTriggerIgnored } = require('../lib/bot-trigger-ignore-store');
+
         const { readWorldLore } = await import('../lib/world-lore-store');
         const lore = await readWorldLore();
-        const characters = Object.values(lore?.characters || {});
+        const characters = Object.values(lore?.characters || {}) as any[];
         if (!characters.length) return;
 
-        const replyLower = input.speakerReply.toLowerCase();
+        const replyLower = `${input.triggerMessage}\n${input.speakerReply}`.toLowerCase();
         const speakerId = input.speakerStableId || '';
-        const targets = characters.filter((character: any) => {
-            if (character.stableId === speakerId) return false;
-            const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])]
-                .filter(Boolean)
-                .map((value: string) => value.toLowerCase());
-            return names.some((name: string) => new RegExp(`(^|[^a-z0-9_])@?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9_]|$)`, 'i').test(replyLower));
-        });
-        if (!targets.length) return;
 
-        const target: any = targets[0];
-        const targetTenantId = await resolveTenantForLoreBot(target, input.speakerTenantId);
-        const targetPersonality = [
-            `You are ${target.currentName}.`,
-            target.archetype ? `Archetype: ${target.archetype}.` : '',
-            target.summary || '',
-            target.personalityNotes?.length ? target.personalityNotes.join(' ') : '',
-            'Stay in this bot identity for this single Twitch follow-up.',
-        ].filter(Boolean).join('\n');
-        const prompt = [
-            'Cross-bot follow-up on Twitch.',
-            `${input.speakerName} replied: "${input.speakerReply}"`,
-            `${input.userName} originally asked: "${input.triggerMessage}"`,
-            'Answer as yourself in 1 short Twitch-friendly sentence. Do not impersonate the other bot. Do not keep the chain going.',
-        ].join('\n');
+        const findTargets = (text: string, excludeIds: Set<string>) => {
+            return characters.filter((character: any) => {
+                if (speakerId && character.stableId === speakerId) return false;
+                if (excludeIds.has(character.stableId)) return false;
+                const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])]
+                    .filter(Boolean)
+                    .map((value: string) => value.toLowerCase());
+                return names.some((name: string) => new RegExp(`(^|[^a-z0-9_])@?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9_]|$)`, 'i').test(text));
+            });
+        };
 
-        const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                username: input.userName,
-                message: prompt,
-                personality: targetPersonality,
-                responseName: target.currentName,
-                tenantId: targetTenantId,
-                context: 'twitch-cross-bot',
-            }),
-        });
-        if (!response.ok) {
-            console.error('[Dispatcher] Twitch cross-bot AI failed:', response.status, await response.text().catch(() => ''));
-            return;
+        const tenantFromStableId = (stableId: string): string | undefined => {
+            const [prefix] = stableId.split(':');
+            if (!prefix || prefix === 'unknown' || prefix === 'discordUserId' || prefix === 'twitchUserId') return undefined;
+            return prefix;
+        };
+
+        const allFound = findTargets(replyLower, new Set());
+        const initialTargets: any[] = [];
+        for (const t of allFound) {
+            if (!(await isBotTriggerIgnored({ tenantId: tenantFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
+                initialTargets.push(t);
+            }
         }
+        if (!initialTargets.length) return;
 
-        const data = await response.json();
-        const reply = data.response?.trim() || data.data?.response?.trim() || '';
-        if (!reply) return;
+        const responded = new Set<string>();
+        const queue = [...initialTargets];
+        const MAX_CHAIN = 6;
+        let count = 0;
+        let lastSpeakerName = input.speakerName;
+        let lastSpeakerId = speakerId;
+        let lastReply = input.speakerReply;
 
-        await sendChatMessage(reply, 'bot', input.channel, targetTenantId).catch((error) => {
-            console.error('[Dispatcher] Twitch cross-bot send failed:', error);
-        });
-        await appendBotInteraction({
-            platform: 'twitch',
-            tenantId: targetTenantId,
-            channelId: input.channel,
-            sourceUser: input.userName,
-            speakerBotId: target.stableId,
-            speakerBotName: target.currentName,
-            targetBotIds: speakerId ? [speakerId] : [],
-            targetBotNames: [input.speakerName],
-            triggerMessage: input.triggerMessage,
-            responseMessage: reply,
-        }).catch(() => {});
+        while (queue.length > 0 && count < MAX_CHAIN) {
+            const target: any = queue.shift();
+            if (responded.has(target.stableId)) continue;
+            responded.add(target.stableId);
+
+            const targetTenantId = await resolveTenantForLoreBot(target, input.speakerTenantId);
+            const targetPersonality = [
+                `You are ${target.currentName}.`,
+                target.archetype ? `Archetype: ${target.archetype}.` : '',
+                target.summary || '',
+                target.personalityNotes?.length ? target.personalityNotes.join(' ') : '',
+                'Stay in this bot identity for this single Twitch follow-up.',
+            ].filter(Boolean).join('\n');
+            const prompt = [
+                'Cross-bot follow-up on Twitch.',
+                `${lastSpeakerName} replied: "${lastReply}"`,
+                `${input.userName} originally asked: "${input.triggerMessage}"`,
+                'Answer as yourself in 1 short Twitch-friendly sentence. Do not impersonate the other bot. Do not keep the chain going.',
+            ].join('\n');
+
+            const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: input.userName,
+                    message: prompt,
+                    personality: targetPersonality,
+                    responseName: target.currentName,
+                    tenantId: targetTenantId,
+                    context: 'twitch-cross-bot',
+                }),
+            });
+            if (!response.ok) {
+                console.error('[Dispatcher] Twitch cross-bot AI failed:', response.status, await response.text().catch(() => ''));
+                continue;
+            }
+
+            const data = await response.json();
+            const reply = data.response?.trim() || data.data?.response?.trim() || '';
+            if (!reply) continue;
+
+            await sendChatMessage(reply, 'bot', input.channel, targetTenantId).catch((error) => {
+                console.error('[Dispatcher] Twitch cross-bot send failed:', error);
+            });
+            await appendBotInteraction({
+                platform: 'twitch',
+                tenantId: targetTenantId,
+                channelId: input.channel,
+                sourceUser: input.userName,
+                speakerBotId: target.stableId,
+                speakerBotName: target.currentName,
+                targetBotIds: lastSpeakerId ? [lastSpeakerId] : [],
+                targetBotNames: [lastSpeakerName],
+                triggerMessage: input.triggerMessage,
+                responseMessage: reply,
+            }).catch(() => {});
+            count++;
+            lastSpeakerId = target.stableId;
+            lastSpeakerName = target.currentName;
+            lastReply = reply;
+
+            const newTargets = findTargets(reply.toLowerCase(), responded);
+            for (const t of newTargets) {
+                if (!(await isBotTriggerIgnored({ tenantId: tenantFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
+                    queue.push(t);
+                }
+            }
+        }
     } catch (error) {
         console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error);
     }
@@ -2125,8 +2171,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
         }
         
-        // Check if message mentions bot (allow from anyone except bot itself, known bots, and skip self messages)
-        if (!isBot && !self && !(await isKnownBot(actualUsername, tenantId))) {
+        // Check if message mentions bot (allow from anyone except bot itself and skip self messages)
+        // Known bots are allowed through when botshare is on so bots can interact in shared chat
+        const userIsKnownBot = await isKnownBot(actualUsername, tenantId);
+        const { getBotShareMode: checkBotShareMode } = require('../lib/bot-interactions-store');
+        const botShareEnabled = userIsKnownBot && (await checkBotShareMode(tenantId)) === 'on';
+        if (!isBot && !self && (!userIsKnownBot || botShareEnabled)) {
             const lowerMessage = actualMessage.toLowerCase();
             console.log(`[Dispatcher] Non-command message from ${actualUsername}, checking mentions. lowerMessage: "${lowerMessage.slice(0, 80)}"`);
 
@@ -2140,7 +2190,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (hasResolvedBroadcaster) {
                 const isOwnChannel = replyChannel.toLowerCase() === resolvedBroadcaster;
                 const isBroadcasterSpeaker = actualUsername.toLowerCase() === resolvedBroadcaster;
-                if (!isOwnChannel && !isBroadcasterSpeaker) {
+                if (!isOwnChannel && !isBroadcasterSpeaker && !botShareEnabled) {
                     return;
                 }
             } else {
@@ -2149,8 +2199,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             
             // Check for shoutout command (without bot name)
             // Skip messages that look like the formatted shoutout output to prevent re-triggering
+            // Skip shoutout processing for known bots to prevent automated messages from triggering shoutouts
             const isShoutoutOutput = lowerMessage.includes('go check out') && lowerMessage.includes('twitch.tv/');
-            if (!isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
+            if (!botShareEnabled && !isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
                 console.log('[Dispatcher] Shoutout command detected');
                 try {
                     const chattersResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/chat/chatters`);

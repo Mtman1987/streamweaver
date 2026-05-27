@@ -202,12 +202,6 @@ export async function decideBotInteraction(input: {
   }
   if (!allowedTargets.length) return null;
 
-  const hasExplicitInteraction = /\b(ask|tell|talk to|reply to|say to|what does|what would|banter|argue with|check on|message|send|find out)\b/i.test(input.message);
-  const hasDirectMentionPair = characterTriggers(speaker).some((trigger) => triggerMatches(messageLower, trigger))
-    && allowedTargets.some((target) => characterTriggers(target).some((trigger) => triggerMatches(messageLower, trigger)));
-  const hasRelationshipReference = inferredTargets.length > 0;
-  if (!hasExplicitInteraction && !hasDirectMentionPair && !hasRelationshipReference) return null;
-
   const recent = await formatBotInteractionHistoryForPrompt(6);
   const targetNames = allowedTargets.map((target) => target.currentName).join(', ');
   const promptInstruction = [
@@ -220,7 +214,7 @@ export async function decideBotInteraction(input: {
 
   return {
     shouldRespond: true,
-    reason: hasRelationshipReference ? 'relationship-cross-bot-mention' : 'explicit-cross-bot-mention',
+    reason: inferredTargets.length > 0 ? 'relationship-cross-bot-mention' : 'explicit-cross-bot-mention',
     speaker,
     targets: allowedTargets,
     promptInstruction,
