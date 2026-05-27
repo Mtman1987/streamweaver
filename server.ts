@@ -99,6 +99,15 @@ async function startServer() {
             console.warn('[Server] Tenant re-bootstrap failed:', e);
         }
 
+        // Reset all bot share modes to off (safety: per-tenant scoping migration)
+        try {
+            const { resetAllBotShareModes } = require('./src/lib/bot-interactions-store');
+            await resetAllBotShareModes();
+            console.log('[Server] ✅ All bot share modes reset to off');
+        } catch (e) {
+            console.warn('[Server] Bot share mode reset skipped:', e);
+        }
+
         const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig?.server?.host || '127.0.0.1');
         const uiPort = Number(process.env.PORT || appConfig?.server?.port || (isProductionRuntime ? 3000 : 3100));
         const wsPort = Number(process.env.WS_PORT || appConfig?.server?.wsPort || 8090);
