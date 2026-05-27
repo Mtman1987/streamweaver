@@ -94,17 +94,22 @@ export async function toggleBotShareMode(tenantId?: string): Promise<BotShareMod
 }
 
 export async function resetAllBotShareModes(): Promise<void> {
-  const { listTenants } = await import('@/lib/tenant');
+  const { listTenants, globalPath } = await import('@/lib/tenant');
+
+  const markerFile = globalPath('migrations/bot-share-per-tenant-v1.done');
+  try {
+    await fs.access(markerFile);
+    return; // already migrated
+  } catch {}
+
   const tenantIds = await listTenants();
   for (const tid of tenantIds) {
     await setBotShareMode('off', tid);
   }
-  // Also reset the global file
-  const globalFile = modeFilePath(undefined);
-  try {
-    await fs.mkdir(resolve(globalFile, '..'), { recursive: true });
-    await fs.writeFile(globalFile, JSON.stringify({ mode: 'off' }, null, 2));
-  } catch {}
+  await setBotShareMode('off', undefined);
+
+  await fs.mkdir(resolve(markerFile, '..'), { recursive: true });
+  await fs.writeFile(markerFile, new Date().toISOString());
 }
 
 export async function readBotInteractionHistory(limit = 10): Promise<BotInteractionEntry[]> {
