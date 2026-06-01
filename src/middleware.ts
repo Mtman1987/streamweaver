@@ -5,6 +5,7 @@ const PUBLIC_PATHS = [
   '/auth/',
   '/api/auth/',
   '/api/__health',
+  '/api/health',
   '/api/session',
   '/overlay/',
   '/xpn/',
@@ -45,7 +46,7 @@ function isPublicApiRequest(request: NextRequest): boolean {
   const hasTenant = Boolean(searchParams.get('tenant'));
 
   if (pathname.startsWith('/api/auth/')) return true;
-  if (pathname === '/api/__health' || pathname === '/api/session') return true;
+  if (pathname === '/api/__health' || pathname === '/api/health' || pathname === '/api/session') return true;
   if (pathname === '/api/discord/chat') return true;
   if (pathname === '/api/kick/chat-tag-broadcast') return true;
 
