@@ -45,11 +45,21 @@ async function saveActionToFile(action: any, tenantId?: string): Promise<void> {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  
+
   const filename = `${action.name.replace(/[^a-zA-Z0-9]/g, '_')}_${action.id}.json`;
   const filepath = path.join(dir, filename);
   
   fs.writeFileSync(filepath, JSON.stringify(action, null, 2));
+
+  if (action?.id) {
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith('.json') || file === '_metadata.json') continue;
+      const candidate = path.join(dir, file);
+      if (candidate !== filepath && file.includes(String(action.id))) {
+        fs.unlinkSync(candidate);
+      }
+    }
+  }
 }
 
 // Export action for sharing
@@ -103,29 +113,72 @@ export type CreateActionInput = {
   name: string;
   group?: string;
   enabled?: boolean;
-};
+} & Partial<Action> & Record<string, any>;
 
 export async function createAction(input: CreateActionInput, tenantId?: string): Promise<Action> {
   const now = new Date().toISOString();
   const id = randomUUID();
   const created: any = {
+    ...input,
     id,
     name: input.name.trim() || 'Untitled Action',
     enabled: input.enabled ?? false,
     group: input.group?.trim() || undefined,
-    alwaysRun: false,
-    randomAction: false,
-    concurrent: false,
-    excludeFromHistory: false,
-    excludeFromPending: false,
-    triggers: [],
-    subActions: [],
+    alwaysRun: input.alwaysRun ?? false,
+    randomAction: input.randomAction ?? false,
+    concurrent: input.concurrent ?? false,
+    excludeFromHistory: input.excludeFromHistory ?? false,
+    excludeFromPending: input.excludeFromPending ?? false,
+    queue: input.queue,
+    triggers: Array.isArray(input.triggers) ? input.triggers : [],
+    subActions: Array.isArray(input.subActions) ? input.subActions : [],
     createdAt: now,
     updatedAt: now,
   };
   
   await saveActionToFile(created, tenantId);
   return normalizeAction(created);
+}
+
+export async function duplicateAction(id: string, tenantId?: string): Promise<Action | null> {
+  const current = await getActionById(id, tenantId);
+  if (!current) return null;
+
+  return createAction({
+    ...current,
+    id: undefined,
+    name: `${current.name} Copy`,
+    enabled: false,
+  } as any, tenantId);
+}
+
+export async function replaceActions(actions: any[], tenantId?: string): Promise<number> {
+  const dir = getActionsDir(tenantId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  for (const file of fs.readdirSync(dir)) {
+    if (file.endsWith('.json') && file !== '_metadata.json') {
+      fs.unlinkSync(path.join(dir, file));
+    }
+  }
+
+  let count = 0;
+  const now = new Date().toISOString();
+  for (const raw of actions) {
+    if (!raw || typeof raw !== 'object') continue;
+    const id = String((raw as any).id || randomUUID());
+    const next = normalizeAction({
+      ...(raw as any),
+      id,
+      createdAt: (raw as any).createdAt ?? now,
+      updatedAt: (raw as any).updatedAt ?? now,
+    });
+    await saveActionToFile(next, tenantId);
+    count += 1;
+  }
+  return count;
 }
 
 export async function updateAction(id: string, updates: Partial<Action>, tenantId?: string): Promise<Action | null> {

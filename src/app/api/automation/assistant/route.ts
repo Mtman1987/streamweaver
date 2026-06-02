@@ -91,6 +91,49 @@ function isRpsChallengePrompt(message: string): boolean {
   ) || lower.includes('best 2 out of 3') || lower.includes('best of 3') || lower.includes('rps');
 }
 
+function isCodePrompt(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('generate code') ||
+    lower.includes('write code') ||
+    lower.includes('create code') ||
+    lower.includes('code for') ||
+    lower.includes('c# code') ||
+    lower.includes('javascript code') ||
+    lower.includes('python code')
+  );
+}
+
+function buildCodeFallback(message: string): AssistantAutomationResponse {
+  const lower = message.toLowerCase();
+  const language = lower.includes('c#') ? 'csharp' : lower.includes('python') ? 'python' : 'javascript';
+  const wantsTime = lower.includes('time') || lower.includes('date');
+  const code =
+    language === 'csharp'
+      ? wantsTime
+        ? 'using System;\n\npublic class CPHInline\n{\n    public bool Execute()\n    {\n        CPH.SetArgument("currentTime", DateTime.Now.ToString("h:mm tt"));\n        return true;\n    }\n}'
+        : '// Add your Streamer.bot C# logic here.\nreturn true;'
+      : language === 'python'
+        ? wantsTime
+          ? 'from datetime import datetime\n\ncurrent_time = datetime.now().strftime("%I:%M %p")\nprint(current_time)'
+          : '# Add your automation logic here\nprint("done")'
+        : wantsTime
+          ? 'const currentTime = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });\nreturn currentTime;'
+          : 'return "done";';
+
+  return {
+    assistantMessage: 'I drafted a code snippet. Review it before using it in a live command.',
+    codeSnippets: [
+      {
+        language,
+        code,
+        description: wantsTime ? 'Gets the current local time.' : 'Starter automation snippet.',
+      },
+    ],
+    suggestedChanges: ['Test the snippet with a manual run before attaching it to a live command.'],
+  };
+}
+
 function buildRpsAutomationDraft(_message: string, selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
   const triggers = [...asWorkflowArray(currentWorkflow?.triggers)];
   if (selectedCommandId && !triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)) {
@@ -293,7 +336,9 @@ export async function POST(request: NextRequest) {
     const { message, selectedCommandId, currentWorkflow, tenantId, userName } = parsed.data;
     const aiConfig = getAIConfig(tenantId);
 
-  const fallback = await buildFallbackAutomation(message, selectedCommandId, currentWorkflow);
+    const fallback = isCodePrompt(message)
+      ? buildCodeFallback(message)
+      : await buildFallbackAutomation(message, selectedCommandId, currentWorkflow);
     const prompt = [
       'You are StreamWeaver AI Automation Assistant.',
       'Return strict JSON only, no markdown fences.',
@@ -329,6 +374,10 @@ export async function POST(request: NextRequest) {
       responseText = await generateAIResponse(prompt, 'You are a concise automation planner.', tenantId);
     } catch (error) {
       console.warn('[Automation Assistant] AI generation failed, using fallback:', error);
+      return apiOk(fallback);
+    }
+
+    if (!responseText.trim() || responseText.trim() === 'AI response failed') {
       return apiOk(fallback);
     }
 

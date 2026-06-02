@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, Download, FileJson, Check, AlertCircle } from 'lucide-react';
+import { Upload, Download, FileJson } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function CommunityPage() {
@@ -12,9 +12,9 @@ export default function CommunityPage() {
   const [actions, setActions] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importType, setImportType] = useState<'command' | 'action'>('command');
+  const [importType, setImportType] = useState<'command' | 'action' | 'bundle'>('command');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [cmdRes, actRes] = await Promise.all([
         fetch('/api/commands'),
@@ -29,9 +29,11 @@ export default function CommunityPage() {
     } catch {
       toast({ variant: 'destructive', title: 'Failed to load data' });
     }
-  };
+  }, [toast]);
 
-  if (!loaded) loadData();
+  useEffect(() => {
+    if (!loaded) void loadData();
+  }, [loadData, loaded]);
 
   const handleExport = (type: 'command' | 'action', item: any) => {
     const json = JSON.stringify(item, null, 2);
@@ -58,7 +60,24 @@ export default function CommunityPage() {
     toast({ title: `All ${type} exported`, description: `${data.length} items` });
   };
 
-  const handleImportClick = (type: 'command' | 'action') => {
+  const handleExportBundle = () => {
+    const json = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      commands,
+      actions,
+    }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `streamweaver-automation-pack-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Automation pack exported', description: `${commands.length} commands, ${actions.length} actions` });
+  };
+
+  const handleImportClick = (type: 'command' | 'action' | 'bundle') => {
     setImportType(type);
     fileInputRef.current?.click();
   };
@@ -70,14 +89,40 @@ export default function CommunityPage() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
+
+      if (importType === 'bundle') {
+        const ok = window.confirm('Importing an automation pack replaces your current commands and actions. Continue?');
+        if (!ok) return;
+        const res = await fetch('/api/state/import?mode=replace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            version: parsed?.version ?? 1,
+            commands: Array.isArray(parsed?.commands) ? parsed.commands : [],
+            actions: Array.isArray(parsed?.actions) ? parsed.actions : [],
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error || 'Automation pack import failed');
+        }
+        const result = await res.json();
+        toast({
+          title: 'Automation pack imported',
+          description: `${result?.imported?.commands ?? 0} commands, ${result?.imported?.actions ?? 0} actions`,
+        });
+        setLoaded(false);
+        return;
+      }
+
       const items = Array.isArray(parsed) ? parsed : [parsed];
 
       let imported = 0;
       for (const item of items) {
         const endpoint = importType === 'command' ? '/api/commands' : '/api/actions';
         const body = importType === 'command'
-          ? { name: item.name || item.command || 'Imported', command: item.command || '!imported', group: item.group, enabled: item.enabled ?? true }
-          : { name: item.name || 'Imported Action', group: item.group, enabled: item.enabled ?? false };
+          ? { ...item, name: item.name || item.command || 'Imported', command: item.command || '!imported', group: item.group, enabled: item.enabled ?? true }
+          : { ...item, name: item.name || 'Imported Action', group: item.group, enabled: item.enabled ?? false };
 
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -99,10 +144,22 @@ export default function CommunityPage() {
   return (
     <div className="space-y-6 pb-8">
       <div>
-        <h1 className="text-2xl font-bold">Community Sharing</h1>
-        <p className="text-muted-foreground mt-1">
-          Export your commands and actions as JSON files to share with other streamers, or import theirs.
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Community Sharing</h1>
+            <p className="text-muted-foreground mt-1">
+              Export single items or full automation packs with commands, triggers, actions, and sub-actions intact.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => handleImportClick('bundle')}>
+              <Upload className="h-4 w-4 mr-2" /> Import Pack
+            </Button>
+            <Button onClick={handleExportBundle}>
+              <Download className="h-4 w-4 mr-2" /> Export Pack
+            </Button>
+          </div>
+        </div>
       </div>
 
       <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileImport} />

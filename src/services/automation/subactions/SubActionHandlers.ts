@@ -398,6 +398,15 @@ export class MediaHandlers {
     const finishBeforeContinuing = subAction.finishBeforeContinuing || false;
     
     try {
+      if (typeof Audio === 'undefined') {
+        (globalThis as any).broadcast?.({
+          type: 'play-sound',
+          payload: { soundFile, volume, finishBeforeContinuing },
+        });
+        console.log(`[Media] Requested sound playback: ${soundFile} at ${volume}`);
+        return { success: true, variables: { soundFile } };
+      }
+
       // In browser, we can use the Audio API
       const audio = new Audio(soundFile);
       audio.volume = volume;

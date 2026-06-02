@@ -104,11 +104,21 @@ async function saveCommandToFile(command: any, tenantId?: string): Promise<void>
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  
+
   const filename = `${command.command.replace(/[^a-zA-Z0-9]/g, '_')}_${command.id}.json`;
   const filepath = path.join(dir, filename);
   
   fs.writeFileSync(filepath, JSON.stringify(command, null, 2));
+
+  if (command?.id) {
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith('.json') || file === '_metadata.json') continue;
+      const candidate = path.join(dir, file);
+      if (candidate !== filepath && file.includes(String(command.id))) {
+        fs.unlinkSync(candidate);
+      }
+    }
+  }
 }
 
 // Export command for sharing
@@ -163,30 +173,32 @@ export type CreateCommandInput = {
   command: string;
   group?: string;
   enabled?: boolean;
-};
+} & Partial<Command> & Record<string, any>;
 
 export async function createCommand(input: CreateCommandInput, tenantId?: string): Promise<Command> {
   const now = new Date().toISOString();
   const id = randomUUID();
+  const cooldown = (input.cooldown && typeof input.cooldown === 'object' ? input.cooldown : {}) as any;
   const next: Command = {
+    ...(input as any),
     id,
     name: input.name.trim() || input.command.trim(),
     enabled: input.enabled ?? true,
     command: input.command.trim(),
-    mode: 0,
-    location: 0,
-    ignoreBotAccount: false,
-    ignoreInternal: false,
-    sources: 1,
-    persistCounter: false,
-    persistUserCounter: false,
-    caseSensitive: false,
-    globalCooldown: 0,
-    userCooldown: 0,
+    mode: input.mode ?? (input.regex ? 1 : 0),
+    location: input.location ?? 0,
+    ignoreBotAccount: input.ignoreBotAccount ?? false,
+    ignoreInternal: input.ignoreInternal ?? false,
+    sources: input.sources ?? 1,
+    persistCounter: input.persistCounter ?? false,
+    persistUserCounter: input.persistUserCounter ?? false,
+    caseSensitive: input.caseSensitive ?? false,
+    globalCooldown: Number(input.globalCooldown ?? cooldown.global ?? 0) || 0,
+    userCooldown: Number(input.userCooldown ?? cooldown.user ?? 0) || 0,
     group: input.group?.trim() || undefined,
-    grantType: 0,
-    permittedUsers: [],
-    permittedGroups: [],
+    grantType: input.grantType ?? 0,
+    permittedUsers: Array.isArray(input.permittedUsers) ? input.permittedUsers : [],
+    permittedGroups: Array.isArray(input.permittedGroups) ? input.permittedGroups : [],
   };
 
   const commandWithTimestamps = {
@@ -199,12 +211,64 @@ export async function createCommand(input: CreateCommandInput, tenantId?: string
   return next;
 }
 
-export async function updateCommand(id: string, updates: Partial<CreateCommandInput>, tenantId?: string): Promise<Command | null> {
+export async function duplicateCommand(id: string, tenantId?: string): Promise<Command | null> {
   const current = await getCommandById(id, tenantId);
   if (!current) return null;
 
+  const baseCommand = String((current as any).command || '!command');
+  const copyCommand = `${baseCommand}-copy`;
+  return createCommand({
+    ...(current as any),
+    id: undefined,
+    name: `${current.name || baseCommand} Copy`,
+    command: copyCommand.startsWith('!') ? copyCommand : `!${copyCommand}`,
+    enabled: false,
+  } as any, tenantId);
+}
+
+export async function replaceCommands(commands: any[], tenantId?: string): Promise<number> {
+  const dir = getCommandsDir(tenantId);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  for (const file of fs.readdirSync(dir)) {
+    if (file.endsWith('.json') && file !== '_metadata.json') {
+      fs.unlinkSync(path.join(dir, file));
+    }
+  }
+
+  let count = 0;
+  const now = new Date().toISOString();
+  for (const raw of commands) {
+    if (!raw || typeof raw !== 'object') continue;
+    const commandText = String((raw as any).command || (raw as any).trigger || '').trim();
+    if (!commandText) continue;
+    const next = {
+      ...(raw as any),
+      id: String((raw as any).id || randomUUID()),
+      name: String((raw as any).name || commandText),
+      command: commandText,
+      enabled: (raw as any).enabled ?? true,
+      createdAt: (raw as any).createdAt ?? now,
+      updatedAt: (raw as any).updatedAt ?? now,
+    };
+    await saveCommandToFile(next, tenantId);
+    count += 1;
+  }
+  return count;
+}
+
+export async function updateCommand(id: string, updates: Partial<CreateCommandInput>, tenantId?: string): Promise<Command | null> {
+  const current = await getCommandById(id, tenantId);
+  if (!current) return null;
+  const definedUpdates = Object.fromEntries(
+    Object.entries(updates as any).filter(([, value]) => value !== undefined)
+  );
+
   const next = {
     ...current,
+    ...definedUpdates,
     ...(updates.name != null ? { name: updates.name } : {}),
     ...(updates.command != null ? { command: updates.command } : {}),
     ...(updates.group != null ? { group: updates.group } : {}),

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { NextRequest } from 'next/server';
 import { getChannelMessages } from '@/services/discord';
 import { addLTMEntry } from '@/lib/ltm-store';
 import { apiError, apiOk } from '@/lib/api-response';
+import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -37,11 +37,8 @@ async function condenseChatHistory(channelId: string): Promise<{ title: string; 
     
     if (!chatHistory) return null;
     
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
-    if (!apiKey) throw new Error('Missing API key');
-    
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const aiConfig = getAIConfig();
+    if (!aiConfig.apiKey) throw new Error('Missing API key');
     
     const prompt = `Analyze this conversation and create a Long Term Memory (LTM) entry:
 
@@ -55,8 +52,7 @@ Format your response as:
 TITLE: [your title here]
 CONTENT: [your 5-10 sentence summary here]`;
     
-    const result = await model.generateContent(prompt);
-    const response = result.response.text()?.trim();
+    const response = (await generateAIResponse(prompt, 'You condense streamer chat history into durable memory entries.'))?.trim();
     
     if (!response) return null;
     

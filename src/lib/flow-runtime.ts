@@ -61,6 +61,7 @@ const nodeExecutors: Record<string, NodeExecutor> = {
     const response = await context.services.conversationalResponse({
       message: input,
       personality,
+      tenantId: context.tenantId,
     });
     const saveKey = node.data?.saveAs || 'aiResponse';
     context.vars[saveKey] = response.response;

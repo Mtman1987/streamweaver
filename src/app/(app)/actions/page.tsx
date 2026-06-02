@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, MoreHorizontal, PlusCircle, Zap, Play, Pause, Settings } from "lucide-react";
 import { useActionsData } from "@/hooks/use-actions-data";
 import { useToast } from "@/hooks/use-toast";
+import { deleteActionClient, duplicateActionClient, runActionClient, updateActionClient } from "@/lib/client-actions";
 
 export default function ActionsPage() {
   const { actions, isLoading, error, refresh } = useActionsData();
@@ -61,6 +62,50 @@ export default function ActionsPage() {
       });
     } finally {
       setIsSavingShoutoutMode(false);
+    }
+  };
+
+  const handleRunAction = async (id: string) => {
+    try {
+      const result = await runActionClient(id);
+      toast({
+        title: result.success ? "Action ran" : "Action finished with failures",
+        description: result.actionName,
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Run failed", description: e?.message || String(e) });
+    }
+  };
+
+  const handleDuplicateAction = async (id: string) => {
+    try {
+      const duplicated = await duplicateActionClient(id);
+      toast({ title: "Action duplicated", description: duplicated.name });
+      await refresh();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Duplicate failed", description: e?.message || String(e) });
+    }
+  };
+
+  const handleToggleAction = async (id: string, enabled: boolean) => {
+    try {
+      await updateActionClient(id, { enabled });
+      toast({ title: enabled ? "Action enabled" : "Action disabled" });
+      await refresh();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Toggle failed", description: e?.message || String(e) });
+    }
+  };
+
+  const handleDeleteAction = async (id: string) => {
+    const ok = window.confirm("Delete this action?");
+    if (!ok) return;
+    try {
+      await deleteActionClient(id);
+      toast({ title: "Action deleted" });
+      await refresh();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Delete failed", description: e?.message || String(e) });
     }
   };
 
@@ -291,11 +336,20 @@ export default function ActionsPage() {
                               Edit
                             </Link>
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleRunAction(action.id)}>
+                            <Play className="mr-2 h-4 w-4" />
+                            Run
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={refresh}>Refresh</DropdownMenuItem>
-                          <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
-                          <DropdownMenuItem disabled>{action.enabled ? "Disable" : "Enable"}</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDuplicateAction(action.id)}>Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleAction(action.id, !action.enabled)}>
+                            {action.enabled ? "Disable" : "Enable"}
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" disabled>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => handleDeleteAction(action.id)}
+                          >
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>

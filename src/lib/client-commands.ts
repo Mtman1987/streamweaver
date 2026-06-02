@@ -51,6 +51,27 @@ export async function updateAllCommandsEnabledClient(enabled: boolean): Promise<
   return handleResponse(res);
 }
 
+export async function runCommandClient(id: string): Promise<{
+  success: boolean;
+  commandId: string;
+  commandName: string;
+  matchedActions: number;
+  actionsRun: number;
+  actionsFailed: number;
+}> {
+  const res = await fetch(`/api/commands/${encodeURIComponent(id)}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(res);
+}
+
+export async function duplicateCommandClient(id: string): Promise<CommandDTO> {
+  const res = await fetch(`/api/commands/${encodeURIComponent(id)}/duplicate`, { method: 'POST' });
+  return handleResponse<CommandDTO>(res);
+}
+
 export async function deleteCommandClient(id: string): Promise<void> {
   const res = await fetch(`/api/commands/${encodeURIComponent(id)}`, { method: 'DELETE' });
   await handleResponse(res);

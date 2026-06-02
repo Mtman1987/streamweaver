@@ -106,7 +106,7 @@ export default function AutomationAIChat({
       const intent = detectIntent(input);
       let assistantMessage: Message;
       
-      if (intent === 'build') {
+      if (intent === 'build' || intent === 'code') {
         const resp = await fetch('/api/automation/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -133,20 +133,12 @@ export default function AutomationAIChat({
           codeSnippets: data?.codeSnippets,
           suggestedChanges: data?.suggestedChanges,
         };
-      } else if (intent === 'code') {
-        // Code generation - placeholder
-        assistantMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'Code generation is not yet implemented. This feature will be available in a future update.',
-          timestamp: new Date()
-        };
       } else {
         // General chat - placeholder
         assistantMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'I\'m here to help with StreamWeaver automations! While some features are still in development, feel free to ask questions about the platform.',
+          content: 'Ask me for a workflow, command behavior, or code snippet and I will draft something you can review and apply.',
           timestamp: new Date()
         };
       }

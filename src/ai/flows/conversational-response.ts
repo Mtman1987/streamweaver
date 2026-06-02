@@ -1,11 +1,12 @@
 
 'use server';
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateAIResponse } from '@/services/ai-provider';
 
 export interface ConversationalResponseInput {
   message: string;
   personality?: string;
+  tenantId?: string;
 }
 
 export interface ConversationalResponseOutput {
@@ -14,17 +15,12 @@ export interface ConversationalResponseOutput {
 
 export async function conversationalResponse(input: ConversationalResponseInput): Promise<ConversationalResponseOutput> {
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
     const systemPrompt = input.personality 
       ? `You are an AI assistant with the following personality:\n${input.personality}`
       : 'You are a helpful AI assistant for a streamer. Your name is StreamWeave.';
     
-    const prompt = `${systemPrompt}\n\nProvide a concise, friendly, and conversational response to the following message from the streamer.\n\nUser Message:\n"${input.message}"`;
-    
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    const prompt = `Provide a concise, friendly, and conversational response to the following message from the streamer.\n\nUser Message:\n"${input.message}"`;
+    const response = await generateAIResponse(prompt, systemPrompt, input.tenantId);
     
     return { response };
   } catch (error) {

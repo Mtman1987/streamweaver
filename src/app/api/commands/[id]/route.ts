@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { deleteCommand, getCommandById, updateCommand } from '@/lib/commands-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
@@ -10,8 +10,26 @@ const updateCommandSchema = z
     command: z.string().trim().max(128).optional(),
     group: z.string().trim().max(128).optional(),
     enabled: z.boolean().optional(),
+    mode: z.number().optional(),
+    regexExplicitCapture: z.boolean().optional(),
+    location: z.number().optional(),
+    ignoreBotAccount: z.boolean().optional(),
+    ignoreInternal: z.boolean().optional(),
+    sources: z.number().optional(),
+    persistCounter: z.boolean().optional(),
+    persistUserCounter: z.boolean().optional(),
+    caseSensitive: z.boolean().optional(),
+    globalCooldown: z.number().optional(),
+    userCooldown: z.number().optional(),
+    grantType: z.number().optional(),
+    permittedUsers: z.array(z.string()).optional(),
+    permittedGroups: z.array(z.string()).optional(),
+    description: z.string().optional(),
+    aliases: z.array(z.string()).optional(),
+    permissions: z.array(z.string()).optional(),
+    cooldown: z.object({ global: z.number().optional(), user: z.number().optional() }).optional(),
   })
-  .strict();
+  .passthrough();
 
 export async function GET(
   request: NextRequest,
@@ -52,6 +70,7 @@ export async function PUT(
     }
 
     const updated = await updateCommand(id, {
+      ...(body as any),
       name: body?.name != null ? String(body.name) : undefined,
       command: body?.command != null ? String(body.command) : undefined,
       group: body?.group != null ? String(body.group) : undefined,

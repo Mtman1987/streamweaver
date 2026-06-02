@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { NextRequest } from 'next/server';
 import { addLTMEntry } from '@/lib/ltm-store';
 import { getChannelMessages } from '@/services/discord';
 import { apiError, apiOk } from '@/lib/api-response';
+import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { z } from 'zod';
 
 const manualCondenseSchema = z.object({
@@ -19,8 +19,8 @@ export async function POST(request: NextRequest) {
     }
     const { channelId, startIndex, batchSize } = parsed.data;
     
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
-    if (!apiKey) {
+    const aiConfig = getAIConfig();
+    if (!aiConfig.apiKey) {
       return apiError('Missing API key', { status: 500, code: 'MISSING_CONFIG' });
     }
     
@@ -59,11 +59,7 @@ Format your response as:
 TITLE: [your title]
 CONTENT: [your summary]`;
     
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text()?.trim();
+    const responseText = (await generateAIResponse(prompt, 'You condense streamer chat history into durable memory entries.'))?.trim();
     
     if (!responseText) {
       return apiError('AI returned empty response', { status: 502, code: 'UPSTREAM_ERROR' });

@@ -40,6 +40,20 @@ export async function updateActionClient(id: string, input: UpdateActionDTO): Pr
   return handleResponse<ActionDTO>(res);
 }
 
+export async function runActionClient(id: string): Promise<{ success: boolean; actionId: string; actionName: string }> {
+  const res = await fetch(`/api/actions/${encodeURIComponent(id)}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(res);
+}
+
+export async function duplicateActionClient(id: string): Promise<ActionDTO> {
+  const res = await fetch(`/api/actions/${encodeURIComponent(id)}/duplicate`, { method: 'POST' });
+  return handleResponse<ActionDTO>(res);
+}
+
 export async function deleteActionClient(id: string): Promise<void> {
   const res = await fetch(`/api/actions/${id}`, { method: 'DELETE' });
   await handleResponse(res);

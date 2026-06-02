@@ -3,7 +3,7 @@ export type FlowNodeOutcome = 'success' | 'failure' | 'true' | 'false';
 export interface FlowServices {
   sendChatMessage: (message: string, as?: 'bot' | 'broadcaster') => Promise<void>;
   sendDiscordMessage: (channelId: string, message: string) => Promise<void>;
-  conversationalResponse: (input: { message: string; personality?: string }) => Promise<{ response: string }>;
+  conversationalResponse: (input: { message: string; personality?: string; tenantId?: string }) => Promise<{ response: string }>;
   textToSpeech: (input: { text: string; voice?: string; tenantId?: string }) => Promise<{ audioDataUri: string }>;
   sendPluginCommand: (pluginId: string, command: { command: string; payload?: Record<string, any> }) => Promise<void>;
   broadcast: (payload: any) => void;

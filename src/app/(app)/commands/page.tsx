@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, MoreHorizontal, PlusCircle, Play, BarChart2 } from "lucide-react";
 import { useCommandsData } from "@/hooks/use-commands-data";
 import { useToast } from "@/hooks/use-toast";
-import { deleteCommandClient, updateAllCommandsEnabledClient, updateCommandClient } from "@/lib/client-commands";
+import { deleteCommandClient, duplicateCommandClient, runCommandClient, updateAllCommandsEnabledClient, updateCommandClient } from "@/lib/client-commands";
 
 export default function CommandsPage() {
   const { commands, isLoading, error, refresh } = useCommandsData();
@@ -43,11 +43,29 @@ export default function CommandsPage() {
     setSkipShoutoutOverlay(saved === "true");
   }, []);
 
-  const handleRunCommand = (commandName: string) => {
-    toast({
-      title: "Command Triggered",
-      description: `The command "${commandName}" is being executed.`,
-    });
+  const handleRunCommand = async (id: string) => {
+    try {
+      const result = await runCommandClient(id);
+      toast({
+        title: result.matchedActions > 0 ? "Command ran" : "No action attached",
+        description:
+          result.matchedActions > 0
+            ? `${result.actionsRun} action${result.actionsRun === 1 ? "" : "s"} ran, ${result.actionsFailed} failed.`
+            : "Attach this command to an action in Active Commands.",
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Run failed", description: e?.message || String(e) });
+    }
+  };
+
+  const handleDuplicateCommand = async (id: string) => {
+    try {
+      const duplicated = await duplicateCommandClient(id);
+      toast({ title: "Command duplicated", description: `${duplicated.command} is disabled until you enable it.` });
+      await refresh();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Duplicate failed", description: e?.message || String(e) });
+    }
   };
 
   const handleDeleteCommand = async (id: string) => {
@@ -343,19 +361,15 @@ export default function CommandsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => handleRunCommand(command.name)}>
+                          <DropdownMenuItem onClick={() => handleRunCommand(command.id)}>
                             <Play className="mr-2 h-4 w-4" />
                             Run
-                          </DropdownMenuItem>
-                          <DropdownMenuItem disabled>
-                            <BarChart2 className="mr-2 h-4 w-4" />
-                            Track
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem asChild>
                             <Link href={`/commands/${encodeURIComponent(command.id)}/edit`}>Edit</Link>
                           </DropdownMenuItem>
-                          <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDuplicateCommand(command.id)}>Duplicate</DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => handleDeleteCommand(command.id)}

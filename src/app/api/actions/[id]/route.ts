@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getActionById,
   updateAction,
@@ -13,8 +13,16 @@ const updateActionSchema = z
     name: z.string().trim().min(1).max(128).optional(),
     group: z.string().trim().max(128).optional(),
     enabled: z.boolean().optional(),
+    alwaysRun: z.boolean().optional(),
+    randomAction: z.boolean().optional(),
+    concurrent: z.boolean().optional(),
+    excludeFromHistory: z.boolean().optional(),
+    excludeFromPending: z.boolean().optional(),
+    queue: z.string().trim().max(128).optional(),
+    triggers: z.array(z.any()).optional(),
+    subActions: z.array(z.any()).optional(),
   })
-  .strict();
+  .passthrough();
 
 export async function GET(
   request: NextRequest,
