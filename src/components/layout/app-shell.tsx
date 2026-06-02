@@ -72,13 +72,15 @@ export default function AppShell({
           <AppSidebar userProfile={userProfile} />
           <SidebarInset className="bg-background">
             <Header />
-            <main className="p-4 sm:px-6 sm:py-0 flex-1 flex flex-col">
+            <main className="flex-1 px-4 pb-4 pt-0 sm:px-6 lg:px-8">
+              <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-1 flex-col gap-6">
                 <div className="flex-1">
-                    {children}
+                  {children}
                 </div>
                 <Suspense fallback={null}>
                   <LogPanel />
                 </Suspense>
+              </div>
             </main>
           </SidebarInset>
         </LiveStreamersProvider>

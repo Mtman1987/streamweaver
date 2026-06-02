@@ -4,6 +4,7 @@ import { TwitchHandlers } from './subactions/TwitchHandlers';
 import { OBSHandlers } from './subactions/OBSHandlers';
 import { DiscordHandlers, YouTubeHandlers, KickHandlers } from './subactions/PlatformHandlers';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
+import { getActionById } from '@/lib/actions-store';
 
 export interface ExecutionContext {
   user?: string;
@@ -26,15 +27,48 @@ export class SubActionExecutor {
   async executeAction(action: { subActions?: SubAction[] }, context: ExecutionContext): Promise<boolean> {
     const subActions = Array.isArray(action.subActions) ? action.subActions : [];
     const ordered = [...subActions].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const hadRunActionById = typeof context.runActionById === 'function';
+    const previousRunActionById = context.runActionById;
+    const previousActionStack = context.actionStack;
 
-    for (const subAction of ordered) {
-      const ok = await this.executeSubAction(subAction, context);
-      if (!ok || context.breakRequested) {
-        return ok;
-      }
+    if (!hadRunActionById) {
+      context.runActionById = async (actionId: string): Promise<boolean> => {
+        const currentStack = Array.isArray(context.actionStack) ? context.actionStack : [];
+        if (currentStack.includes(actionId)) {
+          console.warn(`[Automation] Prevented recursive Run Action loop: ${actionId}`);
+          return false;
+        }
+
+        const next = await getActionById(actionId, context.tenantId);
+        if (!next) {
+          console.warn(`[Automation] Run Action target not found: ${actionId}`);
+          return false;
+        }
+
+        context.actionStack = [...currentStack, actionId];
+        try {
+          return await this.executeAction(next, context);
+        } finally {
+          context.actionStack = currentStack;
+        }
+      };
     }
 
-    return true;
+    try {
+      for (const subAction of ordered) {
+        const ok = await this.executeSubAction(subAction, context);
+        if (!ok || context.breakRequested) {
+          return ok;
+        }
+      }
+
+      return true;
+    } finally {
+      if (!hadRunActionById) {
+        context.runActionById = previousRunActionById;
+        context.actionStack = previousActionStack;
+      }
+    }
   }
 
   /**

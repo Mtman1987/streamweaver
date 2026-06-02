@@ -2,11 +2,22 @@ import type {Metadata} from 'next';
 import './globals.css';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
+import { Inter, Space_Grotesk } from 'next/font/google';
 
 // import { applyUserConfigToProcessEnvSync } from '@/lib/user-config';
 // import { DashboardConnection } from '@/components/dashboard-connection';
 
 // applyUserConfigToProcessEnvSync();
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-space-grotesk',
+});
 
 export const metadata: Metadata = {
   title: 'StreamWeaver',
@@ -29,12 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
-      </head>
+    <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
       <body>
         {/* <DashboardConnection /> */}
         <SidebarProvider>
