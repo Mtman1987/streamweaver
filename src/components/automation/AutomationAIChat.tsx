@@ -22,6 +22,7 @@ interface AutomationAIChatProps {
   currentWorkflow?: any;
   onAutomationGenerated?: (automation: any) => void;
   onCodeGenerated?: (code: string, language: string) => void;
+  selectedCommandId?: string | null;
   userName?: string;
 }
 
@@ -29,13 +30,14 @@ export default function AutomationAIChat({
   currentWorkflow,
   onAutomationGenerated,
   onCodeGenerated,
+  selectedCommandId = null,
   userName = 'User'
 }: AutomationAIChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
       role: 'assistant',
-      content: 'Hi! I\'m your StreamWeaver AI assistant. I can help you:\n\n• **Build automations** - Just describe what you want\n• **Generate code** - Ask me to write C#, JavaScript, or Python\n• **Explain features** - Ask about any sub-action or trigger\n• **Modify workflows** - Tell me what to change\n\nTry: "Create an automation that thanks new followers" or "Generate code to get the current time"',
+      content: 'Hi! I\'m your StreamWeaver AI assistant. I can help you:\n\n• **Build automations** - Describe a workflow and I will draft it\n• **Generate code** - Ask me to write C#, JavaScript, or Python\n• **Explain features** - Ask about any sub-action or trigger\n• **Modify workflows** - Tell me what to change\n\nTry: "Generate a workflow that rewards points for !rps" or "Create an automation that thanks new followers"',
       timestamp: new Date()
     }
   ]);
@@ -68,9 +70,14 @@ export default function AutomationAIChat({
     
     // Automation building keywords
     if (
+      lower.includes('workflow') ||
+      lower.includes('automation') ||
       lower.includes('create automation') ||
       lower.includes('build automation') ||
       lower.includes('make automation') ||
+      lower.includes('generate workflow') ||
+      lower.includes('create workflow') ||
+      lower.includes('build workflow') ||
       lower.includes('create action') ||
       lower.includes('build action') ||
       lower.includes('when') && (lower.includes('then') || lower.includes('do'))
@@ -100,12 +107,31 @@ export default function AutomationAIChat({
       let assistantMessage: Message;
       
       if (intent === 'build') {
-        // Build automation - placeholder
+        const resp = await fetch('/api/automation/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: input,
+            currentWorkflow,
+            selectedCommandId,
+            userName,
+          }),
+        });
+
+        if (!resp.ok) {
+          const errorBody = await resp.json().catch(() => ({}));
+          throw new Error(errorBody?.error || 'Failed to generate automation draft.');
+        }
+
+        const data = await resp.json();
         assistantMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'Automation building is not yet implemented. This feature will be available in a future update.',
-          timestamp: new Date()
+          content: data?.assistantMessage || 'I drafted a workflow suggestion for you.',
+          timestamp: new Date(),
+          automation: data?.automation,
+          codeSnippets: data?.codeSnippets,
+          suggestedChanges: data?.suggestedChanges,
         };
       } else if (intent === 'code') {
         // Code generation - placeholder

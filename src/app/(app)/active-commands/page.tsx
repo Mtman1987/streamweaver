@@ -860,6 +860,7 @@ function ActiveCommandsPageClient() {
           <AutomationAIChat
             currentWorkflow={currentWorkflowForAI}
             onAutomationGenerated={applyAutomationFromAI}
+            selectedCommandId={selectedCommandId}
           />
         </div>
       </CardContent>
