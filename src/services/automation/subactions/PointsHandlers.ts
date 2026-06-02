@@ -1,4 +1,4 @@
-import { addPoints, getPoints, setPoints, getLeaderboard } from '@/services/points';
+import { addPoints, formatCompactPointAmount, getPoints, setPoints, getLeaderboard } from '@/services/points';
 
 export async function handlePointsCommands(event: any) {
   const { message, user, platform } = event;
@@ -8,7 +8,7 @@ export async function handlePointsCommands(event: any) {
     if (message.startsWith('!points')) {
       const target = args[0] ? args[0].replace('@', '') : user;
       const userPoints = await getPoints(target);
-      return `${target} has ${userPoints.points.toLocaleString()} points (Level ${userPoints.level})`;
+      return `${target} has ${userPoints.pointsDisplay} points (Level ${userPoints.level})`;
     }
     
     if (message.startsWith('!addpoints') && args.length >= 2) {
@@ -17,7 +17,7 @@ export async function handlePointsCommands(event: any) {
       if (isNaN(amount)) return 'Invalid amount';
       
       const result = await addPoints(target, amount, 'manual add');
-      return `Added ${amount} points to ${target}. They now have ${result.points.toLocaleString()} points`;
+      return `Added ${formatCompactPointAmount(amount)} points to ${target}. They now have ${result.pointsDisplay} points`;
     }
     
     if (message.startsWith('!setpoints') && args.length >= 2) {
@@ -26,7 +26,7 @@ export async function handlePointsCommands(event: any) {
       if (isNaN(amount)) return 'Invalid amount';
       
       const result = await setPoints(target, amount);
-      return `Set ${target}'s points to ${result.points.toLocaleString()} points`;
+      return `Set ${target}'s points to ${result.pointsDisplay} points`;
     }
     
     if (message.startsWith('!leaderboard') || message.startsWith('!leader')) {
@@ -36,7 +36,7 @@ export async function handlePointsCommands(event: any) {
       if (leaderboard.length === 0) return 'No users found on leaderboard';
       
       const entries = leaderboard.map((entry, i) => 
-        `${i + 1}. ${entry.user} (${entry.points.toLocaleString()})`
+        `${i + 1}. ${entry.user} (${entry.pointsDisplay})`
       ).join(' • ');
       
       return `Top ${limit}: ${entries}`;

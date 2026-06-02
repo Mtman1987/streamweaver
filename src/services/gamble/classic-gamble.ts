@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { sendChatMessage } from '../twitch';
-import { formatPointAmount, parsePointAmount, PointAmount } from '../points';
+import { formatCompactPointAmount, parsePointAmount, PointAmount } from '../points';
 
 // ════════════════════════════════════════════════
 // 🛠️ SETTINGS
@@ -177,7 +177,7 @@ function determineRollOutcome(roll: number, betAmount: bigint): { outcome: strin
 
 function formatNumber(value: PointAmount): string {
   const sep = settings.numberSeparator || ',';
-  return formatPointAmount(value).replace(/,/g, sep);
+  return formatCompactPointAmount(value).replace(/,/g, sep);
 }
 
 function parseNumericBet(input: string): bigint | null {

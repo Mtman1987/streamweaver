@@ -1,4 +1,4 @@
-import { getPoints, addPoints } from './points';
+import { addPoints, formatCompactPointAmount, getPoints } from './points';
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 
 const COOLDOWN_FILE = 'steal-cooldowns.json';
@@ -80,7 +80,7 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
   }
 
   if (amount > MAX_STEAL_AMOUNT) {
-    return { success: false, message: `@${fromUser}, you can steal at most ${MAX_STEAL_AMOUNT.toLocaleString('en-US')} points at a time!` };
+    return { success: false, message: `@${fromUser}, you can steal at most ${formatCompactPointAmount(MAX_STEAL_AMOUNT)} points at a time!` };
   }
   
   // Check cooldown
@@ -95,13 +95,13 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
   
   const fromPoints = await getPoints(from, ctx);
   if (fromPoints.points < amount) {
-    return { success: false, message: `@${fromUser}, you can only risk points you already have. You have ${fromPoints.points} points!` };
+    return { success: false, message: `@${fromUser}, you can only risk points you already have. You have ${fromPoints.pointsDisplay} points!` };
   }
 
   const targetPoints = await getPoints(to, ctx);
   
   if (targetPoints.points < amount) {
-    return { success: false, message: `@${fromUser}, @${toUser} only has ${targetPoints.points} points!` };
+    return { success: false, message: `@${fromUser}, @${toUser} only has ${targetPoints.pointsDisplay} points!` };
   }
   
   // RNG heist outcome
@@ -118,14 +118,14 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     pointsStolen = amount;
     await addPoints(to, -amount, `stolen by ${from}`, ctx);
     await addPoints(from, amount, `stolen from ${to}`, ctx);
-    message = `@${fromUser} ${outcome}! Stole ${pointsStolen} points from @${toUser}! 💰`;
+    message = `@${fromUser} ${outcome}! Stole ${formatCompactPointAmount(pointsStolen)} points from @${toUser}! 💰`;
   } else if (roll < 55) {
     // Partial - get half
     outcome = scenario.partial;
     pointsStolen = Math.floor(amount / 2);
     await addPoints(to, -pointsStolen, `stolen by ${from}`, ctx);
     await addPoints(from, pointsStolen, `stolen from ${to}`, ctx);
-    message = `@${fromUser} ${outcome}! Got ${pointsStolen} points from @${toUser}! 💸`;
+    message = `@${fromUser} ${outcome}! Got ${formatCompactPointAmount(pointsStolen)} points from @${toUser}! 💸`;
   } else if (roll < 80) {
     // Fail - get nothing
     outcome = scenario.fail;
@@ -137,7 +137,7 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     if (penalty > 0) {
       await addPoints(from, -penalty, 'heist backfired', ctx);
     }
-    message = `@${fromUser} ${outcome}! Lost ${penalty} points in the attempt! 💥`;
+    message = `@${fromUser} ${outcome}! Lost ${formatCompactPointAmount(penalty)} points in the attempt! 💥`;
   } else {
     // Catastrophic fail - lose the staked amount. Never risk more than the steal amount.
     outcome = scenario.fail;
@@ -145,7 +145,7 @@ export async function stealPoints(fromUser: string, toUser: string, amount: numb
     if (penalty > 0) {
       await addPoints(from, -penalty, 'heist catastrophe', ctx);
     }
-    message = `@${fromUser} ${outcome}! Lost ${penalty} points in the catastrophic failure! 💀`;
+    message = `@${fromUser} ${outcome}! Lost ${formatCompactPointAmount(penalty)} points in the catastrophic failure! 💀`;
   }
   
   // Set cooldown

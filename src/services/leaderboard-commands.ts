@@ -1,4 +1,5 @@
 import { getLeaderboard, getUser, getUserRank } from './user-stats';
+import { getPoints as getPointsData } from './points';
 import { sendChatMessage } from './twitch';
 import { getUserCards } from './pokemon-collection';
 
@@ -47,10 +48,8 @@ export async function handleLeaderboardCommand(
   }
 
   const user = await getUser(username, tenantCtx);
+  const pointsData = await getPointsData(username, tenantCtx);
 
-  // Use tenant-scoped points
-  const tenantPoints = user.points;
-  
   // Get real card count from local collection
   const userCards = await getUserCards(username);
   const realTotal = userCards.length;
@@ -93,7 +92,7 @@ export async function handleLeaderboardCommand(
     const badgeList = user.badges.length > 0 ? ` | Badges: ${user.badges.join(', ')}` : '';
     const cardStr = `Cards: ${realTotal} (${realRare} rare)`;
     sendChatMessage(
-      `@${username} | Points: ${tenantPoints.toLocaleString()} | ${wtStr} | ${cardStr}${badgeList}`,
+      `@${username} | Points: ${pointsData.pointsDisplay} | ${wtStr} | ${cardStr}${badgeList}`,
       'bot', undefined, tenantId
     ).catch(() => {});
     return;

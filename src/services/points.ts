@@ -105,6 +105,37 @@ export function formatPointAmount(value: PointAmount): string {
   return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+const COMPACT_UNITS: Array<{ value: bigint; suffix: string }> = [
+  { value: 1_000_000_000_000_000_000_000n, suffix: 'sx' },
+  { value: 1_000_000_000_000_000_000n, suffix: 'qi' },
+  { value: 1_000_000_000_000_000n, suffix: 'q' },
+  { value: 1_000_000_000_000n, suffix: 't' },
+  { value: 1_000_000_000n, suffix: 'b' },
+  { value: 1_000_000n, suffix: 'm' },
+  { value: 1_000n, suffix: 'k' },
+];
+
+export function formatCompactPointAmount(value: PointAmount): string {
+  const parsed = parsePointAmount(value);
+  const sign = parsed < 0n ? '-' : '';
+  const abs = parsed < 0n ? -parsed : parsed;
+
+  if (abs < 1000n) return `${sign}${abs.toString()}`;
+
+  for (const unit of COMPACT_UNITS) {
+    if (abs < unit.value) continue;
+
+    const whole = abs / unit.value;
+    const remainder = abs % unit.value;
+    const tenths = (remainder * 10n) / unit.value;
+    return tenths === 0n
+      ? `${sign}${whole.toString()}${unit.suffix}`
+      : `${sign}${whole.toString()}.${tenths.toString()}${unit.suffix}`;
+  }
+
+  return `${sign}${abs.toString()}`;
+}
+
 function calculateLevel(points: bigint): number {
   return Math.max(1, toSafeNumber(points / 100n + 1n));
 }
@@ -127,7 +158,7 @@ export async function getPoints(userId: string, ctx?: StorageContext): Promise<{
   return {
     points: toSafeNumber(points),
     pointsRaw: points.toString(),
-    pointsDisplay: formatPointAmount(points),
+    pointsDisplay: formatCompactPointAmount(points),
     level: calculateLevel(points),
     totalEarned: toSafeNumber(totalEarned),
     totalEarnedRaw: totalEarned.toString(),
@@ -169,7 +200,7 @@ export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext):
   }
   
   await savePoints(store, ctx);
-  console.log(`Added ${formatPointAmount(delta)} points to ${count} users`);
+  console.log(`Added ${formatCompactPointAmount(delta)} points to ${count} users`);
   return count;
 }
 
@@ -193,7 +224,7 @@ export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext):
   }
   
   await savePoints(store, ctx);
-  console.log(`Set ${count} users to ${formatPointAmount(points)} points`);
+  console.log(`Set ${count} users to ${formatCompactPointAmount(points)} points`);
   return count;
 }
 
@@ -245,11 +276,11 @@ export async function addPoints(
   };
   
   await savePoints(store, ctx);
-  console.log(`Points updated: ${userId} ${delta > 0n ? '+' : ''}${formatPointAmount(delta)} (${reason || 'manual'}) -> ${formatPointAmount(newPoints)} total`);
+  console.log(`Points updated: ${userId} ${delta > 0n ? '+' : ''}${formatCompactPointAmount(delta)} (${reason || 'manual'}) -> ${formatCompactPointAmount(newPoints)} total`);
   return {
     points: toSafeNumber(newPoints),
     pointsRaw: newPoints.toString(),
-    pointsDisplay: formatPointAmount(newPoints),
+    pointsDisplay: formatCompactPointAmount(newPoints),
     level,
     totalEarned: toSafeNumber(totalEarned),
     totalEarnedRaw: totalEarned.toString(),
@@ -281,7 +312,7 @@ export async function setPoints(
   return {
     points: toSafeNumber(points),
     pointsRaw: points.toString(),
-    pointsDisplay: formatPointAmount(points),
+    pointsDisplay: formatCompactPointAmount(points),
     level,
     totalEarned: toSafeNumber(totalEarned),
     totalEarnedRaw: totalEarned.toString(),
@@ -298,7 +329,7 @@ export async function getLeaderboard(limit = 10, ctx?: StorageContext): Promise<
         user,
         points: toSafeNumber(points),
         pointsRaw: points.toString(),
-        pointsDisplay: formatPointAmount(points),
+        pointsDisplay: formatCompactPointAmount(points),
         level: calculateLevel(points),
         totalEarned: toSafeNumber(totalEarned),
         totalEarnedRaw: totalEarned.toString(),

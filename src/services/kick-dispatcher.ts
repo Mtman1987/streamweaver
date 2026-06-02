@@ -168,7 +168,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       case 'points': {
         const pts = await getPoints(pointsUsername, ctx);
         const linkedNote = pointsUsername !== username ? ` (linked: ${pointsUsername})` : '';
-        await reply(`@${username} has ${pts.points} points!${linkedNote}`);
+        await reply(`@${username} has ${pts.pointsDisplay} points!${linkedNote}`);
         return;
       }
       case 'coinflip': {

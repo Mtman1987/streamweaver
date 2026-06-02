@@ -4,7 +4,7 @@ import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { sendDiscordMessage } from './discord';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
-import { addPoints, awardChatPoints } from './points';
+import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
 import { givePoints, stealPoints } from './points-transfer';
 import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
@@ -532,10 +532,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const pointCost = Number(checkinConfigMap[matchedCheckin.kind]?.pointCost || 0);
 
                 if (pointCost > 0) {
-                    const { getUserPoints } = require('./points');
-                    const pts = await getUserPoints(actualUsername, tenantCtx);
-                        if (pts < pointCost) {
-                            await replyMaybeKick(`@${actualUsername}, you need ${pointCost} points for this check-in! (You have ${pts})`, 'broadcaster').catch(() => {});
+                    const pts = await getPoints(actualUsername, tenantCtx);
+                        if (pts.points < pointCost) {
+                            await replyMaybeKick(`@${actualUsername}, you need ${formatCompactPointAmount(pointCost)} points for this check-in! (You have ${pts.pointsDisplay})`, 'broadcaster').catch(() => {});
                             return;
 
                     }
@@ -599,10 +598,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.log(`[Dispatcher] Pack cost: ${pointCost} points`);
 
                 if (pointCost > 0) {
-                    const { getUserPoints } = require('./points');
-                    const pts = await getUserPoints(actualUsername, tenantCtx);
-                    if (pts < pointCost) {
-                        await reply(`@${actualUsername}, you need ${pointCost} points to open a pack! (You have ${pts})`, 'broadcaster').catch(() => {});
+                    const pts = await getPoints(actualUsername, tenantCtx);
+                    if (pts.points < pointCost) {
+                        await reply(`@${actualUsername}, you need ${formatCompactPointAmount(pointCost)} points to open a pack! (You have ${pts.pointsDisplay})`, 'broadcaster').catch(() => {});
                         return;
                     }
                 }
@@ -654,7 +652,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             try {
                 // Use same tenant context as chat points awarding
                 const userPoints = await getPoints(actualUsername, tenantCtx);
-                await reply(`@${actualUsername} has ${userPoints.points} points!`, 'broadcaster').catch(() => {});
+                await reply(`@${actualUsername} has ${userPoints.pointsDisplay} points!`, 'broadcaster').catch(() => {});
             } catch (error) {
                 console.error('[Dispatcher] Points fetch failed:', error);
                 await reply(`@${actualUsername}, couldn't fetch your points!`, 'broadcaster').catch(() => {});
@@ -908,7 +906,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     await reply(`@${actualUsername}, usage: !addPoints @user amount`, 'bot').catch(() => {});
                 } else {
                     const result = await addPoints(targetUser, amount, `addpoints by ${actualUsername}`, tenantCtx);
-                    await reply(`@${targetUser} now has ${result.points} pts (${amount > 0 ? '+' : ''}${amount})`, 'broadcaster').catch(() => {});
+                    await reply(`@${targetUser} now has ${result.pointsDisplay} pts (${amount > 0 ? '+' : ''}${formatCompactPointAmount(amount)})`, 'broadcaster').catch(() => {});
                 }
             } else {
                 await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
@@ -926,7 +924,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     await reply(`@${actualUsername}, usage: !setPoints @user amount`, 'bot').catch(() => {});
                 } else {
                     const result = await setPoints(targetUser, amount, tenantCtx);
-                    await reply(`@${targetUser} set to ${result.points} pts`, 'broadcaster').catch(() => {});
+                    await reply(`@${targetUser} set to ${result.pointsDisplay} pts`, 'broadcaster').catch(() => {});
                 }
             } else {
                 await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
@@ -943,7 +941,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 } else {
                     const { addPointsToAll } = require('./points');
                     const count = await addPointsToAll(amount, tenantCtx);
-                    await reply(`${amount > 0 ? '+' : ''}${amount} pts to ${count} users!`, 'broadcaster').catch(() => {});
+                    await reply(`${amount > 0 ? '+' : ''}${formatCompactPointAmount(amount)} pts to ${count} users!`, 'broadcaster').catch(() => {});
                 }
             } else {
                 await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});
@@ -960,7 +958,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 } else {
                     const { setPointsToAll } = require('./points');
                     const count = await setPointsToAll(amount, tenantCtx);
-                    await reply(`Set ${count} users to ${amount} pts`, 'broadcaster').catch(() => {});
+                    await reply(`Set ${count} users to ${formatCompactPointAmount(amount)} pts`, 'broadcaster').catch(() => {});
                 }
             } else {
                 await reply(`@${actualUsername}, only mods can use that!`, 'bot').catch(() => {});

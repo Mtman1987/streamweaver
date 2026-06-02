@@ -1,6 +1,6 @@
 import { openBoosterPack, loadSetData, type PokemonCard } from '../../pokemon-booster-packs';
 import { sendChatMessage } from '../../twitch';
-import { getPoints, addPoints } from '../../points';
+import { addPoints, formatCompactPointAmount, getPoints } from '../../points';
 
 export async function handlePokemonPackOpen(context: any, params: any): Promise<void> {
   const { username, args } = context;
@@ -17,7 +17,7 @@ export async function handlePokemonPackOpen(context: any, params: any): Promise<
     const userPoints = await getPoints(username);
     
     if (userPoints.points < cost) {
-      await sendChatMessage(`@${username} needs ${cost} points (has ${userPoints.points})`, 'bot');
+      await sendChatMessage(`@${username} needs ${formatCompactPointAmount(cost)} points (has ${userPoints.pointsDisplay})`, 'bot');
       return;
     }
     
