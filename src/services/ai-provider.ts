@@ -2,6 +2,9 @@ import { readUserConfigSync } from '@/lib/user-config';
 
 export type AIProvider = 'gemini' | 'edenai' | 'openai';
 
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const DEFAULT_EDENAI_MODEL = 'google/gemini-2.5-flash';
+
 export interface AIConfig {
   provider: AIProvider;
   model: string;
@@ -23,11 +26,11 @@ export function getAIConfig(tenantId?: string): AIConfig {
   switch (provider) {
     case 'gemini':
       apiKey = config.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
-      model = config.AI_MODEL || 'gemini-2.0-flash';
+      model = normalizeGeminiModel(config.AI_MODEL || DEFAULT_GEMINI_MODEL);
       break;
     case 'edenai':
       apiKey = config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
-      model = config.AI_MODEL || 'openai/gpt-4o-mini';
+      model = normalizeEdenAIModel(config.AI_MODEL || DEFAULT_EDENAI_MODEL);
       break;
     case 'openai':
       apiKey = config.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
@@ -36,6 +39,22 @@ export function getAIConfig(tenantId?: string): AIConfig {
   }
   
   return { provider, model, apiKey, personalityName, botName };
+}
+
+function normalizeGeminiModel(model: string): string {
+  if (!model) return DEFAULT_GEMINI_MODEL;
+  if (model === 'gemini-2.0-flash' || model.startsWith('gemini-2.0-flash-')) {
+    return DEFAULT_GEMINI_MODEL;
+  }
+  return model;
+}
+
+function normalizeEdenAIModel(model: string): string {
+  if (!model) return DEFAULT_EDENAI_MODEL;
+  if (model === 'google/gemini-2.0-flash' || model.startsWith('google/gemini-2.0-flash-')) {
+    return DEFAULT_EDENAI_MODEL;
+  }
+  return model;
 }
 
 export async function generateAIResponse(prompt: string, systemPrompt?: string, tenantId?: string): Promise<string> {

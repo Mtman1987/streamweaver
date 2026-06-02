@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${edenaiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: 'You condense conversations into titled memory entries. Output JSON with "title" (short descriptive title) and "content" (detailed paragraph summarizing key events, emotions, preferences, and important details). Preserve intimate details and personal context.' },
           { role: 'user', content: `Condense this private conversation into a memory entry:\n\n${chatText}\n\nRespond with JSON: {"title": "...", "content": "..."}` },
