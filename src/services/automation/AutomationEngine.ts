@@ -4,7 +4,7 @@ import { SubActionExecutor, ExecutionContext } from './SubActionExecutor';
 import { Action, Command, TriggerType, SubActionType } from './types';
 
 export interface AutomationEvent {
-  type: 'command' | 'follow' | 'cheer' | 'subscribe' | 'raid' | 'channelPointReward';
+  type: 'command' | 'chat' | 'follow' | 'cheer' | 'subscribe' | 'raid' | 'channelPointReward';
   platform: string;
   user?: string;
   message?: string;
@@ -234,6 +234,7 @@ export class AutomationEngine {
       case 'subscribe': return TriggerType.SUBSCRIBE;
       case 'raid': return TriggerType.RAID;
       case 'channelPointReward': return TriggerType.CHANNEL_POINT_REWARD;
+      case 'chat': return TriggerType.CHAT_MESSAGE;
       default: return null;
     }
   }

@@ -44,6 +44,9 @@ export interface Trigger {
   exclusions: string[];
   // Command-specific
   commandId?: string;
+  // Chat message-specific
+  pattern?: string;
+  excludeBots?: boolean;
   // Event-specific
   min?: number;
   max?: number;
@@ -146,6 +149,7 @@ export enum GrantType {
 
 export enum TriggerType {
   COMMAND = 401,
+  CHAT_MESSAGE = 200,
   FOLLOW = 101,
   CHEER = 102,
   SUBSCRIBE = 103,

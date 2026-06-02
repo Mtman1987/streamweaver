@@ -66,6 +66,8 @@ function ActiveCommandsPageClient() {
   const [newTriggerMin, setNewTriggerMin] = useState<string>("");
   const [newTriggerMax, setNewTriggerMax] = useState<string>("");
   const [newTriggerTiers, setNewTriggerTiers] = useState<string>("");
+  const [newTriggerPattern, setNewTriggerPattern] = useState<string>("");
+  const [newTriggerExcludeBots, setNewTriggerExcludeBots] = useState<boolean>(true);
 
   const [isTriggerJsonOpen, setIsTriggerJsonOpen] = useState(false);
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
@@ -167,6 +169,7 @@ function ActiveCommandsPageClient() {
 
   const labelForTriggerType = (t: number): string => {
     if (t === TriggerType.COMMAND) return "Chat Command";
+    if (t === TriggerType.CHAT_MESSAGE) return "Chat Message";
     if (t === TriggerType.FOLLOW) return "Follow";
     if (t === TriggerType.CHEER) return "Cheer";
     if (t === TriggerType.SUBSCRIBE) return "Subscribe";
@@ -212,6 +215,10 @@ function ActiveCommandsPageClient() {
     };
 
     if (t === TriggerType.COMMAND) next.commandId = newTriggerCommandId;
+    if (t === TriggerType.CHAT_MESSAGE) {
+      next.pattern = newTriggerPattern.trim() || undefined;
+      next.excludeBots = newTriggerExcludeBots;
+    }
     if (t === TriggerType.CHANNEL_POINT_REWARD) next.rewardId = newTriggerRewardId.trim() || undefined;
 
     const min = parseNumberOrUndefined(newTriggerMin);
@@ -399,6 +406,7 @@ function ActiveCommandsPageClient() {
     if (value === SubActionType.ELSE_BLOCK) return "ELSE Block";
     if (value === SubActionType.BREAK) return "Break";
     if (value === SubActionType.WAIT) return "Wait";
+    if (value === SubActionType.HTTP_REQUEST) return "HTTP Request";
     if (value === SubActionType.COMMENT) return "Comment";
     return String(value ?? "Unknown");
   };
@@ -409,6 +417,7 @@ function ActiveCommandsPageClient() {
     if (sa.type === SubActionType.RUN_ACTION) return `actionId=${String(sa.actionId || "")}`;
     if (sa.type === SubActionType.GET_USER_INFO) return `user=${String(sa.userLogin || "")}`;
     if (sa.type === SubActionType.IF_ELSE) return `${String(sa.input || "")} op=${String(sa.operation ?? "")} ${String(sa.value ?? "")}`;
+    if (sa.type === SubActionType.HTTP_REQUEST) return `${String(sa.method || "POST")} ${String(sa.url || "")}`;
     return "";
   };
 
@@ -514,6 +523,7 @@ function ActiveCommandsPageClient() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={String(TriggerType.COMMAND)}>{labelForTriggerType(TriggerType.COMMAND)}</SelectItem>
+                        <SelectItem value={String(TriggerType.CHAT_MESSAGE)}>{labelForTriggerType(TriggerType.CHAT_MESSAGE)}</SelectItem>
                         <SelectItem value={String(TriggerType.FOLLOW)}>{labelForTriggerType(TriggerType.FOLLOW)}</SelectItem>
                         <SelectItem value={String(TriggerType.CHEER)}>{labelForTriggerType(TriggerType.CHEER)}</SelectItem>
                         <SelectItem value={String(TriggerType.SUBSCRIBE)}>{labelForTriggerType(TriggerType.SUBSCRIBE)}</SelectItem>
@@ -551,7 +561,28 @@ function ActiveCommandsPageClient() {
                     </div>
                   ) : null}
 
-                  {Number(newTriggerType) !== TriggerType.COMMAND && Number(newTriggerType) !== TriggerType.CHANNEL_POINT_REWARD ? (
+                  {Number(newTriggerType) === TriggerType.CHAT_MESSAGE ? (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Pattern</div>
+                      <Input
+                        value={newTriggerPattern}
+                        onChange={(e) => setNewTriggerPattern(e.target.value)}
+                        placeholder="^(rock|paper|scissors)$"
+                      />
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={newTriggerExcludeBots}
+                          onChange={(e) => setNewTriggerExcludeBots(e.target.checked)}
+                        />
+                        Exclude bot messages
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {Number(newTriggerType) !== TriggerType.COMMAND &&
+                  Number(newTriggerType) !== TriggerType.CHANNEL_POINT_REWARD &&
+                  Number(newTriggerType) !== TriggerType.CHAT_MESSAGE ? (
                     <div className="space-y-2">
                       <div className="text-sm font-medium">Optional Filters</div>
                       <div className="grid grid-cols-3 gap-2">
@@ -574,6 +605,7 @@ function ActiveCommandsPageClient() {
 
                 {draftTriggers.map((t: any) => {
                   const isCommand = Number(t.type) === TriggerType.COMMAND;
+                  const isChat = Number(t.type) === TriggerType.CHAT_MESSAGE;
                   const isReward = Number(t.type) === TriggerType.CHANNEL_POINT_REWARD;
                   const cmd = isCommand ? commands.find((c) => c.id === String(t.commandId)) : undefined;
                   const label =
@@ -589,6 +621,7 @@ function ActiveCommandsPageClient() {
                           <div className="text-xs text-muted-foreground truncate">
                             type={String(t.type)} id={String(t.id)}
                             {isCommand ? ` commandId=${String(t.commandId || "")}` : ""}
+                            {isChat ? ` pattern=${String(t.pattern || "")}` : ""}
                             {isReward ? ` rewardId=${String(t.rewardId || "")}` : ""}
                           </div>
                         </div>
@@ -647,7 +680,36 @@ function ActiveCommandsPageClient() {
                         </div>
                       ) : null}
 
-                      {!isCommand && !isReward ? (
+                      {isChat ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <div className="text-sm font-medium">Pattern</div>
+                            <Input
+                              value={String(t.pattern || "")}
+                              onChange={(e) =>
+                                setDraftTriggers((prev) =>
+                                  prev.map((x: any) => (x.id === t.id ? { ...x, pattern: e.target.value } : x))
+                                )
+                              }
+                              placeholder="^(rock|paper|scissors)$"
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 self-end text-sm">
+                            <input
+                              type="checkbox"
+                              checked={t.excludeBots !== false}
+                              onChange={(e) =>
+                                setDraftTriggers((prev) =>
+                                  prev.map((x: any) => (x.id === t.id ? { ...x, excludeBots: e.target.checked } : x))
+                                )
+                              }
+                            />
+                            Exclude bot messages
+                          </label>
+                        </div>
+                      ) : null}
+
+                      {!isCommand && !isReward && !isChat ? (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div className="space-y-2">
                             <div className="text-sm font-medium">Min</div>

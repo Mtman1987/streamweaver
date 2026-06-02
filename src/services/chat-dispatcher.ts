@@ -21,6 +21,7 @@ import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
 import { ATHENA_WHITELIST_TENANT_ID } from './athena-whitelist';
 import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
+import { TriggerType } from './automation/types';
 import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
@@ -360,6 +361,67 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const replyToKickIfEnabled = async (msg: string) => {
         if (!shouldMirrorToKick()) return;
         await replyToKick(msg);
+    };
+
+    const runChatAutomationTriggers = async (): Promise<boolean> => {
+        if (self || isBotMessage || !actualMessage || actualMessage.startsWith('!')) return false;
+
+        const actions = await getAllActions(tenantId);
+        const matchingActions = actions.filter((action: any) =>
+            action?.enabled &&
+            Array.isArray(action.triggers) &&
+            action.triggers.some((trigger: any) => {
+                if (trigger?.enabled === false) return false;
+                if (Number(trigger?.type) !== TriggerType.CHAT_MESSAGE) return false;
+                if (trigger?.excludeBots !== false && isBotMessage) return false;
+                const pattern = String(trigger?.pattern || '').trim();
+                if (!pattern) return true;
+                try {
+                    return new RegExp(pattern, 'i').test(actualMessage);
+                } catch {
+                    return false;
+                }
+            })
+        );
+
+        if (matchingActions.length === 0) return false;
+
+        const { SubActionExecutor } = await import('./automation/SubActionExecutor');
+        const executor = new SubActionExecutor();
+        const executionContext = {
+            user: actualUsername,
+            userName: actualUsername,
+            message: actualMessage,
+            rawInput: actualMessage,
+            platform: 'twitch',
+            channel: replyChannel,
+            tenantId: tenantId || undefined,
+            args: {
+                user: actualUsername,
+                userName: actualUsername,
+                message: actualMessage,
+                channel: replyChannel,
+                tenantId: tenantId || '',
+                rawInput: actualMessage,
+            },
+            variables: {
+                user: actualUsername,
+                userName: actualUsername,
+                message: actualMessage,
+                channel: replyChannel,
+                tenantId: tenantId || '',
+                rawInput: actualMessage,
+                platform: 'twitch',
+            },
+            actionStack: [],
+        };
+
+        for (const action of matchingActions) {
+            console.log(`[Dispatcher] Executing chat-triggered action ${action.id} for message "${actualMessage}"`);
+            await executor.executeAction(action, executionContext);
+        }
+
+        return true;
     };
 
     const replyMaybeKick = async (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => {
@@ -1832,17 +1894,21 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const execArgs: Record<string, any> = {};
             cmdArgs.forEach((a: string, i: number) => { execArgs[`input${i}`] = a; });
             execArgs.rawInput = cmdArgs.join(' ');
+            execArgs.tenantId = tenantId || '';
             const executionContext = {
                 user: actualUsername,
                 userName: actualUsername,
                 message: actualMessage,
                 rawInput: cmdArgs.join(' '),
                 platform: 'twitch',
+                channel: replyChannel,
                 tenantId: tenantId || undefined,
                 args: execArgs,
                 variables: {
                     user: actualUsername,
                     userName: actualUsername,
+                    channel: replyChannel,
+                    tenantId: tenantId || '',
                     targetUser: targetRaw,
                     targetUserName: targetRaw,
                     rawInput: cmdArgs.join(' '),
@@ -2062,6 +2128,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             // Skip points and welcome for known bots
             const skipAsBot = await isKnownBot(actualUsername, tenantId);
             if (!skipAsBot) {
+                const handledChatAutomation = await runChatAutomationTriggers();
+                if (handledChatAutomation) {
+                    return;
+                }
+
                 awardChatPoints(actualUsername, tenantCtx).catch(() => {});
             
                 // Skip welcome wagon for broadcaster, bot, and messages from voice commands
@@ -2169,8 +2240,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
         }
         
-        // Check if message mentions bot (allow from anyone except bot itself and skip self messages)
-        // Known bots are allowed through when botshare is on so bots can interact in shared chat
         const userIsKnownBot = await isKnownBot(actualUsername, tenantId);
         const { getBotShareMode: checkBotShareMode } = require('../lib/bot-interactions-store');
         const botShareEnabled = userIsKnownBot && (await checkBotShareMode(tenantId)) === 'on';

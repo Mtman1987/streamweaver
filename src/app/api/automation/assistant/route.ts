@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { NextRequest } from 'next/server';
+import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { generateFlowNode } from '@/ai/flows/generate-flow-node';
 import { apiError, apiOk } from '@/lib/api-response';
@@ -43,6 +44,7 @@ function normalizeTriggerType(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const text = String(value || '').trim().toLowerCase();
   if (text === 'command' || text === 'chat-command') return TriggerType.COMMAND;
+  if (text === 'chat' || text === 'chat-message' || text === 'chat_message') return TriggerType.CHAT_MESSAGE;
   if (text === 'follow') return TriggerType.FOLLOW;
   if (text === 'cheer') return TriggerType.CHEER;
   if (text === 'subscribe') return TriggerType.SUBSCRIBE;
@@ -71,6 +73,7 @@ function normalizeSubActionType(value: unknown): number {
   if (text === 'get-user-var') return SubActionType.GET_USER_VAR;
   if (text === 'math-operation') return SubActionType.MATH_OPERATION;
   if (text === 'string-operation') return SubActionType.STRING_OPERATION;
+  if (text === 'http-request' || text === 'http_request') return SubActionType.HTTP_REQUEST;
   if (text === 'update-points') return SubActionType.MATH_OPERATION;
   const numeric = Number(text);
   return Number.isFinite(numeric) ? numeric : SubActionType.SEND_MESSAGE;
@@ -81,7 +84,81 @@ function inferCommandLabel(message: string): string | null {
   return match ? match[0] : null;
 }
 
+function isRpsChallengePrompt(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('rock') && lower.includes('paper') && lower.includes('scissors')
+  ) || lower.includes('best 2 out of 3') || lower.includes('best of 3') || lower.includes('rps');
+}
+
+function buildRpsAutomationDraft(_message: string, selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
+  const triggers = [...asWorkflowArray(currentWorkflow?.triggers)];
+  if (selectedCommandId && !triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      commandId: selectedCommandId,
+    });
+  }
+
+  if (!triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.CHAT_MESSAGE)) {
+    triggers.push({
+      id: newId(),
+      type: TriggerType.CHAT_MESSAGE,
+      enabled: true,
+      exclusions: [],
+      pattern: '^(rock|paper|scissors)$',
+      excludeBots: true,
+    });
+  }
+
+  const httpUrl = `${getInternalAppUrl()}/api/automation/challenge/rps`;
+  const subActions = [
+    {
+      id: newId(),
+      type: SubActionType.HTTP_REQUEST,
+      enabled: true,
+      weight: 0,
+      index: 0,
+      url: httpUrl,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user: '%user%',
+        message: '%message%',
+        rawInput: '%rawInput%',
+        channel: '%channel%',
+        tenantId: '%tenantId%',
+      }),
+      parseAsJson: true,
+      variableName: 'rpsChallengeResult',
+    },
+  ];
+
+  return {
+    assistantMessage: selectedCommandId
+      ? 'I drafted a stateful RPS automation that uses a command trigger plus a chat-response trigger. The actual game resolution runs in StreamWeaver, so it can handle rounds, score, and points without me faking the result.'
+      : 'I drafted the RPS automation logic, but you still need to attach the command trigger for !rps before saving. The game resolution itself runs inside StreamWeaver, so it can handle rounds, score, and points without me faking the result.',
+    automation: {
+      name: currentWorkflow?.name?.trim() || 'RPS Challenge',
+      triggers,
+      subActions,
+    },
+    suggestedChanges: selectedCommandId
+      ? ['Review the chat pattern if you want to accept other spellings.', 'Check the point bet behavior before saving.']
+      : ['Select the !rps command trigger before saving.', 'Review the chat pattern if you want to accept other spellings.'],
+  };
+}
+
 async function buildFallbackAutomation(message: string, selectedCommandId?: string | null, currentWorkflow?: any): Promise<AssistantAutomationResponse> {
+  if (isRpsChallengePrompt(message)) {
+    return buildRpsAutomationDraft(message, selectedCommandId, currentWorkflow);
+  }
+
   const commandLabel = inferCommandLabel(message);
   const node = await generateFlowNode({
     description: message,

@@ -180,6 +180,16 @@ export class ActionManager {
         switch (triggerType) {
           case TriggerType.COMMAND:
             return trigger.commandId === triggerData.commandId;
+          case TriggerType.CHAT_MESSAGE: {
+            if (trigger.excludeBots && triggerData?.isBotMessage) return false;
+            const pattern = String(trigger.pattern || '').trim();
+            if (!pattern) return true;
+            try {
+              return new RegExp(pattern, 'i').test(String(triggerData?.message || ''));
+            } catch {
+              return false;
+            }
+          }
           case TriggerType.CHANNEL_POINT_REWARD:
             return trigger.rewardId === triggerData.rewardId;
           default:
