@@ -11,6 +11,7 @@ import {
   type ConfigSectionName,
   type LocalConfigMap,
 } from './schemas';
+import { normalizeTtsProvider, normalizeTtsVoice } from '../tts-voices';
 import { readUserConfigSync } from '../user-config';
 import { tenantPath } from '../tenant';
 
@@ -110,7 +111,8 @@ function migrateFromLegacy(config: LocalConfigMap, tenantId?: string): LocalConf
       geminiApiKey: config.automation.geminiApiKey || legacyUserConfig.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '',
       edenaiApiKey: config.automation.edenaiApiKey || legacyUserConfig.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '',
       openaiApiKey: config.automation.openaiApiKey || legacyUserConfig.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '',
-      ttsVoice: legacyUserConfig.TTS_VOICE || config.automation.ttsVoice,
+      ttsProvider: normalizeTtsProvider(config.automation.ttsProvider),
+      ttsVoice: normalizeTtsVoice(legacyUserConfig.TTS_VOICE || config.automation.ttsVoice, normalizeTtsProvider(config.automation.ttsProvider)),
     },
     app: {
       ...config.app,

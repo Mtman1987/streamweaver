@@ -12,16 +12,17 @@ export async function GET(request: NextRequest) {
     }
 
     const audioDataUri = await generateTTS(text, undefined, tenantId);
-    const match = audioDataUri.match(/^data:audio\/(?:mpeg|mp3);base64,(.+)$/i);
+    const match = audioDataUri.match(/^data:audio\/(mpeg|mp3|wav);base64,(.+)$/i);
     if (!match) {
       return NextResponse.json({ error: 'Invalid TTS audio format' }, { status: 500 });
     }
 
-    const audioBuffer = Buffer.from(match[1], 'base64');
+    const audioBuffer = Buffer.from(match[2], 'base64');
+    const contentType = match[1] === 'wav' ? 'audio/wav' : 'audio/mpeg';
     return new NextResponse(audioBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': contentType,
         'Cache-Control': 'no-store',
       },
     });

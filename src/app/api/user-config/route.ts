@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isUserConfigComplete, readUserConfig, writeUserConfig } from '@/lib/user-config';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { normalizeTtsProvider, normalizeTtsVoice } from '@/lib/tts-voices';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,7 @@ const ALLOWED_KEYS = new Set([
   'OPENAI_API_KEY',
 
   // TTS Configuration (user-specific)
-  'TTS_PROVIDER', // 'openai' | 'inworld' | 'google'
+  'TTS_PROVIDER', // 'piper' | 'edenai' (legacy routed values auto-normalize)
   'TTS_VOICE',
   'DISCORD_TTS_BRIDGE', // 'true' | 'false'
 
@@ -59,10 +60,19 @@ export async function POST(request: NextRequest) {
 
   const body = parsed.data;
   const session = getTenantFromRequest(request);
+  const requestedProvider = normalizeTtsProvider(body.TTS_PROVIDER);
 
   const patch: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(body)) {
     if (!ALLOWED_KEYS.has(key)) continue;
+    if (key === 'TTS_PROVIDER') {
+      patch[key] = requestedProvider;
+      continue;
+    }
+    if (key === 'TTS_VOICE') {
+      patch[key] = normalizeTtsVoice(String(value), requestedProvider);
+      continue;
+    }
     patch[key] = value;
   }
 

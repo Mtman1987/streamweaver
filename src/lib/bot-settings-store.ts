@@ -6,6 +6,7 @@
 import { readUserConfigSync } from './user-config';
 import fs from 'fs';
 import { tenantPath } from './tenant';
+import { DEFAULT_TTS_VOICE, normalizeTtsVoice } from './tts-voices';
 
 const tenantBotSettings = new Map<string, {
   personality: string;
@@ -25,7 +26,7 @@ const explicitlySet = new Set<string>();
 const DEFAULTS = {
   personality: 'You are StreamWeaver87, the onboard AI steward of the Space Mountain — a legendary interstellar cruise liner that drifts between streams. You\'re friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. You speak with the flair of a theme park ride narrator mixed with a helpful concierge. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."',
   name: 'StreamWeaver87',
-  voice: 'Algieba',
+  voice: DEFAULT_TTS_VOICE,
   interests: '',
   aliases: '',
 };
@@ -48,7 +49,7 @@ function loadBotSettingsFromDisk(tenantId?: string) {
     tenantBotSettings.set(key, {
       personality: config.AI_BOT_PERSONALITY || DEFAULTS.personality,
       name: config.AI_BOT_NAME || DEFAULTS.name,
-      voice: config.TTS_VOICE || DEFAULTS.voice,
+      voice: normalizeTtsVoice(config.TTS_VOICE),
       interests: config.AI_BOT_INTERESTS || '',
       aliases: config.AI_BOT_ALIASES || '',
     });

@@ -65,7 +65,7 @@ const DEFAULTS = {
   
   // TTS defaults
   useTtsPlayer: true,
-  defaultTtsVoice: 'Algieba',
+  defaultTtsVoice: 'piper:en_US-lessac-high',
   
   // OBS defaults
   obsWsUrl: 'ws://127.0.0.1:4455',

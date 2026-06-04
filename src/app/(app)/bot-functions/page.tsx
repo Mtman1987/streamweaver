@@ -19,112 +19,20 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsVoice } from "@/lib/tts-voices";
 
 
 function isValidLottie(data: unknown): data is Record<string, unknown> {
     return !!data && typeof data === 'object' && Array.isArray((data as any).layers);
 }
 
-const availableVoices = [
-    // === INWORLD VILLAIN / CHARACTER VOICES ===
-    { name: 'Mortimer', gender: 'Male', description: 'Gravelly, aggressive — fantasy villains' },
-    { name: 'Snik', gender: 'Male', description: 'Hoarse, cunning — goblin/trickster' },
-    { name: 'Hades', gender: 'Male', description: 'Commanding, gruff — narrator/guard' },
-    { name: 'Dominus', gender: 'Male', description: 'Robotic, deep, menacing — villains' },
-    { name: 'Victor', gender: 'Male', description: 'Ominous, sinister — dark conspiracies' },
-    { name: 'Lucian', gender: 'Male', description: 'Brooding, foreboding — gothic drama' },
-    { name: 'Sebastian', gender: 'Male', description: 'Intimidating, steely — antagonists' },
-    { name: 'Malcolm', gender: 'Male', description: 'Authoritative, manipulative — cunning leaders' },
-    { name: 'Levi', gender: 'Male', description: 'Measured, ominous — suspense/dark fantasy' },
-    { name: 'Conrad', gender: 'Male', description: 'Gruff, weathered — detective/hard-edged' },
-    { name: 'Damon', gender: 'Male', description: 'Calm, raspy — moody/atmospheric' },
-    { name: 'Veronica', gender: 'Female', description: 'Intimidating, commanding — antagonist' },
-    { name: 'Victoria', gender: 'Female', description: 'Silky, cunning British — intricate plots' },
-    { name: 'Miranda', gender: 'Female', description: 'Menacing, cold-hearted — villain' },
-    // === INWORLD MALE VOICES ===
-    { name: 'Marcus', gender: 'Male', description: 'Authoritative, empathetic' },
-    { name: 'Rupert', gender: 'Male', description: 'Resonant, commanding British' },
-    { name: 'Graham', gender: 'Male', description: 'Profound, authoritative British' },
-    { name: 'Ronald', gender: 'Male', description: 'Confident, deep, gravelly British' },
-    { name: 'Theodore', gender: 'Male', description: 'Gravelly, time-worn' },
-    { name: 'Vinny', gender: 'Male', description: 'Gritty, assertive New York' },
-    { name: 'Craig', gender: 'Male', description: 'Older British, refined' },
-    { name: 'Dennis', gender: 'Male', description: 'Smooth, calm, friendly' },
-    { name: 'Edward', gender: 'Male', description: 'Emphatic, confident, streetwise' },
-    { name: 'Hank', gender: 'Male', description: 'Warm, laid-back Southern' },
-    { name: 'Oliver', gender: 'Male', description: 'Neutral, clear — announcements' },
-    { name: 'Simon', gender: 'Male', description: 'Articulate, insightful' },
-    { name: 'Elliot', gender: 'Male', description: 'Calm, steady — documentaries' },
-    { name: 'James', gender: 'Male', description: 'Vibrant, expressive' },
-    { name: 'Ethan', gender: 'Male', description: 'Assured, precise — tech' },
-    { name: 'Tyler', gender: 'Male', description: 'Authoritative, insightful — tech' },
-    { name: 'Jason', gender: 'Male', description: 'Lucid, engrossing — tech tips' },
-    { name: 'Brian', gender: 'Male', description: 'Friendly, encouraging' },
-    { name: 'Nate', gender: 'Male', description: 'Conversational, sociable' },
-    { name: 'Jake', gender: 'Male', description: 'Amiable, introspective' },
-    { name: 'Blake', gender: 'Male', description: 'Rich, intimate — audiobooks' },
-    { name: 'Carter', gender: 'Male', description: 'Energetic, radio announcer' },
-    { name: 'Cedric', gender: 'Male', description: 'Crisp, measured — formal' },
-    { name: 'Tristan', gender: 'Male', description: 'Deliberate, controlled — documentary' },
-    { name: 'Gareth', gender: 'Male', description: 'Soothing, gentle — meditation' },
-    { name: 'Jonah', gender: 'Male', description: 'Soothing, calm — tutorials' },
-    { name: 'Avery', gender: 'Male', description: 'Youthful, performative — gameshow' },
-    { name: 'Brandon', gender: 'Male', description: 'Bold, strident — announcements' },
-    { name: 'Trevor', gender: 'Male', description: 'Punchy, expressive — promos' },
-    { name: 'Alex', gender: 'Male', description: 'Energetic, mid-range, mildly nasal' },
-    { name: 'Mark', gender: 'Male', description: 'Energetic, rapid-fire delivery' },
-    { name: 'Shaun', gender: 'Male', description: 'Friendly, dynamic — conversations' },
-    { name: 'Timothy', gender: 'Male', description: 'Lively, upbeat American' },
-    { name: 'Liam', gender: 'Male', description: 'Upbeat, motivating Australian' },
-    { name: 'Callum', gender: 'Male', description: 'Casual, friendly Australian' },
-    { name: 'Hamish', gender: 'Male', description: 'Friendly, casual Australian' },
-    { name: 'Clive', gender: 'Male', description: 'British, calm, cordial' },
-    { name: 'Duncan', gender: 'Male', description: 'Warm, articulate British' },
-    { name: 'Felix', gender: 'Male', description: 'Calm, friendly British' },
-    { name: 'Reed', gender: 'Male', description: 'Clear, professional American' },
-    { name: 'Derek', gender: 'Male', description: 'Steady, professional, composed' },
-    { name: 'Evan', gender: 'Male', description: 'Friendly, approachable, easygoing' },
-    { name: 'Grant', gender: 'Male', description: 'Calm, attentive, helpful' },
-    // === INWORLD FEMALE VOICES ===
-    { name: 'Ashley', gender: 'Female', description: 'Warm, natural' },
-    { name: 'Sarah', gender: 'Female', description: 'Fast-talking, curious' },
-    { name: 'Lauren', gender: 'Female', description: 'Confident, friendly American' },
-    { name: 'Jessica', gender: 'Female', description: 'Encouraging, articulate' },
-    { name: 'Kelsey', gender: 'Female', description: 'Warm, empathetic, reassuring' },
-    { name: 'Kayla', gender: 'Female', description: 'Enthusiastic, youthful' },
-    { name: 'Chloe', gender: 'Female', description: 'Thoughtful, introspective youthful' },
-    { name: 'Serena', gender: 'Female', description: 'Soft, nurturing — wellness' },
-    { name: 'Celeste', gender: 'Female', description: 'Soft, whispery — ASMR' },
-    { name: 'Evelyn', gender: 'Female', description: 'Gentle, intimate — ASMR' },
-    { name: 'Luna', gender: 'Female', description: 'Calm, relaxing — meditations' },
-    { name: 'Pippa', gender: 'Female', description: 'Friendly, casual Australian' },
-    { name: 'Tessa', gender: 'Female', description: 'Upbeat, conversational Australian' },
-    { name: 'Naomi', gender: 'Female', description: 'Warm, grounded — podcasting' },
-    { name: 'Nadia', gender: 'Female', description: 'Personable, lively — tutorials' },
-    { name: 'Selene', gender: 'Female', description: 'Soft, flirtatious — companion' },
-    { name: 'Riley', gender: 'Female', description: 'Playful, youthful — animated' },
-    { name: 'Mia', gender: 'Female', description: 'Youthful, expressive' },
-    { name: 'Hana', gender: 'Female', description: 'Bright, expressive young' },
-    { name: 'Bianca', gender: 'Female', description: 'Deep, controlled — corporate' },
-    { name: 'Olivia', gender: 'Female', description: 'Young British, friendly' },
-    { name: 'Wendy', gender: 'Female', description: 'Posh, middle-aged British' },
-    { name: 'Elizabeth', gender: 'Female', description: 'Professional, narrations' },
-    { name: 'Claire', gender: 'Female', description: 'Warm, gentle Eastern European' },
-    { name: 'Loretta', gender: 'Female', description: 'Inviting, folksy Southern' },
-    { name: 'Darlene', gender: 'Female', description: 'Soothing, comforting Southern' },
-    { name: 'Abby', gender: 'Female', description: 'Bright, eager child voice' },
-    { name: 'Julia', gender: 'Female', description: 'Quirky, high-pitched, playful' },
-    { name: 'Pixie', gender: 'Female', description: 'High-pitched, childlike, squeaky' },
-    { name: 'Amina', gender: 'Female', description: 'Warm, inviting West African' },
-    { name: 'Sophie', gender: 'Female', description: 'Friendly British' },
-    { name: 'Eleanor', gender: 'Female', description: 'Polished, approachable British' },
-];
+const availableVoices = TTS_VOICE_OPTIONS;
 
 
 export default function BotFunctionsPage() {
     const { toast } = useToast();
     const [ttsText, setTtsText] = useState("Hello! This is a test of the text-to-speech voice.");
-    const [ttsVoice, setTtsVoice] = useState("Ashley");
+    const [ttsVoice, setTtsVoice] = useState(DEFAULT_TTS_VOICE);
     const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
@@ -203,7 +111,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
             if (savedTalking && savedTalking !== 'undefined') {
                 try { const parsed = JSON.parse(savedTalking); if (isValidLottie(parsed)) setTalkingAnimationData(parsed); } catch {}
             }
-            if (savedVoice) setTtsVoice(savedVoice);
+            if (savedVoice) setTtsVoice(normalizeTtsVoice(savedVoice));
             if (savedName) setBotName(savedName);
             if (savedPersonality) setBotPersonality(savedPersonality);
             if (savedSkipShoutoutOverlay) setSkipShoutoutOverlay(savedSkipShoutoutOverlay === 'true');
@@ -227,8 +135,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     else if (cfg.AI_BOT_NAME) setBotName(cfg.AI_BOT_NAME);
                     if (cfg.AI_BOT_PERSONALITY && !savedPersonality) setBotPersonality(cfg.AI_BOT_PERSONALITY);
                     else if (cfg.AI_BOT_PERSONALITY) setBotPersonality(cfg.AI_BOT_PERSONALITY);
-                    if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(cfg.TTS_VOICE);
-                    else if (cfg.TTS_VOICE) setTtsVoice(cfg.TTS_VOICE);
+                    if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE));
+                    else if (cfg.TTS_VOICE) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE));
                     if (cfg.AI_BOT_INTERESTS) setBotInterests(cfg.AI_BOT_INTERESTS);
                     if (cfg.AI_BOT_ALIASES) setBotAliases(cfg.AI_BOT_ALIASES);
                     if (cfg.SKIP_SHOUTOUT_OVERLAY) setSkipShoutoutOverlay(cfg.SKIP_SHOUTOUT_OVERLAY === 'true');
@@ -785,10 +693,10 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                                 </SelectTrigger>
                                 <SelectContent>
                                     {availableVoices.map((voice, i) => (
-                                        <SelectItem key={`${voice.name}-${i}`} value={voice.name}>
+                                        <SelectItem key={`${voice.id}-${i}`} value={voice.id}>
                                             <div className="flex justify-between w-full">
-                                                <span>{voice.name} ({voice.gender})</span>
-                                                <span className="text-muted-foreground ml-4">{voice.description}</span>
+                                                <span>{voice.label} ({voice.gender})</span>
+                                                <span className="text-muted-foreground ml-4">({voice.providerLabel}) {voice.description}</span>
                                             </div>
                                         </SelectItem>
                                     ))}

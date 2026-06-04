@@ -10,13 +10,35 @@ import { z } from 'zod';
 type RequestBody = {
   username: string;
   message: string;
+  userId?: string;
+  displayName?: string;
+  guildId?: string;
+  guildName?: string;
+  channelId?: string;
+  channelName?: string;
+  channelType?: string | number;
+  messageId?: string;
+  createdAt?: string;
+  isDirectMessage?: boolean;
   personality?: string;
   responseName?: string;
 };
 
+const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
+
 const chatWithMemorySchema = z.object({
   username: z.string().trim().min(1, 'Missing required fields: username, message').max(128),
   message: z.string().trim().min(1, 'Missing required fields: username, message').max(5000),
+  userId: z.string().trim().max(128).optional(),
+  displayName: z.string().trim().max(128).optional(),
+  guildId: z.string().trim().max(128).optional(),
+  guildName: z.string().trim().max(128).optional(),
+  channelId: z.string().trim().max(128).optional(),
+  channelName: z.string().trim().max(128).optional(),
+  channelType: z.union([z.string(), z.number()]).optional(),
+  messageId: z.string().trim().max(128).optional(),
+  createdAt: z.string().trim().max(128).optional(),
+  isDirectMessage: z.boolean().optional(),
   personality: z.string().trim().max(3000).optional(),
   responseName: z.string().trim().max(128).optional(),
   tenantId: z.string().trim().max(128).optional(),
@@ -42,7 +64,7 @@ function formatHistory(messages: AIChatMessage[], botName: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('[AI Chat Memory] POST request received');
+  if (VERBOSE_LOGS) console.log('[AI Chat Memory] POST request received');
   
   try {
     const parsed = chatWithMemorySchema.safeParse(await request.json().catch(() => null));
@@ -51,11 +73,30 @@ export async function POST(request: NextRequest) {
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { username, message, personality, responseName, tenantId: bodyTenantId, context } = parsed.data;
+    const {
+      username,
+      userId,
+      displayName,
+      guildId,
+      guildName,
+      channelId,
+      channelName,
+      channelType,
+      messageId,
+      createdAt,
+      isDirectMessage,
+      message,
+      personality,
+      responseName,
+      tenantId: bodyTenantId,
+      context,
+    } = parsed.data;
     // Resolve tenant: prefer session cookie (browser requests), fall back to body (server-side internal calls)
     const session = (await import('@/lib/tenant-context')).getTenantFromRequest(request);
     const tenantId = session?.tenantId || bodyTenantId;
-    console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context, source: session?.tenantId ? 'cookie' : 'body' });
+    if (VERBOSE_LOGS) {
+      console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context, source: session?.tenantId ? 'cookie' : 'body' });
+    }
 
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (!edenaiKey) {
@@ -114,6 +155,20 @@ export async function POST(request: NextRequest) {
       private: '[Context: Private conversation. Not on stream. You can be more detailed and personal.]',
     };
     const contextFlag = contextFlags[context] || contextFlags.twitch;
+    const speakerDisplayName = displayName?.trim() || username;
+    const discordMetadata = [
+      `Discord identity: username=${username};`,
+      `displayName=${displayName || 'none'};`,
+      `userId=${userId || 'unknown'};`,
+      guildId ? `guildId=${guildId};` : '',
+      guildName ? `guildName=${guildName};` : '',
+      channelId ? `channelId=${channelId};` : '',
+      channelName ? `channelName=${channelName};` : '',
+      channelType !== undefined && channelType !== null ? `channelType=${String(channelType)};` : '',
+      messageId ? `messageId=${messageId};` : '',
+      createdAt ? `createdAt=${createdAt};` : '',
+      `isDirectMessage=${isDirectMessage ? 'true' : 'false'};`,
+    ].filter(Boolean).join(' ');
 
     const promptParts = [
       extendedGuidance,
@@ -121,8 +176,10 @@ export async function POST(request: NextRequest) {
       botInteractionHistory,
       commanderContext,
       contextFlag,
+      discordMetadata,
       historyText,
-      `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : username}: ${message}`,
+      `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : speakerDisplayName}: ${message}`,
+      'Important: use the exact Discord identity context above. Do not rename the user to M.T. unless the Discord username itself belongs to the Commander.',
       `Respond as ${botResponseName}:`,
     ].filter(Boolean);
 
@@ -131,11 +188,13 @@ export async function POST(request: NextRequest) {
     const userEntry = {
       type: 'user' as const,
       username,
+      displayName: displayName || undefined,
+      userId: userId || undefined,
       message,
       timestamp: new Date().toISOString(),
     };
 
-    console.log('[AI Chat Memory] Saving user message:', userEntry);
+    if (VERBOSE_LOGS) console.log('[AI Chat Memory] Saving user message:', userEntry);
     await appendPublicChatMessages([userEntry], 100, tenantId);
 
     // Use EdenAI API with proper system/user role separation
@@ -179,7 +238,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
-    console.log('[AI Chat Memory] Saving AI response:', aiEntry);
+    if (VERBOSE_LOGS) console.log('[AI Chat Memory] Saving AI response:', aiEntry);
     await appendPublicChatMessages([aiEntry], 100, tenantId);
 
     // Save to global commander memory if this was M.T.
@@ -193,7 +252,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log('[AI Chat Memory] Successfully saved messages to public chat file');
+    if (VERBOSE_LOGS) console.log('[AI Chat Memory] Successfully saved messages to public chat file');
     return apiOk({ response: cleanResponse });
   } catch (error) {
     console.error('[AI Chat Memory] API error:', error);

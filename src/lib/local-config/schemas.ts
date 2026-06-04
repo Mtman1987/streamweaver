@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_TTS_VOICE } from '../tts-voices';
 
 const nonEmpty = z.string().trim().min(1);
 
@@ -61,8 +62,8 @@ export const automationConfigSchema = z.object({
   geminiApiKey: z.string().default(''),
   edenaiApiKey: z.string().default(''),
   openaiApiKey: z.string().default(''),
-  ttsProvider: z.enum(['google', 'openai', 'inworld']).default('google'),
-  ttsVoice: z.string().default('Algieba'),
+  ttsProvider: z.enum(['piper', 'edenai']).default('piper'),
+  ttsVoice: z.string().default(DEFAULT_TTS_VOICE),
 });
 
 const customRewardSchema = z.object({

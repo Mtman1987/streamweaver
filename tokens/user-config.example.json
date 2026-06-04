@@ -6,7 +6,7 @@
   "NEXT_PUBLIC_DISCORD_SHOUTOUT_CHANNEL_ID": "",
   "AI_PROVIDER": "edenai",
   "AI_MODEL": "openai/gpt-4o-mini",
-  "TTS_PROVIDER": "inworld",
-  "TTS_VOICE": "Ashley",
+  "TTS_PROVIDER": "piper",
+  "TTS_VOICE": "piper:en_US-lessac-high",
   "DISCORD_TTS_BRIDGE": "false"
 }

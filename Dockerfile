@@ -29,6 +29,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y python3 python3-pip python3-venv ca-certificates && \
+    python3 -m venv /opt/piper && \
+    /opt/piper/bin/pip install --no-cache-dir piper-tts && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/piper/bin:${PATH}"
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/package.json ./package.json

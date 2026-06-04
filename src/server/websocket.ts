@@ -34,6 +34,29 @@ function broadcastActiveUsers(broadcast: (message: object, tenantId?: string) =>
     broadcast({ type: 'global-active-users-update', payload: { users: allUsers } });
 }
 
+async function dispatchAppSentTwitchMessage(input: {
+    channel: string;
+    client: any;
+    message: string;
+    as: 'bot' | 'broadcaster';
+}) {
+    try {
+        const { handleTwitchMessage } = require('../services/chat-dispatcher');
+        const username = String(input.client?.getUsername?.() || input.channel || 'streamweaver').replace(/^#/, '');
+        const channel = input.channel.startsWith('#') ? input.channel : `#${input.channel}`;
+        await handleTwitchMessage(channel, {
+            id: `app-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            username: username.toLowerCase(),
+            'display-name': username,
+            badges: input.as === 'broadcaster' ? { broadcaster: '1' } : { bot: '1' },
+            emotes: {},
+            color: undefined,
+        }, input.message, false);
+    } catch (error) {
+        console.error('[WebSocket] Failed to dispatch app-sent Twitch message:', error);
+    }
+}
+
 function extractApiKeyFromRequest(request: http.IncomingMessage): string {
     const host = request.headers.host || '127.0.0.1';
     const parsed = new URL(request.url || '/', `http://${host}`);
@@ -182,7 +205,8 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 // Process authorized messages
                 if (message.type === 'send-twitch-message') {
                     const { message: text, as } = message.payload;
-                    console.log(`[WebSocket] Received message to send as ${as}: ${text}`);
+                    const sendAs = as === 'bot' ? 'bot' : 'broadcaster';
+                    console.log(`[WebSocket] Received message to send as ${sendAs}: ${text}`);
 
                     const tenantId = (ws as any).__tenantId;
                     if (!tenantId) {
@@ -194,16 +218,16 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     }
 
                     const { getTwitchClient } = require('../services/twitch-client');
-                    const freshTwitchClient = getTwitchClient(as === 'bot' ? 'bot' : 'broadcaster', tenantId);
+                    const freshTwitchClient = getTwitchClient(sendAs, tenantId);
                     
-                    console.log(`[WebSocket] Twitch client (${as}) exists: ${!!freshTwitchClient}`);
+                    console.log(`[WebSocket] Twitch client (${sendAs}) exists: ${!!freshTwitchClient}`);
                     console.log(`[WebSocket] Twitch client readyState: ${freshTwitchClient?.readyState?.()}`);
                     
                     if (!freshTwitchClient || !freshTwitchClient.readyState || freshTwitchClient.readyState() !== 'OPEN') {
-                        console.error(`[WebSocket] Twitch ${as} client not connected`);
+                        console.error(`[WebSocket] Twitch ${sendAs} client not connected`);
                         ws.send(JSON.stringify({
                             type: 'error',
-                            payload: { message: `Twitch ${as} client not connected` }
+                            payload: { message: `Twitch ${sendAs} client not connected` }
                         }));
                         return;
                     }
@@ -215,7 +239,13 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     }
                     
                     await freshTwitchClient.say(channels[0], text);
-                    console.log(`[WebSocket] Message sent to Twitch as ${as}: ${text}`);
+                    await dispatchAppSentTwitchMessage({
+                        channel: channels[0],
+                        client: freshTwitchClient,
+                        message: text,
+                        as: sendAs,
+                    });
+                    console.log(`[WebSocket] Message sent to Twitch as ${sendAs}: ${text}`);
                 } else if (message.type === 'reconnect-twitch') {
                     console.log('[WebSocket] Received reconnect request for Twitch');
                     try {
@@ -270,10 +300,11 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     const { hideAvatarAfterDelay } = require('../server/avatar');
                     hideAvatarAfterDelay(0, broadcast, (ws as any).__tenantId);
                     console.log('[WebSocket] Hide avatar requested');
-                } else if (message.type === 'update-bot-settings') {
-                    const { personality, voice, name, interests, skipShoutoutOverlay } = message.payload;
-                    const { setBotSettings } = require('../lib/bot-settings-store');
-                    const tid = (ws as any).__tenantId;
+                  } else if (message.type === 'update-bot-settings') {
+                      const { personality, voice, name, interests, skipShoutoutOverlay } = message.payload;
+                      const { setBotSettings } = require('../lib/bot-settings-store');
+                      const { normalizeTtsVoice } = require('../lib/tts-voices');
+                      const tid = (ws as any).__tenantId;
                     const updates: Record<string, string> = {};
                     const botUpdates: Record<string, string> = {};
                     if (personality && typeof personality === 'string') {
@@ -281,11 +312,12 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         updates.AI_BOT_PERSONALITY = personality;
                         console.log(`[WebSocket] Updated bot personality for ${tid || 'global'}`);
                     }
-                    if (voice && typeof voice === 'string') {
-                        botUpdates.voice = voice;
-                        updates.TTS_VOICE = voice;
-                        console.log(`[WebSocket] Updated bot voice to: ${voice}`);
-                    }
+                      if (voice && typeof voice === 'string') {
+                          const normalizedVoice = normalizeTtsVoice(voice);
+                          botUpdates.voice = normalizedVoice;
+                          updates.TTS_VOICE = normalizedVoice;
+                          console.log(`[WebSocket] Updated bot voice to: ${normalizedVoice}`);
+                      }
                     if (name && typeof name === 'string') {
                         botUpdates.name = name;
                         updates.AI_BOT_NAME = name;

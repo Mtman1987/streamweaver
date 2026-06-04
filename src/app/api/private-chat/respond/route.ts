@@ -19,6 +19,8 @@ type RequestBody = {
   tenantId?: string;
 };
 
+const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
+
 const privateRespondSchema = z.object({
   username: z.string().trim().min(1, 'username is required').max(128),
   message: z.string().trim().min(1, 'message is required').max(5000),
@@ -61,7 +63,7 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('[Private Chat API] POST request received');
+  if (VERBOSE_LOGS) console.log('[Private Chat API] POST request received');
   
   try {
     const parsed = privateRespondSchema.safeParse(await request.json().catch(() => null));
@@ -75,7 +77,9 @@ export async function POST(request: NextRequest) {
     const tenantId = session?.tenantId || bodyTenantId;
     const botName = getBotName(tenantId);
     const botPersonality = getBotPersonality(tenantId);
-    console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });
+    if (VERBOSE_LOGS) {
+      console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });
+    }
 
     const edenaiKey = process.env.EDENAI_API_KEY;
     if (!edenaiKey) {
@@ -127,8 +131,10 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
-    console.log('[Private Chat API] Saving user message to tenant:', tenantId || 'NO TENANT - LEGACY PATH');
-    console.log('[Private Chat API] File path:', (await import('@/lib/private-chat-store')).getPrivateChatFilePath(tenantId));
+    if (VERBOSE_LOGS) {
+      console.log('[Private Chat API] Saving user message to tenant:', tenantId || 'NO TENANT - LEGACY PATH');
+      console.log('[Private Chat API] File path:', (await import('@/lib/private-chat-store')).getPrivateChatFilePath(tenantId));
+    }
     await appendPrivateChatMessages([userEntry], 100, tenantId);
 
     // Use EdenAI API with proper system/user role separation
@@ -215,10 +221,10 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
-    console.log('[Private Chat API] Saving AI response:', aiEntry);
+    if (VERBOSE_LOGS) console.log('[Private Chat API] Saving AI response:', aiEntry);
     await appendPrivateChatMessages([aiEntry], 100, tenantId);
 
-    console.log('[Private Chat API] Successfully saved both messages');
+    if (VERBOSE_LOGS) console.log('[Private Chat API] Successfully saved both messages');
     return apiOk({ response: responseText });
   } catch (error) {
     console.error('Private chat respond API error:', error);
