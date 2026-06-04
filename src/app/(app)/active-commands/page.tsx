@@ -30,7 +30,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { updateActionClient } from "@/lib/client-actions";
+import { createActionClient, updateActionClient } from "@/lib/client-actions";
+import { createCommandClient, runCommandClient } from "@/lib/client-commands";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +47,7 @@ const AutomationAIChat = dynamic(() => import("@/components/automation/Automatio
 
 function ActiveCommandsPageClient() {
   const { actions, isLoading, error, refresh } = useActionsData();
-  const { commands, isLoading: commandsLoading, error: commandsError } = useCommandsData();
+  const { commands, isLoading: commandsLoading, error: commandsError, refresh: refreshCommands } = useCommandsData();
   const { toast } = useToast();
 
   const searchParams = useSearchParams();
@@ -143,11 +144,19 @@ function ActiveCommandsPageClient() {
     setDraftSubActions(Array.isArray(selectedAction.subActions) ? (selectedAction.subActions as any) : []);
   }, [selectedAction?.id]);
 
-  const handleRunCommand = (commandName: string) => {
-    toast({
-      title: "Command Triggered",
-      description: `The command "${commandName}" is being executed.`,
-    });
+  const handleRunCommand = async (commandId: string) => {
+    try {
+      const result = await runCommandClient(commandId);
+      toast({
+        title: result.matchedActions > 0 ? "Command ran" : "No action attached",
+        description:
+          result.matchedActions > 0
+            ? `${result.actionsRun} action${result.actionsRun === 1 ? "" : "s"} ran, ${result.actionsFailed} failed.`
+            : "Attach this command to an action before testing it.",
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Run failed", description: e?.message || String(e) });
+    }
   };
 
   const addCommandTriggerToDraft = () => {
@@ -430,17 +439,125 @@ function ActiveCommandsPageClient() {
     [selectedAction?.name, draftTriggers, draftSubActions]
   );
 
-  const applyAutomationFromAI = (automation: any) => {
+  const normalizeCommandText = (value: unknown): string => {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    return text.startsWith("!") ? text : `!${text.replace(/^!+/, "")}`;
+  };
+
+  const findOrCreateCommandForAutomation = async (automation: any, triggers: any[]): Promise<string | null> => {
+    if (selectedCommandId) return selectedCommandId;
+
+    const commandTrigger = triggers.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
+    const commandText = normalizeCommandText(
+      commandTrigger?.command ||
+        commandTrigger?.commandName ||
+        automation?.command?.command ||
+        automation?.command
+    );
+
+    if (!commandText) return null;
+
+    const existing = commands.find((command) => String(command.command || "").trim().toLowerCase() === commandText.toLowerCase());
+    if (existing) {
+      return existing.id;
+    }
+
+    const created: any = await createCommandClient({
+      name: String(automation?.command?.name || commandText.replace(/^!/, "") || "AI Command"),
+      command: commandText,
+      group: "AI Automations",
+      enabled: true,
+    });
+    return String(created?.id || "");
+  };
+
+  const normalizeAutomationTriggers = (automation: any, commandId: string | null): any[] => {
+    const sourceTriggers = Array.isArray(automation?.triggers) ? automation.triggers : [];
+    const nextTriggers = sourceTriggers.map((trigger: any) => {
+      const isCommand = Number(trigger?.type) === TriggerType.COMMAND;
+      const { command, commandName, ...rest } = trigger || {};
+      return {
+        ...rest,
+        id: String(trigger?.id || crypto.randomUUID()),
+        type: Number(trigger?.type ?? TriggerType.COMMAND),
+        enabled: trigger?.enabled ?? true,
+        exclusions: Array.isArray(trigger?.exclusions) ? trigger.exclusions : [],
+        ...(isCommand && commandId ? { commandId } : {}),
+      };
+    });
+
+    const hasCommandTrigger = nextTriggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
+    if (commandId && !hasCommandTrigger) {
+      nextTriggers.unshift({
+        id: crypto.randomUUID(),
+        type: TriggerType.COMMAND,
+        enabled: true,
+        exclusions: [],
+        commandId,
+      });
+    }
+
+    return nextTriggers;
+  };
+
+  const normalizeAutomationSubActions = (automation: any): SubAction[] => {
+    const sourceSubActions = Array.isArray(automation?.subActions) ? automation.subActions : [];
+    return normalizeIndex(sourceSubActions) as SubAction[];
+  };
+
+  const applyAutomationFromAI = async (automation: any) => {
     if (!automation || typeof automation !== "object") return;
 
-    if (Array.isArray((automation as any).triggers)) {
-      setDraftTriggers((automation as any).triggers as any[]);
-    }
-    if (Array.isArray((automation as any).subActions)) {
-      setDraftSubActions((automation as any).subActions as any);
-    }
+    setIsSaving(true);
+    try {
+      const sourceTriggers = Array.isArray(automation.triggers) ? automation.triggers : [];
+      const commandId = await findOrCreateCommandForAutomation(automation, sourceTriggers);
+      const nextTriggers = normalizeAutomationTriggers(automation, commandId);
+      const nextSubActions = normalizeAutomationSubActions(automation);
+      const actionName = String(automation.name || selectedAction?.name || "AI Drafted Workflow").trim() || "AI Drafted Workflow";
 
-    setDraftEnabled(true);
+      let actionId = draftActionId;
+      if (actionId) {
+        await updateActionClient(
+          actionId,
+          {
+            name: actionName,
+            enabled: true,
+            triggers: nextTriggers as any,
+            subActions: nextSubActions as any,
+          } as any
+        );
+      } else {
+        const created: any = await createActionClient({
+          name: actionName,
+          group: "AI Automations",
+          enabled: true,
+          triggers: nextTriggers as any,
+          subActions: nextSubActions as any,
+        } as any);
+        actionId = String(created?.id || "");
+      }
+
+      setDraftActionId(actionId);
+      setSelectedActionId(actionId);
+      if (commandId) setSelectedCommandId(commandId);
+      setDraftTriggers(nextTriggers);
+      setDraftSubActions(nextSubActions);
+      setDraftEnabled(true);
+
+      await Promise.all([refresh(), refreshCommands()]);
+      toast({
+        title: "Automation saved",
+        description: commandId
+          ? `${actionName} is saved and linked to the command.`
+          : `${actionName} is saved.`,
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Apply failed", description: e?.message || String(e) });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -894,7 +1011,7 @@ function ActiveCommandsPageClient() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleRunCommand(row.commandLabel)}>
+                      <DropdownMenuItem onClick={() => handleRunCommand(row.commandId)}>
                         <Play className="mr-2 h-4 w-4" />
                         Run
                       </DropdownMenuItem>

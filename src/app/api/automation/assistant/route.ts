@@ -27,6 +27,10 @@ type AssistantAutomationResponse = {
     name: string;
     triggers: any[];
     subActions: any[];
+    command?: {
+      name?: string;
+      command: string;
+    };
   };
   codeSnippets?: Array<{ language: string; code: string; description: string }>;
   suggestedChanges?: string[];
@@ -134,7 +138,8 @@ function buildCodeFallback(message: string): AssistantAutomationResponse {
   };
 }
 
-function buildRpsAutomationDraft(_message: string, selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
+function buildRpsAutomationDraft(message: string, selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
+  const commandLabel = inferCommandLabel(message) || '!rps';
   const triggers = [...asWorkflowArray(currentWorkflow?.triggers)];
   if (selectedCommandId && !triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)) {
     triggers.unshift({
@@ -143,6 +148,14 @@ function buildRpsAutomationDraft(_message: string, selectedCommandId?: string | 
       enabled: true,
       exclusions: [],
       commandId: selectedCommandId,
+    });
+  } else if (!selectedCommandId && !triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      command: commandLabel,
     });
   }
 
@@ -190,6 +203,7 @@ function buildRpsAutomationDraft(_message: string, selectedCommandId?: string | 
       name: currentWorkflow?.name?.trim() || 'RPS Challenge',
       triggers,
       subActions,
+      ...(!selectedCommandId ? { command: { name: commandLabel.replace(/^!/, ''), command: commandLabel } } : {}),
     },
     suggestedChanges: selectedCommandId
       ? ['Review the chat pattern if you want to accept other spellings.', 'Check the point bet behavior before saving.']
@@ -222,6 +236,14 @@ async function buildFallbackAutomation(message: string, selectedCommandId?: stri
       exclusions: [],
       commandId: selectedCommandId,
     });
+  } else if (!hasCommandTrigger && commandLabel) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      command: commandLabel,
+    });
   }
 
   return {
@@ -232,6 +254,7 @@ async function buildFallbackAutomation(message: string, selectedCommandId?: stri
       name: currentWorkflow?.name?.trim() || 'AI Drafted Workflow',
       triggers,
       subActions: [subAction],
+      ...(!selectedCommandId && commandLabel ? { command: { name: commandLabel.replace(/^!/, ''), command: commandLabel } } : {}),
     },
     suggestedChanges: ['Review the trigger and adjust the response text before saving.'],
   };
@@ -390,6 +413,7 @@ export async function POST(request: NextRequest) {
     }
 
     const automation = parsedResponse.automation ?? fallback.automation;
+    const commandLabel = inferCommandLabel(message);
     const nextTriggers = asWorkflowArray(automation?.triggers).map((trigger) => ({
       ...trigger,
       id: String(trigger?.id || newId()),
@@ -405,6 +429,22 @@ export async function POST(request: NextRequest) {
         exclusions: [],
         commandId: selectedCommandId,
       });
+    } else if (!selectedCommandId && commandLabel) {
+      const commandTriggerIndex = nextTriggers.findIndex((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
+      if (commandTriggerIndex >= 0) {
+        nextTriggers[commandTriggerIndex] = {
+          ...nextTriggers[commandTriggerIndex],
+          command: nextTriggers[commandTriggerIndex]?.command || commandLabel,
+        };
+      } else {
+        nextTriggers.unshift({
+          id: newId(),
+          type: TriggerType.COMMAND,
+          enabled: true,
+          exclusions: [],
+          command: commandLabel,
+        });
+      }
     }
 
     const nextSubActions = asWorkflowArray(automation?.subActions).map((subAction, index) => ({
@@ -422,6 +462,15 @@ export async function POST(request: NextRequest) {
         name: String(automation?.name || fallback.automation?.name || 'AI Drafted Workflow'),
         triggers: nextTriggers,
         subActions: nextSubActions.length > 0 ? nextSubActions : fallback.automation?.subActions || [],
+        ...(automation?.command || fallback.automation?.command || commandLabel
+          ? {
+              command: automation?.command ||
+                fallback.automation?.command || {
+                  name: commandLabel?.replace(/^!/, '') || 'AI Command',
+                  command: commandLabel,
+                },
+            }
+          : {}),
       },
       codeSnippets: Array.isArray(parsedResponse.codeSnippets) ? parsedResponse.codeSnippets : fallback.codeSnippets || [],
       suggestedChanges: Array.isArray(parsedResponse.suggestedChanges)

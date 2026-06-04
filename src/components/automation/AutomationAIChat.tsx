@@ -20,7 +20,7 @@ interface Message {
 
 interface AutomationAIChatProps {
   currentWorkflow?: any;
-  onAutomationGenerated?: (automation: any) => void;
+  onAutomationGenerated?: (automation: any) => void | Promise<void>;
   onCodeGenerated?: (code: string, language: string) => void;
   selectedCommandId?: string | null;
   userName?: string;
@@ -43,6 +43,7 @@ export default function AutomationAIChat({
   ]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [applyingMessageId, setApplyingMessageId] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -203,11 +204,19 @@ export default function AutomationAIChat({
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => onAutomationGenerated?.(message.automation)}
+                    disabled={applyingMessageId === message.id}
+                    onClick={async () => {
+                      setApplyingMessageId(message.id);
+                      try {
+                        await onAutomationGenerated?.(message.automation);
+                      } finally {
+                        setApplyingMessageId(null);
+                      }
+                    }}
                     className="w-full mt-2"
                   >
                     <Sparkles className="w-4 h-4 mr-2" />
-                    Apply This Automation
+                    {applyingMessageId === message.id ? 'Applying...' : 'Apply and Save Automation'}
                   </Button>
                 </div>
               </CardContent>
