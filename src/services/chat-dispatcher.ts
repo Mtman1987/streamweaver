@@ -92,6 +92,19 @@ async function isLoreBotUsername(username: string): Promise<boolean> {
     }
 }
 
+function pickCrossBotReplyLimit(): number {
+    const weightedLimits = [1, 2, 2, 3, 3, 4];
+    return weightedLimits[Math.floor(Math.random() * weightedLimits.length)] || 2;
+}
+
+function randomCrossBotDelayMs(): number {
+    return 5_000 + Math.floor(Math.random() * 10_001);
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
 // Pagination state for card listings
 const cardListings = new Map<string, { cards: string[], page: number }>();
 
@@ -148,13 +161,13 @@ async function sendTwitchCrossBotFollowUp(input: {
 
         const responded = new Set<string>();
         const queue = [...initialTargets];
-        const MAX_CHAIN = 6;
+        const replyLimit = pickCrossBotReplyLimit();
         let count = 0;
         let lastSpeakerName = input.speakerName;
         let lastSpeakerId = speakerId;
         let lastReply = input.speakerReply;
 
-        while (queue.length > 0 && count < MAX_CHAIN) {
+        while (queue.length > 0 && count < replyLimit) {
             const target: any = queue.shift();
             if (responded.has(target.stableId)) continue;
             responded.add(target.stableId);
@@ -194,6 +207,10 @@ async function sendTwitchCrossBotFollowUp(input: {
             const data = await response.json();
             const reply = data.response?.trim() || data.data?.response?.trim() || '';
             if (!reply) continue;
+
+            const waitMs = randomCrossBotDelayMs();
+            console.log(`[Dispatcher] Waiting ${Math.round(waitMs / 1000)}s before ${target.currentName} cross-bot follow-up (${count + 1}/${replyLimit})`);
+            await delay(waitMs);
 
             await sendChatMessage(reply, 'bot', input.channel, targetTenantId).catch((error) => {
                 console.error('[Dispatcher] Twitch cross-bot send failed:', error);
