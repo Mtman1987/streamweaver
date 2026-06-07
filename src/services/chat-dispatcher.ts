@@ -2475,6 +2475,7 @@ If no good match, respond with: Could not find matching user`;
                         if (aiReply) {
                             // Send the chat message
                             await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
+                            const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
                             await sendTwitchCrossBotFollowUp({
                                 channel: replyChannel,
                                 userName: actualUsername,
@@ -2486,29 +2487,33 @@ If no good match, respond with: Could not find matching user`;
                             }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
                             
                             // Generate TTS for AI response
-                            try {
-                                const { textToSpeech } = await import('../ai/flows/text-to-speech');
-                                const ttsResult = await textToSpeech({ text: aiReply, tenantId: responseTenantId || undefined });
-                                
-                                if (ttsResult.audioDataUri) {
-                                    const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
+                            if (shouldGenerateTtsForReply) {
+                                try {
+                                    const { textToSpeech } = await import('../ai/flows/text-to-speech');
+                                    const ttsResult = await textToSpeech({ text: aiReply, tenantId: responseTenantId || undefined });
                                     
-                                    if (useTTSPlayer) {
-                                        const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-                                        await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
-                                        }).catch(err => console.error('[Dispatcher] Failed to send TTS to player:', err));
-                                    } else if (typeof (global as any).broadcast === 'function') {
-                                        (global as any).broadcast({
-                                            type: 'play-tts',
-                                            payload: { audioDataUri: ttsResult.audioDataUri }
-                                        }, tenantId);
+                                    if (ttsResult.audioDataUri) {
+                                        const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
+                                        
+                                        if (useTTSPlayer) {
+                                            const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                                            await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
+                                            }).catch(err => console.error('[Dispatcher] Failed to send TTS to player:', err));
+                                        } else if (typeof (global as any).broadcast === 'function') {
+                                            (global as any).broadcast({
+                                                type: 'play-tts',
+                                                payload: { audioDataUri: ttsResult.audioDataUri }
+                                            }, tenantId);
+                                        }
                                     }
+                                } catch (err) {
+                                    console.error('[Dispatcher] TTS generation failed for AI response:', err);
                                 }
-                            } catch (err) {
-                                console.error('[Dispatcher] TTS generation failed for AI response:', err);
+                            } else {
+                                console.log(`[Dispatcher] Skipping TTS for cross-stream bot reply from tenant ${responseTenantId} in tenant ${tenantId || 'unknown'}.`);
                             }
                         }
                     } else {
