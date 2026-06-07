@@ -29,6 +29,7 @@ import { globalPath, tenantPath } from '../lib/tenant';
 import type { StorageContext } from './storage';
 
 const CORE_POKEMON_CONFIRMATION_COMMANDS = new Set(['accept', 'cancel', 'swap']);
+const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 // Track processed messages to prevent duplicates
 const processedMessages = new Set<string>();
@@ -520,7 +521,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
     const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
 
-    console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage})`);
+    if (VERBOSE_LOGS) {
+        console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage})`);
+    }
     
     // Skip self messages (broadcaster client echoes its own sends)
     if (self) return;
@@ -777,13 +780,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (!message.startsWith('[')) {
         const logChannelId = await getDiscordLogChannelId(tenantId);
         if (logChannelId) {
-            console.log(`[Dispatcher] Bridging to Discord: ${message}`);
+            if (VERBOSE_LOGS) console.log(`[Dispatcher] Bridging to Discord: ${message}`);
             await sendDiscordMessage(logChannelId, `**[Twitch] ${displayName}:** ${message}`).catch(() => {});
         } else {
-            console.log(`[Dispatcher] Discord bridge disabled or no channel configured`);
+            if (VERBOSE_LOGS) console.log(`[Dispatcher] Discord bridge disabled or no channel configured`);
         }
     } else {
-        console.log(`[Dispatcher] Skipping Discord bridge for message starting with [`);
+        if (VERBOSE_LOGS) console.log(`[Dispatcher] Skipping Discord bridge for message starting with [`);
     }
 
     if (isCommand && !isBot) {
@@ -2382,6 +2385,7 @@ If no good match, respond with: Could not find matching user`;
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 username: actualUsername,
+                                displayName: displayName,
                                 message: decision.promptInstruction,
                                 tenantId: responseTenantId || undefined,
                                 context: 'twitch',
@@ -2564,11 +2568,21 @@ export async function handleDiscordMessage(msg: any, tenantId?: string) {
             });
 
             if (decision?.shouldRespond) {
-                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        username: sourceUserName,
+                        username: msg.author?.username || sourceUserName,
+                        userId: msg.author?.id || msg.author?.userId || undefined,
+                        displayName: msg.author?.displayName || msg.author?.globalName || msg.author?.global_name || sourceUserName,
+                        guildId: msg.guildId || msg.guild_id || undefined,
+                        guildName: msg.guild?.name || msg.guild_name || undefined,
+                        channelId: sourceChannelId,
+                        channelName: msg.channel?.name || msg.channel_name || undefined,
+                        channelType: msg.channel?.type || msg.channelType || msg.channel_type || undefined,
+                        messageId: msg.id || msg.messageId || msg.message_id || undefined,
+                        createdAt: msg.timestamp || msg.createdAt || msg.created_at || undefined,
+                        isDirectMessage: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
                         message: decision.promptInstruction,
                         tenantId: tenantId || undefined,
                         context: 'discord',

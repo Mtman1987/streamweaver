@@ -9,6 +9,7 @@ import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 
 const eventSubSockets = new Map<string, WebSocket>();
+const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 function normalizeTenantId(tenantId?: string): string | undefined {
     if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
@@ -144,7 +145,9 @@ async function createChannelPointSubscription(auth: { clientId: string; accessTo
         },
     };
 
-    console.log('[EventSub] Creating subscription with body:', JSON.stringify(body, null, 2));
+    if (VERBOSE_LOGS) {
+        console.log('[EventSub] Creating subscription with body:', JSON.stringify(body, null, 2));
+    }
 
     const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
         method: 'POST',
@@ -164,7 +167,10 @@ async function createChannelPointSubscription(auth: { clientId: string; accessTo
 
     const data = await res.json().catch(() => null) as any;
     const createdId = data?.data?.[0]?.id;
-    console.log('[EventSub] Channel point subscription created:', createdId || '(unknown id)', 'Response:', JSON.stringify(data, null, 2));
+    console.log('[EventSub] Channel point subscription created:', createdId || '(unknown id)');
+    if (VERBOSE_LOGS) {
+        console.log('[EventSub] Channel point subscription response:', JSON.stringify(data, null, 2));
+    }
 }
 
 export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void> {
@@ -256,8 +262,9 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 if (subType === 'channel.channel_points_custom_reward_redemption.add') {
                     const event = msg?.payload?.event;
                     if (event) {
-                        // Log the full event for debugging
-                        console.log('[EventSub] Full event data:', JSON.stringify(event, null, 2));
+                        if (VERBOSE_LOGS) {
+                            console.log('[EventSub] Full event data:', JSON.stringify(event, null, 2));
+                        }
                         
                         const rewardTitle = String(event?.reward?.title || '');
                         const userLogin = String(event?.user_login || '');
@@ -268,7 +275,9 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                         let redeemsConfig;
                         try {
                             redeemsConfig = await getConfigSection('redeems', tenantId);
-                            console.log('[EventSub] Loaded redeems config:', JSON.stringify(redeemsConfig));
+                            if (VERBOSE_LOGS) {
+                                console.log('[EventSub] Loaded redeems config:', JSON.stringify(redeemsConfig));
+                            }
                         } catch (cfgErr) {
                             console.error('[EventSub] Failed to load redeems config:', cfgErr);
                             return;
@@ -348,7 +357,9 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                         
                         // Handle Pokemon pack redemptions
                         const pokeTitle = redeemsConfig.pokePack.rewardTitle;
-                        console.log(`[EventSub] Checking PokePack: pokeTitle="${pokeTitle}", rewardTitle="${rewardTitle}", match=${pokeTitle ? rewardTitle.toLowerCase().includes(pokeTitle.toLowerCase()) : false}`);
+                        if (VERBOSE_LOGS) {
+                            console.log(`[EventSub] Checking PokePack: pokeTitle="${pokeTitle}", rewardTitle="${rewardTitle}", match=${pokeTitle ? rewardTitle.toLowerCase().includes(pokeTitle.toLowerCase()) : false}`);
+                        }
                         if (pokeTitle && rewardTitle.toLowerCase().includes(pokeTitle.toLowerCase())) {
                             console.log('[EventSub] PokePack matched! Checking points first...');
                             const packPointCost = redeemsConfig.pokePack.pointCost;

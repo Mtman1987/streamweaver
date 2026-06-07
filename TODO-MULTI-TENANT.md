@@ -73,6 +73,15 @@
 
 ### HIGH PRIORITY — Services Still Reading Global State
 
+#### Cross-bot / botshare safety
+- [ ] Make `!botshare` strictly tenant-scoped. Current `getBotShareMode()` / `setBotShareMode()` mirrors mode across the tenant, admin tenant `94371378`, and global mode, so one streamer can disable/enable botshare for everyone.
+- [ ] Split botshare state by platform/channel where needed: Twitch native channel, shared chat, Discord guild/channel. A streamer turning off botshare during a collab should not affect unrelated tenants.
+- [ ] Stop cross-stream bot leaks by requiring exact Twitch bot-account mentions outside a bot's native chat. In another stream, `@lovesnightmarebot` or `@athenabot87` should trigger; loose aliases like `loki`, `athena`, `annie`, etc. should only work in that bot's own Twitch chat and in Discord.
+- [ ] Update cross-bot mention matching to distinguish native tenant chat vs foreign tenant chat. Native chat can use bot name/aliases; foreign Twitch chat requires full `@botUsername` only.
+- [ ] Audit `decideBotInteraction()` and `chat-dispatcher.ts` cross-bot routing. Current trigger matching strips optional `@`, so casual phrases like "loki is mad at me" can trigger Loki in the wrong stream while botshare is on.
+- [ ] Decide whether Discord keeps alias matching server-wide or becomes channel/guild scoped. Discord currently has a clearer explicit chat context than Twitch shared/cross-stream.
+- [ ] After streamers are offline, implement and test with: native alias mention, foreign loose alias ignored, foreign `@botUsername` accepted, Discord mention accepted, tenant A botshare off does not disable tenant B.
+
 #### `walk-on-shoutout.ts`
 - [ ] `(global as any).botName` → use `getBotName(tenantId)`
 - [ ] `(global as any).botPersonality` → use `getBotPersonality(tenantId)`

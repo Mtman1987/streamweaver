@@ -31,8 +31,8 @@ const USER_CONFIG = {
   AI_BOT_NAME: 'Athena',
   AI_BOT_PERSONALITY: `You are Athena, a witty and warm AI companion for mtman1987's Twitch stream. You're clever, slightly sarcastic but always supportive. Keep responses to 1-2 sentences. You care about the community and love engaging with chat.`,
   AI_BOT_ALIASES: 'athena,hey athena,annie,athenabot87',
-  TTS_PROVIDER: 'inworld',
-  TTS_VOICE: 'Ashley',
+  TTS_PROVIDER: 'openai',
+  TTS_VOICE: 'openai:nova',
 };
 
 async function seed() {

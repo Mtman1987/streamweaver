@@ -3,6 +3,7 @@ import './globals.css';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
 import { Inter, Space_Grotesk } from 'next/font/google';
+import { OverlayDocumentMode } from '@/components/overlay-document-mode';
 
 // import { applyUserConfigToProcessEnvSync } from '@/lib/user-config';
 // import { DashboardConnection } from '@/components/dashboard-connection';
@@ -42,6 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
       <body>
+        <OverlayDocumentMode />
         {/* <DashboardConnection /> */}
         <SidebarProvider>
         {children}

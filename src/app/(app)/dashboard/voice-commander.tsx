@@ -52,6 +52,29 @@ interface VoiceCommanderProps {
     className?: string;
 }
 
+function discordChannelsUrl() {
+    const tenantId = getClientTenantId();
+    return tenantId ? `/api/discord/channels?tenantId=${encodeURIComponent(tenantId)}` : '/api/discord/channels';
+}
+
+async function sendDiscordRouteMessage(channelId: string, message: string, username?: string, avatarUrl?: string | null) {
+    const response = await fetch('/api/discord/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            channelId,
+            message,
+            username,
+            avatarUrl: avatarUrl || undefined,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to send Discord message: ${response.status}`);
+    }
+}
+
 
 export function VoiceCommander({ variant = 'card', className }: VoiceCommanderProps) {
     const { toast } = useToast();
@@ -763,49 +786,28 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             setIsProcessing(true);
 
             try {
-                const discordSettings = await fetch('/api/discord/channels').then(res => res.json()).catch(() => ({}));
-                const aiChannelId = discordSettings.aiChatChannelId || null;
+                const discordSettings = await fetch(discordChannelsUrl(), { cache: 'no-store' }).then(res => res.json()).catch(() => ({}));
                 const username = userConfig.TWITCH_BROADCASTER_USERNAME || 'Commander';
 
                 // Generate AI response
                 console.log('[VoiceCommander] Using AI for', destination, 'mode');
                 let reply: string | undefined;
 
-                // Try chat-with-memory if Discord AI channel exists, otherwise use private-chat
-                if (aiChannelId) {
-                    const tenantId = getClientTenantId();
-                    const resp = await fetch('/api/ai/chat-with-memory', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            username,
-                            message: aiMessage,
-                            personality: personalityRef.current,
-                            tenantId: tenantId || undefined,
-                            context: destination === 'twitch' ? 'twitch' : 'discord'
-                        })
-                    });
-                    if (resp.ok) {
-                        const data = await resp.json();
-                        reply = data?.response?.trim();
-                    }
-                } else {
-                    const tenantId = getClientTenantId();
-                    const resp = await fetch('/api/private-chat/respond', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            username,
-                            message: aiMessage,
-                            personality: personalityRef.current,
-                            historyLimit: 20,
-                            tenantId: tenantId || undefined
-                        })
-                    });
-                    if (resp.ok) {
-                        const data = await resp.json();
-                        reply = data?.response?.trim();
-                    }
+                const tenantId = getClientTenantId();
+                const resp = await fetch('/api/ai/chat-with-memory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        message: aiMessage,
+                        personality: personalityRef.current,
+                        tenantId: tenantId || undefined,
+                        context: destination === 'twitch' ? 'twitch' : 'discord'
+                    })
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    reply = data?.response?.trim();
                 }
 
                 // Truncate AI reply for chat destinations
@@ -835,7 +837,6 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     const logChannelId = discordSettings.logChannelId;
                     if (logChannelId) {
                         try {
-                            const { sendDiscordMessage } = await import('@/services/discord');
                             let avatarUrl = null;
                             try {
                                 const profileResponse = await fetch('/api/user-profile');
@@ -844,11 +845,13 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                                     avatarUrl = profileData.twitch?.avatar;
                                 }
                             } catch {}
-                            await sendDiscordMessage(logChannelId, transcription, username, avatarUrl);
-                            if (chatReply) await sendDiscordMessage(logChannelId, chatReply, botUsername);
+                            await sendDiscordRouteMessage(logChannelId, transcription, username, avatarUrl);
+                            if (chatReply) await sendDiscordRouteMessage(logChannelId, chatReply, botUsername);
                         } catch (error) {
                             console.warn('[VoiceCommander] Failed to send to Discord:', error);
                         }
+                    } else {
+                        throw new Error("Discord log channel ID not configured.");
                     }
                 }
 
@@ -924,12 +927,10 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 console.log('[VoiceCommander] Message sent to Twitch successfully');
             } else if (destination === 'discord') {
                 console.log('[VoiceCommander] Sending to Discord:', processedText);
-                const discordSettings = await fetch('/api/discord/channels').then(res => res.json()).catch(() => ({}));
+                const discordSettings = await fetch(discordChannelsUrl(), { cache: 'no-store' }).then(res => res.json()).catch(() => ({}));
                 const logChannelId = discordSettings.logChannelId;
                 if (!logChannelId) throw new Error("Discord log channel ID not configured.");
                 
-                // Use Discord service with webhook impersonation
-                const { sendDiscordMessage } = await import('@/services/discord');
                 const username = userConfig.TWITCH_BROADCASTER_USERNAME || 'StreamWeaver';
                 
                 // Get avatar from existing user profile (same source as sidebar)
@@ -948,7 +949,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 }
                 
                 console.log('[VoiceCommander] Sending Discord message with avatar:', avatarUrl);
-                await sendDiscordMessage(logChannelId, processedText, username, avatarUrl);
+                await sendDiscordRouteMessage(logChannelId, processedText, username, avatarUrl);
             }
 
             setMessages((prev: TranscribedMessage[]) => prev.map((msg: TranscribedMessage) => msg.id === newMessage.id ? { ...msg, status: 'sent' } : msg));

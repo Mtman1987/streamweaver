@@ -1,17 +1,32 @@
-export type TTSProvider = 'piper' | 'edenai';
+export type TTSProvider = 'piper' | 'edenai' | 'openai';
 export type EdenAITTSProvider = 'openai' | 'google' | 'microsoft' | 'amazon';
 export type TTSVoiceGender = 'MALE' | 'FEMALE';
+export type OpenAITTSVoice =
+  | 'alloy'
+  | 'ash'
+  | 'ballad'
+  | 'coral'
+  | 'echo'
+  | 'fable'
+  | 'onyx'
+  | 'nova'
+  | 'sage'
+  | 'shimmer'
+  | 'verse'
+  | 'marin'
+  | 'cedar';
 
 export type TTSVoiceOption = {
   id: string;
   label: string;
   provider: TTSProvider;
   providerLabel: string;
-  gender: 'Male' | 'Female';
+  gender: 'Male' | 'Female' | 'Neutral';
   description: string;
   piperVoice?: string;
   edenaiProvider?: EdenAITTSProvider;
   edenaiOption?: TTSVoiceGender;
+  openaiVoice?: OpenAITTSVoice;
 };
 
 export const PIPER_VOICE_OPTIONS: TTSVoiceOption[] = [
@@ -118,11 +133,132 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   },
 ];
 
-export const TTS_VOICE_OPTIONS = [...PIPER_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS];
+export const OPENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
+  {
+    id: 'openai:nova',
+    label: 'Nova',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Female',
+    description: 'Smooth, bright direct OpenAI voice',
+    openaiVoice: 'nova',
+  },
+  {
+    id: 'openai:shimmer',
+    label: 'Shimmer',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Female',
+    description: 'Warm, polished direct OpenAI voice',
+    openaiVoice: 'shimmer',
+  },
+  {
+    id: 'openai:coral',
+    label: 'Coral',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Female',
+    description: 'Expressive direct OpenAI voice',
+    openaiVoice: 'coral',
+  },
+  {
+    id: 'openai:marin',
+    label: 'Marin',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Female',
+    description: 'Clear direct OpenAI voice',
+    openaiVoice: 'marin',
+  },
+  {
+    id: 'openai:sage',
+    label: 'Sage',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Female',
+    description: 'Calm direct OpenAI voice',
+    openaiVoice: 'sage',
+  },
+  {
+    id: 'openai:onyx',
+    label: 'Onyx',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Deep direct OpenAI voice',
+    openaiVoice: 'onyx',
+  },
+  {
+    id: 'openai:echo',
+    label: 'Echo',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Crisp direct OpenAI voice',
+    openaiVoice: 'echo',
+  },
+  {
+    id: 'openai:ash',
+    label: 'Ash',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Natural direct OpenAI voice',
+    openaiVoice: 'ash',
+  },
+  {
+    id: 'openai:ballad',
+    label: 'Ballad',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Narrative direct OpenAI voice',
+    openaiVoice: 'ballad',
+  },
+  {
+    id: 'openai:cedar',
+    label: 'Cedar',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Grounded direct OpenAI voice',
+    openaiVoice: 'cedar',
+  },
+  {
+    id: 'openai:fable',
+    label: 'Fable',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Characterful direct OpenAI voice',
+    openaiVoice: 'fable',
+  },
+  {
+    id: 'openai:verse',
+    label: 'Verse',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Male',
+    description: 'Energetic direct OpenAI voice',
+    openaiVoice: 'verse',
+  },
+  {
+    id: 'openai:alloy',
+    label: 'Alloy',
+    provider: 'openai',
+    providerLabel: 'OpenAI',
+    gender: 'Neutral',
+    description: 'Balanced direct OpenAI voice',
+    openaiVoice: 'alloy',
+  },
+];
+
+export const TTS_VOICE_OPTIONS = [...OPENAI_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS, ...PIPER_VOICE_OPTIONS];
 
 export const DEFAULT_TTS_PROVIDER: TTSProvider = 'piper';
 export const DEFAULT_TTS_VOICE = PIPER_VOICE_OPTIONS[0].id;
 export const DEFAULT_EDENAI_VOICE = EDENAI_VOICE_OPTIONS[0].id;
+export const DEFAULT_OPENAI_VOICE = OPENAI_VOICE_OPTIONS[0].id;
 
 const FEMALE_LEGACY_VOICES = new Set([
   'ashley',
@@ -239,9 +375,10 @@ const MALE_LEGACY_VOICES = new Set([
 export function normalizeTtsProvider(provider: unknown): TTSProvider {
   if (typeof provider !== 'string') return DEFAULT_TTS_PROVIDER;
   const normalized = provider.trim().toLowerCase();
-  if (['edenai', 'openai', 'google', 'microsoft', 'amazon'].includes(normalized)) {
+  if (['edenai', 'google', 'microsoft', 'amazon'].includes(normalized)) {
     return 'edenai';
   }
+  if (['openai', 'direct-openai', 'direct_openai', 'inworld'].includes(normalized)) return 'openai';
   return DEFAULT_TTS_PROVIDER;
 }
 
@@ -271,20 +408,46 @@ export function normalizeEdenAIVoice(voice: string | undefined | null): string {
   return 'edenai:openai:MALE';
 }
 
+export function normalizeOpenAIVoice(voice: string | undefined | null): string {
+  if (!voice) return DEFAULT_OPENAI_VOICE;
+
+  const trimmed = voice.trim();
+  const canonical = OPENAI_VOICE_OPTIONS.find((option) => (
+    option.id.toLowerCase() === trimmed.toLowerCase()
+    || option.openaiVoice?.toLowerCase() === trimmed.toLowerCase()
+  ));
+  if (canonical) return canonical.id;
+
+  const lower = trimmed.toLowerCase();
+  if (FEMALE_LEGACY_VOICES.has(lower)) return DEFAULT_OPENAI_VOICE;
+  if (MALE_LEGACY_VOICES.has(lower)) return 'openai:onyx';
+
+  return DEFAULT_OPENAI_VOICE;
+}
+
 export function normalizeTtsVoice(voice: string | undefined | null, provider: TTSProvider = DEFAULT_TTS_PROVIDER): string {
-  if (!voice) return provider === 'edenai' ? DEFAULT_EDENAI_VOICE : DEFAULT_TTS_VOICE;
+  if (!voice) {
+    if (provider === 'edenai') return DEFAULT_EDENAI_VOICE;
+    if (provider === 'openai') return DEFAULT_OPENAI_VOICE;
+    return DEFAULT_TTS_VOICE;
+  }
 
   const trimmed = voice.trim();
   const canonical = TTS_VOICE_OPTIONS.find((option) => option.id.toLowerCase() === trimmed.toLowerCase());
   if (canonical) return canonical.id;
 
   if (provider === 'edenai') return normalizeEdenAIVoice(trimmed);
+  if (provider === 'openai') return normalizeOpenAIVoice(trimmed);
   return normalizePiperVoice(trimmed);
 }
 
 export function getTtsVoiceOption(voice: string | undefined | null, provider: TTSProvider = DEFAULT_TTS_PROVIDER): TTSVoiceOption {
   const normalized = normalizeTtsVoice(voice, provider);
-  return TTS_VOICE_OPTIONS.find((option) => option.id === normalized) || PIPER_VOICE_OPTIONS[0];
+  const fallback =
+    provider === 'edenai' ? EDENAI_VOICE_OPTIONS[0]
+    : provider === 'openai' ? OPENAI_VOICE_OPTIONS[0]
+    : PIPER_VOICE_OPTIONS[0];
+  return TTS_VOICE_OPTIONS.find((option) => option.id === normalized) || fallback;
 }
 
 export function getProviderForVoice(voice: string | undefined | null, fallback: TTSProvider = DEFAULT_TTS_PROVIDER): TTSProvider {
@@ -295,6 +458,9 @@ export function getFallbackVoiceForProvider(provider: TTSProvider, selectedVoice
   const selected = getTtsVoiceOption(selectedVoice, provider);
   if (provider === 'edenai') {
     return selected.gender === 'Male' ? PIPER_VOICE_OPTIONS[1].id : PIPER_VOICE_OPTIONS[0].id;
+  }
+  if (provider === 'openai') {
+    return selected.gender === 'Male' ? 'edenai:openai:MALE' : DEFAULT_EDENAI_VOICE;
   }
 
   return selected.gender === 'Male' ? 'edenai:openai:MALE' : DEFAULT_EDENAI_VOICE;

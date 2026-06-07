@@ -50,6 +50,22 @@ function isAuthFailure(error: unknown): boolean {
   return /login authentication failed|authentication failed|invalid oauth|bad auth/i.test(message);
 }
 
+async function getTokenIdentity(accessToken: string): Promise<{ userId: string; login: string } | null> {
+  try {
+    const response = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `OAuth ${accessToken.replace('oauth:', '')}` },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return {
+      userId: String(data.user_id || ''),
+      login: String(data.login || ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function disconnectIfOpen(client: tmi.Client | null | undefined): Promise<void> {
   if (!client) return;
   try {
@@ -242,7 +258,20 @@ export async function setupTwitchClient(tenantId: string) {
       return;
     }
 
-    const broadcasterUsername = tokens.broadcasterUsername || '';
+    const broadcasterOauthToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+    const broadcasterIdentity = await getTokenIdentity(broadcasterOauthToken);
+    let broadcasterTokenMismatch = false;
+    if (broadcasterIdentity?.userId && broadcasterIdentity.userId !== String(tenantId)) {
+      console.error(
+        `[Twitch:${tenantId}] Broadcaster token belongs to ${broadcasterIdentity.login || broadcasterIdentity.userId}; refusing to connect as the wrong account.`
+      );
+      tenantsNeedingReauth.add(tenantId);
+      broadcasterTokenMismatch = true;
+    }
+
+    const broadcasterUsername = broadcasterTokenMismatch
+      ? (tokens.loginUsername || '')
+      : (broadcasterIdentity?.login || tokens.broadcasterUsername || tokens.loginUsername || '');
     const botUsername = tokens.botUsername || '';
     const hasBotToken = tokens.botToken && tokens.botRefreshToken;
 
@@ -263,8 +292,9 @@ export async function setupTwitchClient(tenantId: string) {
       }
     }
 
-    const broadcasterOauthToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
-    tenantsNeedingReauth.delete(tenantId);
+    if (!broadcasterTokenMismatch) {
+      tenantsNeedingReauth.delete(tenantId);
+    }
 
     // Disconnect existing clients for this tenant
     const existing = tenantClients.get(tenantId);
@@ -288,7 +318,9 @@ export async function setupTwitchClient(tenantId: string) {
       retryCount: existing?.retryCount || 0,
     };
     tenantClients.set(tenantId, tenant);
-    channelToTenant.set(broadcasterUsername.toLowerCase(), tenantId);
+    if (broadcasterUsername) {
+      channelToTenant.set(broadcasterUsername.toLowerCase(), tenantId);
+    }
 
     // Setup bot client
     if (botUsername && hasBotToken) {
@@ -306,6 +338,9 @@ export async function setupTwitchClient(tenantId: string) {
 
       tenant.botClient.on('connected', () => {
         console.log(`[Twitch:${tenantId}] Bot connected as ${botUsername}`);
+        if (broadcasterTokenMismatch) {
+          tenant.status = 'connected';
+        }
       });
 
       tenant.botClient.on('disconnected', (reason) => {
@@ -328,6 +363,12 @@ export async function setupTwitchClient(tenantId: string) {
         tenant.botUsername = communityBotUsername || 'community-bot';
         console.log(`[Twitch:${tenantId}] Using shared community bot '${tenant.botUsername}'`);
       }
+    }
+
+    if (broadcasterTokenMismatch) {
+      console.warn(`[Twitch:${tenantId}] Bot chat connected where possible; broadcaster send is disabled until re-authorization.`);
+      setupInProgress.delete(tenantId);
+      return;
     }
 
     // Setup broadcaster client

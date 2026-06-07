@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readUserConfigSync } from '@/lib/user-config';
+import { normalizeTextForTTS } from '@/lib/tts-text';
 import {
   TTS_VOICE_OPTIONS,
   TTSProvider,
@@ -26,6 +27,7 @@ export interface TTSConfig {
 export const TTS_VOICES: Record<TTSProvider, string[]> = {
   piper: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'piper').map((voice) => voice.id),
   edenai: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'edenai').map((voice) => voice.id),
+  openai: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'openai').map((voice) => voice.id),
 };
 
 function normalizeProvider(provider: unknown): TTSProvider {
@@ -33,9 +35,10 @@ function normalizeProvider(provider: unknown): TTSProvider {
 }
 
 function resolveTTSApiKey(provider: TTSProvider, tenantId?: string): string {
-  if (provider !== 'edenai') return '';
   const config = readUserConfigSync(tenantId);
-  return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
+  if (provider === 'edenai') return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
+  if (provider === 'openai') return config.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+  return '';
 }
 
 export function getTTSConfig(tenantId?: string): TTSConfig {
@@ -57,7 +60,13 @@ let lastTTSCall = 0;
 const TTS_RATE_LIMIT = 2000; // 2 seconds between TTS calls
 
 export async function generateTTS(text: string, voiceOverride?: string, tenantId?: string): Promise<string> {
-  console.log('[TTS] generateTTS called | voiceOverride:', voiceOverride ?? '(none)', '| textLength:', text.length);
+  const normalizedText = normalizeTextForTTS(text);
+  console.log('[TTS] generateTTS called | voiceOverride:', voiceOverride ?? '(none)', '| textLength:', text.length, '| normalizedLength:', normalizedText.length);
+
+  if (!normalizedText) {
+    console.log('[TTS] Skipping empty text after normalization');
+    return '';
+  }
   
   // Rate limiting to prevent 429 errors
   const now = Date.now();
@@ -81,21 +90,38 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
   
   try {
     switch (config.provider) {
+      case 'openai':
+        if (!config.apiKey) {
+          throw new Error(`No API key configured for ${config.provider} TTS`);
+        }
+        audioDataUri = await generateOpenAITTS(normalizedText, config.voice, config.apiKey);
+        break;
       case 'edenai':
         if (!config.apiKey) {
           throw new Error(`No API key configured for ${config.provider} TTS`);
         }
-        audioDataUri = await generateEdenAITTS(text, config.voice, config.apiKey);
+        audioDataUri = await generateEdenAITTS(normalizedText, config.voice, config.apiKey);
         break;
       default:
-        audioDataUri = await generatePiperTTS(text, config.voice);
+        audioDataUri = await generatePiperTTS(normalizedText, config.voice);
         break;
     }
   } catch (err) {
     if (config.provider === 'edenai') {
       const fallbackVoice = getFallbackVoiceForProvider('edenai', config.voice);
       console.warn(`[TTS] EdenAI failed (voice: ${config.voice}), falling back to Piper ${fallbackVoice}:`, (err as Error).message);
-      audioDataUri = await generatePiperTTS(text, fallbackVoice);
+      audioDataUri = await generatePiperTTS(normalizedText, fallbackVoice);
+    } else if (config.provider === 'openai') {
+      const edenKey = resolveTTSApiKey('edenai', tenantId);
+      if (edenKey) {
+        const fallbackVoice = getFallbackVoiceForProvider('openai', config.voice);
+        console.warn(`[TTS] OpenAI failed (voice: ${config.voice}), falling back to EdenAI ${fallbackVoice}:`, (err as Error).message);
+        audioDataUri = await generateEdenAITTS(normalizedText, fallbackVoice, edenKey);
+      } else {
+        const fallbackVoice = getFallbackVoiceForProvider('edenai', config.voice);
+        console.warn(`[TTS] OpenAI failed (voice: ${config.voice}), falling back to Piper ${fallbackVoice}:`, (err as Error).message);
+        audioDataUri = await generatePiperTTS(normalizedText, fallbackVoice);
+      }
     } else {
       const edenKey = resolveTTSApiKey('edenai', tenantId);
       if (!edenKey) {
@@ -103,7 +129,7 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
       }
       const fallbackVoice = getFallbackVoiceForProvider('piper', config.voice);
       console.warn(`[TTS] Piper failed (voice: ${config.voice}), falling back to EdenAI ${fallbackVoice}:`, (err as Error).message);
-      audioDataUri = await generateEdenAITTS(text, fallbackVoice, edenKey);
+      audioDataUri = await generateEdenAITTS(normalizedText, fallbackVoice, edenKey);
     }
   }
   
@@ -112,13 +138,39 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
   // Send to Discord if bridge is enabled
   if (config.discordBridge) {
     try {
-      await sendToDiscordBridge(audioDataUri, text, config.voice);
+      await sendToDiscordBridge(audioDataUri, normalizedText, config.voice);
     } catch (error) {
       console.warn('Discord bridge failed:', error);
     }
   }
   
   return audioDataUri;
+}
+
+async function generateOpenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
+  const voiceOption = getTtsVoiceOption(voice, 'openai');
+  const openaiVoice = voiceOption.openaiVoice || 'nova';
+  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+      input: text,
+      voice: openaiVoice,
+      response_format: 'mp3',
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    throw new Error(`OpenAI TTS failed: ${response.status} ${errBody}`);
+  }
+
+  const audioBuffer = await response.arrayBuffer();
+  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
 async function generateEdenAITTS(text: string, voice: string, apiKey: string): Promise<string> {

@@ -20,6 +20,8 @@ const twitchLiveSchema = z.object({
   usernames: z.array(twitchUserEntrySchema).min(1),
 });
 
+const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
+
 export async function POST(request: NextRequest) {
   try {
     const parsed = twitchLiveSchema.safeParse(await request.json().catch(() => null));
@@ -132,7 +134,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    if (liveUsers.length > 0) console.log(`[Twitch Live] ${liveUsers.length} users live: ${liveUsers.map(u => u.username).join(', ')}`);
+    if (VERBOSE_LOGS && liveUsers.length > 0) console.log(`[Twitch Live] ${liveUsers.length} users live: ${liveUsers.map(u => u.username).join(', ')}`);
     return NextResponse.json({ 
       liveUsers,
       allUsers: allUsers.map(user => ({

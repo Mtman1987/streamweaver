@@ -81,6 +81,7 @@ function migrateFromLegacy(config: LocalConfigMap, tenantId?: string): LocalConf
   const legacyBroadcasterUsername = legacyUserConfig.TWITCH_BROADCASTER_USERNAME || '';
   const legacyBroadcasterId = legacyUserConfig.TWITCH_BROADCASTER_ID || '';
   const legacyBotUsername = legacyUserConfig.TWITCH_BOT_USERNAME || '';
+  const ttsProvider = normalizeTtsProvider(legacyUserConfig.TTS_PROVIDER || config.automation.ttsProvider);
 
   const migrated: LocalConfigMap = {
     ...config,
@@ -111,8 +112,8 @@ function migrateFromLegacy(config: LocalConfigMap, tenantId?: string): LocalConf
       geminiApiKey: config.automation.geminiApiKey || legacyUserConfig.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '',
       edenaiApiKey: config.automation.edenaiApiKey || legacyUserConfig.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '',
       openaiApiKey: config.automation.openaiApiKey || legacyUserConfig.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '',
-      ttsProvider: normalizeTtsProvider(config.automation.ttsProvider),
-      ttsVoice: normalizeTtsVoice(legacyUserConfig.TTS_VOICE || config.automation.ttsVoice, normalizeTtsProvider(config.automation.ttsProvider)),
+      ttsProvider,
+      ttsVoice: normalizeTtsVoice(legacyUserConfig.TTS_VOICE || config.automation.ttsVoice, ttsProvider),
     },
     app: {
       ...config.app,

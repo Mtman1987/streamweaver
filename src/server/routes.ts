@@ -4,6 +4,8 @@ import { resolve } from 'path';
 import { promises as fs } from 'fs';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
 import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
+import { tenantPath } from '../lib/tenant';
+import { readUserConfigSync } from '../lib/user-config';
 
 function isAuthorized(headers: http.IncomingHttpHeaders): boolean {
     const key = headers['x-api-key'];
@@ -21,6 +23,54 @@ function getStatusWebSocketUrl(): string {
     const wsProtocol = appUrl.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsPort = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || process.env.WS_PORT || '8090';
     return `${wsProtocol}//${appUrl.hostname}:${wsPort}`;
+}
+
+async function getDiscordBridgeTarget(tenantId?: string): Promise<string | null> {
+    if (!tenantId) return null;
+
+    let logChannelId = '';
+    try {
+        const channelsData = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
+        const channels = JSON.parse(channelsData);
+        if (channels?.discordBridgeEnabled === false) return null;
+        if (typeof channels?.logChannelId === 'string') {
+            logChannelId = channels.logChannelId.trim();
+        }
+    } catch {}
+
+    if (!logChannelId) {
+        const userConfig = readUserConfigSync(tenantId);
+        logChannelId = String(userConfig.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID || '').trim();
+    }
+
+    return logChannelId || null;
+}
+
+async function mirrorOutboundTwitchMessageToDiscord(input: {
+    bridgeToDiscord: unknown;
+    tenantId?: string;
+    message: unknown;
+    displayName: string;
+}): Promise<void> {
+    const { bridgeToDiscord, tenantId, message, displayName } = input;
+    if (bridgeToDiscord !== true) return;
+    if (!tenantId || typeof message !== 'string' || !message.trim()) return;
+    if (message.startsWith('[Discord]')) return;
+
+    const logChannelId = await getDiscordBridgeTarget(tenantId);
+    if (!logChannelId) {
+        if (process.env.STREAMWEAVER_VERBOSE_LOGS === 'true') {
+            console.log(`[HTTP /api/twitch/send-message] No Discord bridge channel for tenant ${tenantId}`);
+        }
+        return;
+    }
+
+    try {
+        const { sendDiscordMessage } = require('../services/discord');
+        await sendDiscordMessage(logChannelId, `**[Twitch] ${displayName}:** ${message}`);
+    } catch (error) {
+        console.error('[HTTP /api/twitch/send-message] Failed to mirror outbound Twitch message to Discord:', error);
+    }
 }
 
 export function createHttpHandler(broadcast: (message: object, tenantId?: string) => void): http.RequestListener {
@@ -122,11 +172,10 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 req.on('data', chunk => body += chunk);
                 req.on('end', async () => {
                     try {
-                        const { message, as, targetChannel, tenantId: requestedTenantId } = JSON.parse(body);
+                        const { message, as, targetChannel, tenantId: requestedTenantId, bridgeToDiscord } = JSON.parse(body);
                         
                         if (message.startsWith('[Discord]') && requestedTenantId) {
-                            const { tenantPath: tp } = require('../lib/tenant');
-                            const discordChannelsPath = tp(requestedTenantId, 'tokens/discord-channels.json');
+                            const discordChannelsPath = tenantPath(requestedTenantId, 'tokens/discord-channels.json');
                             try {
                                 const channelsData = await fs.readFile(discordChannelsPath, 'utf-8');
                                 const channels = JSON.parse(channelsData);
@@ -234,6 +283,12 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             message,
                             as: sendAs,
                             tenantId: tid,
+                        });
+                        await mirrorOutboundTwitchMessageToDiscord({
+                            bridgeToDiscord,
+                            tenantId: tid,
+                            message,
+                            displayName: String((client as any).getUsername?.() || sendAs),
                         });
                         
                         console.log(`[HTTP /api/twitch/send-message] Message sent successfully as ${sendAs}`);

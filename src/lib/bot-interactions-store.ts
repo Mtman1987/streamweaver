@@ -5,7 +5,6 @@ import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { isBotTriggerIgnored } from '@/lib/bot-trigger-ignore-store';
 
 export type BotShareMode = 'off' | 'on';
-const BOT_SHARE_HOME_TENANT_ID = '94371378';
 
 export type BotInteractionEntry = {
   id: string;
@@ -73,20 +72,6 @@ function characterTriggers(character: WorldLoreCharacter): string[] {
 }
 
 export async function getBotShareMode(tenantId?: string): Promise<BotShareMode> {
-  const candidates = Array.from(new Set([
-    tenantId,
-    BOT_SHARE_HOME_TENANT_ID,
-    undefined,
-  ]));
-
-  for (const id of candidates) {
-    try {
-      const raw = await fs.readFile(modeFilePath(id), 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (parsed.mode === 'on') return 'on';
-    } catch {}
-  }
-
   try {
     const raw = await fs.readFile(modeFilePath(tenantId), 'utf-8');
     const parsed = JSON.parse(raw);
@@ -97,16 +82,9 @@ export async function getBotShareMode(tenantId?: string): Promise<BotShareMode> 
 }
 
 export async function setBotShareMode(mode: BotShareMode, tenantId?: string): Promise<BotShareMode> {
-  const targets = Array.from(new Set([
-    tenantId,
-    BOT_SHARE_HOME_TENANT_ID,
-    undefined,
-  ]));
-  for (const id of targets) {
-    const filePath = modeFilePath(id);
-    await fs.mkdir(resolve(filePath, '..'), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify({ mode }, null, 2));
-  }
+  const filePath = modeFilePath(tenantId);
+  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify({ mode }, null, 2));
   return mode;
 }
 

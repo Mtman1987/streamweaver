@@ -536,6 +536,49 @@ async function startServer() {
                         }
                     }
                 } catch {}
+
+                // Refresh Twitch tokens on the same maintenance loop so they never sit expired for days.
+                try {
+                    const clientId = process.env.TWITCH_CLIENT_ID;
+                    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+                    if (!clientId || !clientSecret) return;
+
+                    const { listTenants, communityBotTokensPath } = require('./src/lib/tenant');
+                    const { getStoredTokens, ensureValidToken } = require('./src/lib/token-utils.server');
+                    const fsRefresh = require('fs').promises;
+
+                    const tenantIds = await listTenants();
+                    for (const tid of tenantIds) {
+                        try {
+                            const tokens = await getStoredTokens(tid);
+                            if (!tokens) continue;
+
+                            if (tokens.broadcasterToken && tokens.broadcasterRefreshToken) {
+                                await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tid);
+                            }
+                            if (tokens.botToken && tokens.botRefreshToken) {
+                                await ensureValidToken(clientId, clientSecret, 'bot', tokens, tid);
+                            }
+                        } catch (error: any) {
+                            console.warn(`[Twitch:${tid}] Proactive token refresh failed:`, error?.message || error);
+                        }
+                    }
+
+                    try {
+                        const communityFile = communityBotTokensPath();
+                        const raw = await fsRefresh.readFile(communityFile, 'utf-8');
+                        const communityTokens = JSON.parse(raw);
+                        if (communityTokens.communityBotToken && communityTokens.communityBotRefreshToken) {
+                            await ensureValidToken(clientId, clientSecret, 'community-bot', communityTokens);
+                        }
+                    } catch (error: any) {
+                        if (error?.code !== 'ENOENT') {
+                            console.warn('[Twitch:community-bot] Proactive token refresh failed:', error?.message || error);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Twitch] Token refresh sweep failed:', e);
+                }
             } catch (e) { /* silent */ }
         }, 300000); // every 5 minutes
         pollingService.addTask('metrics', async () => {

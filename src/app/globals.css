@@ -90,6 +90,17 @@
     background-attachment: fixed;
   }
 
+  html.overlay-document,
+  body.overlay-document {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+  }
+
+  body.overlay-document {
+    overflow: hidden;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
     letter-spacing: -0.03em;

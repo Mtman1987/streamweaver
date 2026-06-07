@@ -19,7 +19,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsVoice } from "@/lib/tts-voices";
+import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsProvider, normalizeTtsVoice } from "@/lib/tts-voices";
 
 
 function isValidLottie(data: unknown): data is Record<string, unknown> {
@@ -135,8 +135,9 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     else if (cfg.AI_BOT_NAME) setBotName(cfg.AI_BOT_NAME);
                     if (cfg.AI_BOT_PERSONALITY && !savedPersonality) setBotPersonality(cfg.AI_BOT_PERSONALITY);
                     else if (cfg.AI_BOT_PERSONALITY) setBotPersonality(cfg.AI_BOT_PERSONALITY);
-                    if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE));
-                    else if (cfg.TTS_VOICE) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE));
+                    const ttsProvider = normalizeTtsProvider(cfg.TTS_PROVIDER);
+                    if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE, ttsProvider));
+                    else if (cfg.TTS_VOICE) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE, ttsProvider));
                     if (cfg.AI_BOT_INTERESTS) setBotInterests(cfg.AI_BOT_INTERESTS);
                     if (cfg.AI_BOT_ALIASES) setBotAliases(cfg.AI_BOT_ALIASES);
                     if (cfg.SKIP_SHOUTOUT_OVERLAY) setSkipShoutoutOverlay(cfg.SKIP_SHOUTOUT_OVERLAY === 'true');

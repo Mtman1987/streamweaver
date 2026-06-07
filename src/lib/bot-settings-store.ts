@@ -6,7 +6,7 @@
 import { readUserConfigSync } from './user-config';
 import fs from 'fs';
 import { tenantPath } from './tenant';
-import { DEFAULT_TTS_VOICE, normalizeTtsVoice } from './tts-voices';
+import { DEFAULT_TTS_VOICE, normalizeTtsProvider, normalizeTtsVoice } from './tts-voices';
 
 const tenantBotSettings = new Map<string, {
   personality: string;
@@ -46,10 +46,11 @@ function loadBotSettingsFromDisk(tenantId?: string) {
   const key = tenantId || '__global';
   try {
     const config = readUserConfigSync(tenantId);
+    const provider = normalizeTtsProvider(config.TTS_PROVIDER);
     tenantBotSettings.set(key, {
       personality: config.AI_BOT_PERSONALITY || DEFAULTS.personality,
       name: config.AI_BOT_NAME || DEFAULTS.name,
-      voice: normalizeTtsVoice(config.TTS_VOICE),
+      voice: normalizeTtsVoice(config.TTS_VOICE, provider),
       interests: config.AI_BOT_INTERESTS || '',
       aliases: config.AI_BOT_ALIASES || '',
     });

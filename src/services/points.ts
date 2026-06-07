@@ -1,4 +1,3 @@
-import path from 'path';
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 
 const POINTS_FILE = 'points.json';
@@ -92,6 +91,14 @@ function normalizePoints(value: PointAmount): bigint {
   return parsed < 0n ? 0n : parsed;
 }
 
+export function normalizeStoredPointAmount(value: PointAmount): bigint {
+  try {
+    return normalizePoints(value);
+  } catch {
+    return 0n;
+  }
+}
+
 function toSafeNumber(value: bigint): number {
   if (value > MAX_SAFE_POINTS) return Number.MAX_SAFE_INTEGER;
   if (value < -MAX_SAFE_POINTS) return -Number.MAX_SAFE_INTEGER;
@@ -153,8 +160,8 @@ export async function getPoints(userId: string, ctx?: StorageContext): Promise<{
   const entry = store[userId.toLowerCase()];
   if (!entry) return { points: 0, pointsRaw: '0', pointsDisplay: '0', level: 1, totalEarned: 0, totalEarnedRaw: '0' };
 
-  const points = normalizePoints(entry.points ?? 0);
-  const totalEarned = normalizePoints(entry.totalEarned ?? 0);
+  const points = normalizeStoredPointAmount(entry.points ?? 0);
+  const totalEarned = normalizeStoredPointAmount(entry.totalEarned ?? 0);
   return {
     points: toSafeNumber(points),
     pointsRaw: points.toString(),
@@ -168,7 +175,7 @@ export async function getPoints(userId: string, ctx?: StorageContext): Promise<{
 export async function getPointBalance(userId: string, ctx?: StorageContext): Promise<bigint> {
   const store = await loadPoints(ctx);
   const entry = store[userId.toLowerCase()];
-  return normalizePoints(entry?.points ?? 0);
+  return normalizeStoredPointAmount(entry?.points ?? 0);
 }
 
 export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {
@@ -183,8 +190,8 @@ export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext):
   
   for (const key in store) {
     const current = store[key];
-    const oldPoints = normalizePoints(current.points);
-    const oldEarned = normalizePoints(current.totalEarned || 0);
+    const oldPoints = normalizeStoredPointAmount(current.points);
+    const oldEarned = normalizeStoredPointAmount(current.totalEarned || 0);
     const newPoints = oldPoints + delta < 0n ? 0n : oldPoints + delta;
     const level = calculateLevel(newPoints);
     const totalEarned = oldEarned + (delta > 0n ? delta : 0n);
@@ -261,8 +268,8 @@ export async function addPoints(
   const now = new Date().toISOString();
   const current = store[key] ?? { points: '0', level: 1, updatedAt: now, lastActivity: now, totalEarned: '0' };
   const delta = parsePointAmount(amount);
-  const currentPoints = normalizePoints(current.points);
-  const currentEarned = normalizePoints(current.totalEarned || 0);
+  const currentPoints = normalizeStoredPointAmount(current.points);
+  const currentEarned = normalizeStoredPointAmount(current.totalEarned || 0);
   const newPoints = currentPoints + delta < 0n ? 0n : currentPoints + delta;
   const level = calculateLevel(newPoints);
   const totalEarned = currentEarned + (delta > 0n ? delta : 0n);
@@ -298,7 +305,7 @@ export async function setPoints(
   const current = store[key] ?? { points: '0', level: 1, updatedAt: now, lastActivity: now, totalEarned: '0' };
   const points = normalizePoints(value);
   const level = calculateLevel(points);
-  const totalEarned = normalizePoints(current.totalEarned || 0);
+  const totalEarned = normalizeStoredPointAmount(current.totalEarned || 0);
   
   store[key] = { 
     points: points.toString(), 
@@ -323,8 +330,8 @@ export async function getLeaderboard(limit = 10, ctx?: StorageContext): Promise<
   const store = await loadPoints(ctx);
   return Object.entries(store)
     .map(([user, data]) => {
-      const points = normalizePoints(data.points);
-      const totalEarned = normalizePoints(data.totalEarned || 0);
+      const points = normalizeStoredPointAmount(data.points);
+      const totalEarned = normalizeStoredPointAmount(data.totalEarned || 0);
       return {
         user,
         points: toSafeNumber(points),

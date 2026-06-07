@@ -357,7 +357,32 @@ export default function IntegrationsPage() {
             username={twitchStatus.communityBotUsername}
             description="Shared bot for Chat Tag & cross-stream features"
           >
-            <Badge variant="outline" className="text-xs">Managed</Badge>
+            <div className="flex items-center gap-2">
+              {twitchStatus.communityBotConnected ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs"
+                    onClick={() => connectTwitch("community-bot")}
+                  >
+                    Re-authorize
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() => disconnectTwitch("community-bot")}
+                  >
+                    Disconnect
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" onClick={() => connectTwitch("community-bot")}>
+                  Connect
+                </Button>
+              )}
+            </div>
           </AccountRow>
         </CardContent>
       </Card>

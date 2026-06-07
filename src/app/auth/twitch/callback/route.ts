@@ -225,6 +225,12 @@ export async function GET(request: NextRequest) {
       username = validateData.login || username;
     }
 
+    if (isBroadcaster && userInfo?.id && String(userInfo.id) !== String(tenantId)) {
+      return NextResponse.redirect(
+        `${appOrigin}/integrations?error=wrong_broadcaster&msg=Broadcaster+auth+must+use+the+Twitch+account+that+is+logged+into+this+StreamWeaver+tenant.`
+      );
+    }
+
     // Prevent connecting the same Twitch account for both Broadcaster and Bot
     if (isBot && existingTokens.broadcasterUsername && existingTokens.broadcasterUsername.toLowerCase() === username.toLowerCase()) {
       return NextResponse.redirect(`${appOrigin}/integrations?error=same_account&msg=Bot+must+be+a+different+Twitch+account+than+your+Broadcaster.+Log+into+your+bot+account+on+Twitch+first.`);

@@ -2,7 +2,7 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Users, MessageSquare, RefreshCw } from 'lucide-react';
+import { Users, MessageSquare, RefreshCw, Megaphone } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useLiveStreamers } from '@/contexts/live-streamers-context';
+import { getClientTenantId } from '@/lib/client-tenant';
 
 interface Player {
   id: string;
   username: string;
-  avatar: string;
+  avatar?: string;
   isActive: boolean;
 }
 
@@ -42,8 +43,10 @@ const TwitchChatEmbed = ({ username }: { username: string }) => {
 
 export function CommunityList({ players = [] }: CommunityListProps) {
   const [isSyncing, setIsSyncing] = useState(false);
+  const [shoutingOut, setShoutingOut] = useState<string | null>(null);
   const { toast } = useToast();
   const { allCommunityMembers, liveStreamers, refreshStreamers, isLoading } = useLiveStreamers();
+  const tenantId = getClientTenantId();
 
   // Use shared data or fallback to props/mock
   const mockPlayers: Player[] = [
@@ -55,6 +58,10 @@ export function CommunityList({ players = [] }: CommunityListProps) {
   const communityPlayers = allCommunityMembers.length > 0 ? allCommunityMembers : (players.length > 0 ? players : mockPlayers);
   const liveStreamersData = communityPlayers.filter((p) => p.isActive).sort((a, b) => a.username.localeCompare(b.username));
   const offlinePlayers = communityPlayers.filter((p) => !p.isActive).sort((a, b) => a.username.localeCompare(b.username));
+  const buildAthenaListenerUrl = () => {
+    const base = `${typeof window !== 'undefined' ? window.location.origin : ''}/tts-listener`;
+    return tenantId ? `${base}?tenant=${encodeURIComponent(tenantId)}` : base;
+  };
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -78,6 +85,39 @@ export function CommunityList({ players = [] }: CommunityListProps) {
       });
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleManualShoutout = async (player: Player) => {
+    setShoutingOut(player.id);
+    try {
+      const response = await fetch('/api/shoutout/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          login: player.id,
+          displayName: player.username,
+          profileImageUrl: player.avatar,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Shoutout failed');
+      }
+
+      toast({
+        title: 'Shoutout sent',
+        description: `Manually shouted out ${data.displayName || player.username}.`,
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Shoutout failed',
+        description: error instanceof Error ? error.message : 'Could not send shoutout.',
+      });
+    } finally {
+      setShoutingOut(null);
     }
   };
 
@@ -110,21 +150,39 @@ export function CommunityList({ players = [] }: CommunityListProps) {
                           </Avatar>
                           <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-card animate-pulse" />
                         </div>
-                        <Link href={`https://www.twitch.tv/${player.username}`} target="_blank" rel="noopener noreferrer" className="font-medium truncate hover:underline">
-                          {player.username}
-                        </Link>
+                        {player.username.toLowerCase().includes('athena') ? (
+                          <Link href={buildAthenaListenerUrl()} target="_blank" rel="noopener noreferrer" className="font-medium truncate hover:underline">
+                            {player.username}
+                          </Link>
+                        ) : (
+                          <Link href={`https://www.twitch.tv/${player.username}`} target="_blank" rel="noopener noreferrer" className="font-medium truncate hover:underline">
+                            {player.username}
+                          </Link>
+                        )}
                       </div>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MessageSquare className="h-4 w-4"/>
-                            <span className="sr-only">Chat</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent side="right" align="start" className="w-auto p-0 border-none">
-                          <TwitchChatEmbed username={player.username} />
-                        </PopoverContent>
-                      </Popover>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => handleManualShoutout(player)}
+                          disabled={shoutingOut === player.id}
+                        >
+                          <Megaphone className={`h-4 w-4 ${shoutingOut === player.id ? 'animate-pulse' : ''}`} />
+                          <span className="sr-only">Shoutout</span>
+                        </Button>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MessageSquare className="h-4 w-4"/>
+                              <span className="sr-only">Chat</span>
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent side="right" align="start" className="w-auto p-0 border-none">
+                            <TwitchChatEmbed username={player.username} />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
                   ))}
                   {liveStreamersData.length === 0 && <p className="text-muted-foreground text-sm p-2">No one is live right now.</p>}

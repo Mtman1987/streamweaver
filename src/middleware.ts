@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   '/api/session',
   '/overlay/',
   '/xpn/',
+  '/tts-listener',
   '/tts-player',
   '/brb-player',
   '/shoutout-player',

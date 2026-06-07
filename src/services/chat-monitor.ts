@@ -15,8 +15,10 @@ let lastDiscordMessageId: Map<string, string | null> = new Map();
 let sentToTwitchIds = new Set<string>();
 let recentlySentMessages = new Set<string>();
 let isLoadingHistory: Map<string, boolean> = new Map();
+const lastMissingDiscordLogNotice = new Map<string, number>();
 
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
+const MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS = 10 * 60 * 1000;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -87,7 +89,12 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
         const logChannelId = await getDiscordChannelId('logChannelId', tenantId);
 
         if (!logChannelId) {
-            console.log(`[Chat:${key}] No Discord log channel configured`);
+            const now = Date.now();
+            const lastNotice = lastMissingDiscordLogNotice.get(key) || 0;
+            if (now - lastNotice > MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS) {
+                console.log(`[Chat:${key}] No Discord log channel configured`);
+                lastMissingDiscordLogNotice.set(key, now);
+            }
             return [];
         }
 

@@ -66,7 +66,7 @@ export async function sendChatMessage(
   if (tenantId?.startsWith('__kick_silent__')) return;
   try {
     const wsPort = process.env.WS_PORT || '8090';
-    const body: any = { message, as };
+    const body: any = { message, as, bridgeToDiscord: true };
     if (targetChannel) body.targetChannel = targetChannel.replace(/^#/, '');
     if (tenantId) body.tenantId = tenantId;
     const response = await fetch(`http://localhost:${wsPort}/api/twitch/send-message`, {

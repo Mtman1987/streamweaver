@@ -10,6 +10,7 @@ import { Save, SlidersHorizontal } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Link from 'next/link';
+import { getClientTenantId } from '@/lib/client-tenant';
 
 interface ChannelSettings {
   logChannelId: string;
@@ -42,6 +43,11 @@ const defaultGenSettings: GenerationSettings = {
   seed: 0,
 };
 
+function discordChannelsUrl() {
+  const tenantId = getClientTenantId();
+  return tenantId ? `/api/discord/channels?tenantId=${encodeURIComponent(tenantId)}` : '/api/discord/channels';
+}
+
 export function DiscordChannelSettings() {
   const { toast } = useToast();
   const [settings, setSettings] = useState<ChannelSettings>({
@@ -57,7 +63,7 @@ export function DiscordChannelSettings() {
   const [genDialogOpen, setGenDialogOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/discord/channels')
+    fetch(discordChannelsUrl())
       .then(res => res.json())
       .then((data) => {
         setSettings({
@@ -123,10 +129,11 @@ export function DiscordChannelSettings() {
   const handleSave = async () => {
     setLoading(true);
     try {
+      const tenantId = getClientTenantId();
       const response = await fetch('/api/discord/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        body: JSON.stringify({ ...settings, tenantId: tenantId || undefined })
       });
 
       if (response.ok) {
