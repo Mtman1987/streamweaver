@@ -20,6 +20,7 @@ import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
 import { ATHENA_WHITELIST_TENANT_ID } from './athena-whitelist';
+import { readWorldLore, type WorldLoreCharacter } from '../lib/world-lore-store';
 import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
 import { TriggerType } from './automation/types';
 import type { KickMessage } from './kick';
@@ -41,6 +42,9 @@ const ttsHandledMessages = new Set<string>();
 // launch duplicate walk-ons while we wait for Twitch/AI/TTS work to finish.
 const pendingWelcomeUsers = new Set<string>();
 
+const LORE_BOT_USERNAME_CACHE_MS = 30_000;
+let loreBotUsernameCache: { expiresAt: number; usernames: Set<string> } | null = null;
+
 export function markTtsHandled(message: string) {
     ttsHandledMessages.add(message.slice(0, 100));
     // Auto-cleanup after 10 seconds
@@ -49,6 +53,43 @@ export function markTtsHandled(message: string) {
 
 export async function handleKickMessage(message: KickMessage, tenantId: string) {
     return dispatchKickMessage(message, tenantId);
+}
+
+function normalizeBotHandle(value: string): string {
+    return value.toLowerCase().replace(/^@/, '').trim();
+}
+
+function loreCharacterNames(character: WorldLoreCharacter): string[] {
+    return [
+        character.currentName,
+        ...(character.aliases || []),
+        ...(character.previousNames || []),
+    ].filter(Boolean);
+}
+
+async function isLoreBotUsername(username: string): Promise<boolean> {
+    const normalized = normalizeBotHandle(username);
+    if (!normalized) return false;
+
+    try {
+        const now = Date.now();
+        if (!loreBotUsernameCache || loreBotUsernameCache.expiresAt <= now) {
+            const lore = await readWorldLore();
+            const usernames = new Set<string>();
+            for (const character of Object.values(lore?.characters || {})) {
+                for (const name of loreCharacterNames(character)) {
+                    usernames.add(normalizeBotHandle(name));
+                }
+            }
+            loreBotUsernameCache = {
+                expiresAt: now + LORE_BOT_USERNAME_CACHE_MS,
+                usernames,
+            };
+        }
+        return loreBotUsernameCache.usernames.has(normalized);
+    } catch {
+        return false;
+    }
 }
 
 // Pagination state for card listings
@@ -520,9 +561,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     
     const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
     const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
+    const isKnownAutomationBotMessage = !isBotMessage && (
+        await isKnownBot(actualUsername, tenantId) ||
+        await isLoreBotUsername(actualUsername)
+    );
 
     if (VERBOSE_LOGS) {
-        console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage})`);
+        console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage}, isKnownAutomationBotMessage: ${isKnownAutomationBotMessage})`);
     }
     
     // Skip self messages (broadcaster client echoes its own sends)
@@ -759,10 +804,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         return;
     }
     
-    // Skip processing bot's own messages to prevent loops (but allow manual commands)
-    if (isBotMessage && !actualMessage.startsWith('!')) {
+    // Skip bot-authored chatter to prevent reply loops (but allow manual commands).
+    if ((isBotMessage || isKnownAutomationBotMessage) && !actualMessage.startsWith('!')) {
         // TTS is already handled by the original sender (AI mention handler, walk-on shoutout, etc.)
-        // Don't generate duplicate TTS here.
+        // Don't generate duplicate TTS or let cross-bot replies re-enter AI mention handling.
+        if (isKnownAutomationBotMessage) {
+            console.log(`[Dispatcher] Skipping bot-authored non-command message from ${actualUsername}`);
+        }
         return;
     }
     
