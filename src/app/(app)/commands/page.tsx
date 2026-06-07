@@ -51,7 +51,7 @@ export default function CommandsPage() {
         description:
           result.matchedActions > 0
             ? `${result.actionsRun} action${result.actionsRun === 1 ? "" : "s"} ran, ${result.actionsFailed} failed.`
-            : "Attach this command to an action in Active Commands.",
+            : "Attach this command to an action in Workflows.",
       });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Run failed", description: e?.message || String(e) });

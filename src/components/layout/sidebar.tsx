@@ -56,7 +56,7 @@ const workspaceGroups = [
     items: [
       { href: "/commands", icon: MessageSquareText, label: "Commands" },
       { href: "/actions", icon: Zap, label: "Actions" },
-      { href: "/active-commands", icon: Rocket, label: "Active Commands" },
+      { href: "/active-commands", icon: Rocket, label: "Workflows" },
       { href: "/bot-functions", icon: Bot, label: "Bot Functions" },
     ],
   },

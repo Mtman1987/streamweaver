@@ -56,6 +56,7 @@ function ActiveCommandsPageClient() {
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
 
   const [draftActionId, setDraftActionId] = useState<string | null>(null);
+  const [draftWorkflowName, setDraftWorkflowName] = useState("");
   const [draftEnabled, setDraftEnabled] = useState(false);
   const [draftTriggers, setDraftTriggers] = useState<any[]>([]);
   const [draftSubActions, setDraftSubActions] = useState<SubAction[]>([]);
@@ -87,7 +88,7 @@ function ActiveCommandsPageClient() {
     if (error) {
       toast({
         variant: "destructive",
-        title: "Failed to load active commands",
+        title: "Failed to load workflows",
         description: error,
       });
     }
@@ -114,19 +115,37 @@ function ActiveCommandsPageClient() {
 
   const activeCommandRows = useMemo(() => {
     const cmdById = new Map(commands.map((c) => [c.id, c]));
+    const triggerLabel = (type: number): string => {
+      if (type === TriggerType.COMMAND) return "On Chat Command";
+      if (type === TriggerType.CHAT_MESSAGE) return "On Chat Message";
+      if (type === TriggerType.FOLLOW) return "On Follow";
+      if (type === TriggerType.CHEER) return "On Cheer";
+      if (type === TriggerType.SUBSCRIBE) return "On Subscribe";
+      if (type === TriggerType.RESUB) return "On Resub";
+      if (type === TriggerType.GIFT_SUB) return "On Gift Sub";
+      if (type === TriggerType.GIFT_BOMB) return "On Gift Bomb";
+      if (type === TriggerType.RAID) return "On Raid";
+      if (type === TriggerType.CHANNEL_POINT_REWARD) return "On Channel Point Reward";
+      return `On Trigger ${String(type)}`;
+    };
     return actions
       .filter((a) => a.enabled)
       .flatMap((a) => {
-        const cmdTriggers = (a.triggers ?? []).filter((t) => Number(t.type) === TriggerType.COMMAND);
-        if (cmdTriggers.length === 0) return [];
-        return cmdTriggers.map((t: any) => {
-          const cmd = t.commandId ? cmdById.get(String(t.commandId)) : undefined;
+        const triggers = Array.isArray(a.triggers) && a.triggers.length > 0 ? a.triggers : [{ id: "no-trigger", type: undefined }];
+        return triggers.map((t: any) => {
+          const type = Number(t.type);
+          const isCommand = type === TriggerType.COMMAND;
+          const cmd = isCommand && t.commandId ? cmdById.get(String(t.commandId)) : undefined;
           return {
             actionId: a.id,
             actionName: a.name,
+            triggerId: String(t.id || "no-trigger"),
             commandId: String(t.commandId || ""),
-            commandLabel: (cmd?.command ?? cmd?.name ?? t.commandId ?? "—").toString(),
-            trigger: "On Chat Command",
+            commandLabel: isCommand
+              ? (cmd?.command ?? cmd?.name ?? t.command ?? t.commandName ?? t.commandId ?? "—").toString()
+              : "—",
+            trigger: Number.isFinite(type) ? triggerLabel(type) : "No Trigger",
+            steps: Array.isArray(a.subActions) ? a.subActions.length : 0,
             platform: "Twitch",
             status: "Enabled",
           };
@@ -139,6 +158,7 @@ function ActiveCommandsPageClient() {
   useEffect(() => {
     if (!selectedAction) return;
     setDraftActionId(selectedAction.id);
+    setDraftWorkflowName(selectedAction.name || "Untitled Workflow");
     setDraftEnabled(!!selectedAction.enabled);
     setDraftTriggers(Array.isArray(selectedAction.triggers) ? (selectedAction.triggers as any[]) : []);
     setDraftSubActions(Array.isArray(selectedAction.subActions) ? (selectedAction.subActions as any) : []);
@@ -205,7 +225,6 @@ function ActiveCommandsPageClient() {
   };
 
   const addNewTriggerToDraft = () => {
-    if (!selectedAction) return;
     const t = Number(newTriggerType);
 
     if (t === TriggerType.COMMAND) {
@@ -265,27 +284,6 @@ function ActiveCommandsPageClient() {
       setTriggerJsonError(null);
     } catch (e: any) {
       setTriggerJsonError(e?.message || "Invalid JSON");
-    }
-  };
-
-  const saveDraft = async () => {
-    if (!draftActionId) return;
-    setIsSaving(true);
-    try {
-      await updateActionClient(
-        draftActionId,
-        {
-          enabled: draftEnabled,
-          triggers: draftTriggers as any,
-          subActions: draftSubActions as any,
-        } as any
-      );
-      toast({ title: "Saved", description: "Action updated." });
-      await refresh();
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Save failed", description: e?.message || String(e) });
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -432,12 +430,14 @@ function ActiveCommandsPageClient() {
 
   const currentWorkflowForAI = useMemo(
     () => ({
-      name: selectedAction?.name ?? "",
+      name: draftWorkflowName || selectedAction?.name || "",
       triggers: draftTriggers ?? [],
       subActions: draftSubActions ?? [],
     }),
-    [selectedAction?.name, draftTriggers, draftSubActions]
+    [draftWorkflowName, selectedAction?.name, draftTriggers, draftSubActions]
   );
+
+  const hasWorkflowDraft = Boolean(draftActionId || draftWorkflowName.trim() || draftTriggers.length > 0 || draftSubActions.length > 0);
 
   const normalizeCommandText = (value: unknown): string => {
     const text = String(value || "").trim();
@@ -446,9 +446,8 @@ function ActiveCommandsPageClient() {
   };
 
   const findOrCreateCommandForAutomation = async (automation: any, triggers: any[]): Promise<string | null> => {
-    if (selectedCommandId) return selectedCommandId;
-
     const commandTrigger = triggers.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
+    if (selectedCommandId && !commandTrigger?.command && !commandTrigger?.commandName) return selectedCommandId;
     const commandText = normalizeCommandText(
       commandTrigger?.command ||
         commandTrigger?.commandName ||
@@ -506,16 +505,58 @@ function ActiveCommandsPageClient() {
     return normalizeIndex(sourceSubActions) as SubAction[];
   };
 
-  const applyAutomationFromAI = async (automation: any) => {
+  const loadAutomationDraftFromAI = async (automation: any) => {
     if (!automation || typeof automation !== "object") return;
+
+    const commandText = normalizeCommandText(
+      automation?.triggers?.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)?.command ||
+        automation?.triggers?.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)?.commandName ||
+        automation?.command?.command ||
+        automation?.command
+    );
+    const nextTriggers = (Array.isArray(automation.triggers) ? automation.triggers : []).map((trigger: any) => ({
+      ...trigger,
+      id: String(trigger?.id || crypto.randomUUID()),
+      type: Number(trigger?.type ?? TriggerType.COMMAND),
+      enabled: trigger?.enabled ?? true,
+      exclusions: Array.isArray(trigger?.exclusions) ? trigger.exclusions : [],
+    }));
+
+    if (commandText && !nextTriggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)) {
+      nextTriggers.unshift({
+        id: crypto.randomUUID(),
+        type: TriggerType.COMMAND,
+        enabled: true,
+        exclusions: [],
+        command: commandText,
+      });
+    }
+
+    setDraftActionId(selectedAction?.id ?? null);
+    setDraftWorkflowName(String(automation.name || selectedAction?.name || "AI Drafted Workflow").trim() || "AI Drafted Workflow");
+    setDraftEnabled(true);
+    setDraftTriggers(nextTriggers);
+    setDraftSubActions(normalizeAutomationSubActions(automation));
+    toast({
+      title: "Draft loaded",
+      description: "Review and edit the workflow below, then save it when it looks right.",
+    });
+  };
+
+  const saveWorkflowDraft = async () => {
+    if (!hasWorkflowDraft) return;
 
     setIsSaving(true);
     try {
-      const sourceTriggers = Array.isArray(automation.triggers) ? automation.triggers : [];
-      const commandId = await findOrCreateCommandForAutomation(automation, sourceTriggers);
-      const nextTriggers = normalizeAutomationTriggers(automation, commandId);
-      const nextSubActions = normalizeAutomationSubActions(automation);
-      const actionName = String(automation.name || selectedAction?.name || "AI Drafted Workflow").trim() || "AI Drafted Workflow";
+      const draftAutomation = {
+        name: draftWorkflowName,
+        triggers: draftTriggers,
+        subActions: draftSubActions,
+      };
+      const commandId = await findOrCreateCommandForAutomation(draftAutomation, draftTriggers);
+      const nextTriggers = normalizeAutomationTriggers(draftAutomation, commandId);
+      const nextSubActions = normalizeAutomationSubActions(draftAutomation);
+      const actionName = String(draftWorkflowName || selectedAction?.name || "AI Drafted Workflow").trim() || "AI Drafted Workflow";
 
       let actionId = draftActionId;
       if (actionId) {
@@ -523,7 +564,7 @@ function ActiveCommandsPageClient() {
           actionId,
           {
             name: actionName,
-            enabled: true,
+            enabled: draftEnabled,
             triggers: nextTriggers as any,
             subActions: nextSubActions as any,
           } as any
@@ -532,7 +573,7 @@ function ActiveCommandsPageClient() {
         const created: any = await createActionClient({
           name: actionName,
           group: "AI Automations",
-          enabled: true,
+          enabled: draftEnabled,
           triggers: nextTriggers as any,
           subActions: nextSubActions as any,
         } as any);
@@ -542,19 +583,20 @@ function ActiveCommandsPageClient() {
       setDraftActionId(actionId);
       setSelectedActionId(actionId);
       if (commandId) setSelectedCommandId(commandId);
+      setDraftWorkflowName(actionName);
       setDraftTriggers(nextTriggers);
       setDraftSubActions(nextSubActions);
-      setDraftEnabled(true);
+      setDraftEnabled(draftEnabled);
 
       await Promise.all([refresh(), refreshCommands()]);
       toast({
-        title: "Automation saved",
+        title: "Workflow saved",
         description: commandId
           ? `${actionName} is saved and linked to the command.`
           : `${actionName} is saved.`,
       });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Apply failed", description: e?.message || String(e) });
+      toast({ variant: "destructive", title: "Save failed", description: e?.message || String(e) });
     } finally {
       setIsSaving(false);
     }
@@ -564,17 +606,17 @@ function ActiveCommandsPageClient() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Active Commands</CardTitle>
-          <CardDescription>Link a command to an action as a trigger, then enable it.</CardDescription>
+          <CardTitle>Workflows</CardTitle>
+          <CardDescription>A workflow is a command or event trigger connected to an action flow.</CardDescription>
         </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           <div className="space-y-2">
-            <div className="text-sm font-medium">Choose Action</div>
+            <div className="text-sm font-medium">Choose Existing Workflow</div>
             <Select value={selectedActionId ?? ""} onValueChange={(v) => setSelectedActionId(v)}>
               <SelectTrigger>
-                <SelectValue placeholder="Select an action" />
+                <SelectValue placeholder="Select an action workflow" />
               </SelectTrigger>
               <SelectContent>
                 {actions.map((a) => (
@@ -604,30 +646,45 @@ function ActiveCommandsPageClient() {
 
           <div className="flex items-center justify-between rounded-md border px-3 py-2 lg:col-span-2">
             <div className="space-y-0.5">
-              <div className="text-sm font-medium">Enable Action</div>
-              <div className="text-xs text-muted-foreground">Required for the command to be live.</div>
+              <div className="text-sm font-medium">Enable Workflow</div>
+              <div className="text-xs text-muted-foreground">Required for this workflow to be live.</div>
             </div>
             <Switch
               checked={draftEnabled}
-              disabled={!selectedAction}
+              disabled={!hasWorkflowDraft}
               onCheckedChange={setDraftEnabled}
             />
           </div>
 
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2">
-              <Button onClick={addCommandTriggerToDraft} disabled={!selectedAction || !selectedCommandId}>
+              <Button onClick={addCommandTriggerToDraft} disabled={!hasWorkflowDraft || !selectedCommandId}>
               Add Command As Trigger + Enable
               </Button>
-              <Button onClick={saveDraft} disabled={!selectedAction || isSaving}>
-                {isSaving ? "Saving..." : "Save"}
+              <Button onClick={saveWorkflowDraft} disabled={!hasWorkflowDraft || isSaving}>
+                {isSaving ? "Saving..." : "Save Workflow"}
               </Button>
             </div>
           </div>
         </div>
 
-        {selectedAction ? (
+        {hasWorkflowDraft ? (
           <div className="mb-8 space-y-4">
+            <div className="rounded-md border p-4">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Workflow Name</div>
+                  <Input
+                    value={draftWorkflowName}
+                    onChange={(e) => setDraftWorkflowName(e.target.value)}
+                    placeholder="AI Drafted Workflow"
+                  />
+                </div>
+                <Button onClick={saveWorkflowDraft} disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save Workflow"}
+                </Button>
+              </div>
+            </div>
             <div className="rounded-md border p-4">
               <div className="text-sm font-medium mb-2">Triggers</div>
               <div className="space-y-2">
@@ -711,11 +768,11 @@ function ActiveCommandsPageClient() {
                   ) : null}
 
                   <div className="md:col-span-3 flex items-center gap-2">
-                    <Button onClick={addNewTriggerToDraft} disabled={!selectedAction}>
+                    <Button onClick={addNewTriggerToDraft} disabled={!hasWorkflowDraft}>
                       Add Trigger + Enable
                     </Button>
-                    <Button onClick={saveDraft} disabled={!selectedAction || isSaving}>
-                      {isSaving ? "Saving..." : "Save"}
+                    <Button onClick={saveWorkflowDraft} disabled={!hasWorkflowDraft || isSaving}>
+                      {isSaving ? "Saving..." : "Save Workflow"}
                     </Button>
                   </div>
                 </div>
@@ -726,7 +783,7 @@ function ActiveCommandsPageClient() {
                   const isReward = Number(t.type) === TriggerType.CHANNEL_POINT_REWARD;
                   const cmd = isCommand ? commands.find((c) => c.id === String(t.commandId)) : undefined;
                   const label =
-                    isCommand ? (cmd?.command ?? cmd?.name ?? t.commandId ?? "—").toString() : labelForTriggerType(Number(t.type));
+                    isCommand ? (cmd?.command ?? cmd?.name ?? t.command ?? t.commandName ?? t.commandId ?? "—").toString() : labelForTriggerType(Number(t.type));
 
                   const exclusionsText = Array.isArray(t.exclusions) ? (t.exclusions as any[]).join("\n") : "";
 
@@ -737,7 +794,7 @@ function ActiveCommandsPageClient() {
                           <div className="text-sm font-medium truncate">{label}</div>
                           <div className="text-xs text-muted-foreground truncate">
                             type={String(t.type)} id={String(t.id)}
-                            {isCommand ? ` commandId=${String(t.commandId || "")}` : ""}
+                            {isCommand ? ` command=${String(t.command || t.commandName || t.commandId || "")}` : ""}
                             {isChat ? ` pattern=${String(t.pattern || "")}` : ""}
                             {isReward ? ` rewardId=${String(t.rewardId || "")}` : ""}
                           </div>
@@ -761,11 +818,11 @@ function ActiveCommandsPageClient() {
                       {isCommand ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="space-y-2">
-                            <div className="text-sm font-medium">Command</div>
+                            <div className="text-sm font-medium">Existing Command</div>
                             <Select
                               value={String(t.commandId || "")}
                               onValueChange={(v) =>
-                                setDraftTriggers((prev) => prev.map((x: any) => (x.id === t.id ? { ...x, commandId: v } : x)))
+                                setDraftTriggers((prev) => prev.map((x: any) => (x.id === t.id ? { ...x, commandId: v, command: undefined, commandName: undefined } : x)))
                               }
                             >
                               <SelectTrigger>
@@ -779,6 +836,20 @@ function ActiveCommandsPageClient() {
                                 ))}
                               </SelectContent>
                             </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="text-sm font-medium">New Command Text</div>
+                            <Input
+                              value={String(t.command || t.commandName || "")}
+                              onChange={(e) =>
+                                setDraftTriggers((prev) =>
+                                  prev.map((x: any) =>
+                                    x.id === t.id ? { ...x, command: normalizeCommandText(e.target.value), commandName: undefined, commandId: undefined } : x
+                                  )
+                                )
+                              }
+                              placeholder="!mycommand"
+                            />
                           </div>
                         </div>
                       ) : null}
@@ -894,7 +965,7 @@ function ActiveCommandsPageClient() {
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <div className="text-sm font-medium">Flow Editor</div>
-                  <div className="text-xs text-muted-foreground">Build the full sub-action flow for this action.</div>
+                  <div className="text-xs text-muted-foreground">Build the full action flow for this workflow.</div>
                 </div>
                 <Button
                   variant="secondary"
@@ -951,8 +1022,8 @@ function ActiveCommandsPageClient() {
               />
 
               <div className="mt-3">
-                <Button onClick={saveDraft} disabled={isSaving}>
-                  {isSaving ? "Saving..." : "Save Flow"}
+                <Button onClick={saveWorkflowDraft} disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save Workflow"}
                 </Button>
               </div>
             </div>
@@ -963,7 +1034,9 @@ function ActiveCommandsPageClient() {
           <TableHeader>
             <TableRow>
               <TableHead>Command</TableHead>
+              <TableHead>Workflow</TableHead>
               <TableHead>Trigger</TableHead>
+              <TableHead>Steps</TableHead>
               <TableHead>Platform</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>
@@ -974,25 +1047,27 @@ function ActiveCommandsPageClient() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading active commands...
+                    Loading workflows...
                   </div>
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && activeCommandRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No active commands. Activate an action to see it here.
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  No active workflows. Draft one with AI, review it, then save it.
                 </TableCell>
               </TableRow>
             )}
             {activeCommandRows.map((row) => (
-              <TableRow key={`${row.actionId}:${row.commandId}`}> 
+              <TableRow key={`${row.actionId}:${row.triggerId}`}>
                 <TableCell className="font-medium">{row.commandLabel}</TableCell>
+                <TableCell>{row.actionName}</TableCell>
                 <TableCell>{row.trigger}</TableCell>
+                <TableCell>{row.steps}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{row.platform}</Badge>
                 </TableCell>
@@ -1011,7 +1086,7 @@ function ActiveCommandsPageClient() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleRunCommand(row.commandId)}>
+                      <DropdownMenuItem onClick={() => handleRunCommand(row.commandId)} disabled={!row.commandId}>
                         <Play className="mr-2 h-4 w-4" />
                         Run
                       </DropdownMenuItem>
@@ -1021,7 +1096,7 @@ function ActiveCommandsPageClient() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
-                        <Link href={`/active-commands?actionId=${encodeURIComponent(row.actionId)}`}>Edit Action</Link>
+                        <Link href={`/active-commands?actionId=${encodeURIComponent(row.actionId)}`}>Edit Workflow</Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive focus:text-destructive" disabled>
@@ -1038,7 +1113,7 @@ function ActiveCommandsPageClient() {
         <div className="mt-6">
           <AutomationAIChat
             currentWorkflow={currentWorkflowForAI}
-            onAutomationGenerated={applyAutomationFromAI}
+            onAutomationGenerated={loadAutomationDraftFromAI}
             selectedCommandId={selectedCommandId}
           />
         </div>

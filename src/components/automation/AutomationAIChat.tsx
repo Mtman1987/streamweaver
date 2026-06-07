@@ -37,7 +37,7 @@ export default function AutomationAIChat({
     {
       id: '0',
       role: 'assistant',
-      content: 'Hi! I\'m your StreamWeaver AI assistant. I can help you:\n\n• **Build automations** - Describe a workflow and I will draft it\n• **Generate code** - Ask me to write C#, JavaScript, or Python\n• **Explain features** - Ask about any sub-action or trigger\n• **Modify workflows** - Tell me what to change\n\nTry: "Generate a workflow that rewards points for !rps" or "Create an automation that thanks new followers"',
+      content: 'Hi! I\'m your StreamWeaver AI assistant. I can help you draft and refine workflows before saving them.\n\nDescribe the command, trigger, or behavior you want. After I draft it, load it into the workflow editor, review the command/action steps, then tell me what to change if it is not quite right.\n\nTry: "Generate a workflow that rewards points for !rps" or "Create an automation that thanks new followers"',
       timestamp: new Date()
     }
   ]);
@@ -200,8 +200,15 @@ export default function AutomationAIChat({
                     <span className="font-medium">Triggers:</span> {message.automation.triggers.length}
                   </div>
                   <div>
-                    <span className="font-medium">Sub-Actions:</span> {message.automation.subActions.length}
+                    <span className="font-medium">Steps:</span> {message.automation.subActions.length}
                   </div>
+                  {Array.isArray(message.suggestedChanges) && message.suggestedChanges.length > 0 ? (
+                    <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+                      {message.suggestedChanges.slice(0, 3).map((change: string, index: number) => (
+                        <div key={`${message.id}-suggestion-${index}`}>{change}</div>
+                      ))}
+                    </div>
+                  ) : null}
                   <Button
                     size="sm"
                     disabled={applyingMessageId === message.id}
@@ -216,7 +223,7 @@ export default function AutomationAIChat({
                     className="w-full mt-2"
                   >
                     <Sparkles className="w-4 h-4 mr-2" />
-                    {applyingMessageId === message.id ? 'Applying...' : 'Apply and Save Automation'}
+                    {applyingMessageId === message.id ? 'Loading...' : 'Review in Workflow Editor'}
                   </Button>
                 </div>
               </CardContent>
@@ -270,7 +277,7 @@ export default function AutomationAIChat({
           AI Automation Assistant
         </CardTitle>
         <CardDescription>
-          Build automations with natural language
+          Draft, review, and refine workflows with natural language
         </CardDescription>
       </CardHeader>
       

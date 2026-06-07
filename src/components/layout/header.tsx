@@ -34,7 +34,11 @@ const headerMeta: Record<string, HeaderMeta> = {
     title: "Actions",
     description: "Compose multi-step automations and attach them to triggers.",
     primaryHref: "/active-commands",
-    primaryLabel: "Review active commands",
+    primaryLabel: "Review workflows",
+  },
+  "/active-commands": {
+    title: "Workflows",
+    description: "Connect commands or events to action flows, then review and test the complete automation.",
   },
   "/integrations": {
     title: "Integrations",

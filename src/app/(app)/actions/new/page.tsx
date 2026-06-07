@@ -55,7 +55,7 @@ export default function NewActionPage() {
       <Card>
         <CardHeader>
           <CardTitle>Create New Action</CardTitle>
-          <CardDescription>Create the action container. You’ll link commands and build the flow in Active Commands.</CardDescription>
+          <CardDescription>Create the action container. You’ll link commands and build the flow in Workflows.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -105,7 +105,7 @@ export default function NewActionPage() {
             </div>
 
             <div className="rounded-md border p-4 text-sm text-muted-foreground">
-              Next: go to <span className="font-medium">Active Commands</span> and link a command as a trigger, then build the full flow.
+              Next: go to <span className="font-medium">Workflows</span> and link a command as a trigger, then build the full flow.
             </div>
           </form>
         </CardContent>
