@@ -66,6 +66,7 @@ firebase-service-account.json
 /tokens/*
 !/tokens/.gitkeep
 !/tokens/*.example.json
+/src/data/public-chat-*.json
 
 # Runtime data (user-specific, synced via Discord)
 /data/*
