@@ -5,6 +5,7 @@ import { OBSHandlers } from './subactions/OBSHandlers';
 import { DiscordHandlers, YouTubeHandlers, KickHandlers } from './subactions/PlatformHandlers';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { getActionById } from '@/lib/actions-store';
+import { generateTTS } from '@/services/tts-provider';
 
 export interface ExecutionContext {
   user?: string;
@@ -142,6 +143,8 @@ export class SubActionExecutor {
       // Media Handlers
       else if (subAction.type === SubActionType.PLAY_SOUND) {
         result = await SubActionHandlers.Media.handlePlaySound(subAction, context);
+      } else if (subAction.type === SubActionType.VOICE_REPLY_PROMPT) {
+        result = await this.handleVoiceReplyPrompt(subAction, context);
       }
       
       // Network Handlers
@@ -486,6 +489,54 @@ export class SubActionExecutor {
     });
     
     return result;
+  }
+
+  private async handleVoiceReplyPrompt(subAction: SubAction, context: ExecutionContext): Promise<{ success: boolean; variables?: Record<string, any>; error?: string }> {
+    const broadcast = (global as any).broadcast;
+    if (typeof broadcast !== 'function') {
+      return { success: false, error: 'WebSocket broadcast is not available.' };
+    }
+
+    const userName = context.userName || context.user || 'viewer';
+    const chatMessage = context.message || context.rawInput || '';
+    const readbackTemplate = String(subAction.readbackTemplate || '%userName% said %message%');
+    const readbackText = this.replaceVariables(readbackTemplate, context)
+      .replace(/%userName%/g, userName)
+      .replace(/%user%/g, userName)
+      .replace(/%message%/g, chatMessage);
+    const voice = typeof subAction.voice === 'string' && subAction.voice.trim() ? subAction.voice.trim() : undefined;
+    const waitMs = Number(subAction.waitMs ?? subAction.value ?? 5000);
+    const recordMs = Number(subAction.recordMs ?? 10000);
+    const autoSend = subAction.autoSend !== false;
+    const sendAs = subAction.useBot === false ? 'broadcaster' : 'bot';
+
+    let audioDataUri = '';
+    try {
+      audioDataUri = await generateTTS(readbackText, voice, context.tenantId);
+    } catch (error) {
+      console.error('[Voice Reply Prompt] Failed to generate private readback TTS:', error);
+    }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    broadcast({
+      type: 'voice-reply-request',
+      payload: {
+        requestId,
+        tenantId: context.tenantId || '',
+        userName,
+        displayName: context.variables?.displayName || userName,
+        message: chatMessage,
+        readbackText,
+        audioDataUri,
+        waitMs: Number.isFinite(waitMs) && waitMs >= 0 ? waitMs : 5000,
+        recordMs: Number.isFinite(recordMs) && recordMs > 0 ? recordMs : 10000,
+        autoSend,
+        sendAs,
+        targetChannel: context.args?.channel || '',
+      },
+    }, context.tenantId);
+
+    return { success: true, variables: { voiceReplyRequestId: requestId } };
   }
 
   getGlobalVariable(name: string): any {

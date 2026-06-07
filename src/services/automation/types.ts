@@ -231,7 +231,10 @@ export enum SubActionType {
   OBS_SET_MEDIA_SOURCE = 322,
   
   // Custom code execution
-  EXECUTE_CODE = 99999
+  EXECUTE_CODE = 99999,
+
+  // StreamWeaver browser-assisted actions
+  VOICE_REPLY_PROMPT = 9101
 }
 
 export interface ActionQueue {

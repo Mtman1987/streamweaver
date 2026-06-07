@@ -13,6 +13,7 @@ const SUB_ACTION_TYPES = [
   { value: SubActionType.SEND_MESSAGE, label: 'Send Chat Message', category: 'Core' },
   { value: SubActionType.PLAY_SOUND, label: 'Play Sound', category: 'Core' },
   { value: SubActionType.WAIT, label: 'Wait/Delay', category: 'Core' },
+  { value: SubActionType.VOICE_REPLY_PROMPT, label: 'Voice Reply Prompt', category: 'Core' },
   { value: SubActionType.RUN_ACTION, label: 'Run Action', category: 'Core' },
   { value: SubActionType.SET_ARGUMENT, label: 'Set Argument', category: 'Variables' },
   { value: SubActionType.SET_GLOBAL_VAR, label: 'Set Global Variable', category: 'Variables' },
@@ -141,6 +142,50 @@ export function SubActionBuilder({ subAction, onSave, onCancel }: SubActionBuild
                 title="Max random wait time"
               />
             </div>
+          </>
+        );
+
+      case SubActionType.VOICE_REPLY_PROMPT:
+        return (
+          <>
+            <div>
+              <label className="block text-sm font-medium mb-1">Private Readback</label>
+              <textarea
+                value={formData.readbackTemplate || '%userName% said %message%'}
+                onChange={(e) => setFormData({ ...formData, readbackTemplate: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                rows={3}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Wait Before Ding (milliseconds)</label>
+              <input
+                type="number"
+                min="0"
+                value={formData.waitMs ?? 5000}
+                onChange={(e) => setFormData({ ...formData, waitMs: parseInt(e.target.value, 10) })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Record Length (milliseconds)</label>
+              <input
+                type="number"
+                min="1000"
+                value={formData.recordMs ?? 10000}
+                onChange={(e) => setFormData({ ...formData, recordMs: parseInt(e.target.value, 10) })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={formData.autoSend !== false}
+                onChange={(e) => setFormData({ ...formData, autoSend: e.target.checked })}
+                className="mr-2"
+              />
+              Send transcription automatically
+            </label>
           </>
         );
 

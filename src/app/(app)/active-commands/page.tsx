@@ -414,6 +414,7 @@ function ActiveCommandsPageClient() {
     if (value === SubActionType.BREAK) return "Break";
     if (value === SubActionType.WAIT) return "Wait";
     if (value === SubActionType.HTTP_REQUEST) return "HTTP Request";
+    if (value === SubActionType.VOICE_REPLY_PROMPT) return "Voice Reply Prompt";
     if (value === SubActionType.COMMENT) return "Comment";
     return String(value ?? "Unknown");
   };
@@ -425,6 +426,7 @@ function ActiveCommandsPageClient() {
     if (sa.type === SubActionType.GET_USER_INFO) return `user=${String(sa.userLogin || "")}`;
     if (sa.type === SubActionType.IF_ELSE) return `${String(sa.input || "")} op=${String(sa.operation ?? "")} ${String(sa.value ?? "")}`;
     if (sa.type === SubActionType.HTTP_REQUEST) return `${String(sa.method || "POST")} ${String(sa.url || "")}`;
+    if (sa.type === SubActionType.VOICE_REPLY_PROMPT) return `${String(sa.readbackTemplate || "%userName% said %message%")} -> ${sa.autoSend === false ? "manual" : "auto"}`;
     return "";
   };
 
@@ -1145,6 +1147,7 @@ function ActiveCommandsPageClient() {
                       <SelectItem value={String(SubActionType.IF_ELSE)}>If / Else</SelectItem>
                       <SelectItem value={String(SubActionType.BREAK)}>Break</SelectItem>
                       <SelectItem value={String(SubActionType.WAIT)}>Wait</SelectItem>
+                      <SelectItem value={String(SubActionType.VOICE_REPLY_PROMPT)}>Voice Reply Prompt</SelectItem>
                       <SelectItem value={String(SubActionType.COMMENT)}>Comment</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1263,6 +1266,72 @@ function ActiveCommandsPageClient() {
                   </div>
                   <div className="md:col-span-3 text-xs text-muted-foreground">
                     Add child steps under IF/ELSE in the flow list.
+                  </div>
+                </div>
+              ) : null}
+
+              {Number(subActionDraft.type) === SubActionType.VOICE_REPLY_PROMPT ? (
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Private Readback</div>
+                    <Textarea
+                      rows={3}
+                      value={String(subActionDraft.readbackTemplate || "%userName% said %message%")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, readbackTemplate: e.target.value }))}
+                    />
+                    <div className="text-xs text-muted-foreground">Use %userName% and %message% from the chat trigger.</div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Wait Before Ding (ms)</div>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={String(subActionDraft.waitMs ?? 5000)}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, waitMs: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Record Length (ms)</div>
+                      <Input
+                        type="number"
+                        min="1000"
+                        value={String(subActionDraft.recordMs ?? 10000)}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, recordMs: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Voice</div>
+                      <Input
+                        value={String(subActionDraft.voice || "")}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, voice: e.target.value }))}
+                        placeholder="Default voice"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Automatic Send</div>
+                        <div className="text-xs text-muted-foreground">Turn off to approve the transcription manually.</div>
+                      </div>
+                      <Switch
+                        checked={subActionDraft.autoSend !== false}
+                        onCheckedChange={(checked) => setSubActionDraft((d: any) => ({ ...d, autoSend: checked }))}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Send as Bot</div>
+                        <div className="text-xs text-muted-foreground">Use broadcaster if off.</div>
+                      </div>
+                      <Switch
+                        checked={subActionDraft.useBot !== false}
+                        onCheckedChange={(checked) => setSubActionDraft((d: any) => ({ ...d, useBot: checked }))}
+                      />
+                    </div>
                   </div>
                 </div>
               ) : null}

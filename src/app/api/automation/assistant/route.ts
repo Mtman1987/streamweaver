@@ -78,6 +78,13 @@ function normalizeSubActionType(value: unknown): number {
   if (text === 'math-operation') return SubActionType.MATH_OPERATION;
   if (text === 'string-operation') return SubActionType.STRING_OPERATION;
   if (text === 'http-request' || text === 'http_request') return SubActionType.HTTP_REQUEST;
+  if (
+    text === 'voice-reply' ||
+    text === 'voice_reply' ||
+    text === 'voice-reply-prompt' ||
+    text === 'voice_reply_prompt' ||
+    text === 'private-voice-reply'
+  ) return SubActionType.VOICE_REPLY_PROMPT;
   if (text === 'update-points') return SubActionType.MATH_OPERATION;
   const numeric = Number(text);
   return Number.isFinite(numeric) ? numeric : SubActionType.SEND_MESSAGE;
@@ -95,6 +102,16 @@ function isRpsChallengePrompt(message: string): boolean {
   ) || lower.includes('best 2 out of 3') || lower.includes('best of 3') || lower.includes('rps');
 }
 
+function isVoiceReplyPrompt(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    (lower.includes('tts') || lower.includes('read') || lower.includes('read chat')) &&
+    (lower.includes('stt') || lower.includes('speech to text') || lower.includes('speech-to-text') || lower.includes('transcrib')) &&
+    (lower.includes('record') || lower.includes('recording') || lower.includes('microphone') || lower.includes('mic')) &&
+    (lower.includes('chat') || lower.includes('message'))
+  );
+}
+
 function isCodePrompt(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -106,6 +123,52 @@ function isCodePrompt(message: string): boolean {
     lower.includes('javascript code') ||
     lower.includes('python code')
   );
+}
+
+function buildVoiceReplyAutomationDraft(message: string, currentWorkflow?: any): AssistantAutomationResponse {
+  const wantsManual = /\bmanual\b|\bturn off automatic\b|\bauto(?:matic)? reply off\b|\blet me\b/i.test(message);
+  const triggers = asWorkflowArray(currentWorkflow?.triggers);
+  const hasChatTrigger = triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.CHAT_MESSAGE);
+  const nextTriggers = hasChatTrigger
+    ? triggers
+    : [
+        ...triggers,
+        {
+          id: newId(),
+          type: TriggerType.CHAT_MESSAGE,
+          enabled: true,
+          exclusions: [],
+          pattern: '.+',
+          excludeBots: true,
+        },
+      ];
+
+  return {
+    assistantMessage: 'I drafted a browser-assisted voice reply workflow. Keep the Voice Reply page open while streaming; it handles private TTS, the ding, microphone recording, STT, and either automatic or manual sending.',
+    automation: {
+      name: currentWorkflow?.name?.trim() || 'Private Chat Voice Reply',
+      triggers: nextTriggers,
+      subActions: [
+        {
+          id: newId(),
+          type: SubActionType.VOICE_REPLY_PROMPT,
+          enabled: true,
+          weight: 0,
+          index: 0,
+          readbackTemplate: '%userName% said %message%',
+          waitMs: 5000,
+          recordMs: 10000,
+          autoSend: !wantsManual,
+          useBot: true,
+        },
+      ],
+    },
+    suggestedChanges: [
+      'Open the Voice Reply page before going live and grant microphone permission.',
+      'Use Dashboard audio routing to choose the private TTS output device.',
+      wantsManual ? 'Automatic Send is off, so transcriptions wait for approval.' : 'Turn Automatic Send off in the step or Voice Reply page if you want manual approval.',
+    ],
+  };
 }
 
 function buildCodeFallback(message: string): AssistantAutomationResponse {
@@ -212,6 +275,10 @@ function buildRpsAutomationDraft(message: string, selectedCommandId?: string | n
 }
 
 async function buildFallbackAutomation(message: string, selectedCommandId?: string | null, currentWorkflow?: any): Promise<AssistantAutomationResponse> {
+  if (isVoiceReplyPrompt(message)) {
+    return buildVoiceReplyAutomationDraft(message, currentWorkflow);
+  }
+
   if (isRpsChallengePrompt(message)) {
     return buildRpsAutomationDraft(message, selectedCommandId, currentWorkflow);
   }
@@ -362,6 +429,9 @@ export async function POST(request: NextRequest) {
     const fallback = isCodePrompt(message)
       ? buildCodeFallback(message)
       : await buildFallbackAutomation(message, selectedCommandId, currentWorkflow);
+    if (isVoiceReplyPrompt(message)) {
+      return apiOk(fallback);
+    }
     const prompt = [
       'You are StreamWeaver AI Automation Assistant.',
       'Return strict JSON only, no markdown fences.',

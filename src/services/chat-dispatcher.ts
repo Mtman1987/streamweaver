@@ -22,7 +22,7 @@ import { isKnownBot } from './known-bots';
 import { ATHENA_WHITELIST_TENANT_ID } from './athena-whitelist';
 import { readWorldLore, type WorldLoreCharacter } from '../lib/world-lore-store';
 import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
-import { TriggerType } from './automation/types';
+import { SubActionType, TriggerType } from './automation/types';
 import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
@@ -480,7 +480,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             await executor.executeAction(action, executionContext);
         }
 
-        return true;
+        return matchingActions.some((action: any) =>
+            !Array.isArray(action.subActions) ||
+            action.subActions.some((subAction: any) => Number(subAction?.type) !== SubActionType.VOICE_REPLY_PROMPT)
+        );
     };
 
     const replyMaybeKick = async (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => {
