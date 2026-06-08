@@ -13,7 +13,7 @@ import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
-import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
+import { buildDiscordBotEmbed, getDiscordBotProfileAvatarUrl, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
@@ -504,7 +504,7 @@ export async function POST(request: NextRequest) {
     let discordReplySent = false;
     if (channelId) {
       const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
-      const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(botTenantId || tenantId);
+      const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrl(botTenantId || tenantId);
       try {
         const sentReply = await sendWebhookMessage(channelId, aiReply, userName, avatarUrl, [
           await buildDiscordBotEmbed({
@@ -965,7 +965,7 @@ async function sendCrossBotTargetReplies(input: {
     }
 
     const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
-    const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(targetTenantId);
+    const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrl(targetTenantId);
     const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, avatarUrl, [
       await buildDiscordBotEmbed({
         description: reply,

@@ -6,6 +6,7 @@ import { readUserConfigSync } from '@/lib/user-config';
 import { getTwitchUser } from './twitch';
 
 const STREAMWEAVER_BRAND_NAME = 'StreamWeaver';
+const DISCORD_BOT_PROFILE_CACHE_MS = 60 * 60 * 1000;
 
 export type DiscordBotEmbed = {
     description: string;
@@ -24,6 +25,7 @@ export type DiscordBotEmbed = {
 
 const profileImageCache = new Map<string, { url: string; expiresAt: number }>();
 const tenantNameCache = new Map<string, { tenantId: string | undefined; expiresAt: number }>();
+let discordBotAvatarCache: { url: string; expiresAt: number } | null = null;
 
 function firstUrl(...values: unknown[]): string {
     for (const value of values) {
@@ -39,6 +41,16 @@ export function buildBotAvatarUrl(tenantId?: string): string {
     const tenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
     const cacheVersion = Math.floor(Date.now() / 3_600_000);
     return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}&v=${cacheVersion}`;
+}
+
+function getConfiguredBotAvatarMediaUrl(tenantId?: string): string {
+    const config = readUserConfigSync(tenantId);
+    return firstUrl(
+        config.PUBLIC_AVATAR_URL,
+        config.TWITCH_BOT_AVATAR_GIF_URL,
+        config.TWITCH_BOT_AVATAR_URL,
+        config.BOT_AVATAR_URL,
+    );
 }
 
 export function buildStreamWeaverLogoUrl(): string {
@@ -118,6 +130,35 @@ async function getTenantOwnerBranding(tenantId?: string, botName?: string): Prom
         : { name: ownerName };
 }
 
+export async function getDiscordBotProfileAvatarUrl(): Promise<string> {
+    if (discordBotAvatarCache && discordBotAvatarCache.expiresAt > Date.now()) {
+        return discordBotAvatarCache.url;
+    }
+
+    const token = process.env.DISCORD_BOT_TOKEN;
+    if (!token) return '';
+
+    try {
+        const response = await fetch('https://discord.com/api/v10/users/@me', {
+            headers: {
+                Authorization: `Bot ${token}`,
+            },
+            cache: 'no-store',
+        });
+        if (!response.ok) return '';
+
+        const data = await response.json().catch(() => null) as { id?: string; avatar?: string } | null;
+        if (!data?.id || !data.avatar) return '';
+
+        const ext = data.avatar.startsWith('a_') ? 'gif' : 'png';
+        const url = `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.${ext}?size=256`;
+        discordBotAvatarCache = { url, expiresAt: Date.now() + DISCORD_BOT_PROFILE_CACHE_MS };
+        return url;
+    } catch {
+        return '';
+    }
+}
+
 export async function buildDiscordBotEmbed(input: {
     description: string;
     tenantId?: string;
@@ -132,10 +173,11 @@ export async function buildDiscordBotEmbed(input: {
     const defaultBotName = input.botName || getBotName(resolvedTenantId);
     const authorName = input.authorName || defaultBotName || owner.name;
     const authorIconUrl = input.authorIconUrl
-        || (input.authorName ? owner.iconUrl : buildBotAvatarUrl(resolvedTenantId));
+        || owner.iconUrl;
+    const avatarMediaUrl = getConfiguredBotAvatarMediaUrl(resolvedTenantId) || buildBotAvatarUrl(resolvedTenantId);
     return {
         description: input.description,
-        thumbnail: { url: buildBotAvatarUrl(resolvedTenantId) },
+        thumbnail: { url: avatarMediaUrl },
         author: {
             name: authorName,
             ...(authorIconUrl ? { icon_url: authorIconUrl } : {}),
@@ -152,7 +194,7 @@ export async function buildDiscordBotEmbed(input: {
 export function getDiscordBotWebhookIdentity(tenantId?: string, botName?: string) {
     return {
         username: botName || getBotName(tenantId),
-        avatarUrl: undefined,
+        avatarUrl: '',
     };
 }
 
