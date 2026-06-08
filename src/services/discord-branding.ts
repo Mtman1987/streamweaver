@@ -125,15 +125,20 @@ export async function buildDiscordBotEmbed(input: {
     footerText?: string;
     authorUrl?: string;
     authorName?: string;
+    authorIconUrl?: string;
 }): Promise<DiscordBotEmbed> {
     const resolvedTenantId = input.tenantId || await resolveTenantByBotName(input.botName);
     const owner = await getTenantOwnerBranding(resolvedTenantId, input.botName);
+    const defaultBotName = input.botName || getBotName(resolvedTenantId);
+    const authorName = input.authorName || defaultBotName || owner.name;
+    const authorIconUrl = input.authorIconUrl
+        || (input.authorName ? owner.iconUrl : buildBotAvatarUrl(resolvedTenantId));
     return {
         description: input.description,
         thumbnail: { url: buildBotAvatarUrl(resolvedTenantId) },
         author: {
-            name: input.authorName || owner.name,
-            ...(owner.iconUrl ? { icon_url: owner.iconUrl } : {}),
+            name: authorName,
+            ...(authorIconUrl ? { icon_url: authorIconUrl } : {}),
             ...(input.authorUrl ? { url: input.authorUrl } : {}),
         },
         footer: {
@@ -147,7 +152,7 @@ export async function buildDiscordBotEmbed(input: {
 export function getDiscordBotWebhookIdentity(tenantId?: string, botName?: string) {
     return {
         username: botName || getBotName(tenantId),
-        avatarUrl: buildStreamWeaverLogoUrl(),
+        avatarUrl: undefined,
     };
 }
 

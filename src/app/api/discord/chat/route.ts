@@ -506,7 +506,7 @@ export async function POST(request: NextRequest) {
       const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
       const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrl(botTenantId || tenantId);
       try {
-        const sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, avatarUrl, [
+        const sentReply = await sendWebhookMessage(channelId, aiReply, userName, avatarUrl, [
           await buildDiscordBotEmbed({
             description: aiReply,
             tenantId: botTenantId || tenantId || undefined,
