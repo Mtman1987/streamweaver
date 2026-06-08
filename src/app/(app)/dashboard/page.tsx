@@ -357,18 +357,6 @@ export default function DashboardPage() {
   const heroStats = useMemo(
     () => [
       {
-        title: "Total Commands",
-        value: metrics?.totalCommands?.toLocaleString() || "0",
-        description: "Tracked across the workspace",
-        icon: Workflow,
-      },
-      {
-        title: "Shoutouts",
-        value: metrics?.shoutoutsGiven?.toLocaleString() || "0",
-        description: "Walk-on and shoutout flows",
-        icon: Sparkles,
-      },
-      {
         title: selectedPlatform === "Discord" ? "Live Streamers" : "Active Chatters",
         value: viewers.length.toLocaleString(),
         description: selectedPlatform === "Discord" ? "Live community channels" : "Currently in Twitch chat",
@@ -505,12 +493,6 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {heroStats.map((stat) => (
-          <StatCard key={stat.title} {...stat} />
-        ))}
-      </div>
 
       {selectedPlatform === "Discord" ? (
         <Card className="border-border/70 bg-card/80 shadow-sm">
@@ -707,8 +689,8 @@ export default function DashboardPage() {
       </Card>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="border-border/70 bg-card/80 shadow-sm xl:col-span-2">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <CardTitle>Voice Commander</CardTitle>
@@ -726,7 +708,13 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
+        {heroStats.map((stat) => (
+          <StatCard key={stat.title} {...stat} />
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="border-border/70 bg-card/80 shadow-sm xl:col-span-2">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <CardTitle>Messaging preview</CardTitle>
@@ -780,9 +768,7 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
         <Card id="activity" className="border-border/70 bg-card/80 shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
@@ -805,7 +791,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {viewers.slice(0, 8).map((viewer) => {
+                {viewers.slice(0, 7).map((viewer) => {
                   const displayName = viewer.name || "User";
                   return (
                     <div
@@ -832,7 +818,6 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
-
       </div>
     </div>
   );
