@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import {
   ArrowRight,
   Bot,
-  CheckCircle2,
   Coins,
   FileText,
   Gift,
@@ -48,7 +47,6 @@ const workspaceGroups = [
     label: "Start Here",
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-      { href: "/dashboard#setup", icon: CheckCircle2, label: "Setup Status" },
       { href: "/integrations", icon: Link2, label: "Connections" },
       { href: "/community", icon: Users, label: "Feature Library" },
     ],
@@ -176,13 +174,6 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/15 text-accent">
               <Settings className="h-4 w-4" />
             </div>
-          </div>
-          <Separator className="my-3 bg-sidebar-border/80" />
-          <div className="flex items-center justify-between gap-2 text-xs text-sidebar-foreground/65">
-            <span>Need a setup check?</span>
-            <Link href="/dashboard#setup" className="font-medium text-sidebar-foreground hover:text-accent">
-              Review setup
-            </Link>
           </div>
         </div>
         <div className="mt-3">

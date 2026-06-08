@@ -17,23 +17,6 @@
     "updatedAt": "2025-12-25T08:43:56.728Z"
   },
   {
-    "id": "67ddf22f-8e2c-4e9a-963b-63424b5dc6a5",
-    "name": "athenacall",
-    "command": "(?i).*@?Annie.*",
-    "enabled": true,
-    "description": "Imported from Streamer.bot: athenacall",
-    "cooldown": {
-      "global": 0,
-      "user": 0
-    },
-    "caseSensitive": false,
-    "regex": true,
-    "group": "Mustached_Maniac ChatGPT",
-    "sources": 23,
-    "createdAt": "2025-12-25T08:43:56.728Z",
-    "updatedAt": "2025-12-25T08:43:56.728Z"
-  },
-  {
     "id": "61d121f1-cfd7-43b2-91b5-061ac40f9195",
     "name": "badgeleader",
     "command": "!bleader",
@@ -84,40 +67,6 @@
     "regex": false,
     "group": "Mustached_Maniac ChatGPT",
     "sources": 1025,
-    "createdAt": "2025-12-25T08:43:56.728Z",
-    "updatedAt": "2025-12-25T08:43:56.728Z"
-  },
-  {
-    "id": "726c4151-cd69-40f9-9230-be89ccab47c9",
-    "name": "Chat Call",
-    "command": "(?i).*@?Athena.*",
-    "enabled": true,
-    "description": "Imported from Streamer.bot: Chat Call",
-    "cooldown": {
-      "global": 0,
-      "user": 0
-    },
-    "caseSensitive": false,
-    "regex": true,
-    "group": "Mustached_Maniac ChatGPT",
-    "sources": 1049617,
-    "createdAt": "2025-12-25T08:43:56.728Z",
-    "updatedAt": "2025-12-25T08:43:56.728Z"
-  },
-  {
-    "id": "c33c0ff3-a81b-450c-a771-1ec9e9b37020",
-    "name": "chat call bot",
-    "command": "(?i).*@?athenabot87.*",
-    "enabled": true,
-    "description": "Imported from Streamer.bot: chat call bot",
-    "cooldown": {
-      "global": 0,
-      "user": 0
-    },
-    "caseSensitive": false,
-    "regex": true,
-    "group": "Mustached_Maniac ChatGPT",
-    "sources": 23,
     "createdAt": "2025-12-25T08:43:56.728Z",
     "updatedAt": "2025-12-25T08:43:56.728Z"
   },

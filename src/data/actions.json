@@ -1,106 +1,5 @@
 [
   {
-    "id": "sample-welcome",
-    "name": "Welcome New Followers",
-    "description": "Automatically welcome new followers with a chat message and sound effect",
-    "triggers": [
-      {
-        "type": "Follow",
-        "config": {}
-      }
-    ],
-    "subActions": [
-      {
-        "id": "welcome-msg",
-        "type": "Send Chat Message",
-        "name": "Welcome Message",
-        "config": {
-          "message": "Welcome to the stream, {user}! Thanks for the follow! 🎉"
-        },
-        "enabled": true,
-        "order": 0
-      },
-      {
-        "id": "welcome-sound",
-        "type": "Play Sound",
-        "name": "Welcome Sound",
-        "config": {
-          "soundFile": "welcome.mp3",
-          "volume": 0.7
-        },
-        "enabled": true,
-        "order": 1
-      }
-    ],
-    "enabled": true,
-    "concurrent": false,
-    "queue": false,
-    "createdAt": "2024-01-15T10:00:00.000Z",
-    "updatedAt": "2024-01-15T10:00:00.000Z"
-  },
-  {
-    "id": "sample-shoutout",
-    "name": "Shoutout Command",
-    "description": "Give a shoutout to another streamer with multiple effects",
-    "triggers": [
-      {
-        "type": "Chat Command",
-        "config": {
-          "command": "!so",
-          "aliases": [
-            "!shoutout"
-          ],
-          "permissions": [
-            "moderator",
-            "broadcaster"
-          ]
-        }
-      }
-    ],
-    "subActions": [
-      {
-        "id": "shoutout-msg",
-        "type": "Send Chat Message",
-        "name": "Shoutout Message",
-        "config": {
-          "message": "Go check out {targetUser} at twitch.tv/{targetUser} - they're awesome! 🚀"
-        },
-        "enabled": true,
-        "order": 0
-      },
-      {
-        "id": "shoutout-overlay",
-        "type": "Show Overlay",
-        "name": "Shoutout Overlay",
-        "config": {
-          "overlayName": "shoutout",
-          "duration": 5000,
-          "data": {
-            "username": "{targetUser}"
-          }
-        },
-        "enabled": true,
-        "order": 1
-      },
-      {
-        "id": "shoutout-sound",
-        "type": "Play Sound",
-        "name": "Shoutout Sound",
-        "config": {
-          "soundFile": "shoutout.mp3",
-          "volume": 0.8
-        },
-        "enabled": true,
-        "order": 2
-      }
-    ],
-    "enabled": true,
-    "concurrent": true,
-    "queue": false,
-    "createdAt": "2024-01-15T11:00:00.000Z",
-    "updatedAt": "2024-01-15T11:00:00.000Z"
-  },
-  {
     "id": "athena-shoutout",
     "name": "Athena Voice Shoutout",
     "description": "Voice-activated shoutout that finds the closest matching username",
@@ -110,18 +9,6 @@
     "enabled": true,
     "createdAt": "2025-01-22T10:00:00.000Z",
     "updatedAt": "2025-01-22T10:00:00.000Z"
-  },
-  {
-    "id": "athena-chat",
-    "name": "Chat with Athena AI",
-    "description": "Talk to Athena, the AI assistant, with voice responses",
-    "triggers": [],
-    "subActions": [],
-    "enabled": true,
-    "concurrent": false,
-    "queue": false,
-    "createdAt": "2024-12-14T10:00:00.000Z",
-    "updatedAt": "2024-12-14T10:00:00.000Z"
   },
   {
     "id": "f50e1be9-05d6-4b09-9471-edb1d9191669",
@@ -2592,24 +2479,6 @@
     "concurrent": false,
     "queue": false,
     "group": "Menu Mode",
-    "createdAt": "2025-12-25T08:43:56.721Z",
-    "updatedAt": "2025-12-25T08:43:56.721Z"
-  },
-  {
-    "id": "da2d0114-06f8-47ab-8a82-3770e7c4d434",
-    "name": "Currency System • ban in game item (Copy)",
-    "description": "Imported from Streamer.bot: Currency System • ban in game item (Copy)",
-    "triggers": [
-      {
-        "type": "Chat Command",
-        "config": {}
-      }
-    ],
-    "subActions": [],
-    "enabled": true,
-    "concurrent": false,
-    "queue": false,
-    "group": "channel points cost",
     "createdAt": "2025-12-25T08:43:56.721Z",
     "updatedAt": "2025-12-25T08:43:56.721Z"
   },
