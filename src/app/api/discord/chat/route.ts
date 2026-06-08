@@ -16,6 +16,8 @@ import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
+import { appendPublicChatMessages } from '@/lib/public-chat-store';
+import { handleDiscordMessage } from '@/services/chat-dispatcher';
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -161,6 +163,17 @@ export async function POST(request: NextRequest) {
 
     // Resolve which tenant this guild belongs to (or auto-assign on first message)
     let tenantId = normalized.tenantId || await resolveGuildTenant(guildId);
+
+    if (!isDirectMessage) {
+      appendPublicChatMessages([{
+        type: 'user',
+        username: userName,
+        message,
+        timestamp: normalized.createdAt || new Date().toISOString(),
+      }], 300, tenantId).catch((error) => {
+        console.warn('[Discord Chat] Failed to append public chat history:', error);
+      });
+    }
 
     // Auto-save guildId to the tenant's discord-channels.json if not set yet
     if (!tenantId && guildId) {
@@ -374,6 +387,38 @@ export async function POST(request: NextRequest) {
 
     // Bridge to Twitch if enabled, dispatch is true, message is from the configured bridge channel,
     // and the bot is NOT mentioned (bot conversations stay in Discord)
+    if (!isDirectMessage && message.trim().startsWith('!')) {
+      const dispatchResult = await handleDiscordMessage({
+        content: message,
+        channelId,
+        channel_id: channelId,
+        guildId,
+        guild_id: guildId,
+        guild: normalized.guildName ? { name: normalized.guildName } : undefined,
+        channel: normalized.channelName ? { name: normalized.channelName, type: normalized.channelType } : undefined,
+        messageId: normalized.messageId,
+        message_id: normalized.messageId,
+        createdAt: normalized.createdAt,
+        created_at: normalized.createdAt,
+        isDM: false,
+        author: {
+          id: userId,
+          username: normalized.username,
+          globalName: userName,
+          global_name: userName,
+          bot: false,
+        },
+        mentions: data?.mentions,
+      }, tenantId, {
+        skipPublicHistory: true,
+        skipAiMentions: true,
+      });
+
+      if (dispatchResult.commandHandled) {
+        return apiOk({ success: true, botResponded: false, commandHandled: true });
+      }
+    }
+
     if (dispatch && tenantId && channelId && !botMentioned) {
       try {
         const dcPath = tenantPath(tenantId, 'tokens/discord-channels.json');

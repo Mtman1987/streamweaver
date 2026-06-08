@@ -56,6 +56,55 @@ function broadcast(message: object, tenantId?: string) {
 // Add broadcast to global scope for flows
 (global as any).broadcast = broadcast;
 
+function installConsoleWebSocketBridge() {
+    if ((global as any).__streamweaverConsoleBridgeInstalled) return;
+    (global as any).__streamweaverConsoleBridgeInstalled = true;
+
+    const original = {
+        log: console.log.bind(console),
+        warn: console.warn.bind(console),
+        error: console.error.bind(console),
+    };
+    const formatValue = (value: unknown) => {
+        if (typeof value === 'string') return value;
+        if (value instanceof Error) return value.stack || value.message;
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    };
+    const mirror = (level: 'info' | 'warn' | 'error', args: unknown[]) => {
+        try {
+            const message = args.map(formatValue).join(' ');
+            if (!message) return;
+            broadcast({
+                type: 'server-log',
+                payload: {
+                    level,
+                    message,
+                    timestamp: new Date().toISOString(),
+                },
+            });
+        } catch {}
+    };
+
+    console.log = (...args: unknown[]) => {
+        original.log(...args);
+        mirror('info', args);
+    };
+    console.warn = (...args: unknown[]) => {
+        original.warn(...args);
+        mirror('warn', args);
+    };
+    console.error = (...args: unknown[]) => {
+        original.error(...args);
+        mirror('error', args);
+    };
+}
+
+installConsoleWebSocketBridge();
+
 async function startServer() {
     try {
         console.log('[StreamWeaver] Starting unified server...');

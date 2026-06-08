@@ -27,7 +27,183 @@ import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { globalPath, tenantPath } from '../lib/tenant';
+import { recordDashboardActivity } from '../lib/dashboard-activity-store';
+import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
+
+type DiscordDispatchOptions = {
+    skipPublicHistory?: boolean;
+    skipAiMentions?: boolean;
+    skipTwitchBridge?: boolean;
+};
+
+async function bridgeDiscordMessageToTwitch(msg: any, tenantId?: string) {
+    if (String(msg.content || '').startsWith('[')) return;
+
+    let processedContent = String(msg.content || '');
+
+    if (msg.mentions && msg.mentions.users) {
+        for (const [userId, user] of msg.mentions.users) {
+            processedContent = processedContent.replace(new RegExp(`<@!?${userId}>`, 'g'), `@${user.username}`);
+        }
+    }
+
+    processedContent = processedContent.replace(/<:(\w+):(\d+)>/g, ':$1:');
+
+    const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
+    const twitchMessage = `[Discord] ${sourceUserName}: ${processedContent}`;
+    await sendChatMessage(twitchMessage, 'bot', undefined, tenantId).catch(e => console.error('[Bridge] Failed:', e));
+}
+
+async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promise<boolean> {
+    const content = String(msg.content || '').trim();
+    if (!content.startsWith('!')) return false;
+
+    const sourceChannelId = msg.channelId || msg.channel_id;
+    if (!sourceChannelId) return false;
+
+    const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
+    const actualUsername = sourceUserName.replace(/^@/, '').trim() || 'DiscordUser';
+    const actualMessage = content;
+    const cmdName = actualMessage.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
+    if (!cmdName) return false;
+
+    const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
+    const reply = (message: string) => sendDiscordMessage(sourceChannelId, message).catch(() => {});
+
+    if (actualMessage.toLowerCase() === '!points') {
+        try {
+            const userPoints = await getPoints(actualUsername, tenantCtx);
+            await reply(`@${actualUsername} has ${userPoints.pointsDisplay} points!`);
+        } catch (error) {
+            console.error('[Discord Dispatcher] Points fetch failed:', error);
+            await reply(`@${actualUsername}, couldn't fetch your points!`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!coinflip') {
+        const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
+        await reply(`@${actualUsername} flipped a coin: ${result}! 🪙`);
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!time') {
+        const now = new Date();
+        const pst = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit' });
+        const mst = now.toLocaleString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
+        const cst = now.toLocaleString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
+        const est = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
+        const utc = now.toLocaleString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+
+        await reply(`🕐 PST: ${pst} | MST: ${mst} | CST: ${cst} | EST: ${est} | UTC: ${utc}`);
+        return true;
+    }
+
+    const commands = await getAllCommands(tenantId);
+    const configuredCommand = commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName);
+    const command = configuredCommand || commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName && c.enabled);
+
+    if (!command) return false;
+
+    const cmdArgs = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/).filter(Boolean);
+    const targetRaw = cmdArgs[0]?.replace('@', '') || '';
+    const execArgs: Record<string, any> = {};
+    cmdArgs.forEach((arg: string, index: number) => {
+        execArgs[`input${index}`] = arg;
+    });
+    execArgs.rawInput = cmdArgs.join(' ');
+    execArgs.tenantId = tenantId || '';
+
+    const executionContext = {
+        user: actualUsername,
+        userName: actualUsername,
+        message: actualMessage,
+        rawInput: cmdArgs.join(' '),
+        platform: 'discord',
+        channel: sourceChannelId,
+        tenantId: tenantId || undefined,
+        args: execArgs,
+        variables: {
+            user: actualUsername,
+            userName: actualUsername,
+            channel: sourceChannelId,
+            discordChannelId: sourceChannelId,
+            tenantId: tenantId || '',
+            targetUser: targetRaw,
+            targetUserName: targetRaw,
+            rawInput: cmdArgs.join(' '),
+        },
+    };
+
+    const actionsForCommand = (await getAllActions(tenantId)).filter((action: any) =>
+        action?.enabled &&
+        Array.isArray(action.triggers) &&
+        action.triggers.some((trigger: any) =>
+            trigger?.enabled !== false &&
+            Number(trigger?.type) === 401 &&
+            String(trigger?.commandId || '') === String((command as any).id || '')
+        )
+    );
+
+    if (actionsForCommand.length > 0) {
+        const { SubActionExecutor } = await import('./automation/SubActionExecutor');
+        const executor = new SubActionExecutor();
+        for (const action of actionsForCommand) {
+            console.log(`[Discord Dispatcher] Executing command-triggered action ${action.id} for ${cmdName}`);
+            await executor.executeAction(action, executionContext);
+        }
+        return true;
+    }
+
+    if ((command as any).response && !(command as any).actionId && !(command as any).actions) {
+        await reply((command as any).response);
+        return true;
+    }
+
+    if (!(command as any).actionId) {
+        const socialCommands: Record<string, string> = {
+            'hug': '{user} wraps {target} in the cosmic warmth of love and understanding 🤗',
+            'boop': '{user} boops {target} on the nose! *boop* 👉',
+            'cuddle': '{user} cuddles up with {target} in a cozy embrace 🥰',
+            'dance': '{user} breaks out into a dance with {target}! 💃🕺',
+            'fistbump': '{user} gives {target} an epic fist bump! 👊',
+            'headpat': '{user} gently pats {target} on the head *pat pat* 🤚',
+            'highfive': '{user} high-fives {target}! ✋',
+            'love': '{user} sends love to {target}! ❤️',
+            'tickle': '{user} tickles {target}! *giggle* 😆',
+            'lurk': '{user} is lurking in the shadows 👀',
+            'unlurk': '{user} emerges from the shadows! Welcome back! 👋',
+            'hydrate': 'Time to hydrate! 💧 Stay healthy, chat!',
+            'stretch': 'Stretch break! 🤸 Take care of your body!',
+            'yes': 'Yes! ✅',
+            'yup': 'Yup! 👍',
+            'no': 'Nope! ❌',
+            'hover': '{user} hovers mysteriously 🛸',
+        };
+
+        if (socialCommands[cmdName]) {
+            const target = actualMessage.substring(cmdName.length + 2).trim() || 'someone';
+            const response = socialCommands[cmdName]
+                .replace('{user}', actualUsername)
+                .replace('{target}', target);
+            await reply(response);
+            return true;
+        }
+    }
+
+    if ((command as any).actionId) {
+        const action = await getActionById((command as any).actionId, tenantId);
+        if (action?.subActions?.length) {
+            const { SubActionExecutor } = await import('./automation/SubActionExecutor');
+            const executor = new SubActionExecutor();
+            await executor.executeAction(action, executionContext);
+            return true;
+        }
+    }
+
+    return true;
+}
 
 const CORE_POKEMON_CONFIRMATION_COMMANDS = new Set(['accept', 'cancel', 'swap']);
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -586,12 +762,30 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         await isLoreBotUsername(actualUsername)
     );
 
+    if (!self && !isBotMessage && !message.startsWith('[') && actualMessage.trim()) {
+        appendPublicChatMessages([{
+            type: 'user',
+            username: actualUsername,
+            message: actualMessage,
+            timestamp: new Date().toISOString(),
+        }], 300, tenantId).catch(() => {});
+    }
+
     if (VERBOSE_LOGS) {
         console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage}, isKnownAutomationBotMessage: ${isKnownAutomationBotMessage})`);
     }
     
     // Skip self messages (broadcaster client echoes its own sends)
     if (self) return;
+
+    recordDashboardActivity({
+        id: String(tags.id || `twitch-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+        tenantId,
+        platform: message.startsWith('[Discord] ') ? 'Discord' : 'Twitch',
+        user: actualUsername,
+        message: actualMessage,
+        color: tags.color,
+    });
     
     // Handle AI memory clear command FIRST (before any other processing)
     const aiConfig = getAIConfig(tenantId);
@@ -1940,10 +2134,113 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !admin
         if (actualMessage.toLowerCase() === '!admin') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>';
+                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>, !addflow <prompt>, !approveflow <!command>, !disableflow <!command>, !deleteflow <!command>';
                 await reply(adminSummary, 'broadcaster').catch(() => {});
             } else {
                 await reply(`@${actualUsername}, only mods can view admin commands!`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        if (actualMessage.toLowerCase().startsWith('!addflow')) {
+            if (!tags.mod && !tags.badges?.broadcaster) {
+                await reply(`@${actualUsername}, only mods can create AI workflows from chat.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            const prompt = actualMessage.substring('!addflow'.length).trim();
+            if (!prompt) {
+                await reply(`@${actualUsername}, use !addflow followed by what the workflow should do. Example: !addflow make !go start a 5 minute countdown`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            try {
+                const { createWorkflowFromPrompt } = await import('./automation/ai-workflow-builder');
+                const created = await createWorkflowFromPrompt({
+                    message: prompt,
+                    tenantId,
+                    userName: actualUsername,
+                });
+                const commandLabel = created.commandText || (created.command ? String(created.command.command || '') : '');
+                const reviewNote = created.requiresReview
+                    ? ` It includes a programmable step, so review it before enabling.`
+                    : '';
+                await reply(
+                    `${created.action.name} drafted${commandLabel ? ` for ${commandLabel}` : ''}. It is saved disabled.${reviewNote} Use !approveflow ${commandLabel || '<!command>'} to enable it or edit it in Workflows.`,
+                    'broadcaster'
+                ).catch(() => {});
+            } catch (error: any) {
+                console.error('[Dispatcher] !addflow failed:', error);
+                await reply(`@${actualUsername}, AI flow creation failed: ${error?.message || 'unknown error'}`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        if (actualMessage.toLowerCase().startsWith('!approveflow')) {
+            if (!tags.mod && !tags.badges?.broadcaster) {
+                await reply(`@${actualUsername}, only mods can enable AI workflows from chat.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            const commandText = actualMessage.substring('!approveflow'.length).trim();
+            if (!commandText) {
+                await reply(`@${actualUsername}, use !approveflow <!command>.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            try {
+                const { setWorkflowEnabledByCommand } = await import('./automation/ai-workflow-builder');
+                const updated = await setWorkflowEnabledByCommand(commandText, true, tenantId);
+                await reply(`Enabled workflow for ${commandText}. Updated ${updated.linkedActions.length} linked action(s).`, 'broadcaster').catch(() => {});
+            } catch (error: any) {
+                console.error('[Dispatcher] !approveflow failed:', error);
+                await reply(`@${actualUsername}, couldn't enable ${commandText}: ${error?.message || 'unknown error'}`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        if (actualMessage.toLowerCase().startsWith('!disableflow')) {
+            if (!tags.mod && !tags.badges?.broadcaster) {
+                await reply(`@${actualUsername}, only mods can disable AI workflows from chat.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            const commandText = actualMessage.substring('!disableflow'.length).trim();
+            if (!commandText) {
+                await reply(`@${actualUsername}, use !disableflow <!command>.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            try {
+                const { setWorkflowEnabledByCommand } = await import('./automation/ai-workflow-builder');
+                const updated = await setWorkflowEnabledByCommand(commandText, false, tenantId);
+                await reply(`Disabled workflow for ${commandText}. Updated ${updated.linkedActions.length} linked action(s).`, 'broadcaster').catch(() => {});
+            } catch (error: any) {
+                console.error('[Dispatcher] !disableflow failed:', error);
+                await reply(`@${actualUsername}, couldn't disable ${commandText}: ${error?.message || 'unknown error'}`, 'broadcaster').catch(() => {});
+            }
+            return;
+        }
+
+        if (actualMessage.toLowerCase().startsWith('!deleteflow')) {
+            if (!tags.mod && !tags.badges?.broadcaster) {
+                await reply(`@${actualUsername}, only mods can delete AI workflows from chat.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            const commandText = actualMessage.substring('!deleteflow'.length).trim();
+            if (!commandText) {
+                await reply(`@${actualUsername}, use !deleteflow <!command>.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            try {
+                const { deleteWorkflowByCommand } = await import('./automation/ai-workflow-builder');
+                const deleted = await deleteWorkflowByCommand(commandText, tenantId);
+                await reply(`Deleted workflow for ${commandText}. Removed ${deleted.linkedActions.length} linked action(s).`, 'broadcaster').catch(() => {});
+            } catch (error: any) {
+                console.error('[Dispatcher] !deleteflow failed:', error);
+                await reply(`@${actualUsername}, couldn't delete ${commandText}: ${error?.message || 'unknown error'}`, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -2596,14 +2893,21 @@ If no good match, respond with: Could not find matching user`;
     }
 }
 
-export async function handleDiscordMessage(msg: any, tenantId?: string) {
-    // Check if Discord bridge is enabled
+export async function handleDiscordMessage(msg: any, tenantId?: string, options: DiscordDispatchOptions = {}): Promise<{ commandHandled: boolean }> {
     const logChannelId = await getDiscordLogChannelId(tenantId);
-    if (!logChannelId) return;
-    
-    const isCommand = msg.content.startsWith('!');
     const sourceChannelId = msg.channelId || msg.channel_id || logChannelId;
+    if (!sourceChannelId) return { commandHandled: false };
+
     const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
+
+    if (!options.skipPublicHistory && !msg.author?.bot && !msg.content.startsWith('[') && String(msg.content || '').trim()) {
+        appendPublicChatMessages([{
+            type: 'user',
+            username: sourceUserName,
+            message: String(msg.content),
+            timestamp: new Date().toISOString(),
+        }], 300, tenantId).catch(() => {});
+    }
 
     if (/^!botshare(?:\s+(on|off|status))?$/i.test(msg.content.trim())) {
         const match = msg.content.trim().toLowerCase().match(/^!botshare(?:\s+(on|off|status))?$/);
@@ -2625,10 +2929,26 @@ export async function handleDiscordMessage(msg: any, tenantId?: string) {
         } catch (error) {
             console.error('[Discord Bridge] !botshare command failed:', error);
         }
-        return;
+        return { commandHandled: true };
     }
 
-    if (!msg.content.startsWith('[') && msg.author && !msg.author.bot) {
+    if (!msg.author?.bot) {
+        const commandHandled = await executeDiscordCommandMessage({
+            ...msg,
+            channelId: sourceChannelId,
+        }, tenantId);
+        if (commandHandled) {
+            if (!options.skipTwitchBridge) {
+                await bridgeDiscordMessageToTwitch({
+                    ...msg,
+                    channelId: sourceChannelId,
+                }, tenantId);
+            }
+            return { commandHandled: true };
+        }
+    }
+
+    if (!options.skipAiMentions && !msg.content.startsWith('[') && msg.author && !msg.author.bot) {
         try {
             const { getBotName } = require('../lib/bot-settings-store');
             const { decideBotInteraction, appendBotInteraction } = await import('../lib/bot-interactions-store');
@@ -2679,7 +2999,7 @@ export async function handleDiscordMessage(msg: any, tenantId?: string) {
                             triggerMessage: msg.content,
                             responseMessage: aiReply,
                         }).catch(() => {});
-                        return;
+                        return { commandHandled: false };
                     }
                 } else {
                     console.error('[Discord Bridge] Cross-bot AI failed:', response.status, await response.text().catch(() => ''));
@@ -2690,23 +3010,12 @@ export async function handleDiscordMessage(msg: any, tenantId?: string) {
         }
     }
     
-    // Bridge ALL messages to Twitch (skip if message came from another platform to avoid loop)
-    if (!msg.content.startsWith('[')) {
-        // Process message content to resolve mentions
-        let processedContent = msg.content;
-        
-        // Replace user mentions with actual usernames
-        if (msg.mentions && msg.mentions.users) {
-            for (const [userId, user] of msg.mentions.users) {
-                processedContent = processedContent.replace(new RegExp(`<@!?${userId}>`, 'g'), `@${user.username}`);
-            }
-        }
-        
-        // Replace custom emojis
-        processedContent = processedContent.replace(/<:(\w+):(\d+)>/g, ':$1:');
-        
-        // Send all Discord messages as bot with Discord prefix
-        const twitchMessage = `[Discord] ${sourceUserName}: ${processedContent}`;
-        await sendChatMessage(twitchMessage, 'bot', undefined, tenantId).catch(e => console.error('[Bridge] Failed:', e));
+    if (!options.skipTwitchBridge) {
+        await bridgeDiscordMessageToTwitch({
+            ...msg,
+            channelId: sourceChannelId,
+        }, tenantId);
     }
+
+    return { commandHandled: false };
 }

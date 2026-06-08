@@ -13,6 +13,7 @@ const discordChannelsSchema = z.object({
   aiChatChannelId: z.string().trim().max(64).optional().default(''),
   shoutoutChannelId: z.string().trim().max(64).optional().default(''),
   dmChannelId: z.string().trim().max(64).optional().default(''),
+  dmEnabled: z.boolean().optional(),
   discordBridgeEnabled: z.boolean().optional(),
   tenantId: z.string().trim().max(128).optional(),
 });
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
       aiChatChannelId: parsed.aiChatChannelId || userConfig.NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID || '',
       shoutoutChannelId: parsed.shoutoutChannelId || userConfig.NEXT_PUBLIC_DISCORD_SHOUTOUT_CHANNEL_ID || '',
       dmChannelId: parsed.dmChannelId || '',
+      dmEnabled: parsed.dmEnabled === true,
       discordBridgeEnabled: parsed.discordBridgeEnabled !== false,
     });
   } catch {
@@ -45,6 +47,7 @@ export async function GET(request: NextRequest) {
       aiChatChannelId: '',
       shoutoutChannelId: '',
       dmChannelId: '',
+      dmEnabled: false,
       discordBridgeEnabled: true,
     });
   }

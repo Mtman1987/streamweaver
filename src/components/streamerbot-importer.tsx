@@ -94,7 +94,7 @@ export function StreamerbotImporter() {
           Import from Streamer.bot
         </CardTitle>
         <CardDescription>
-          Import your existing Streamer.bot actions and commands into StreamWeaver
+          Import separate Streamer.bot files or one combined StreamWeaver Streamer.bot export.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -109,7 +109,7 @@ export function StreamerbotImporter() {
               disabled={importing}
             >
               <Upload className="mr-2 h-4 w-4" />
-              {actionsFile ? actionsFile.name : 'Choose actions.json'}
+              {actionsFile ? actionsFile.name : 'Choose actions.json or package export'}
             </Button>
             <input
               id="actions-file"
@@ -148,7 +148,7 @@ export function StreamerbotImporter() {
               disabled={importing}
             >
               <Upload className="mr-2 h-4 w-4" />
-              {commandsFile ? commandsFile.name : 'Choose commands.json'}
+              {commandsFile ? commandsFile.name : 'Choose commands.json or package export'}
             </Button>
             <input
               id="commands-file"
@@ -237,7 +237,7 @@ export function StreamerbotImporter() {
                 <p>1. Open Streamer.bot application</p>
                 <p>2. Go to Actions tab, right-click, select Export, save as actions.json</p>
                 <p>3. Go to Commands tab, right-click, select Export, save as commands.json</p>
-                <p>4. Upload the files here to import them</p>
+                <p>4. Or upload a combined StreamWeaver Streamer.bot export in either file slot</p>
               </div>
             </div>
           </div>

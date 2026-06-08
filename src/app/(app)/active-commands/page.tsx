@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useEffect, useState } from "react";
+import { Fragment, Suspense, useMemo, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, MoreHorizontal, Play, BarChart2 } from "lucide-react";
+import { ChevronRight, Loader2, MoreHorizontal, Play, BarChart2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useActionsData } from "@/hooks/use-actions-data";
 import { useCommandsData } from "@/hooks/use-commands-data";
@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { createActionClient, updateActionClient } from "@/lib/client-actions";
+import { createActionClient, deleteActionClient, updateActionClient } from "@/lib/client-actions";
 import { createCommandClient, runCommandClient } from "@/lib/client-commands";
 import {
   Dialog,
@@ -45,6 +45,13 @@ import { Textarea } from "@/components/ui/textarea";
 
 const AutomationAIChat = dynamic(() => import("@/components/automation/AutomationAIChat"), { ssr: false });
 
+type FlowSortMode = "workflow" | "command" | "trigger" | "steps";
+type AiWorkflowMode = "new" | "edit";
+
+function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 function ActiveCommandsPageClient() {
   const { actions, isLoading, error, refresh } = useActionsData();
   const { commands, isLoading: commandsLoading, error: commandsError, refresh: refreshCommands } = useCommandsData();
@@ -54,6 +61,8 @@ function ActiveCommandsPageClient() {
 
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
+  const [aiWorkflowMode, setAiWorkflowMode] = useState<AiWorkflowMode>("new");
+  const [newWorkflowCommandText, setNewWorkflowCommandText] = useState("");
 
   const [draftActionId, setDraftActionId] = useState<string | null>(null);
   const [draftWorkflowName, setDraftWorkflowName] = useState("");
@@ -83,6 +92,10 @@ function ActiveCommandsPageClient() {
   const [isSubActionJsonOpen, setIsSubActionJsonOpen] = useState(false);
   const [subActionJsonDraft, setSubActionJsonDraft] = useState<string>("");
   const [subActionJsonError, setSubActionJsonError] = useState<string | null>(null);
+  const [flowSearchQuery, setFlowSearchQuery] = useState("");
+  const [flowTriggerFilter, setFlowTriggerFilter] = useState("all");
+  const [flowSortMode, setFlowSortMode] = useState<FlowSortMode>("workflow");
+  const [openFlowGroups, setOpenFlowGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (error) {
@@ -153,10 +166,61 @@ function ActiveCommandsPageClient() {
       });
   }, [actions, commands]);
 
+  const sortedActionsForSelect = useMemo(
+    () => [...actions].sort((a, b) => compareText(a.name || "", b.name || "")),
+    [actions]
+  );
+
+  const sortedCommandsForSelect = useMemo(
+    () =>
+      [...commands].sort((a, b) =>
+        compareText((a.command ?? "").trim() || a.name || "", (b.command ?? "").trim() || b.name || "")
+      ),
+    [commands]
+  );
+
+  const availableFlowTriggers = useMemo(
+    () => Array.from(new Set(activeCommandRows.map((row) => row.trigger))).sort(compareText),
+    [activeCommandRows]
+  );
+
+  const filteredActiveCommandRows = useMemo(() => {
+    const query = flowSearchQuery.trim().toLowerCase();
+    return activeCommandRows
+      .filter((row) => {
+        const haystack = [row.commandLabel, row.actionName, row.trigger, row.platform, row.status].join(" ").toLowerCase();
+        if (query && !haystack.includes(query)) return false;
+        if (flowTriggerFilter !== "all" && row.trigger !== flowTriggerFilter) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (flowSortMode === "steps") return b.steps - a.steps;
+        if (flowSortMode === "command") return compareText(a.commandLabel || "", b.commandLabel || "");
+        if (flowSortMode === "trigger") {
+          const triggerCompare = compareText(a.trigger || "", b.trigger || "");
+          if (triggerCompare !== 0) return triggerCompare;
+        }
+        return compareText(a.actionName || "", b.actionName || "");
+      });
+  }, [activeCommandRows, flowSearchQuery, flowTriggerFilter, flowSortMode]);
+
+  const groupedActiveCommandRows = useMemo(
+    () =>
+      availableFlowTriggers
+        .map((trigger) => ({
+          trigger,
+          rows: filteredActiveCommandRows.filter((row) => row.trigger === trigger),
+          total: activeCommandRows.filter((row) => row.trigger === trigger).length,
+        }))
+        .filter((section) => section.rows.length > 0),
+    [activeCommandRows, availableFlowTriggers, filteredActiveCommandRows]
+  );
+
   const selectedAction = useMemo(() => actions.find((a) => a.id === selectedActionId) ?? null, [actions, selectedActionId]);
 
   useEffect(() => {
     if (!selectedAction) return;
+    setAiWorkflowMode("edit");
     setDraftActionId(selectedAction.id);
     setDraftWorkflowName(selectedAction.name || "Untitled Workflow");
     setDraftEnabled(!!selectedAction.enabled);
@@ -415,6 +479,7 @@ function ActiveCommandsPageClient() {
     if (value === SubActionType.WAIT) return "Wait";
     if (value === SubActionType.HTTP_REQUEST) return "HTTP Request";
     if (value === SubActionType.VOICE_REPLY_PROMPT) return "Voice Reply Prompt";
+    if (value === SubActionType.EXECUTE_CODE) return "Execute Code";
     if (value === SubActionType.COMMENT) return "Comment";
     return String(value ?? "Unknown");
   };
@@ -427,7 +492,71 @@ function ActiveCommandsPageClient() {
     if (sa.type === SubActionType.IF_ELSE) return `${String(sa.input || "")} op=${String(sa.operation ?? "")} ${String(sa.value ?? "")}`;
     if (sa.type === SubActionType.HTTP_REQUEST) return `${String(sa.method || "POST")} ${String(sa.url || "")}`;
     if (sa.type === SubActionType.VOICE_REPLY_PROMPT) return `${String(sa.readbackTemplate || "%userName% said %message%")} -> ${sa.autoSend === false ? "manual" : "auto"}`;
+    if (sa.type === SubActionType.EXECUTE_CODE) return `${String(sa.language || "javascript")} ${String(sa.description || "").trim()}`.trim();
     return "";
+  };
+
+  const applyNewModeTriggerSetup = () => {
+    const t = Number(newTriggerType);
+    const next: any = {
+      id: crypto.randomUUID(),
+      type: t,
+      enabled: true,
+      exclusions: [],
+    };
+
+    if (t === TriggerType.COMMAND) {
+      const commandText = normalizeCommandText(newWorkflowCommandText);
+      if (!commandText) return;
+      next.command = commandText;
+    }
+    if (t === TriggerType.CHAT_MESSAGE) {
+      next.pattern = newTriggerPattern.trim() || undefined;
+      next.excludeBots = newTriggerExcludeBots;
+    }
+    if (t === TriggerType.CHANNEL_POINT_REWARD) next.rewardId = newTriggerRewardId.trim() || undefined;
+
+    const min = parseNumberOrUndefined(newTriggerMin);
+    const max = parseNumberOrUndefined(newTriggerMax);
+    const tiers = parseNumberOrUndefined(newTriggerTiers);
+    if (min != null) next.min = min;
+    if (max != null) next.max = max;
+    if (tiers != null) next.tiers = tiers;
+
+    setDraftActionId(null);
+    setSelectedActionId(null);
+    setDraftTriggers([next]);
+    setDraftEnabled(true);
+    if (!draftWorkflowName.trim() && t === TriggerType.COMMAND) {
+      const name = normalizeCommandText(newWorkflowCommandText).replace(/^!+/, "").replace(/[-_]/g, " ");
+      setDraftWorkflowName(`${name.charAt(0).toUpperCase()}${name.slice(1)} Workflow`);
+    }
+  };
+
+  const toggleFlowGroup = (group: string) => {
+    setOpenFlowGroups((current) => ({ ...current, [group]: !current[group] }));
+  };
+
+  const handleDeleteWorkflow = async (actionId?: string | null) => {
+    if (!actionId) return;
+    const action = actions.find((item) => item.id === actionId);
+    const ok = window.confirm(`Delete workflow "${action?.name || actionId}"? This removes the action and its triggers.`);
+    if (!ok) return;
+    try {
+      await deleteActionClient(actionId);
+      toast({ title: "Workflow deleted", description: action?.name || actionId });
+      if (selectedActionId === actionId) setSelectedActionId(null);
+      if (draftActionId === actionId) {
+        setDraftActionId(null);
+        setDraftWorkflowName("");
+        setDraftEnabled(false);
+        setDraftTriggers([]);
+        setDraftSubActions([]);
+      }
+      await refresh();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Delete failed", description: e?.message || String(e) });
+    }
   };
 
   const currentWorkflowForAI = useMemo(
@@ -449,7 +578,7 @@ function ActiveCommandsPageClient() {
 
   const findOrCreateCommandForAutomation = async (automation: any, triggers: any[]): Promise<string | null> => {
     const commandTrigger = triggers.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
-    if (selectedCommandId && !commandTrigger?.command && !commandTrigger?.commandName) return selectedCommandId;
+    if (aiWorkflowMode === "edit" && selectedCommandId && !commandTrigger?.command && !commandTrigger?.commandName) return selectedCommandId;
     const commandText = normalizeCommandText(
       commandTrigger?.command ||
         commandTrigger?.commandName ||
@@ -509,6 +638,7 @@ function ActiveCommandsPageClient() {
 
   const loadAutomationDraftFromAI = async (automation: any) => {
     if (!automation || typeof automation !== "object") return;
+    const editCurrentWorkflow = automation?.metadata?.editCurrentWorkflow === true;
 
     const commandText = normalizeCommandText(
       automation?.triggers?.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND)?.command ||
@@ -534,8 +664,14 @@ function ActiveCommandsPageClient() {
       });
     }
 
-    setDraftActionId(selectedAction?.id ?? null);
-    setDraftWorkflowName(String(automation.name || selectedAction?.name || "AI Drafted Workflow").trim() || "AI Drafted Workflow");
+    setDraftActionId(editCurrentWorkflow ? selectedAction?.id ?? null : null);
+    if (!editCurrentWorkflow) {
+      setAiWorkflowMode("new");
+      setSelectedActionId(null);
+    } else {
+      setAiWorkflowMode("edit");
+    }
+    setDraftWorkflowName(String(automation.name || (editCurrentWorkflow ? selectedAction?.name : "") || "AI Drafted Workflow").trim() || "AI Drafted Workflow");
     setDraftEnabled(true);
     setDraftTriggers(nextTriggers);
     setDraftSubActions(normalizeAutomationSubActions(automation));
@@ -612,68 +748,138 @@ function ActiveCommandsPageClient() {
           <CardDescription>A workflow is a command or event trigger connected to an action flow.</CardDescription>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Choose Existing Workflow</div>
-            <Select value={selectedActionId ?? ""} onValueChange={(v) => setSelectedActionId(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an action workflow" />
-              </SelectTrigger>
-              <SelectContent>
-                {actions.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Choose Command</div>
-            <Select value={selectedCommandId ?? ""} onValueChange={(v) => setSelectedCommandId(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder={commandsLoading ? "Loading commands..." : "Select a command"} />
-              </SelectTrigger>
-              <SelectContent>
-                {commands.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {(c.command ?? '').trim() || c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between rounded-md border px-3 py-2 lg:col-span-2">
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium">Enable Workflow</div>
-              <div className="text-xs text-muted-foreground">Required for this workflow to be live.</div>
+      <CardContent className="space-y-6">
+        <div className="rounded-xl border bg-background/50 p-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold">AI workflow guide</div>
+              <div className="text-xs text-muted-foreground">Choose whether the assistant drafts a fresh workflow or edits the selected one.</div>
             </div>
-            <Switch
-              checked={draftEnabled}
-              disabled={!hasWorkflowDraft}
-              onCheckedChange={setDraftEnabled}
+            <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-1">
+              <Button
+                type="button"
+                variant={aiWorkflowMode === "new" ? "default" : "ghost"}
+                onClick={() => {
+                  setAiWorkflowMode("new");
+                  setSelectedActionId(null);
+                  setDraftActionId(null);
+                }}
+              >
+                New
+              </Button>
+              <Button type="button" variant={aiWorkflowMode === "edit" ? "default" : "ghost"} onClick={() => setAiWorkflowMode("edit")}>
+                Edit
+              </Button>
+            </div>
+          </div>
+
+          {aiWorkflowMode === "new" ? (
+            <div className="grid gap-4 lg:grid-cols-[1fr_220px_1fr_auto]">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Workflow Name</div>
+                <Input value={draftWorkflowName} onChange={(e) => setDraftWorkflowName(e.target.value)} placeholder="Set Timer Workflow" />
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Start Trigger</div>
+                <Select value={String(newTriggerType)} onValueChange={(v) => setNewTriggerType(Number(v))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select trigger" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={String(TriggerType.COMMAND)}>{labelForTriggerType(TriggerType.COMMAND)}</SelectItem>
+                    <SelectItem value={String(TriggerType.CHAT_MESSAGE)}>{labelForTriggerType(TriggerType.CHAT_MESSAGE)}</SelectItem>
+                    <SelectItem value={String(TriggerType.FOLLOW)}>{labelForTriggerType(TriggerType.FOLLOW)}</SelectItem>
+                    <SelectItem value={String(TriggerType.CHEER)}>{labelForTriggerType(TriggerType.CHEER)}</SelectItem>
+                    <SelectItem value={String(TriggerType.SUBSCRIBE)}>{labelForTriggerType(TriggerType.SUBSCRIBE)}</SelectItem>
+                    <SelectItem value={String(TriggerType.RESUB)}>{labelForTriggerType(TriggerType.RESUB)}</SelectItem>
+                    <SelectItem value={String(TriggerType.GIFT_SUB)}>{labelForTriggerType(TriggerType.GIFT_SUB)}</SelectItem>
+                    <SelectItem value={String(TriggerType.GIFT_BOMB)}>{labelForTriggerType(TriggerType.GIFT_BOMB)}</SelectItem>
+                    <SelectItem value={String(TriggerType.RAID)}>{labelForTriggerType(TriggerType.RAID)}</SelectItem>
+                    <SelectItem value={String(TriggerType.CHANNEL_POINT_REWARD)}>{labelForTriggerType(TriggerType.CHANNEL_POINT_REWARD)}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {Number(newTriggerType) === TriggerType.COMMAND ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Command Text</div>
+                  <Input value={newWorkflowCommandText} onChange={(e) => setNewWorkflowCommandText(e.target.value)} placeholder="!settimer" />
+                </div>
+              ) : Number(newTriggerType) === TriggerType.CHAT_MESSAGE ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Chat Pattern</div>
+                  <Input value={newTriggerPattern} onChange={(e) => setNewTriggerPattern(e.target.value)} placeholder="message contains..." />
+                </div>
+              ) : Number(newTriggerType) === TriggerType.CHANNEL_POINT_REWARD ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Reward ID</div>
+                  <Input value={newTriggerRewardId} onChange={(e) => setNewTriggerRewardId(e.target.value)} placeholder="rewardId" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Optional Filters</div>
+                  <Input value={newTriggerMin} onChange={(e) => setNewTriggerMin(e.target.value)} placeholder="minimum amount, optional" />
+                </div>
+              )}
+              <div className="flex items-end">
+                <Button type="button" variant="secondary" onClick={applyNewModeTriggerSetup}>
+                  Use Setup
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Workflow To Edit</div>
+                <Select value={selectedActionId ?? ""} onValueChange={(v) => setSelectedActionId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an existing workflow" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortedActionsForSelect.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Attach Existing Command</div>
+                <Select value={selectedCommandId ?? ""} onValueChange={(v) => setSelectedCommandId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={commandsLoading ? "Loading commands..." : "Optional command"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortedCommandsForSelect.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {(c.command ?? "").trim() || c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button type="button" variant="secondary" onClick={addCommandTriggerToDraft} disabled={!hasWorkflowDraft || !selectedCommandId}>
+                  Attach Command
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4">
+            <AutomationAIChat
+              currentWorkflow={aiWorkflowMode === "edit" ? currentWorkflowForAI : undefined}
+              onAutomationGenerated={loadAutomationDraftFromAI}
+              selectedCommandId={aiWorkflowMode === "edit" ? selectedCommandId : null}
+              mode={aiWorkflowMode}
             />
-          </div>
-
-          <div className="lg:col-span-2">
-            <div className="flex items-center gap-2">
-              <Button onClick={addCommandTriggerToDraft} disabled={!hasWorkflowDraft || !selectedCommandId}>
-              Add Command As Trigger + Enable
-              </Button>
-              <Button onClick={saveWorkflowDraft} disabled={!hasWorkflowDraft || isSaving}>
-                {isSaving ? "Saving..." : "Save Workflow"}
-              </Button>
-            </div>
           </div>
         </div>
 
         {hasWorkflowDraft ? (
           <div className="mb-8 space-y-4">
             <div className="rounded-md border p-4">
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
                 <div className="space-y-2">
                   <div className="text-sm font-medium">Workflow Name</div>
                   <Input
@@ -682,15 +888,21 @@ function ActiveCommandsPageClient() {
                     placeholder="AI Drafted Workflow"
                   />
                 </div>
-                <Button onClick={saveWorkflowDraft} disabled={isSaving}>
-                  {isSaving ? "Saving..." : "Save Workflow"}
-                </Button>
+                <div className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
+                  <div>
+                    <div className="text-sm font-medium">Live</div>
+                    <div className="text-xs text-muted-foreground">Enable after review.</div>
+                  </div>
+                  <Switch checked={draftEnabled} onCheckedChange={setDraftEnabled} />
+                </div>
               </div>
             </div>
             <div className="rounded-md border p-4">
               <div className="text-sm font-medium mb-2">Triggers</div>
               <div className="space-y-2">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-md border p-3">
+                <details className="rounded-md border p-3">
+                  <summary className="cursor-pointer text-sm font-medium">Advanced: add another trigger</summary>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div className="space-y-2">
                     <div className="text-sm font-medium">Add Trigger Type</div>
                     <Select value={String(newTriggerType)} onValueChange={(v) => setNewTriggerType(Number(v))}>
@@ -720,7 +932,7 @@ function ActiveCommandsPageClient() {
                           <SelectValue placeholder="Select a command" />
                         </SelectTrigger>
                         <SelectContent>
-                          {commands.map((c) => (
+                          {sortedCommandsForSelect.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
                               {(c.command ?? "").trim() || c.name}
                             </SelectItem>
@@ -771,13 +983,11 @@ function ActiveCommandsPageClient() {
 
                   <div className="md:col-span-3 flex items-center gap-2">
                     <Button onClick={addNewTriggerToDraft} disabled={!hasWorkflowDraft}>
-                      Add Trigger + Enable
-                    </Button>
-                    <Button onClick={saveWorkflowDraft} disabled={!hasWorkflowDraft || isSaving}>
-                      {isSaving ? "Saving..." : "Save Workflow"}
+                      Add Trigger
                     </Button>
                   </div>
-                </div>
+                  </div>
+                </details>
 
                 {draftTriggers.map((t: any) => {
                   const isCommand = Number(t.type) === TriggerType.COMMAND;
@@ -831,7 +1041,7 @@ function ActiveCommandsPageClient() {
                                 <SelectValue placeholder="Select a command" />
                               </SelectTrigger>
                               <SelectContent>
-                                {commands.map((c) => (
+                                {sortedCommandsForSelect.map((c) => (
                                   <SelectItem key={c.id} value={c.id}>
                                     {(c.command ?? "").trim() || c.name}
                                   </SelectItem>
@@ -1023,15 +1233,64 @@ function ActiveCommandsPageClient() {
                 previewFor={previewForSubAction}
               />
 
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button onClick={saveWorkflowDraft} disabled={isSaving}>
                   {isSaving ? "Saving..." : "Save Workflow"}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => void handleDeleteWorkflow(draftActionId || selectedActionId)}
+                  disabled={!draftActionId && !selectedActionId}
+                >
+                  Delete Workflow
                 </Button>
               </div>
             </div>
           </div>
         ) : null}
 
+        <div className="border-t pt-6">
+          <div className="mb-3 flex flex-col gap-1">
+            <div className="text-sm font-semibold">Live Flow List</div>
+            <div className="text-xs text-muted-foreground">Find existing workflows after you finish drafting or editing.</div>
+          </div>
+        <div className="mb-4 grid gap-3 rounded-md border bg-background/40 p-3 lg:grid-cols-[1fr_220px_190px]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={flowSearchQuery}
+              onChange={(event) => setFlowSearchQuery(event.target.value)}
+              placeholder="Search live flows by command, workflow, or trigger"
+              className="pl-9"
+            />
+          </div>
+          <Select value={flowTriggerFilter} onValueChange={setFlowTriggerFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Trigger" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All triggers</SelectItem>
+              {availableFlowTriggers.map((trigger) => (
+                <SelectItem key={trigger} value={trigger}>
+                  {trigger}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={flowSortMode} onValueChange={(value) => setFlowSortMode(value as FlowSortMode)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="workflow">Workflow A-Z</SelectItem>
+              <SelectItem value="command">Command A-Z</SelectItem>
+              <SelectItem value="trigger">Trigger, then workflow</SelectItem>
+              <SelectItem value="steps">Most steps first</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -1064,61 +1323,85 @@ function ActiveCommandsPageClient() {
                 </TableCell>
               </TableRow>
             )}
-            {activeCommandRows.map((row) => (
-              <TableRow key={`${row.actionId}:${row.triggerId}`}>
-                <TableCell className="font-medium">{row.commandLabel}</TableCell>
-                <TableCell>{row.actionName}</TableCell>
-                <TableCell>{row.trigger}</TableCell>
-                <TableCell>{row.steps}</TableCell>
-                <TableCell>
-                  <Badge variant="outline">{row.platform}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="default" className="bg-green-600">
-                    {row.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleRunCommand(row.commandId)} disabled={!row.commandId}>
-                        <Play className="mr-2 h-4 w-4" />
-                        Run
-                      </DropdownMenuItem>
-                      <DropdownMenuItem disabled>
-                        <BarChart2 className="mr-2 h-4 w-4" />
-                        Track
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem asChild>
-                        <Link href={`/active-commands?actionId=${encodeURIComponent(row.actionId)}`}>Edit Workflow</Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive" disabled>
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+            {!isLoading && activeCommandRows.length > 0 && filteredActiveCommandRows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  No live flows match those filters.
                 </TableCell>
               </TableRow>
+            )}
+            {groupedActiveCommandRows.map((section) => (
+              <Fragment key={section.trigger}>
+                <TableRow className="bg-muted/35 hover:bg-muted/50">
+                  <TableCell colSpan={7} className="py-2">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                      onClick={() => toggleFlowGroup(section.trigger)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openFlowGroups[section.trigger] ? "rotate-90" : ""}`} />
+                        <span className="font-medium">{section.trigger}</span>
+                      </span>
+                      <Badge variant="outline">{section.rows.length}/{section.total}</Badge>
+                    </button>
+                  </TableCell>
+                </TableRow>
+                {openFlowGroups[section.trigger] ? section.rows.map((row) => (
+                  <TableRow key={`${row.actionId}:${row.triggerId}`}>
+                    <TableCell className="font-medium">{row.commandLabel}</TableCell>
+                    <TableCell>{row.actionName}</TableCell>
+                    <TableCell>{row.trigger}</TableCell>
+                    <TableCell>{row.steps}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{row.platform}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="default" className="bg-green-600">
+                        {row.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button aria-haspopup="true" size="icon" variant="ghost">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Toggle menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => handleRunCommand(row.commandId)} disabled={!row.commandId}>
+                            <Play className="mr-2 h-4 w-4" />
+                            Run
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled>
+                            <BarChart2 className="mr-2 h-4 w-4" />
+                            Track
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                            <Link href={`/active-commands?actionId=${encodeURIComponent(row.actionId)}`}>Edit Workflow</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled>Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => void handleDeleteWorkflow(row.actionId)}
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                )) : null}
+              </Fragment>
             ))}
           </TableBody>
         </Table>
-
-        <div className="mt-6">
-          <AutomationAIChat
-            currentWorkflow={currentWorkflowForAI}
-            onAutomationGenerated={loadAutomationDraftFromAI}
-            selectedCommandId={selectedCommandId}
-          />
         </div>
+        </div>
+
       </CardContent>
 
       <Dialog open={isEditSubActionOpen} onOpenChange={setIsEditSubActionOpen}>
@@ -1147,7 +1430,9 @@ function ActiveCommandsPageClient() {
                       <SelectItem value={String(SubActionType.IF_ELSE)}>If / Else</SelectItem>
                       <SelectItem value={String(SubActionType.BREAK)}>Break</SelectItem>
                       <SelectItem value={String(SubActionType.WAIT)}>Wait</SelectItem>
+                      <SelectItem value={String(SubActionType.HTTP_REQUEST)}>HTTP Request</SelectItem>
                       <SelectItem value={String(SubActionType.VOICE_REPLY_PROMPT)}>Voice Reply Prompt</SelectItem>
+                      <SelectItem value={String(SubActionType.EXECUTE_CODE)}>Execute Code</SelectItem>
                       <SelectItem value={String(SubActionType.COMMENT)}>Comment</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1208,7 +1493,7 @@ function ActiveCommandsPageClient() {
                       <SelectValue placeholder="Select action to run" />
                     </SelectTrigger>
                     <SelectContent>
-                      {actions.map((a) => (
+                      {sortedActionsForSelect.map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                         </SelectItem>
@@ -1331,6 +1616,108 @@ function ActiveCommandsPageClient() {
                         checked={subActionDraft.useBot !== false}
                         onCheckedChange={(checked) => setSubActionDraft((d: any) => ({ ...d, useBot: checked }))}
                       />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {Number(subActionDraft.type) === SubActionType.HTTP_REQUEST ? (
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">URL</div>
+                    <Input
+                      value={String(subActionDraft.url || "")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, url: e.target.value }))}
+                      placeholder="https://api.example.com/endpoint"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Method</div>
+                      <Input
+                        value={String(subActionDraft.method || "POST")}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, method: e.target.value.toUpperCase() }))}
+                        placeholder="POST"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Response Variable</div>
+                      <Input
+                        value={String(subActionDraft.variableName || "")}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, variableName: e.target.value }))}
+                        placeholder="httpResponse"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Parse JSON</div>
+                        <div className="text-xs text-muted-foreground">Attempt to parse JSON response bodies.</div>
+                      </div>
+                      <Switch
+                        checked={subActionDraft.parseAsJson !== false}
+                        onCheckedChange={(checked) => setSubActionDraft((d: any) => ({ ...d, parseAsJson: checked }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Body</div>
+                    <Textarea
+                      rows={4}
+                      value={String(subActionDraft.body || "")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, body: e.target.value }))}
+                      placeholder='{"message":"hello"}'
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {Number(subActionDraft.type) === SubActionType.EXECUTE_CODE ? (
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Language</div>
+                      <Input
+                        value={String(subActionDraft.language || "javascript")}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, language: e.target.value || "javascript" }))}
+                        placeholder="javascript"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Timeout (ms)</div>
+                      <Input
+                        type="number"
+                        min="100"
+                        value={String(subActionDraft.timeoutMs ?? 10000)}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, timeoutMs: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Save Result To</div>
+                      <Input
+                        value={String(subActionDraft.saveToVariable || "")}
+                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, saveToVariable: e.target.value }))}
+                        placeholder="resultVariable"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Description</div>
+                    <Input
+                      value={String(subActionDraft.description || "")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, description: e.target.value }))}
+                      placeholder="Programmable extension block"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Code</div>
+                    <Textarea
+                      rows={12}
+                      value={String(subActionDraft.code || "")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, code: e.target.value }))}
+                      placeholder={'await reply("Hello chat", { as: "bot" });\nreturn { done: true };'}
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Helpers: <code>reply</code>, <code>runAction</code>, <code>sleep</code>, <code>http</code>, <code>vars</code>, <code>points</code>, <code>fetch</code>.
                     </div>
                   </div>
                 </div>

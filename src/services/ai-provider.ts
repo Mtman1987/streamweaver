@@ -13,6 +13,11 @@ export interface AIConfig {
   botName: string; // e.g., "Athena", "StreamBot", "Assistant"
 }
 
+export interface AIResponseOptions {
+  maxTokens?: number;
+  temperature?: number;
+}
+
 export function getAIConfig(tenantId?: string): AIConfig {
   const config = readUserConfigSync(tenantId);
   
@@ -57,7 +62,12 @@ function normalizeEdenAIModel(model: string): string {
   return model;
 }
 
-export async function generateAIResponse(prompt: string, systemPrompt?: string, tenantId?: string): Promise<string> {
+export async function generateAIResponse(
+  prompt: string,
+  systemPrompt?: string,
+  tenantId?: string,
+  options?: AIResponseOptions
+): Promise<string> {
   const config = getAIConfig(tenantId);
   
   if (!config.apiKey) {
@@ -66,17 +76,22 @@ export async function generateAIResponse(prompt: string, systemPrompt?: string, 
   
   switch (config.provider) {
     case 'gemini':
-      return generateGeminiResponse(prompt, systemPrompt, config);
+      return generateGeminiResponse(prompt, systemPrompt, config, options);
     case 'edenai':
-      return generateEdenAIResponse(prompt, systemPrompt, config);
+      return generateEdenAIResponse(prompt, systemPrompt, config, options);
     case 'openai':
-      return generateOpenAIResponse(prompt, systemPrompt, config);
+      return generateOpenAIResponse(prompt, systemPrompt, config, options);
     default:
       throw new Error(`Unsupported AI provider: ${config.provider}`);
   }
 }
 
-async function generateGeminiResponse(prompt: string, systemPrompt: string = '', config: AIConfig): Promise<string> {
+async function generateGeminiResponse(
+  prompt: string,
+  systemPrompt: string = '',
+  config: AIConfig,
+  options?: AIResponseOptions
+): Promise<string> {
   const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
   
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, {
@@ -84,7 +99,10 @@ async function generateGeminiResponse(prompt: string, systemPrompt: string = '',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: fullPrompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 200 }
+      generationConfig: {
+        temperature: options?.temperature ?? 0.8,
+        maxOutputTokens: options?.maxTokens ?? 200,
+      }
     })
   });
   
@@ -103,7 +121,12 @@ async function generateGeminiResponse(prompt: string, systemPrompt: string = '',
   return data.candidates[0].content.parts[0].text;
 }
 
-async function generateEdenAIResponse(prompt: string, systemPrompt: string = '', config: AIConfig): Promise<string> {
+async function generateEdenAIResponse(
+  prompt: string,
+  systemPrompt: string = '',
+  config: AIConfig,
+  options?: AIResponseOptions
+): Promise<string> {
   const messages = [];
   if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
   messages.push({ role: 'user', content: prompt });
@@ -117,7 +140,7 @@ async function generateEdenAIResponse(prompt: string, systemPrompt: string = '',
     body: JSON.stringify({
       model: config.model,
       messages,
-      max_tokens: 200,
+      max_tokens: options?.maxTokens ?? 200,
       stream: false
     })
   });
@@ -137,7 +160,12 @@ async function generateEdenAIResponse(prompt: string, systemPrompt: string = '',
   return data.choices[0].message.content;
 }
 
-async function generateOpenAIResponse(prompt: string, systemPrompt: string = '', config: AIConfig): Promise<string> {
+async function generateOpenAIResponse(
+  prompt: string,
+  systemPrompt: string = '',
+  config: AIConfig,
+  options?: AIResponseOptions
+): Promise<string> {
   const messages = [];
   if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
   messages.push({ role: 'user', content: prompt });
@@ -151,7 +179,8 @@ async function generateOpenAIResponse(prompt: string, systemPrompt: string = '',
     body: JSON.stringify({
       model: config.model,
       messages,
-      max_tokens: 200
+      max_tokens: options?.maxTokens ?? 200,
+      temperature: options?.temperature ?? 0.7,
     })
   });
   

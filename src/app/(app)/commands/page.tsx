@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -15,10 +23,52 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, MoreHorizontal, PlusCircle, Play, BarChart2 } from "lucide-react";
+import { ChevronRight, Loader2, MoreHorizontal, PlusCircle, Play, BarChart2, Search } from "lucide-react";
 import { useCommandsData } from "@/hooks/use-commands-data";
 import { useToast } from "@/hooks/use-toast";
 import { deleteCommandClient, duplicateCommandClient, runCommandClient, updateAllCommandsEnabledClient, updateCommandClient } from "@/lib/client-commands";
+
+type CommandRow = {
+  id: string;
+  name?: string;
+  command?: string;
+  description?: string;
+  group?: string;
+  aliases?: string[];
+  enabled: boolean;
+};
+
+type SortMode = "group" | "trigger" | "name" | "status";
+
+function normalizeTrigger(value: unknown): string {
+  const trigger = String(value || "").trim();
+  if (!trigger) return "";
+  return trigger.startsWith("!") ? trigger : `!${trigger.replace(/^!+/, "")}`;
+}
+
+function commandTitle(command: CommandRow): string {
+  const name = String(command.name || "").trim();
+  const trigger = normalizeTrigger(command.command);
+  if (!name) return trigger || "Untitled command";
+  if (trigger && name.toLowerCase() === trigger.toLowerCase()) return trigger;
+  return name;
+}
+
+function normalizeGroup(command: CommandRow): string {
+  const raw = String(command.group || "").trim();
+  const text = `${raw} ${command.name || ""} ${command.command || ""}`.toLowerCase();
+
+  if (raw && raw.toLowerCase() !== "ungrouped") return raw;
+  if (text.includes("streamup") || text.includes("point") || text.includes("gamble") || text.includes("leader")) return "Currency";
+  if (text.includes("mod") || text.includes("set") || text.includes("reset") || text.includes("give")) return "Moderation";
+  if (text.includes("cuddle") || text.includes("hug") || text.includes("dance") || text.includes("highfive") || text.includes("fistbump") || text.includes("headpat") || text.includes("love") || text.includes("lurk")) return "Chat Actions";
+  if (text.includes("follow") || text.includes("raid") || text.includes("shoutout")) return "Stream Info";
+  return "Ungrouped";
+}
+
+function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
 
 export default function CommandsPage() {
   const { commands, isLoading, error, refresh } = useCommandsData();
@@ -27,6 +77,11 @@ export default function CommandsPage() {
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [skipShoutoutOverlay, setSkipShoutoutOverlay] = useState(false);
   const [isSavingShoutoutMode, setIsSavingShoutoutMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortMode, setSortMode] = useState<SortMode>("group");
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (error) {
@@ -143,9 +198,50 @@ export default function CommandsPage() {
     }
   };
 
+  const toggleGroup = (group: string) => {
+    setOpenGroups((current) => ({ ...current, [group]: !current[group] }));
+  };
+
   const enabledCount = commands.filter((command) => command.enabled).length;
   const disabledCount = commands.length - enabledCount;
-  const groupedCount = new Set(commands.map((command) => (command.group ?? "").trim() || "Ungrouped")).size;
+  const normalizedCommands = commands.map((command) => ({
+    ...(command as CommandRow),
+    command: normalizeTrigger((command as CommandRow).command),
+  }));
+  const availableGroups = Array.from(new Set(normalizedCommands.map(normalizeGroup))).sort(compareText);
+  const groupedCount = availableGroups.length;
+  const filteredCommands = normalizedCommands
+    .filter((command) => {
+      const group = normalizeGroup(command);
+      const query = searchQuery.trim().toLowerCase();
+      const haystack = [
+        commandTitle(command),
+        command.command,
+        command.description,
+        command.group,
+        ...(Array.isArray(command.aliases) ? command.aliases : []),
+      ].join(" ").toLowerCase();
+      if (query && !haystack.includes(query)) return false;
+      if (groupFilter !== "all" && group !== groupFilter) return false;
+      if (statusFilter === "enabled" && !command.enabled) return false;
+      if (statusFilter === "disabled" && command.enabled) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortMode === "status" && a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+      if (sortMode === "name") return compareText(commandTitle(a), commandTitle(b));
+      if (sortMode === "trigger") return compareText(a.command || "", b.command || "");
+      const groupCompare = compareText(normalizeGroup(a), normalizeGroup(b));
+      if (groupCompare !== 0) return groupCompare;
+      return compareText(a.command || commandTitle(a), b.command || commandTitle(b));
+    });
+  const groupedCommands = availableGroups
+    .map((group) => ({
+      group,
+      commands: filteredCommands.filter((command) => normalizeGroup(command) === group),
+      total: normalizedCommands.filter((command) => normalizeGroup(command) === group).length,
+    }))
+    .filter((section) => section.commands.length > 0);
 
   return (
     <div className="space-y-6">
@@ -245,7 +341,7 @@ export default function CommandsPage() {
           <div className="flex items-center justify-between gap-3 border-b border-border/70 px-6 py-4">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold tracking-tight">Command list</h3>
-              <p className="text-sm text-muted-foreground">Edit triggers, enable or disable commands, and keep the set tidy.</p>
+              <p className="text-sm text-muted-foreground">Grouped and sorted so imported commands are easier to scan.</p>
             </div>
             <div className="hidden items-center gap-2 md:flex">
               <div className="flex items-center justify-between rounded-full border border-border/70 bg-background/40 px-3 py-1.5 text-xs text-muted-foreground">
@@ -273,6 +369,49 @@ export default function CommandsPage() {
                 aria-label="Toggle skip shoutout overlay"
               />
             </div>
+          </div>
+          <div className="grid gap-3 border-b border-border/70 px-6 py-4 lg:grid-cols-[1fr_180px_180px_180px]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search commands, aliases, or descriptions"
+                className="pl-9"
+              />
+            </div>
+            <Select value={groupFilter} onValueChange={setGroupFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Group" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All groups</SelectItem>
+                {availableGroups.map((group) => (
+                  <SelectItem key={group} value={group}>{group}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="enabled">Enabled only</SelectItem>
+                <SelectItem value="disabled">Disabled only</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="group">Group, then trigger</SelectItem>
+                <SelectItem value="trigger">Trigger A-Z</SelectItem>
+                <SelectItem value="name">Name A-Z</SelectItem>
+                <SelectItem value="status">Enabled first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -318,11 +457,38 @@ export default function CommandsPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {commands.map((command) => (
+                {!isLoading && commands.length > 0 && filteredCommands.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <div className="py-8">
+                        <div className="text-sm font-medium text-foreground">No commands match those filters.</div>
+                        <div className="mt-1 text-sm text-muted-foreground">Try a different search, group, or status.</div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {groupedCommands.map((section) => (
+                  <Fragment key={section.group}>
+                    <TableRow className="bg-muted/35 hover:bg-muted/50">
+                      <TableCell colSpan={5} className="py-2">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 text-left"
+                          onClick={() => toggleGroup(section.group)}
+                        >
+                          <span className="flex items-center gap-2">
+                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openGroups[section.group] ? "rotate-90" : ""}`} />
+                            <span className="font-medium">{section.group}</span>
+                          </span>
+                          <Badge variant="outline">{section.commands.length}/{section.total}</Badge>
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                    {openGroups[section.group] ? section.commands.map((command) => (
                   <TableRow key={command.id}>
                     <TableCell className="font-medium">
                       <div className="space-y-1">
-                        <div>{(command.name ?? '').trim() || (command.command ?? '').trim() || 'Untitled Command'}</div>
+                        <div>{commandTitle(command)}</div>
                         {(command.description as string | undefined) ? (
                           <div className="text-xs text-muted-foreground">{command.description}</div>
                         ) : null}
@@ -335,7 +501,7 @@ export default function CommandsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{(command.group ?? '').trim() || "Ungrouped"}</Badge>
+                      <Badge variant="outline">{normalizeGroup(command)}</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -380,6 +546,8 @@ export default function CommandsPage() {
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
+                    )) : null}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

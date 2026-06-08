@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
       return {
         username: user?.login || stream.user_login,
         displayName: user?.display_name || stream.user_name,
+        profile_image_url: user?.profile_image_url,
         title: stream.title,
         gameName: stream.game_name,
         viewerCount: stream.viewer_count,

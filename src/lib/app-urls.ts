@@ -6,7 +6,26 @@ function normalizeAppUrl(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
 
+function getConfiguredProductionUrl(): string | null {
+  const candidates = [
+    process.env.NEXT_PUBLIC_BASE_URL,
+    process.env.NEXT_PUBLIC_STREAMWEAVE_URL,
+    process.env.APP_URL,
+  ];
+
+  for (const candidate of candidates) {
+    const value = candidate?.trim();
+    if (value) return normalizeAppUrl(value);
+  }
+
+  return null;
+}
+
 export function getAppUrlForEnvironment(environment: AppUrlEnvironment): string {
+  if (environment === 'production') {
+    const configured = getConfiguredProductionUrl();
+    if (configured) return configured;
+  }
   return normalizeAppUrl(appUrls[environment]);
 }
 

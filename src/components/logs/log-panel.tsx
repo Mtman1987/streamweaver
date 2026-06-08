@@ -5,14 +5,22 @@ import { useLogPanel } from "./log-panel-context";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { getClientTenantId } from "@/lib/client-tenant";
+import { cn } from "@/lib/utils";
+import { getBrowserWebSocketUrl } from "@/lib/ws-config";
 
 interface LogEntry {
   id: number;
   timestamp: string;
   message: string;
+  level: "info" | "warn" | "error";
 }
 
 let nextId = 0;
+
+function makeLogEntry(level: LogEntry["level"], message: string, timestamp = new Date().toLocaleTimeString()): LogEntry {
+  return { id: nextId++, timestamp, level, message };
+}
 
 export function LogPanel() {
   const { visible, setVisible } = useLogPanel();
@@ -22,18 +30,19 @@ export function LogPanel() {
   useEffect(() => {
     if (!visible) return;
 
-    const wsPort = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_PORT || "8090";
-    const wsHost = process.env.NEXT_PUBLIC_STREAMWEAVE_WS_HOST || window.location.hostname;
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const tenantId = getClientTenantId() || undefined;
     let ws: WebSocket | null = null;
 
     try {
-      ws = new WebSocket(`${wsProtocol}://${wsHost}:${wsPort}`);
+      ws = new WebSocket(getBrowserWebSocketUrl(tenantId));
       ws.onopen = () => {
-        setLogs((prev) => ([...prev, { id: nextId++, timestamp: new Date().toLocaleTimeString(), message: `[log-panel] connected to ${wsProtocol}://${wsHost}:${wsPort}` }]).slice(-500));
+        if (tenantId) {
+          ws?.send(JSON.stringify({ type: "identify", payload: { tenantId } }));
+        }
+        setLogs((prev) => ([...prev, makeLogEntry("info", `[log-panel] connected to StreamWeaver logs`)]).slice(-500));
       };
       ws.onerror = () => {
-        setLogs((prev) => ([...prev, { id: nextId++, timestamp: new Date().toLocaleTimeString(), message: `[log-panel] websocket connection error` }]).slice(-500));
+        setLogs((prev) => ([...prev, makeLogEntry("error", `[log-panel] websocket connection error`)]).slice(-500));
       };
       ws.onmessage = (event) => {
         try {
@@ -42,7 +51,8 @@ export function LogPanel() {
             setLogs((prev) => {
               const entry: LogEntry = {
                 id: nextId++,
-                timestamp: new Date().toLocaleTimeString(),
+                timestamp: data.payload?.timestamp ? new Date(data.payload.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
+                level: data.payload?.level === "warn" || data.payload?.level === "error" ? data.payload.level : "info",
                 message: typeof data.payload === "string" ? data.payload : data.payload?.message || JSON.stringify(data.payload),
               };
               const updated = [...prev, entry];
@@ -80,6 +90,16 @@ export function LogPanel() {
           {logs.map((entry) => (
             <div key={entry.id} className="flex gap-2">
               <span className="text-muted-foreground shrink-0">{entry.timestamp}</span>
+              <span
+                className={cn(
+                  "w-10 shrink-0 uppercase",
+                  entry.level === "error" && "text-destructive",
+                  entry.level === "warn" && "text-amber-500",
+                  entry.level === "info" && "text-muted-foreground"
+                )}
+              >
+                {entry.level}
+              </span>
               <span className="break-all">{entry.message}</span>
             </div>
           ))}

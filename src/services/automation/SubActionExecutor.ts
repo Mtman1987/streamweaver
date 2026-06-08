@@ -6,6 +6,14 @@ import { DiscordHandlers, YouTubeHandlers, KickHandlers } from './subactions/Pla
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { getActionById } from '@/lib/actions-store';
 import { generateTTS } from '@/services/tts-provider';
+import { sendChatMessage } from '@/services/twitch';
+import { addPoints, getPoints, setPoints } from '@/services/points';
+import {
+  listGlobalVariables,
+  listUserVariables,
+  setGlobalVariable,
+  setUserVariable,
+} from '@/lib/automation-variables-store';
 
 export interface ExecutionContext {
   user?: string;
@@ -150,6 +158,9 @@ export class SubActionExecutor {
       // Network Handlers
       else if (subAction.type === SubActionType.HTTP_REQUEST) {
         result = await SubActionHandlers.Network.handleHTTPRequest(subAction, context);
+      }
+      else if (subAction.type === SubActionType.EXECUTE_CODE) {
+        result = await this.handleExecuteCode(subAction, context);
       }
       
       // DateTime Handlers
@@ -489,6 +500,143 @@ export class SubActionExecutor {
     });
     
     return result;
+  }
+
+  private async handleExecuteCode(subAction: SubAction, context: ExecutionContext): Promise<{ success: boolean; variables?: Record<string, any>; error?: string }> {
+    const language = String(subAction.language || 'javascript').toLowerCase();
+    if (language !== 'javascript' && language !== 'js') {
+      return { success: false, error: `Unsupported code language: ${language}` };
+    }
+
+    const code = String(subAction.code || subAction.value || '').trim();
+    if (!code) {
+      return { success: false, error: 'Missing code for programmable sub-action.' };
+    }
+
+    const timeoutMs = Math.max(100, Number(subAction.timeoutMs || 10000) || 10000);
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (...args: string[]) => (...fnArgs: any[]) => Promise<any>;
+    const varsCache = {
+      global: await listGlobalVariables(context.tenantId),
+      user: context.userName ? await listUserVariables(context.userName, context.tenantId) : {},
+    };
+
+    const reply = async (text: string, options?: { as?: 'bot' | 'broadcaster' }) => {
+      const channel = String(context.variables?.channel || context.args?.channel || '');
+      await sendChatMessage(String(text), options?.as || 'bot', channel || undefined, context.tenantId);
+    };
+
+    const runAction = async (actionId: string) => {
+      if (!context.runActionById) return false;
+      return context.runActionById(actionId);
+    };
+
+    const sleep = async (ms: number) => {
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+    };
+
+    const http = async (request: {
+      url: string;
+      method?: string;
+      headers?: Record<string, string>;
+      body?: any;
+      json?: boolean;
+    }) => {
+      const response = await fetch(request.url, {
+        method: request.method || 'GET',
+        headers: request.headers,
+        body: typeof request.body === 'string' ? request.body : request.body != null ? JSON.stringify(request.body) : undefined,
+      });
+
+      if (request.json) {
+        return response.json();
+      }
+      return response.text();
+    };
+
+    const points = {
+      get: async (userName?: string) => {
+        const user = String(userName || context.userName || '').trim();
+        if (!user) return null;
+        return getPoints(user, context.tenantId ? { tenantId: context.tenantId, username: user } : undefined);
+      },
+      add: async (amount: number, userName?: string, reason?: string) => {
+        const user = String(userName || context.userName || '').trim();
+        if (!user) throw new Error('Missing user for points.add');
+        return addPoints(user, BigInt(Math.trunc(Number(amount) || 0)), reason || 'programmable-subaction', context.tenantId ? { tenantId: context.tenantId, username: user } : undefined);
+      },
+      set: async (amount: number, userName?: string) => {
+        const user = String(userName || context.userName || '').trim();
+        if (!user) throw new Error('Missing user for points.set');
+        return setPoints(user, BigInt(Math.trunc(Number(amount) || 0)), context.tenantId ? { tenantId: context.tenantId, username: user } : undefined);
+      },
+    };
+
+    const vars = {
+      global: {
+        get: async (key: string) => {
+          varsCache.global = await listGlobalVariables(context.tenantId);
+          return varsCache.global[key];
+        },
+        set: async (key: string, value: unknown) => {
+          await setGlobalVariable(key, value, context.tenantId);
+          varsCache.global[key] = value;
+          return value;
+        },
+      },
+      user: {
+        get: async (key: string, userName?: string) => {
+          const user = String(userName || context.userName || '').trim();
+          if (!user) return undefined;
+          const values = await listUserVariables(user, context.tenantId);
+          return values[key];
+        },
+        set: async (key: string, value: unknown, userName?: string) => {
+          const user = String(userName || context.userName || '').trim();
+          if (!user) throw new Error('Missing user for vars.user.set');
+          await setUserVariable(user, key, value, context.tenantId);
+          if (user === context.userName) {
+            varsCache.user[key] = value;
+          }
+          return value;
+        },
+      },
+    };
+
+    const helpers = {
+      context,
+      args: context.args || {},
+      variables: context.variables || {},
+      reply,
+      runAction,
+      sleep,
+      http,
+      vars,
+      points,
+      fetch,
+      console,
+    };
+
+    try {
+      const fn = new AsyncFunction(...Object.keys(helpers), code);
+      const execution = fn(...Object.values(helpers));
+      const result = await Promise.race([
+        execution,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Programmable sub-action timed out after ${timeoutMs}ms`)), timeoutMs)),
+      ]);
+
+      const nextVariables: Record<string, any> = {};
+      if (subAction.saveResultToVariable && subAction.saveToVariable) {
+        nextVariables[String(subAction.saveToVariable)] = result;
+      } else if (subAction.saveToVariable && result !== undefined) {
+        nextVariables[String(subAction.saveToVariable)] = result;
+      } else if (result && typeof result === 'object' && !Array.isArray(result)) {
+        Object.assign(nextVariables, result);
+      }
+
+      return { success: true, variables: nextVariables };
+    } catch (error: any) {
+      return { success: false, error: error?.message || 'Programmable sub-action failed.' };
+    }
   }
 
   private async handleVoiceReplyPrompt(subAction: SubAction, context: ExecutionContext): Promise<{ success: boolean; variables?: Record<string, any>; error?: string }> {

@@ -177,7 +177,7 @@ export type CreateCommandInput = {
 
 export async function createCommand(input: CreateCommandInput, tenantId?: string): Promise<Command> {
   const now = new Date().toISOString();
-  const id = randomUUID();
+  const id = String((input as any).id || randomUUID());
   const cooldown = (input.cooldown && typeof input.cooldown === 'object' ? input.cooldown : {}) as any;
   const next: Command = {
     ...(input as any),

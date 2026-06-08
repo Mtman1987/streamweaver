@@ -15,6 +15,7 @@ const SUB_ACTION_TYPES = [
   { value: SubActionType.WAIT, label: 'Wait/Delay', category: 'Core' },
   { value: SubActionType.VOICE_REPLY_PROMPT, label: 'Voice Reply Prompt', category: 'Core' },
   { value: SubActionType.RUN_ACTION, label: 'Run Action', category: 'Core' },
+  { value: SubActionType.EXECUTE_CODE, label: 'Execute Code', category: 'Advanced' },
   { value: SubActionType.SET_ARGUMENT, label: 'Set Argument', category: 'Variables' },
   { value: SubActionType.SET_GLOBAL_VAR, label: 'Set Global Variable', category: 'Variables' },
   { value: SubActionType.GET_GLOBAL_VAR, label: 'Get Global Variable', category: 'Variables' },
@@ -256,6 +257,63 @@ export function SubActionBuilder({ subAction, onSave, onCancel }: SubActionBuild
               />
               Parse response as JSON
             </label>
+          </>
+        );
+
+      case SubActionType.EXECUTE_CODE:
+        return (
+          <>
+            <div>
+              <label className="block text-sm font-medium mb-1">Language</label>
+              <input
+                type="text"
+                value={formData.language || 'javascript'}
+                onChange={(e) => setFormData({ ...formData, language: e.target.value || 'javascript' })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                placeholder="javascript"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <input
+                type="text"
+                value={formData.description || ''}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                placeholder="Programmable extension block"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Timeout (ms)</label>
+              <input
+                type="number"
+                min="100"
+                value={formData.timeoutMs || 10000}
+                onChange={(e) => setFormData({ ...formData, timeoutMs: parseInt(e.target.value, 10) })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                title="Execution timeout in milliseconds"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Save Result To Variable</label>
+              <input
+                type="text"
+                value={formData.saveToVariable || ''}
+                onChange={(e) => setFormData({ ...formData, saveToVariable: e.target.value, saveResultToVariable: Boolean(e.target.value.trim()) })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                placeholder="resultVariable"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Code</label>
+              <textarea
+                value={formData.code || ''}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 font-mono text-sm"
+                rows={10}
+                placeholder={'await reply("Hello chat", { as: "bot" });\nreturn { ok: true };'}
+              />
+            </div>
           </>
         );
 

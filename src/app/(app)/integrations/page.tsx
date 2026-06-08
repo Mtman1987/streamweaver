@@ -519,7 +519,13 @@ export default function IntegrationsPage() {
             </div>
             <Button
               size="sm"
-              onClick={() => { obsSettings.connected ? setObsSettings({ ...obsSettings, connected: false }) : void testAndSaveObs(); }}
+              onClick={() => {
+                if (obsSettings.connected) {
+                  setObsSettings({ ...obsSettings, connected: false });
+                  return;
+                }
+                void testAndSaveObs();
+              }}
               disabled={obsSettings.busy}
               variant={obsSettings.connected ? "ghost" : "default"}
             >
@@ -593,7 +599,7 @@ export default function IntegrationsPage() {
                   id="callback-url"
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
-                  placeholder={`${appOrigin}/auth/twitch/callback?code=...`}
+                  placeholder={`${appOrigin}/api/auth/twitch/callback?code=...`}
                   className="h-9"
                 />
               </div>

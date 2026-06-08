@@ -11,6 +11,8 @@ import { getBrowserWebSocketUrl } from "@/lib/ws-config";
 import { getClientTenantId } from "@/lib/client-tenant";
 import { applySavedSink } from "@/services/audio-sink";
 
+const AUTO_SEND_STORAGE_KEY = "streamweaver.voiceReply.autoSend";
+
 type VoiceReplyRequest = {
   requestId: string;
   tenantId?: string;
@@ -123,6 +125,22 @@ export default function VoiceReplyPage() {
 
   const updateCurrent = (patch: Partial<RequestState>) => {
     setCurrent((prev) => (prev ? { ...prev, ...patch } : prev));
+  };
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(AUTO_SEND_STORAGE_KEY);
+      if (saved === "true" || saved === "false") {
+        setAutoSendDefault(saved === "true");
+      }
+    } catch {}
+  }, []);
+
+  const setAutoSendPreference = (value: boolean) => {
+    setAutoSendDefault(value);
+    try {
+      window.localStorage.setItem(AUTO_SEND_STORAGE_KEY, String(value));
+    } catch {}
   };
 
   const sendToChat = async (text: string, sendAs: "bot" | "broadcaster") => {
@@ -268,7 +286,7 @@ export default function VoiceReplyPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Voice Reply</h1>
-          <p className="text-sm text-muted-foreground">Keep this page open to let workflows read chat privately and capture spoken replies.</p>
+          <p className="text-sm text-muted-foreground">Use only for workflows that contain a Voice Reply Prompt step.</p>
         </div>
         <Badge variant={connected ? "default" : "secondary"}>{connected ? "Connected" : "Disconnected"}</Badge>
       </div>
@@ -277,17 +295,33 @@ export default function VoiceReplyPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Radio className="h-5 w-5" />
-            Workflow Listener
+            Workflow voice capture
           </CardTitle>
-          <CardDescription>Private TTS uses the saved audio output from Dashboard audio routing.</CardDescription>
+          <CardDescription>
+            When a workflow asks for a spoken reply, this page plays the private readback TTS, records your microphone, transcribes it, then sends or waits for approval.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-3 rounded-md border bg-muted/25 p-3 text-sm md:grid-cols-3">
+            <div>
+              <div className="font-medium">1. Trigger</div>
+              <div className="mt-1 text-xs text-muted-foreground">A workflow reaches a Voice Reply Prompt step.</div>
+            </div>
+            <div>
+              <div className="font-medium">2. Capture</div>
+              <div className="mt-1 text-xs text-muted-foreground">TTS plays privately, then the mic records your response.</div>
+            </div>
+            <div>
+              <div className="font-medium">3. Send</div>
+              <div className="mt-1 text-xs text-muted-foreground">The transcription sends automatically or waits here.</div>
+            </div>
+          </div>
           <div className="flex items-center justify-between rounded-md border px-3 py-2">
             <div>
               <div className="text-sm font-medium">Automatic Send</div>
-              <div className="text-xs text-muted-foreground">When off, transcribed replies wait here for approval.</div>
+              <div className="text-xs text-muted-foreground">Saved in this browser. When off, transcribed replies wait here for approval.</div>
             </div>
-            <Switch checked={autoSendDefault} onCheckedChange={setAutoSendDefault} />
+            <Switch checked={autoSendDefault} onCheckedChange={setAutoSendPreference} />
           </div>
 
           {current ? (
@@ -324,7 +358,9 @@ export default function VoiceReplyPage() {
               {current.error ? <div className="text-sm text-destructive">{current.error}</div> : null}
             </div>
           ) : (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">Waiting for a workflow voice reply request.</div>
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No voice reply request is active. If this never changes, the selected workflow probably does not contain a Voice Reply Prompt step.
+            </div>
           )}
         </CardContent>
       </Card>

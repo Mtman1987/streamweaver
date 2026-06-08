@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bot, ExternalLink, Flame, RefreshCw, Sparkles } from "lucide-react";
+import { Bot, CheckCircle2, ExternalLink, Flame, RefreshCw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type HeaderMeta = {
@@ -39,6 +39,12 @@ const headerMeta: Record<string, HeaderMeta> = {
   "/active-commands": {
     title: "Workflows",
     description: "Connect commands or events to action flows, then review and test the complete automation.",
+  },
+  "/chat": {
+    title: "Messaging",
+    description: "Read Discord, watch Twitch chat, and send typed or dictated messages.",
+    primaryHref: "/commands",
+    primaryLabel: "Build commands",
   },
   "/integrations": {
     title: "Integrations",
@@ -76,6 +82,12 @@ export default function Header() {
     }
     if (pathname.startsWith("/actions")) {
       return headerMeta["/actions"];
+    }
+    if (pathname.startsWith("/active-commands")) {
+      return headerMeta["/active-commands"];
+    }
+    if (pathname.startsWith("/chat")) {
+      return headerMeta["/chat"];
     }
     if (pathname.startsWith("/integrations")) {
       return headerMeta["/integrations"];
@@ -137,24 +149,32 @@ export default function Header() {
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">{meta.title}</h1>
               <Badge variant="outline" className="border-accent/40 bg-accent/10 text-accent">
                 {healthLabel}
               </Badge>
+              <Badge variant="outline" className="hidden border-border/80 bg-card/70 text-muted-foreground md:inline-flex">
+                <Bot className="mr-1 h-3.5 w-3.5 text-accent" />
+                AI ready
+              </Badge>
+              <div className="hidden md:block">
+                <GlobalActivityPulse />
+              </div>
+              <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">{meta.title}</h1>
             </div>
             <p className="mt-0.5 max-w-2xl truncate text-sm text-muted-foreground">{meta.description}</p>
           </div>
         </div>
 
         <div className="hidden items-center gap-2 md:flex">
-          <GlobalActivityPulse />
-          <Badge variant="outline" className="border-border/80 bg-card/70 text-muted-foreground">
-            <Bot className="mr-1 h-3.5 w-3.5 text-accent" />
-            AI ready
-          </Badge>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
             <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
             Refresh
+          </Button>
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <Link href="/dashboard#setup">
+              <CheckCircle2 className="h-4 w-4" />
+              Review setup
+            </Link>
           </Button>
           {meta.primaryHref ? (
             <Button asChild size="sm" className="gap-2">

@@ -24,6 +24,7 @@ interface AutomationAIChatProps {
   onCodeGenerated?: (code: string, language: string) => void;
   selectedCommandId?: string | null;
   userName?: string;
+  mode?: 'new' | 'edit';
 }
 
 export default function AutomationAIChat({
@@ -31,13 +32,14 @@ export default function AutomationAIChat({
   onAutomationGenerated,
   onCodeGenerated,
   selectedCommandId = null,
-  userName = 'User'
+  userName = 'User',
+  mode = 'new',
 }: AutomationAIChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
       role: 'assistant',
-      content: 'Hi! I\'m your StreamWeaver AI assistant. I can help you draft and refine workflows before saving them.\n\nDescribe the command, trigger, or behavior you want. After I draft it, load it into the workflow editor, review the command/action steps, then tell me what to change if it is not quite right.\n\nTry: "Generate a workflow that rewards points for !rps" or "Create an automation that thanks new followers"',
+      content: 'I can draft StreamWeaver workflows from plain English.\n\nDescribe the command, trigger, or behavior you want. I will turn it into triggers + steps you can review, edit, and save.\n\nTry: "make !go start a 5 minute countdown", "create !boop to play a sound then run another action", or "draft a mod-only chat workflow that uses a programmable code block".',
       timestamp: new Date()
     }
   ]);
@@ -73,6 +75,7 @@ export default function AutomationAIChat({
     if (
       lower.includes('workflow') ||
       lower.includes('automation') ||
+      lower.includes('command') ||
       lower.includes('create automation') ||
       lower.includes('build automation') ||
       lower.includes('make automation') ||
@@ -81,6 +84,9 @@ export default function AutomationAIChat({
       lower.includes('build workflow') ||
       lower.includes('create action') ||
       lower.includes('build action') ||
+      lower.includes('make !') ||
+      lower.includes('create !') ||
+      lower.includes('when someone types !') ||
       lower.includes('when') && (lower.includes('then') || lower.includes('do'))
     ) {
       return 'build';
@@ -108,14 +114,16 @@ export default function AutomationAIChat({
       let assistantMessage: Message;
       
       if (intent === 'build' || intent === 'code') {
+        const editCurrentWorkflow = mode === 'edit';
         const resp = await fetch('/api/automation/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: input,
-            currentWorkflow,
-            selectedCommandId,
+            currentWorkflow: editCurrentWorkflow ? currentWorkflow : undefined,
+            selectedCommandId: editCurrentWorkflow ? selectedCommandId : null,
             userName,
+            editCurrentWorkflow,
           }),
         });
 
@@ -325,18 +333,18 @@ export default function AutomationAIChat({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setInput("Create an automation that thanks new followers")}
+            onClick={() => setInput("make !go start a 5 minute countdown")}
             disabled={isProcessing}
           >
-            Example: Thank followers
+            Example: Countdown
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setInput("Generate C# code to get the current time")}
+            onClick={() => setInput("make !boop play a sound and then run another action")}
             disabled={isProcessing}
           >
-            Example: Generate code
+            Example: Command flow
           </Button>
         </div>
       </CardContent>

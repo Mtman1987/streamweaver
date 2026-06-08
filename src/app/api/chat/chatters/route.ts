@@ -66,7 +66,35 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    return apiOk({ chatters: data.data || [] });
+    const chatters = Array.isArray(data.data) ? data.data : [];
+    const userIds = chatters.map((chatter: any) => String(chatter.user_id || '').trim()).filter(Boolean);
+
+    const avatarsById = new Map<string, string>();
+    for (let index = 0; index < userIds.length; index += 100) {
+      const chunk = userIds.slice(index, index + 100);
+      if (chunk.length === 0) continue;
+      const usersUrl = `https://api.twitch.tv/helix/users?${chunk.map((id: string) => `id=${encodeURIComponent(id)}`).join('&')}`;
+      const usersResponse = await fetch(usersUrl, {
+        headers: {
+          Authorization: `Bearer ${broadcasterToken}`,
+          'Client-ID': clientId,
+        },
+      });
+      if (!usersResponse.ok) continue;
+      const usersData = await usersResponse.json().catch(() => ({ data: [] }));
+      for (const user of Array.isArray(usersData.data) ? usersData.data : []) {
+        if (user?.id && user?.profile_image_url) {
+          avatarsById.set(String(user.id), String(user.profile_image_url));
+        }
+      }
+    }
+
+    return apiOk({
+      chatters: chatters.map((chatter: any) => ({
+        ...chatter,
+        avatar: avatarsById.get(String(chatter.user_id || '')) || null,
+      })),
+    });
 
   } catch (error) {
     console.error('[Chatters API] Error:', error);

@@ -62,6 +62,8 @@ const TENANT_SUBDIRS = ['tokens', 'config', 'data', 'actions', 'commands', 'logs
  */
 export async function bootstrapTenant(twitchId: string, username: string): Promise<void> {
   const root = tenantRoot(twitchId);
+  const tenantCommandsDir = path.join(root, 'commands');
+  const tenantActionsDir = path.join(root, 'actions');
 
   // Create all subdirectories
   for (const dir of TENANT_SUBDIRS) {
@@ -123,32 +125,30 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
     }
   }
 
-  // Copy root commands as starter set for new tenant
-  const rootCommandsDir = path.resolve(process.cwd(), 'commands');
-  const tenantCommandsDir = path.join(root, 'commands');
-  if (fs.existsSync(rootCommandsDir)) {
-    const files = await fsp.readdir(rootCommandsDir);
-    for (const file of files) {
-      if (!file.endsWith('.json')) continue;
-      const dest = path.join(tenantCommandsDir, file);
-      if (!fs.existsSync(dest)) {
-        await fsp.copyFile(path.join(rootCommandsDir, file), dest);
-      }
-    }
-  }
+  // Seed default starter packages instead of copying every raw root command/action.
+  // This keeps first-run tenants aligned with the curated community library.
+  try {
+    const existingCommandFiles = fs.existsSync(tenantCommandsDir)
+      ? (await fsp.readdir(tenantCommandsDir)).filter((file) => file.endsWith('.json') && file !== '_metadata.json')
+      : [];
+    const existingActionFiles = fs.existsSync(tenantActionsDir)
+      ? (await fsp.readdir(tenantActionsDir)).filter((file) => file.endsWith('.json') && file !== '_metadata.json')
+      : [];
 
-  // Copy root actions as starter set for new tenant
-  const rootActionsDir = path.resolve(process.cwd(), 'actions');
-  const tenantActionsDir = path.join(root, 'actions');
-  if (fs.existsSync(rootActionsDir)) {
-    const files = await fsp.readdir(rootActionsDir);
-    for (const file of files) {
-      if (!file.endsWith('.json')) continue;
-      const dest = path.join(tenantActionsDir, file);
-      if (!fs.existsSync(dest)) {
-        await fsp.copyFile(path.join(rootActionsDir, file), dest);
+    if (existingCommandFiles.length === 0 && existingActionFiles.length === 0) {
+      const flowPackages = await import('./flow-packages');
+      const published = await flowPackages.listPublishedFlowPackages();
+      const starterPackages =
+        published.filter(flowPackages.isDefaultStarterFlowPackage).length > 0
+          ? published.filter(flowPackages.isDefaultStarterFlowPackage)
+          : (await flowPackages.listTenantFlowPackages()).filter(flowPackages.isDefaultStarterFlowPackage);
+
+      for (const pkg of starterPackages) {
+        await flowPackages.importFlowPackage(pkg, twitchId);
       }
     }
+  } catch (error) {
+    console.warn(`[Tenant] Failed to seed starter flow packages for ${twitchId}:`, error);
   }
 
   // Copy root config files so redeems, OBS, etc. work out of the box

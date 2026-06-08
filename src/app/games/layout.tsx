@@ -33,7 +33,7 @@ export default function GamesLayout({
 
   const handleTwitchLogin = () => {
     const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
-    const redirectUri = `${window.location.origin}/auth/twitch/callback`;
+    const redirectUri = `${window.location.origin}/api/auth/twitch/callback`;
     const scope = 'user:read:email';
     const state = 'games'; // Identify this as games login
     

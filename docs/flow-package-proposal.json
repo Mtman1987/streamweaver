@@ -1,0 +1,3508 @@
+{
+  "generatedAt": "2026-06-07T16:09:43.125Z",
+  "schemaVersion": 1,
+  "manifestShape": {
+    "packageId": "string",
+    "kind": "command_flow | action_flow | support_flow",
+    "installUnit": "flow",
+    "sourceModule": "string",
+    "freezeTier": "starter | built_in_module | official_library | internal_only | legacy_hold",
+    "visibility": "default | advanced | hidden",
+    "collection": "string",
+    "commandFiles": "string[]",
+    "actionFiles": "string[]",
+    "dependencies": "string[]",
+    "matchingNotes": "object[]",
+    "notes": "string[]"
+  },
+  "summary": {
+    "total": 141,
+    "byKind": [
+      [
+        "action_flow",
+        73
+      ],
+      [
+        "command_flow",
+        68
+      ]
+    ],
+    "byTier": [
+      [
+        "built_in_module",
+        5
+      ],
+      [
+        "legacy_hold",
+        11
+      ],
+      [
+        "official_library",
+        67
+      ],
+      [
+        "starter",
+        58
+      ]
+    ],
+    "byCollection": [
+      [
+        "Redeems",
+        23
+      ],
+      [
+        "Core Utility",
+        18
+      ],
+      [
+        "Economy",
+        17
+      ],
+      [
+        "Social",
+        17
+      ],
+      [
+        "Events",
+        16
+      ],
+      [
+        "Deprecated",
+        8
+      ],
+      [
+        "Misc",
+        8
+      ],
+      [
+        "Counters",
+        6
+      ],
+      [
+        "Pokemon",
+        5
+      ],
+      [
+        "Welcome",
+        5
+      ],
+      [
+        "Advanced",
+        3
+      ],
+      [
+        "Games",
+        3
+      ],
+      [
+        "Hidden",
+        3
+      ],
+      [
+        "Overlays",
+        3
+      ],
+      [
+        "Integrations",
+        2
+      ],
+      [
+        "AI",
+        1
+      ],
+      [
+        "Clips",
+        1
+      ],
+      [
+        "Music",
+        1
+      ],
+      [
+        "Utility",
+        1
+      ]
+    ]
+  },
+  "packages": [
+    {
+      "packageId": "flow.accept",
+      "kind": "command_flow",
+      "name": "!accept",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/accept_67e784a0-1559-46f2-8102-8380b596374c.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.addpoints",
+      "kind": "command_flow",
+      "name": "!addPoints",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/StreamUP_Currency___Add_Points_8a8398ba-7401-4406-a2d8-07b1bfb4070c.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.addtoall",
+      "kind": "command_flow",
+      "name": "!addToAll",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/StreamUP_Currency___Add_To_All_3e628948-1694-40d4-b939-ca7b60a3ae8e.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.athena-voice-bic",
+      "kind": "action_flow",
+      "name": "Athena Voice Bic",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Athena_Voice_Bic_athena-bic.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.ban-in-game-action",
+      "kind": "action_flow",
+      "name": "ban in game action",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/ban_in_game_action_ed6b21b2-2b4b-481b-9b96-56787dcdeeba.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.bic",
+      "kind": "command_flow",
+      "name": "!bic",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/bic-lighter-command.json"
+      ],
+      "actionFiles": [
+        "actions/Bic_Lighter_Tracker_bic-lighter-action.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Bic_Lighter_Tracker_bic-lighter-action.json",
+          "reason": "direct-actionId"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.bird",
+      "kind": "command_flow",
+      "name": "(?i).*@?word.*",
+      "installUnit": "flow",
+      "sourceModule": "secret-legacy",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Hidden",
+      "commandFiles": [
+        "commands/__i_____word___30b93edd-f4c3-48a1-be27-a77548d0df86.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": []
+    },
+    {
+      "packageId": "flow.bitsleader",
+      "kind": "command_flow",
+      "name": "!bitsleader",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/_bitsleader_38355d88-4a3e-4026-93b2-cf0fd79bb525.json"
+      ],
+      "actionFiles": [
+        "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+        "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json",
+          "reason": "economy-leader-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.bleader",
+      "kind": "command_flow",
+      "name": "!bleader",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/badgeleader_61d121f1-cfd7-43b2-91b5-061ac40f9195.json"
+      ],
+      "actionFiles": [
+        "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+        "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json",
+          "reason": "economy-leader-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.boop",
+      "kind": "command_flow",
+      "name": "!boop",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_boop_b400746d-6213-4bfa-8119-17288be94c98.json"
+      ],
+      "actionFiles": [
+        "actions/_boop_d10577cc-1532-4a0d-a729-e0387d25bef9.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_boop_d10577cc-1532-4a0d-a729-e0387d25bef9.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.bot-name",
+      "kind": "command_flow",
+      "name": "athenacall",
+      "installUnit": "flow",
+      "sourceModule": "ai-bot",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "AI",
+      "commandFiles": [
+        "commands/athenacall_67ddf22f-8e2c-4e9a-963b-63424b5dc6a5.json",
+        "commands/Chat_Call_726c4151-cd69-40f9-9230-be89ccab47c9.json",
+        "commands/chat_call_bot_c33c0ff3-a81b-450c-a771-1ec9e9b37020.json"
+      ],
+      "actionFiles": [
+        "actions/Athena_Voice_Shoutout_athena-shoutout.json",
+        "actions/ChatGPT_Answers_v2_c40af3de-bc07-4336-bafd-88a4e43c92ea.json",
+        "actions/ChatGPT_Set_Up_UI_V2_3e947b44-40ac-4c49-b828-7897d97a7f30.json",
+        "actions/ChatGPT_Shoutouts_v2_70dae80e-f65a-479a-aebc-8fd322097e17.json",
+        "actions/ChatGPT_Voice_V2_5ffa638b-1865-4937-a002-f9e5be3dedb1.json",
+        "actions/ChatGPT_Whisper_V2_99ed5b7b-03a5-4fd4-b7c7-f06c43bae7e0.json",
+        "actions/ChatGPT_Wipe_V2_a9de7f6c-3e8b-462c-bb7c-4395f997c5fb.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Athena_Voice_Shoutout_athena-shoutout.json",
+          "reason": "ai-module-cluster"
+        },
+        {
+          "action": "actions/ChatGPT_Answers_v2_c40af3de-bc07-4336-bafd-88a4e43c92ea.json",
+          "reason": "ai-module-cluster"
+        },
+        {
+          "action": "actions/ChatGPT_Set_Up_UI_V2_3e947b44-40ac-4c49-b828-7897d97a7f30.json",
+          "reason": "ai-module-cluster"
+        },
+        {
+          "action": "actions/ChatGPT_Shoutouts_v2_70dae80e-f65a-479a-aebc-8fd322097e17.json",
+          "reason": "ai-module-cluster"
+        },
+        {
+          "action": "actions/ChatGPT_Voice_V2_5ffa638b-1865-4937-a002-f9e5be3dedb1.json",
+          "reason": "ai-module-cluster"
+        },
+        {
+          "action": "actions/ChatGPT_Whisper_V2_99ed5b7b-03a5-4fd4-b7c7-f06c43bae7e0.json",
+          "reason": "ai-module-cluster"
+        },
+        {
+          "action": "actions/ChatGPT_Wipe_V2_a9de7f6c-3e8b-462c-bb7c-4395f997c5fb.json",
+          "reason": "ai-module-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.brb",
+      "kind": "command_flow",
+      "name": "!brb",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_brb_096f341b-dfb4-4904-aaa6-101b875eaccd.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.brb-video-player",
+      "kind": "action_flow",
+      "name": "!brb Video player",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_brb_Video_player_11758377-4e9e-490a-bb09-49971439b4dd.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.check-tag-passes",
+      "kind": "action_flow",
+      "name": "Check Tag Passes",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/check-tag-passes.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.cheer",
+      "kind": "action_flow",
+      "name": "Cheer",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Cheer_72073798-50e2-4706-9aeb-6726a50c7459.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.cleader",
+      "kind": "command_flow",
+      "name": "!cleader",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/cardleader_74129be4-7622-4679-9f7a-623090be261d.json"
+      ],
+      "actionFiles": [
+        "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+        "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json",
+          "reason": "economy-leader-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.clip",
+      "kind": "command_flow",
+      "name": "!clip",
+      "installUnit": "flow",
+      "sourceModule": "clips",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Clips",
+      "commandFiles": [
+        "commands/Create_Twitch_Clip_b98136dc-afb2-43d1-82d5-e394ebc7e220.json"
+      ],
+      "actionFiles": [
+        "actions/Twitch_Clip_Last_30_Seconds_1bddf228-0d87-4592-bf83-4dcdf677ccb4.json",
+        "actions/Twitch_Clip_New_Clip_Found_94ad87ff-7b7f-47ac-87c1-fce5d671785b.json",
+        "actions/Twitch_Clip_Scan_for_New_Clips_eef25652-3bb1-4a13-81d7-eff5cc81f1a0.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Twitch_Clip_Last_30_Seconds_1bddf228-0d87-4592-bf83-4dcdf677ccb4.json",
+          "reason": "clips-cluster"
+        },
+        {
+          "action": "actions/Twitch_Clip_New_Clip_Found_94ad87ff-7b7f-47ac-87c1-fce5d671785b.json",
+          "reason": "clips-cluster"
+        },
+        {
+          "action": "actions/Twitch_Clip_Scan_for_New_Clips_eef25652-3bb1-4a13-81d7-eff5cc81f1a0.json",
+          "reason": "clips-cluster"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.coinflip",
+      "kind": "command_flow",
+      "name": "!coinflip",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/_coinflip_25623189-d5aa-4f04-943a-39f2c5a75066.json"
+      ],
+      "actionFiles": [
+        "actions/_CCG____Classic_Chat_Gamble_defa9351-687e-4bc9-a24b-1dc17b1360ba.json",
+        "actions/_CCG____Cooldown_Message_8df1375b-bbcc-4d4a-aa50-07f990e76e77.json",
+        "actions/_roll_4d8b4226-4775-4725-8736-89c1efaaed96.json",
+        "actions/duel_ff8d9520-8ea7-41fc-a04c-9a859445734f.json",
+        "actions/shop_00274d45-00bf-4cbc-8eb3-12d2ef42411a.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_CCG____Classic_Chat_Gamble_defa9351-687e-4bc9-a24b-1dc17b1360ba.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/_CCG____Cooldown_Message_8df1375b-bbcc-4d4a-aa50-07f990e76e77.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/_roll_4d8b4226-4775-4725-8736-89c1efaaed96.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/duel_ff8d9520-8ea7-41fc-a04c-9a859445734f.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/shop_00274d45-00bf-4cbc-8eb3-12d2ef42411a.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-gamble-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.commands",
+      "kind": "command_flow",
+      "name": "!commands",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_commands_23a2a0a4-ae2e-4b68-89ee-7859f6316dcf.json",
+        "commands/_commands_system_library.json"
+      ],
+      "actionFiles": [
+        "actions/_commands_e081c847-adcb-4878-9308-0605dac4ed3c.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_commands_e081c847-adcb-4878-9308-0605dac4ed3c.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.created",
+      "kind": "action_flow",
+      "name": "!created",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_created_b7c602ac-acc7-4abe-812a-652547f1040e.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.cuddle",
+      "kind": "command_flow",
+      "name": "!cuddle",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_cuddle_074667bb-6402-4aa7-9420-0e9477339d68.json"
+      ],
+      "actionFiles": [
+        "actions/_cuddle_66509f1a-b44f-48d6-91b4-7f77f1bd4403.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_cuddle_66509f1a-b44f-48d6-91b4-7f77f1bd4403.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-ban-in-game-item",
+      "kind": "action_flow",
+      "name": "Currency System • ban in game item",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___ban_in_game_item_9b4052e1-117b-4faa-abd1-f5acac25f28f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-blerps",
+      "kind": "action_flow",
+      "name": "Currency System • blerps",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___blerps_a799c214-5e95-4f5d-bd2f-5fc85e5ad995.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-dance-party",
+      "kind": "action_flow",
+      "name": "Currency System • dance party ",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___dance_party__97ef2856-ba34-433c-abd8-519c0f97091e.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-drop-it",
+      "kind": "action_flow",
+      "name": "Currency System • drop it",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___drop_it_3d2f6845-f888-4042-9dd5-25c1f6e92bfa.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-events",
+      "kind": "action_flow",
+      "name": "Currency System • Events",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___Events_1de313a9-a737-4f0d-ae2c-b51054e23065.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-first",
+      "kind": "action_flow",
+      "name": "Currency System • first",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___first_1f502613-a573-4ce7-ae9d-f14deb18cfe2.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-hydrate",
+      "kind": "action_flow",
+      "name": "Currency System • hydrate",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___hydrate_cae578b8-652e-4c0d-949b-1767f9e07d16.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-no-cursing",
+      "kind": "action_flow",
+      "name": "Currency System •no cursing ",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System__no_cursing__4ec62407-e4b1-412a-a365-e3bb55e375e0.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-smoke",
+      "kind": "action_flow",
+      "name": "Currency System •smoke",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System__smoke_beee5882-43e6-4797-91c0-bd5d6ed0f8c9.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.currency-system-stretch",
+      "kind": "action_flow",
+      "name": "Currency System • stretch",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Currency_System___stretch_6eb1c49d-eee7-417e-96a6-4e7837ef3751.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.dance",
+      "kind": "command_flow",
+      "name": "!dance",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_dance_1a425b0c-5343-412a-bb19-65dcf9980aff.json"
+      ],
+      "actionFiles": [
+        "actions/_dance_567d1097-5cee-4d49-bcda-277e45ac4b11.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_dance_567d1097-5cee-4d49-bcda-277e45ac4b11.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.dance-party",
+      "kind": "action_flow",
+      "name": "Dance Party",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Dance_Party_1a1f3af0-7159-46ab-8eac-9af9d9b59d2d.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.date",
+      "kind": "action_flow",
+      "name": "!date",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_date_29b4a7ba-088c-49be-8434-3f96e44ed234.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.deathcounter",
+      "kind": "action_flow",
+      "name": "Deathcounter",
+      "installUnit": "flow",
+      "sourceModule": "deathcounter",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Counters",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Deathcounter_ab4bc8f3-2403-48ed-a4d3-f93b81b587aa.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.deathcounter-add",
+      "kind": "action_flow",
+      "name": "Deathcounter-Add",
+      "installUnit": "flow",
+      "sourceModule": "deathcounter",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Counters",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Deathcounter_Add_c06c2f79-2d1f-4b40-8a36-f02b49fa2854.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.deathcounter-re-set-without-changing-total",
+      "kind": "action_flow",
+      "name": "Deathcounter-(re)Set without changing total",
+      "installUnit": "flow",
+      "sourceModule": "deathcounter",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Counters",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Deathcounter__re_Set_without_changing_total_b38bb678-788d-4e8d-accf-1f35a83c94ee.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.deathcounter-rem",
+      "kind": "action_flow",
+      "name": "Deathcounter-Rem",
+      "installUnit": "flow",
+      "sourceModule": "deathcounter",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Counters",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Deathcounter_Rem_2952e220-bca9-49cb-897f-c3544bd3b914.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.deathcounter-reset-total-deaths",
+      "kind": "action_flow",
+      "name": "Deathcounter-Reset-Total-Deaths",
+      "installUnit": "flow",
+      "sourceModule": "deathcounter",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Counters",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Deathcounter_Reset_Total_Deaths_e349a5fe-2bd3-44bf-933d-8f23e9772cf8.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.deathcounter-set",
+      "kind": "action_flow",
+      "name": "Deathcounter-Set",
+      "installUnit": "flow",
+      "sourceModule": "deathcounter",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Counters",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Deathcounter_Set_19ff5fd3-8bf5-4f05-b220-2306a0c299cc.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.discord",
+      "kind": "command_flow",
+      "name": "!discord",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_discord_59eeffda-18ca-480e-a8c2-2b3c12d40361.json"
+      ],
+      "actionFiles": [
+        "actions/_discord_1f4bd7d0-166a-430b-84ad-e0794a4316a8.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_discord_1f4bd7d0-166a-430b-84ad-e0794a4316a8.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.drop-it",
+      "kind": "action_flow",
+      "name": "drop it",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/drop_it_28485b3a-8633-4feb-8097-97e6946e9166.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.earn-tag-pass-bits",
+      "kind": "action_flow",
+      "name": "Earn Tag Pass - Bits",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/tag-pass-bits.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.earn-tag-pass-follow",
+      "kind": "action_flow",
+      "name": "Earn Tag Pass - Follow",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/tag-pass-follow.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.earn-tag-pass-raid",
+      "kind": "action_flow",
+      "name": "Earn Tag Pass - Raid",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/tag-pass-raid.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.earn-tag-pass-subscribe",
+      "kind": "action_flow",
+      "name": "Earn Tag Pass - Subscribe",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/tag-pass-subscribe.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.emergency",
+      "kind": "action_flow",
+      "name": "!emergency",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_emergency_968ab300-ddbb-4f83-8a59-ddb33a589366.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.emergencyover",
+      "kind": "action_flow",
+      "name": "!emergencyover",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_emergencyover_ce5bef60-48d8-4a57-be91-e6b7dcf0f92e.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.first",
+      "kind": "action_flow",
+      "name": "first",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/first_1672ea4b-4808-4a2e-93cf-75aee40a4b0c.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.fistbump",
+      "kind": "command_flow",
+      "name": "!fistbump",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_fistbump_acbce1ae-4458-4f92-99d9-28f22fe93d7b.json"
+      ],
+      "actionFiles": [
+        "actions/_fistbump_4b1d3846-27b8-41ca-813d-c64848128b0e.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_fistbump_4b1d3846-27b8-41ca-813d-c64848128b0e.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.followage",
+      "kind": "command_flow",
+      "name": "!followage",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [
+        "commands/_followage_5a4b779f-be8e-434b-b479-d9a142fec60b.json"
+      ],
+      "actionFiles": [
+        "actions/_followage_2941e0e5-121d-4562-b370-6337a1077f3c.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_followage_2941e0e5-121d-4562-b370-6337a1077f3c.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.followed",
+      "kind": "command_flow",
+      "name": "!followed",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [
+        "commands/_followed_7678cd5f-e860-4e9e-9aa7-392a2681de81.json"
+      ],
+      "actionFiles": [
+        "actions/_followed_db80bb77-e35d-47ed-9caa-50941d7bb7eb.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_followed_db80bb77-e35d-47ed-9caa-50941d7bb7eb.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.followers",
+      "kind": "command_flow",
+      "name": "!followers",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [
+        "commands/_followers_f6c7139e-0100-47be-b051-0e298d661d54.json"
+      ],
+      "actionFiles": [
+        "actions/_followers_0f1dac70-025f-4005-a317-6071755f2ac6.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_followers_0f1dac70-025f-4005-a317-6071755f2ac6.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.gamble",
+      "kind": "command_flow",
+      "name": "!gamble",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/_CCG_____gamble__amount__df4181fc-651f-4fc3-98ea-4dec9b242836.json"
+      ],
+      "actionFiles": [
+        "actions/_CCG____Classic_Chat_Gamble_defa9351-687e-4bc9-a24b-1dc17b1360ba.json",
+        "actions/_CCG____Cooldown_Message_8df1375b-bbcc-4d4a-aa50-07f990e76e77.json",
+        "actions/_roll_4d8b4226-4775-4725-8736-89c1efaaed96.json",
+        "actions/duel_ff8d9520-8ea7-41fc-a04c-9a859445734f.json",
+        "actions/shop_00274d45-00bf-4cbc-8eb3-12d2ef42411a.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_CCG____Classic_Chat_Gamble_defa9351-687e-4bc9-a24b-1dc17b1360ba.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/_CCG____Cooldown_Message_8df1375b-bbcc-4d4a-aa50-07f990e76e77.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/_roll_4d8b4226-4775-4725-8736-89c1efaaed96.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/duel_ff8d9520-8ea7-41fc-a04c-9a859445734f.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/shop_00274d45-00bf-4cbc-8eb3-12d2ef42411a.json",
+          "reason": "economy-gamble-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-gamble-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.gift-bomb",
+      "kind": "action_flow",
+      "name": "Gift Bomb",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Gift_Bomb_1ca91c15-f039-46f9-944b-507b5efd6134.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.gift-sub",
+      "kind": "action_flow",
+      "name": "Gift Sub",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Gift_Sub_f10c2b71-18d9-47f6-a42a-46c2c33ebda5.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.givepoints",
+      "kind": "command_flow",
+      "name": "!givepoints",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/_givepoints_49d8111b-17bb-45a9-8df0-7f353cbcc464.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.headpat",
+      "kind": "command_flow",
+      "name": "!headpat",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_headpat_d096e3e2-5842-4780-b7b4-083707057a17.json"
+      ],
+      "actionFiles": [
+        "actions/_headpat_9fff8127-92ec-42c3-a50a-d203a66ff26c.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_headpat_9fff8127-92ec-42c3-a50a-d203a66ff26c.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.highfive",
+      "kind": "command_flow",
+      "name": "!highfive",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_highfive_cb32064d-4701-4c72-8c92-a54d1b3c536b.json"
+      ],
+      "actionFiles": [
+        "actions/_highfive_d16b8e9b-e970-483e-8f64-cdfb70247a9b.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_highfive_d16b8e9b-e970-483e-8f64-cdfb70247a9b.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.hover",
+      "kind": "command_flow",
+      "name": "!hover",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_hover_9024b57d-bc5d-442e-a6e8-df7cc8147dc4.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.hug",
+      "kind": "command_flow",
+      "name": "!hug",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_hug_ab5c6463-68ac-4a7a-b4e6-a5d86f7ff8fe.json"
+      ],
+      "actionFiles": [
+        "actions/_hug_27874734-e3ed-4c03-9b11-97b3594d41c9.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_hug_27874734-e3ed-4c03-9b11-97b3594d41c9.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.hydrate",
+      "kind": "command_flow",
+      "name": "!hydrate",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [
+        "commands/_hydrate_9168d32a-f201-4c5f-9d46-00d5623540a3.json"
+      ],
+      "actionFiles": [
+        "actions/_hydrate_ae49f42c-11fd-4419-b204-587811d2f17a.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_hydrate_ae49f42c-11fd-4419-b204-587811d2f17a.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.instagram",
+      "kind": "command_flow",
+      "name": "!instagram",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_instagram_079079a6-2d58-430c-a119-683439d7787a.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.kick-events",
+      "kind": "action_flow",
+      "name": "Kick Events",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Kick_Events_6d3145b8-b3dc-4891-840f-1bbfe1a9d043.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.kickbot",
+      "kind": "action_flow",
+      "name": "KickBot",
+      "installUnit": "flow",
+      "sourceModule": "kick",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Integrations",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/KickBot_5aba7b13-dded-4bbd-a6ea-3a8342aa334b.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.leader",
+      "kind": "command_flow",
+      "name": "!leader",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/_leader_0f766f51-c54e-420a-aad2-48a81f472236.json"
+      ],
+      "actionFiles": [
+        "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+        "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json",
+          "reason": "economy-leader-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.logpulledcards-cs",
+      "kind": "action_flow",
+      "name": "LogPulledCards.cs",
+      "installUnit": "flow",
+      "sourceModule": "pokemon",
+      "freezeTier": "built_in_module",
+      "visibility": "default",
+      "collection": "Pokemon",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/LogPulledCards_cs_6df086bc-06a9-480b-a97c-ec8462827065.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Pokemon stays built-in for now because it is interconnected and universally configured."
+      ]
+    },
+    {
+      "packageId": "flow.love",
+      "kind": "command_flow",
+      "name": "!love",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_love_0d3a444c-72f0-44f2-bde4-1efd04603c10.json"
+      ],
+      "actionFiles": [
+        "actions/_love_6a0dd10a-cd2c-4a2a-91df-ebcbfd1a3d47.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_love_6a0dd10a-cd2c-4a2a-91df-ebcbfd1a3d47.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.lurk",
+      "kind": "command_flow",
+      "name": "!lurk",
+      "installUnit": "flow",
+      "sourceModule": "welcome",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Welcome",
+      "commandFiles": [
+        "commands/_lurk_a459b5fe-4a6d-453a-8f3d-1e7000dd1d23.json"
+      ],
+      "actionFiles": [
+        "actions/_unlurk_8e3b6bf8-0c30-4dd4-9bc6-53586bd37329.json",
+        "actions/VisualLurk_f40fe996-1128-4f61-9471-2f2f4e39070c.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_unlurk_8e3b6bf8-0c30-4dd4-9bc6-53586bd37329.json",
+          "reason": "welcome-cluster"
+        },
+        {
+          "action": "actions/VisualLurk_f40fe996-1128-4f61-9471-2f2f4e39070c.json",
+          "reason": "welcome-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.menumode",
+      "kind": "action_flow",
+      "name": "menumode",
+      "installUnit": "flow",
+      "sourceModule": "menu-mode",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Overlays",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/menumode_9bd57699-f793-4c43-a8e0-866b6163ab23.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.menumode2",
+      "kind": "action_flow",
+      "name": "Menumode2",
+      "installUnit": "flow",
+      "sourceModule": "menu-mode",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Overlays",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Menumode2_af5cac58-33ef-4de9-835c-aa103ffe3178.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.merch",
+      "kind": "command_flow",
+      "name": "!merch",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_merch_e923ed33-2387-43d9-a9a1-4e5f41ad6ab2.json"
+      ],
+      "actionFiles": [
+        "actions/_merch_f155d6a0-8724-4557-bdbe-014d3e1cdaa6.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_merch_f155d6a0-8724-4557-bdbe-014d3e1cdaa6.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.new-dance-parrty",
+      "kind": "action_flow",
+      "name": "New Dance Parrty",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/New_Dance_Parrty_3f7f62c2-44dd-4a9e-b084-024ccc777861.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.new-follower",
+      "kind": "action_flow",
+      "name": "New Follower",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/New_Follower_f405aaac-ef49-457b-91d6-c6f1a9078dbe.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.new-subscriber",
+      "kind": "action_flow",
+      "name": "New Subscriber",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/New_Subscriber_faf6ba97-5b69-4a62-91c5-382321350480.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.no",
+      "kind": "command_flow",
+      "name": "!no",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_no_6c9a7796-282b-41ea-8f84-c9bcd09bb5d6.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.no-cursing",
+      "kind": "action_flow",
+      "name": "no cursing",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/no_cursing_d2b8172e-1759-41a0-bff3-d04d68cceb57.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.pack",
+      "kind": "command_flow",
+      "name": "Open Pokemon Pack",
+      "installUnit": "flow",
+      "sourceModule": "pokemon",
+      "freezeTier": "built_in_module",
+      "visibility": "default",
+      "collection": "Pokemon",
+      "commandFiles": [
+        "commands/_pack_pokemon.json"
+      ],
+      "actionFiles": [
+        "actions/_pack_pokemon.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_pack_pokemon.json",
+          "reason": "direct-actionId"
+        }
+      ],
+      "notes": [
+        "Pokemon stays built-in for now because it is interconnected and universally configured."
+      ]
+    },
+    {
+      "packageId": "flow.partner-check-ins",
+      "kind": "action_flow",
+      "name": "Partner Check Ins ",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Partner_Check_Ins__5c0cb407-46b0-4ff4-b3c7-54dbe56b3a85.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.partnermessage",
+      "kind": "action_flow",
+      "name": "PartnerMessage",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/PartnerMessage_4b46ab5e-2238-46f0-9183-bf0902c5bc73.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.play-blerps",
+      "kind": "action_flow",
+      "name": "Play Blerps",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Play_Blerps_f96e499a-4d84-4c4c-81a0-58ea3a56730e.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.pleader",
+      "kind": "command_flow",
+      "name": "!pleader",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/pointsleader_cc628137-5406-4f31-94ed-0dd83933e847.json"
+      ],
+      "actionFiles": [
+        "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+        "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json",
+          "reason": "economy-leader-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.points",
+      "kind": "command_flow",
+      "name": "!points",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/StreamUP_Currency___Get_Points_2058c818-e30b-4d80-b217-4eba0ca7841a.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.pokecard",
+      "kind": "action_flow",
+      "name": "pokecard",
+      "installUnit": "flow",
+      "sourceModule": "pokemon",
+      "freezeTier": "built_in_module",
+      "visibility": "default",
+      "collection": "Pokemon",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/pokecard_d4608463-a864-4fe7-af2c-e569aff477d3.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Pokemon stays built-in for now because it is interconnected and universally configured."
+      ]
+    },
+    {
+      "packageId": "flow.poketrade",
+      "kind": "action_flow",
+      "name": "poketrade",
+      "installUnit": "flow",
+      "sourceModule": "pokemon",
+      "freezeTier": "built_in_module",
+      "visibility": "default",
+      "collection": "Pokemon",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/poketrade_920667a6-af98-4d40-b448-e8c2e11c7da7.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Pokemon stays built-in for now because it is interconnected and universally configured."
+      ]
+    },
+    {
+      "packageId": "flow.raid",
+      "kind": "action_flow",
+      "name": "Raid",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Raid_d9bdefa5-4962-4b5a-8b84-b3fa99273d52.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.raidmessage",
+      "kind": "command_flow",
+      "name": "!raidmessage",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [
+        "commands/_raidmessage_d3bb8b36-75db-46f3-a6d6-661eee95b793.json"
+      ],
+      "actionFiles": [
+        "actions/_raidmessage_054c8dab-34f2-4833-9afe-9f21e2d1ef8a.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_raidmessage_054c8dab-34f2-4833-9afe-9f21e2d1ef8a.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.random-video-from-folder-dynamic-delay",
+      "kind": "action_flow",
+      "name": "Random Video from Folder (Dynamic Delay)",
+      "installUnit": "flow",
+      "sourceModule": "toolkits",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Advanced",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Random_Video_from_Folder__Dynamic_Delay__4214f5a2-f12a-482f-b4b7-9066a62a5f8b.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.random-video-from-folder-set-delay",
+      "kind": "action_flow",
+      "name": "Random Video from Folder (Set Delay)",
+      "installUnit": "flow",
+      "sourceModule": "toolkits",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Advanced",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Random_Video_from_Folder__Set_Delay__67c4531b-f6ea-4ca5-a312-27bc2f84b903.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.resetallpoints",
+      "kind": "command_flow",
+      "name": "!resetAllPoints",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/StreamUP_Currency___Reset_All_Points_11d20e5e-d352-4d90-ada9-866a98bc449c.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.resub",
+      "kind": "action_flow",
+      "name": "Resub",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Resub_9cc272c1-6053-4231-8b16-f24792423950.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.retro",
+      "kind": "action_flow",
+      "name": "retro",
+      "installUnit": "flow",
+      "sourceModule": "game-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Games",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/retro_7417c5ec-6445-472a-954f-bc1e5ac88713.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.roll",
+      "kind": "command_flow",
+      "name": "!roll",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_roll_43b38074-ea81-4988-abb9-100f9abafb65.json"
+      ],
+      "actionFiles": [
+        "actions/_roll_4d8b4226-4775-4725-8736-89c1efaaed96.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_roll_4d8b4226-4775-4725-8736-89c1efaaed96.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.setgame",
+      "kind": "command_flow",
+      "name": "!setgame",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_setgame_a120ff6c-bca7-4259-8b5f-bf95f504b0ba.json"
+      ],
+      "actionFiles": [
+        "actions/_setgame_6eaa6c1a-9167-42a5-8e8a-89095b6f5fab.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_setgame_6eaa6c1a-9167-42a5-8e8a-89095b6f5fab.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.setpoints",
+      "kind": "command_flow",
+      "name": "!setPoints",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/StreamUP_Currency___Set_Points_0fc282fb-1384-4427-a400-e393d8ec116e.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.setso-set-custom-shout-out",
+      "kind": "action_flow",
+      "name": "!setso - Set custom shout out",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_setso___Set_custom_shout_out_2936fced-41e5-4894-bd73-04f70a5d3ce2.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.settitle",
+      "kind": "command_flow",
+      "name": "!settitle",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_settitle_d1ba0e52-008a-42a0-bd92-3d2337139021.json"
+      ],
+      "actionFiles": [
+        "actions/_settitle_92373576-4649-41eb-b610-ed57db64a7e8.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_settitle_92373576-4649-41eb-b610-ed57db64a7e8.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.settoall",
+      "kind": "command_flow",
+      "name": "!setToAll",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/StreamUP_Currency___Set_To_All_bd7ee4a0-ecb4-42bc-89e9-dfe1fdf0b73d.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.shoutout-command",
+      "kind": "action_flow",
+      "name": "Shoutout Command",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Shoutout_Command_sample-shoutout.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.show",
+      "kind": "command_flow",
+      "name": "!show",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_show_39ceac5b-c835-4b36-81b6-31f695d00aee.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.showhelpoverlay",
+      "kind": "action_flow",
+      "name": "showHelpOverlay",
+      "installUnit": "flow",
+      "sourceModule": "menu-mode",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Overlays",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/showHelpOverlay_3b3a49ea-1e62-4fe5-966f-ad9e7ccc4267.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.smoke",
+      "kind": "action_flow",
+      "name": "smoke",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/smoke_97104442-4b39-4320-a6ec-875d12024591.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.so",
+      "kind": "command_flow",
+      "name": "!so",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_so_4126ecd0-ca0f-4cfa-9496-7e18849077da.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.so-custom-shout-out",
+      "kind": "action_flow",
+      "name": "!so - Custom Shout out",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_so___Custom_Shout_out_8a6e2cfb-a55b-424c-acdc-f775c74c4758.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.sr",
+      "kind": "command_flow",
+      "name": "!sr",
+      "installUnit": "flow",
+      "sourceModule": "music",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Music",
+      "commandFiles": [
+        "commands/sr-command.json"
+      ],
+      "actionFiles": [
+        "actions/Song_Request_HearMeOut_sr-action.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Song_Request_HearMeOut_sr-action.json",
+          "reason": "direct-actionId"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.startfight",
+      "kind": "action_flow",
+      "name": "StartFight",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/StartFight_845499c7-f692-4525-b694-aad96ea19409.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.stats",
+      "kind": "command_flow",
+      "name": "!stats",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_stats_4831ef91-dd24-4830-b867-c8d589892091.json"
+      ],
+      "actionFiles": [
+        "actions/_stats_c0b64a26-ba60-411b-88ef-6f6147bcc95e.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_stats_c0b64a26-ba60-411b-88ef-6f6147bcc95e.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.stealpoints",
+      "kind": "command_flow",
+      "name": "!stealpoints",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/steal_points_85755235-014b-4a4c-bba5-ffd280b70289.json"
+      ],
+      "actionFiles": [
+        "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+        "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+        "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+        "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+        "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Currency_System___Commands_712c9268-7197-4b4d-9f5d-103dfeeed198.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Fail_bfb06f6c-e051-4995-994f-de09cd536def.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Settings_634bc736-91e2-41a5-b48a-b15de48a25e3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/Currency_System___Tipping_Support_2e18c6d1-f35b-49f4-ae18-0caf8db6a5b3.json",
+          "reason": "economy-currency-cluster"
+        },
+        {
+          "action": "actions/give_points_68934301-4099-4270-9732-fd5ea19d6120.json",
+          "reason": "economy-currency-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.sticker",
+      "kind": "action_flow",
+      "name": "sticker",
+      "installUnit": "flow",
+      "sourceModule": "game-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Games",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/sticker_0168ccdf-6d6c-4ebf-b3d9-7cfaec1b0a0d.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.stickers",
+      "kind": "command_flow",
+      "name": "!stickers",
+      "installUnit": "flow",
+      "sourceModule": "secret-legacy",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Hidden",
+      "commandFiles": [
+        "commands/_stickers_13ee2504-fc5f-4ce5-8b99-35585a692c05.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": []
+    },
+    {
+      "packageId": "flow.stretch",
+      "kind": "command_flow",
+      "name": "!stretch",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [
+        "commands/_stretch_a6f8c3f9-51b6-45c8-8035-cdc4b8a691c9.json"
+      ],
+      "actionFiles": [
+        "actions/_stretch_7cf5c38d-2707-48e0-a230-675e8dbebd4f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_stretch_7cf5c38d-2707-48e0-a230-675e8dbebd4f.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.super-follow",
+      "kind": "action_flow",
+      "name": "super follow",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/super_follow_f50e1be9-05d6-4b09-9471-edb1d9191669.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.t",
+      "kind": "command_flow",
+      "name": "!T",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_T_50d67371-f0b2-4834-b673-198e85a72990.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.tag",
+      "kind": "command_flow",
+      "name": "!tag",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [
+        "commands/tag-command.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.tagpasses",
+      "kind": "command_flow",
+      "name": "!tagpasses",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [
+        "commands/check-tag-passes-command.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.tickle",
+      "kind": "command_flow",
+      "name": "!tickle",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_tickle_b0b9a1c1-e496-4eee-a0ee-b384ca789927.json"
+      ],
+      "actionFiles": [
+        "actions/_tickle_313770af-a33a-47c2-b99c-e1aaa94bc30f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_tickle_313770af-a33a-47c2-b99c-e1aaa94bc30f.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.tiktok",
+      "kind": "command_flow",
+      "name": "!tiktok",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_tiktok_96d471c6-4a74-4f69-a02d-b1fdfa9d032e.json"
+      ],
+      "actionFiles": [
+        "actions/_tiktok_0daf1c8e-4d12-448e-8fa1-12a79b0566e4.json",
+        "actions/tiktok_f5d60d13-0945-467a-b8f7-ab70d3df78a8.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_tiktok_0daf1c8e-4d12-448e-8fa1-12a79b0566e4.json",
+          "reason": "slug-match"
+        },
+        {
+          "action": "actions/tiktok_f5d60d13-0945-467a-b8f7-ab70d3df78a8.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.tiktok-events",
+      "kind": "action_flow",
+      "name": "TikTok Events",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/TikTok_Events_dfff63c7-a4c8-4b47-b1d8-cf9341feef89.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    },
+    {
+      "packageId": "flow.time",
+      "kind": "command_flow",
+      "name": "!time",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_time_edb4a8d3-f1c6-4b6b-b082-e9df0de919d6.json"
+      ],
+      "actionFiles": [
+        "actions/_time_0e3efa12-74a1-4f30-84e2-c5f08ecbdb83.json",
+        "actions/_uptime_49cd7054-a039-4bf5-834a-44fe43f6c789.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_time_0e3efa12-74a1-4f30-84e2-c5f08ecbdb83.json",
+          "reason": "slug-match"
+        },
+        {
+          "action": "actions/_uptime_49cd7054-a039-4bf5-834a-44fe43f6c789.json",
+          "reason": "module-fuzzy-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.translation",
+      "kind": "action_flow",
+      "name": "translation",
+      "installUnit": "flow",
+      "sourceModule": "translation",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/translation_d4b7a4cb-2346-4d67-9417-e49a1ba800dd.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.twitch",
+      "kind": "action_flow",
+      "name": "twitch",
+      "installUnit": "flow",
+      "sourceModule": "tiktok",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Integrations",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/twitch_584e309f-3c79-452c-bb64-b634db6e90c8.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Requires external setup or integration-specific configuration.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.twitter",
+      "kind": "command_flow",
+      "name": "!twitter",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_twitter_fc40c477-0782-415b-905e-961cd4e9d7d7.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.unlurk",
+      "kind": "command_flow",
+      "name": "!unlurk",
+      "installUnit": "flow",
+      "sourceModule": "welcome",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Welcome",
+      "commandFiles": [
+        "commands/_unlurk_d06e287d-240b-4067-8e1c-f92ac6fc0be2.json"
+      ],
+      "actionFiles": [
+        "actions/_unlurk_8e3b6bf8-0c30-4dd4-9bc6-53586bd37329.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_unlurk_8e3b6bf8-0c30-4dd4-9bc6-53586bd37329.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.uptime",
+      "kind": "command_flow",
+      "name": "!uptime",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [
+        "commands/_uptime_36b8339b-2276-449d-9d39-96c8a369278e.json"
+      ],
+      "actionFiles": [
+        "actions/_uptime_49cd7054-a039-4bf5-834a-44fe43f6c789.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/_uptime_49cd7054-a039-4bf5-834a-44fe43f6c789.json",
+          "reason": "slug-match"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.use-tag-pass",
+      "kind": "action_flow",
+      "name": "Use Tag Pass",
+      "installUnit": "flow",
+      "sourceModule": "deprecated-app-owned",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Deprecated",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/use-tag-pass.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Deprecated app-owned feature; keep only as migration reference."
+      ]
+    },
+    {
+      "packageId": "flow.uuddlrlrab",
+      "kind": "command_flow",
+      "name": "konami code",
+      "installUnit": "flow",
+      "sourceModule": "secret-legacy",
+      "freezeTier": "legacy_hold",
+      "visibility": "hidden",
+      "collection": "Hidden",
+      "commandFiles": [
+        "commands/konami_code_f281415b-b178-4a39-9295-71b78ee5de26.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": []
+    },
+    {
+      "packageId": "flow.view-collection-action",
+      "kind": "action_flow",
+      "name": "View Collection Action",
+      "installUnit": "flow",
+      "sourceModule": "pokemon",
+      "freezeTier": "built_in_module",
+      "visibility": "default",
+      "collection": "Pokemon",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_collection_pokemon.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Pokemon stays built-in for now because it is interconnected and universally configured."
+      ]
+    },
+    {
+      "packageId": "flow.vrflad-s-fasttrack-set-up-setup",
+      "kind": "action_flow",
+      "name": "VRFlad's FastTrack set up - !setup",
+      "installUnit": "flow",
+      "sourceModule": "toolkits",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Advanced",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/VRFlad_s_FastTrack_set_up____setup_d16a6f28-90a0-4d27-9b89-f360640ce659.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding.",
+        "Currently disabled in the seeded bundle."
+      ]
+    },
+    {
+      "packageId": "flow.vso-video-shout-out-v2",
+      "kind": "action_flow",
+      "name": "!vso - Video Shout out v2",
+      "installUnit": "flow",
+      "sourceModule": "core-utility",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Core Utility",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/_vso___Video_Shout_out_v2_01f58d95-8f37-4359-8943-ca41be5fe1ae.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.walk-on",
+      "kind": "action_flow",
+      "name": "Walk-On",
+      "installUnit": "flow",
+      "sourceModule": "welcome",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Welcome",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Walk_On_35da0298-ffe0-437a-b943-06a7e8a9ecbd.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.walk-onlog",
+      "kind": "action_flow",
+      "name": "walk-onLog ",
+      "installUnit": "flow",
+      "sourceModule": "welcome",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Welcome",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/walk_onLog__ed16fe6e-93d1-4837-b7bd-09c88dc260de.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.watchtime",
+      "kind": "command_flow",
+      "name": "!watchtime",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/Watchtime_7d3bf706-3b5e-41d8-bbb6-56ad9885e162.json"
+      ],
+      "actionFiles": [
+        "actions/Auto_Add_Watchtime_faddef1e-5326-466a-8b45-fbfe86277c45.json",
+        "actions/Get_Watchtime_User_e8673531-de97-4300-99a7-5f2127835dd2.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Auto_Add_Watchtime_faddef1e-5326-466a-8b45-fbfe86277c45.json",
+          "reason": "economy-watchtime-cluster"
+        },
+        {
+          "action": "actions/Get_Watchtime_User_e8673531-de97-4300-99a7-5f2127835dd2.json",
+          "reason": "economy-watchtime-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.webpage",
+      "kind": "command_flow",
+      "name": "!webpage",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_webpage_18408acc-bf29-440b-891e-405b03811f3d.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.welcome-new-followers",
+      "kind": "action_flow",
+      "name": "Welcome New Followers",
+      "installUnit": "flow",
+      "sourceModule": "event-hooks",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Events",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/Welcome_New_Followers_sample-welcome.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.welcomemode",
+      "kind": "command_flow",
+      "name": "!welcomemode",
+      "installUnit": "flow",
+      "sourceModule": "welcome",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Welcome",
+      "commandFiles": [
+        "commands/_welcomemode_system_library.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.wleader",
+      "kind": "command_flow",
+      "name": "!wleader",
+      "installUnit": "flow",
+      "sourceModule": "economy",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Economy",
+      "commandFiles": [
+        "commands/watchtimeleader_6166ad9c-8100-493b-a557-fc65a5464601.json"
+      ],
+      "actionFiles": [
+        "actions/Auto_Add_Watchtime_faddef1e-5326-466a-8b45-fbfe86277c45.json",
+        "actions/Get_Watchtime_User_e8673531-de97-4300-99a7-5f2127835dd2.json",
+        "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+        "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+        "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [
+        {
+          "action": "actions/Auto_Add_Watchtime_faddef1e-5326-466a-8b45-fbfe86277c45.json",
+          "reason": "economy-watchtime-cluster"
+        },
+        {
+          "action": "actions/Get_Watchtime_User_e8673531-de97-4300-99a7-5f2127835dd2.json",
+          "reason": "economy-watchtime-cluster"
+        },
+        {
+          "action": "actions/leaderboard_1cd3b4ae-e6c9-486c-bb37-51735e180917.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/top_doner_display_2d8cf571-2f1c-4c50-b76a-80108c1c98fc.json",
+          "reason": "economy-leader-cluster"
+        },
+        {
+          "action": "actions/updateleaderboard_e918f24e-d8d6-432d-b7fe-1a71b494199f.json",
+          "reason": "economy-leader-cluster"
+        }
+      ],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.woop-dance-party",
+      "kind": "action_flow",
+      "name": "woop dance party",
+      "installUnit": "flow",
+      "sourceModule": "redeem-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Redeems",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/woop_dance_party_a12ba66a-f330-4b40-86e2-d7a7e7f1d128.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.wotd",
+      "kind": "action_flow",
+      "name": "wotd",
+      "installUnit": "flow",
+      "sourceModule": "game-pack",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Games",
+      "commandFiles": [],
+      "actionFiles": [
+        "actions/wotd_8b1e2aba-cc72-44b1-a020-e76f81434cc1.json"
+      ],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.yes",
+      "kind": "command_flow",
+      "name": "!yes",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_yes_c416d67a-62e5-4a7d-b04a-5c40ad4cb4b4.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience."
+      ]
+    },
+    {
+      "packageId": "flow.youtube",
+      "kind": "command_flow",
+      "name": "!youtube",
+      "installUnit": "flow",
+      "sourceModule": "links",
+      "freezeTier": "official_library",
+      "visibility": "advanced",
+      "collection": "Misc",
+      "commandFiles": [
+        "commands/_youtube_bbc645e2-7b50-4721-ad06-1b781446f7d3.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Optional or setup-heavy feature; better as installable library content than default onboarding."
+      ]
+    },
+    {
+      "packageId": "flow.yup",
+      "kind": "command_flow",
+      "name": "!yup",
+      "installUnit": "flow",
+      "sourceModule": "starter-social",
+      "freezeTier": "starter",
+      "visibility": "default",
+      "collection": "Social",
+      "commandFiles": [
+        "commands/_yup_3b410cb9-0003-45be-850b-b689e2132d13.json"
+      ],
+      "actionFiles": [],
+      "dependencies": [],
+      "matchingNotes": [],
+      "notes": [
+        "Part of the intended default tenant experience.",
+        "Requires external setup or integration-specific configuration."
+      ]
+    }
+  ]
+}

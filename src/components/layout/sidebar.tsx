@@ -5,9 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
   ArrowRight,
   Bot,
+  CheckCircle2,
   Coins,
   FileText,
   Gift,
@@ -45,33 +45,34 @@ try {
 
 const workspaceGroups = [
   {
-    label: "Overview",
+    label: "Start Here",
     items: [
       { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-      { href: "/dashboard#activity", icon: Activity, label: "Live Activity" },
-      { action: "logs", icon: FileText, label: "Logs" },
+      { href: "/dashboard#setup", icon: CheckCircle2, label: "Setup Status" },
+      { href: "/integrations", icon: Link2, label: "Connections" },
+      { href: "/community", icon: Users, label: "Feature Library" },
     ],
   },
   {
-    label: "Build",
+    label: "Build Flows",
     items: [
-      { href: "/commands", icon: MessageSquareText, label: "Commands" },
-      { href: "/actions", icon: Zap, label: "Actions" },
-      { href: "/active-commands", icon: Rocket, label: "Workflows" },
+      { href: "/commands", icon: MessageSquareText, label: "Chat Commands" },
+      { href: "/actions", icon: Zap, label: "Action Steps" },
+      { href: "/active-commands", icon: Rocket, label: "Live Flows" },
       { href: "/voice-reply", icon: Mic, label: "Voice Reply" },
       { href: "/bot-functions", icon: Bot, label: "Bot Functions" },
     ],
   },
   {
-    label: "Connect",
+    label: "Go Live",
     items: [
-      { href: "/integrations", icon: Link2, label: "Integrations" },
+      { href: "/chat", icon: MessageSquareText, label: "Messaging" },
       { href: "/overlay-urls", icon: Sparkles, label: "Overlay URLs" },
-      { href: "/community", icon: Users, label: "Community" },
+      { action: "logs", icon: FileText, label: "Logs" },
     ],
   },
   {
-    label: "Data",
+    label: "Data + Rewards",
     items: [
       { href: "/currency", icon: Coins, label: "Currency" },
       { href: "/redeems", icon: Gift, label: "Redeems" },
@@ -133,31 +134,9 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold tracking-tight">StreamWeaver</div>
-            <div className="text-xs text-sidebar-foreground/65">Creator control center</div>
+            <div className="text-xs text-sidebar-foreground/65">Flow-based stream control</div>
           </div>
         </Link>
-
-        <div className="rounded-2xl border border-sidebar-border/60 bg-gradient-to-br from-accent/15 via-sidebar-accent/70 to-primary/10 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.24em] text-sidebar-foreground/55">Workspace</div>
-              <div className="mt-1 text-sm font-medium">Online and ready</div>
-            </div>
-            <div className="rounded-full bg-accent/15 px-2.5 py-1 text-[11px] font-medium text-accent">
-              Live
-            </div>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-sidebar-foreground/70">
-            <div className="rounded-xl bg-sidebar-background/60 px-2.5 py-2">
-              <div className="font-medium text-sidebar-foreground">AI</div>
-              <div>Routing enabled</div>
-            </div>
-            <div className="rounded-xl bg-sidebar-background/60 px-2.5 py-2">
-              <div className="font-medium text-sidebar-foreground">OBS</div>
-              <div>Bridge ready</div>
-            </div>
-          </div>
-        </div>
       </SidebarHeader>
 
       <SidebarContent className="px-3 py-3">
@@ -174,7 +153,7 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
                       href={item.href}
                       icon={item.icon}
                       label={item.label}
-                      active={item.href ? pathname.startsWith(item.href) : false}
+                      active={item.href ? !item.href.includes("#") && pathname.startsWith(item.href) : false}
                       onClick={item.action === "logs" ? () => setVisible(true) : undefined}
                     />
                   </SidebarMenuItem>
@@ -200,8 +179,10 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
           </div>
           <Separator className="my-3 bg-sidebar-border/80" />
           <div className="flex items-center justify-between gap-2 text-xs text-sidebar-foreground/65">
-            <span>Need help finding something?</span>
-            <span className="font-medium text-sidebar-foreground">Start on Dashboard</span>
+            <span>Need a setup check?</span>
+            <Link href="/dashboard#setup" className="font-medium text-sidebar-foreground hover:text-accent">
+              Review setup
+            </Link>
           </div>
         </div>
         <div className="mt-3">

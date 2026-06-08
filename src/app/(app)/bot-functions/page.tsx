@@ -1,6 +1,7 @@
 
 'use client';
 
+import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,17 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Languages, Mic, Bot, Upload, Waves, Music, ArrowRight, LoaderCircle, Copy } from "lucide-react";
+import { Languages, Bot, Upload, Waves, Music, ArrowRight, LoaderCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { textToSpeech } from "@/ai/flows/text-to-speech";
-import { transcribeAudio } from "@/services/speech";
 import Lottie from "lottie-react";
 import botAnimation from "@/lib/bot-animation.json";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsProvider, normalizeTtsVoice } from "@/lib/tts-voices";
 
 
@@ -31,10 +27,7 @@ const availableVoices = TTS_VOICE_OPTIONS;
 
 export default function BotFunctionsPage() {
     const { toast } = useToast();
-    const [ttsText, setTtsText] = useState("Hello! This is a test of the text-to-speech voice.");
     const [ttsVoice, setTtsVoice] = useState(DEFAULT_TTS_VOICE);
-    const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
-    const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
     const [botName, setBotName] = useState("StreamWeaver87");
     const [botAliases, setBotAliases] = useState("");
@@ -76,17 +69,12 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
     const [animationType, setAnimationType] = useState<'lottie' | 'mp4' | 'gif' | null>(null);
     const [idleUrl, setIdleUrl] = useState<string>('');
     const [talkingUrl, setTalkingUrl] = useState<string>('');
+    const [privateDmGifUrl, setPrivateDmGifUrl] = useState("");
+    const [publicDiscordGifUrl, setPublicDiscordGifUrl] = useState("");
+    const [isSavingMediaSlots, setIsSavingMediaSlots] = useState(false);
     
     const idleFileInputRef = useRef<HTMLInputElement>(null);
     const talkingFileInputRef = useRef<HTMLInputElement>(null);
-
-    const [isRecording, setIsRecording] = useState(false);
-    const [isTranscribing, setIsTranscribing] = useState("");
-    const [transcribedText, setTranscribedText] = useState("");
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
-
-    const [overlayUrl, setOverlayUrl] = useState("");
     const [displayMode, setDisplayMode] = useState('auto');
     const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -141,6 +129,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     if (cfg.AI_BOT_INTERESTS) setBotInterests(cfg.AI_BOT_INTERESTS);
                     if (cfg.AI_BOT_ALIASES) setBotAliases(cfg.AI_BOT_ALIASES);
                     if (cfg.SKIP_SHOUTOUT_OVERLAY) setSkipShoutoutOverlay(cfg.SKIP_SHOUTOUT_OVERLAY === 'true');
+                    if (cfg.PRIVATE_DM_GIF_URL) setPrivateDmGifUrl(cfg.PRIVATE_DM_GIF_URL);
+                    if (cfg.PUBLIC_DISCORD_GIF_URL) setPublicDiscordGifUrl(cfg.PUBLIC_DISCORD_GIF_URL);
                 }
             } catch (error) {
                 console.warn('Failed to load bot config from server:', error);
@@ -213,11 +203,6 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         };
         
         loadSettings();
-        
-        // Set the overlay URL
-        if (typeof window !== 'undefined') {
-            setOverlayUrl(`${window.location.origin}/tts-player`);
-        }
     }, []);
 
     const handleSaveBotIdentity = async () => {
@@ -273,56 +258,6 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         }
     }
 
-    const handleTestVoice = async () => {
-        if (!ttsText) {
-            toast({
-                variant: "destructive",
-                title: "Please enter some text to generate speech.",
-            });
-            return;
-        }
-
-        setIsGeneratingSpeech(true);
-        setAudioUrl(null);
-
-        try {
-            // Use the server TTS endpoint
-            const response = await fetch('/api/tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: ttsText, voice: ttsVoice })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`TTS API failed: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            setAudioUrl(result.audioDataUri);
-            
-            // Route to TTS player (same as Athena uses)
-            console.log('[Bot Functions] Sending TTS to player overlay...');
-            await fetch('/api/tts/current', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ audioUrl: result.audioDataUri })
-            });
-            console.log('[Bot Functions] TTS sent to player successfully');
-            
-            toast({ title: "TTS sent to overlay player!" });
-
-        } catch (error: any) {
-            console.error("Failed to generate speech:", error);
-            toast({
-                variant: "destructive",
-                title: "Speech Generation Failed",
-                description: error.message || "An unknown error occurred.",
-            });
-        } finally {
-            setIsGeneratingSpeech(false);
-        }
-    };
-    
     const handleAvatarUploadClick = (type: 'idle' | 'talking') => {
         if (type === 'idle') {
             idleFileInputRef.current?.click();
@@ -426,87 +361,28 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         }
     };
 
-    const startRecording = async () => {
-        if (isRecording) {
-            // This case should ideally not be hit if UI is disabled, but as a safeguard.
-            stopRecording();
-            return;
-        }
-
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-                audioChunksRef.current = [];
-
-                mediaRecorderRef.current.ondataavailable = (event) => {
-                    audioChunksRef.current.push(event.data);
-                };
-
-                mediaRecorderRef.current.onstop = async () => {
-                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = async () => {
-                        const base64DataUri = reader.result as string;
-                        setIsTranscribing("true");
-                        setTranscribedText("");
-                        try {
-                            const result = await transcribeAudio(base64DataUri.split(',')[1]);
-                            if (result.error) {
-                                throw new Error(result.error);
-                            }
-                            setTranscribedText(result.transcription);
-                        } catch (error: any) {
-                            console.error("Transcription failed:", error);
-                            toast({
-                                variant: "destructive",
-                                title: "Transcription Failed",
-                                description: error.message || "Could not transcribe audio.",
-                            });
-                        } finally {
-                            setIsTranscribing("false");
-                            // Clean up the stream
-                            stream.getTracks().forEach(track => track.stop());
-                        }
-                    };
-                };
-
-                mediaRecorderRef.current.start();
-                setIsRecording(true);
-            } catch (err) {
-                console.error("Error accessing microphone:", err);
-                toast({
-                    variant: "destructive",
-                    title: "Microphone Access Denied",
-                    description: "Please allow microphone access in your browser settings to use this feature.",
-                });
+    const handleSaveMediaSlots = async () => {
+        setIsSavingMediaSlots(true);
+        try {
+            const response = await fetch('/api/user-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    PRIVATE_DM_GIF_URL: privateDmGifUrl,
+                    PUBLIC_DISCORD_GIF_URL: publicDiscordGifUrl,
+                }),
+            });
+            if (!response.ok) {
+                const body = await response.json().catch(() => ({}));
+                throw new Error(body?.error || 'Failed to save Discord media slots.');
             }
+            toast({ title: "Discord media slots saved" });
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Save failed", description: error.message || "Could not save Discord media slots." });
+        } finally {
+            setIsSavingMediaSlots(false);
         }
     };
-
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-        }
-    };
-
-    const handleRecordClick = () => {
-        if (isRecording) {
-            stopRecording();
-        } else {
-            startRecording();
-        }
-    }
-    
-    const handleCopyToClipboard = () => {
-        navigator.clipboard.writeText(overlayUrl).then(() => {
-            toast({ title: "Copied overlay URL to clipboard!" });
-        }).catch(err => {
-            toast({ variant: "destructive", title: "Failed to copy URL." });
-        });
-    }
 
   return (
     <div className="grid gap-6">
@@ -532,21 +408,6 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
           Customize your bot's voice, appearance, and other capabilities.
         </p>
       </div>
-
-       <Alert>
-        <Bot className="h-4 w-4" />
-        <AlertTitle>TTS + Avatar Overlay URL</AlertTitle>
-        <AlertDescription>
-            <p className="mb-2">Add this URL as a Browser Source in OBS/Streamlabs for TTS audio and bot avatar together.</p>
-            <div className="flex items-center gap-2">
-                <Input readOnly value={overlayUrl} className="bg-muted" />
-                <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(overlayUrl)}>
-                    <Copy className="h-4 w-4" />
-                </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Width: 1920px, Height: 1080px — click the source once in OBS to unlock autoplay</p>
-        </AlertDescription>
-      </Alert>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 grid gap-6">
@@ -632,129 +493,109 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     </Button>
                 </CardFooter>
             </Card>
-             <Card>
+            <Card>
                 <CardHeader>
-                    <CardTitle>Speech-to-Text (STT)</CardTitle>
-                    <CardDescription>Use your voice to interact with your bot. Click the button to start/stop recording.</CardDescription>
+                    <CardTitle>Voice Profile</CardTitle>
+                    <CardDescription>The live TTS controls moved to Overlay URLs. Keep the saved bot voice here so every page uses the same setting.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <motion.div
-                        className="flex justify-center"
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        <Button
-                            onClick={handleRecordClick}
-                            className={ `w-24 h-24 rounded-full transition-colors ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'}`}
-                        >
-                            <Mic className="h-10 w-10" />
+                <CardContent className="grid gap-4 md:grid-cols-[1fr_180px]">
+                    <div className="space-y-2">
+                        <Label htmlFor="tts-voice">Bot voice</Label>
+                        <Select value={ttsVoice} onValueChange={handleVoiceChange}>
+                            <SelectTrigger id="tts-voice">
+                                <SelectValue placeholder="Select a voice" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableVoices.map((voice, i) => (
+                                    <SelectItem key={`${voice.id}-${i}`} value={voice.id}>
+                                        {voice.label} ({voice.gender}) ({voice.providerLabel})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Overlay controls</Label>
+                        <Button asChild variant="outline" className="w-full">
+                            <a href="/overlay-urls">Open Overlay URLs</a>
                         </Button>
-                    </motion.div>
+                    </div>
                 </CardContent>
-                 {(isTranscribing || transcribedText) && (
-                    <CardFooter>
-                        <Card className="w-full">
-                            <CardHeader>
-                                <CardTitle className="text-lg">Transcribed Text</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                {isTranscribing === "true" ? (
-                                    <div className="flex items-center gap-2 text-muted-foreground">
-                                        <LoaderCircle className="h-4 w-4 animate-spin"/>
-                                        <span>Listening...</span>
-                                    </div>
-                                ) : (
-                                    <p className="italic">"{transcribedText}"</p>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </CardFooter>
-                 )}
             </Card>
             <Card>
                 <CardHeader>
-                    <CardTitle>Text-to-Speech (TTS)</CardTitle>
-                    <CardDescription>Configure the bot's voice for reading messages aloud. This will play in your overlay.</CardDescription>
+                    <CardTitle>Discord media slots</CardTitle>
+                    <CardDescription>Keep separate media for private DMs/private chat and public Discord embeds.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid md:grid-cols-2 gap-6">
-                     <div className="space-y-2">
-                        <Label htmlFor="tts-text">Text to Test</Label>
-                        <Textarea
-                            id="tts-text"
-                            value={ttsText}
-                            onChange={(e) => setTtsText(e.target.value)}
-                            placeholder="Enter text to hear it spoken..."
+                <CardContent className="grid gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="private-dm-gif">Private DM / app private chat GIF URL</Label>
+                        <Input
+                            id="private-dm-gif"
+                            value={privateDmGifUrl}
+                            onChange={(event) => setPrivateDmGifUrl(event.target.value)}
+                            placeholder="https://..."
                         />
                     </div>
-                    <div className="flex flex-col gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="tts-voice">Voice</Label>
-                            <Select value={ttsVoice} onValueChange={handleVoiceChange}>
-                                <SelectTrigger id="tts-voice">
-                                    <SelectValue placeholder="Select a voice" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableVoices.map((voice, i) => (
-                                        <SelectItem key={`${voice.id}-${i}`} value={voice.id}>
-                                            <div className="flex justify-between w-full">
-                                                <span>{voice.label} ({voice.gender})</span>
-                                                <span className="text-muted-foreground ml-4">({voice.providerLabel}) {voice.description}</span>
-                                            </div>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="tts-speed">Speed</Label>
-                            <Input id="tts-speed" type="number" placeholder="1.0" min="0.25" max="4.0" step="0.25" defaultValue="1.0" disabled />
-                             <p className="text-xs text-muted-foreground">Speed control is coming soon.</p>
-                        </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="public-discord-gif">Public Discord / embed GIF URL</Label>
+                        <Input
+                            id="public-discord-gif"
+                            value={publicDiscordGifUrl}
+                            onChange={(event) => setPublicDiscordGifUrl(event.target.value)}
+                            placeholder="https://..."
+                        />
                     </div>
                 </CardContent>
-                <CardFooter className="flex-col items-start gap-4">
-                    <Button onClick={handleTestVoice} disabled={isGeneratingSpeech}>
-                         {isGeneratingSpeech ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Mic className="mr-2 h-4 w-4" />}
-                        Test Voice
+                <CardFooter>
+                    <Button onClick={handleSaveMediaSlots} disabled={isSavingMediaSlots}>
+                        {isSavingMediaSlots ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Save media slots
                     </Button>
-                     {audioUrl && (
-                        <audio 
-                            controls 
-                            src={audioUrl} 
-                            className="w-full"
-                            onPlay={() => setIsSpeaking(true)}
-                            onEnded={() => setIsSpeaking(false)}
-                        >
-                            Your browser does not support the audio element.
-                        </audio>
-                    )}
                 </CardFooter>
             </Card>
-             <Card>
+            <Card>
                 <CardHeader>
-                    <CardTitle>Other Functions</CardTitle>
-                    <CardDescription>Explore other capabilities of your AI bot.</CardDescription>
+                    <CardTitle>Quick links</CardTitle>
+                    <CardDescription>Shortcuts for the pieces that still matter after moving live TTS controls out of this page.</CardDescription>
                 </CardHeader>
-                <CardContent className="grid sm:grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                        <div className="flex items-center gap-4">
-                            <Waves className="h-6 w-6" />
-                            <span className="font-semibold">Voice Modulation</span>
+                <CardContent className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-muted/40 p-4">
+                        <div className="mb-2 flex items-center gap-3">
+                            <Waves className="h-5 w-5" />
+                            <span className="font-semibold">Private TTS listener</span>
                         </div>
-                        <Button variant="ghost" size="icon"><ArrowRight className="h-4 w-4" /></Button>
+                        <p className="mb-3 text-sm text-muted-foreground">Open the always-on private voice listener page for DM/private chat playback routing.</p>
+                        <Button asChild variant="outline" size="sm">
+                            <Link href="/tts-listener">Open listener</Link>
+                        </Button>
                     </div>
-                     <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                        <div className="flex items-center gap-4">
-                            <Music className="h-6 w-6" />
-                            <span className="font-semibold">Soundboard</span>
+                    <div className="rounded-lg border bg-muted/40 p-4">
+                        <div className="mb-2 flex items-center gap-3">
+                            <Music className="h-5 w-5" />
+                            <span className="font-semibold">Voice reply</span>
                         </div>
-                        <Button variant="ghost" size="icon"><ArrowRight className="h-4 w-4" /></Button>
+                        <p className="mb-3 text-sm text-muted-foreground">Use the browser-assisted reply station for private voice workflows and mic capture.</p>
+                        <Button asChild variant="outline" size="sm">
+                            <Link href="/voice-reply">Open voice reply</Link>
+                        </Button>
                     </div>
-                     <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                        <div className="flex items-center gap-4">
-                            <Languages className="h-6 w-6" />
-                            <span className="font-semibold">Translations</span>
+                    <div className="rounded-lg border bg-muted/40 p-4">
+                        <div className="mb-2 flex items-center gap-3">
+                            <Languages className="h-5 w-5" />
+                            <span className="font-semibold">Overlay URLs</span>
                         </div>
-                        <Button variant="ghost" size="icon"><ArrowRight className="h-4 w-4" /></Button>
+                        <p className="mb-3 text-sm text-muted-foreground">Copy the live overlay/browser-source URLs, including the TTS and avatar surfaces.</p>
+                        <Button asChild variant="outline" size="sm">
+                            <Link href="/overlay-urls">Open overlays</Link>
+                        </Button>
+                    </div>
+                    <div className="rounded-lg border bg-muted/40 p-4">
+                        <div className="mb-2 flex items-center gap-3">
+                            <ArrowRight className="h-5 w-5" />
+                            <span className="font-semibold">Quackverse status</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Still pending. The rest of this page is now aligned around working avatar, TTS, DM, and public media controls.</p>
                     </div>
                 </CardContent>
             </Card>
@@ -824,6 +665,10 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                                 <SelectItem value="always">Always On</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+                    <div className="w-full grid grid-cols-2 gap-2">
+                        <Button variant="outline" onClick={() => setIsSpeaking(true)}>Preview talking</Button>
+                        <Button variant="outline" onClick={() => setIsSpeaking(false)}>Preview idle</Button>
                     </div>
                 </CardContent>
             </Card>

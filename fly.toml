@@ -5,9 +5,13 @@ primary_region = 'iad'
   [build.args]
     NEXT_PUBLIC_TWITCH_CLIENT_ID = '9u0mtc83xeabmguw53c89dehth0gwg'
     NEXT_PUBLIC_STREAMWEAVE_WS_URL = 'wss://streamweaver-new.fly.dev:8090'
+    NEXT_PUBLIC_BASE_URL = 'https://streamweaver-new.fly.dev'
+    NEXT_PUBLIC_STREAMWEAVE_URL = 'https://streamweaver-new.fly.dev'
 
 [env]
   PERSIST_ROOT = '/data/runtime'
+  APP_URL = 'https://streamweaver-new.fly.dev'
+  INTERNAL_API_BASE_URL = 'https://streamweaver-new.fly.dev'
 
 [[mounts]]
   source = 'streamweaver_data'

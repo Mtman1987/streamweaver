@@ -19,8 +19,10 @@ export interface SubActionHandlerResult {
  */
 export class CoreLogicHandlers {
   static async handleDelay(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
-    const minDelay = subAction.minValue || subAction.min || 1000;
-    const maxDelay = subAction.maxValue || subAction.max || minDelay;
+    const minDelayRaw = replaceVariables(String(subAction.minValue ?? subAction.value ?? subAction.min ?? 1000), context);
+    const maxDelayRaw = replaceVariables(String(subAction.maxValue ?? subAction.max ?? minDelayRaw), context);
+    const minDelay = Math.max(0, Number(minDelayRaw) || 0);
+    const maxDelay = Math.max(minDelay, Number(maxDelayRaw) || minDelay);
     
     const delay = minDelay === maxDelay 
       ? minDelay 

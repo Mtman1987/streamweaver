@@ -5,6 +5,7 @@
 import { SubAction } from '../types';
 import { ExecutionContext } from '../SubActionExecutor';
 import { SubActionHandlerResult } from './SubActionHandlers';
+import { sendDiscordMessage } from '@/services/discord';
 
 /**
  * Discord Handlers
@@ -18,21 +19,25 @@ export class DiscordHandlers {
 
   static async handleDiscordSendMessage(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
     const channelId = replaceVariables(subAction.channelId || '', context);
-    const message = replaceVariables(subAction.message || '', context);
+    const message = replaceVariables(subAction.message || subAction.text || '', context);
     const embed = subAction.embed || false;
     
     try {
       console.log(`[Discord] Send message to channel ${channelId}: ${message}`);
-      
-      if (this.discordService) {
-        if (embed) {
-          await this.discordService.sendEmbed(channelId, {
-            description: message,
-            color: subAction.embedColor || 0x5865F2
-          });
-        } else {
-          await this.discordService.sendMessage(channelId, message);
-        }
+
+      if (!channelId) {
+        return { success: false, error: 'Discord channelId is required for send message.' };
+      }
+
+      if (embed && this.discordService?.sendEmbed) {
+        await this.discordService.sendEmbed(channelId, {
+          description: message,
+          color: subAction.embedColor || 0x5865F2
+        });
+      } else if (this.discordService?.sendMessage) {
+        await this.discordService.sendMessage(channelId, message);
+      } else {
+        await sendDiscordMessage(channelId, message);
       }
       
       return { success: true };

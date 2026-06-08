@@ -38,6 +38,8 @@ const ALLOWED_KEYS = new Set([
   'TTS_PROVIDER', // 'piper' | 'edenai' | 'openai' (legacy routed values auto-normalize)
   'TTS_VOICE',
   'DISCORD_TTS_BRIDGE', // 'true' | 'false'
+  'PRIVATE_DM_GIF_URL',
+  'PUBLIC_DISCORD_GIF_URL',
 
   // Raid train tuning (user-specific)
   'EMERGENCY_SLOTS_LOOKAHEAD_HOURS',

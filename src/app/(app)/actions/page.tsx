@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -15,16 +23,60 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, MoreHorizontal, PlusCircle, Zap, Play, Pause, Settings } from "lucide-react";
+import { ChevronRight, Loader2, MoreHorizontal, PlusCircle, Zap, Play, Pause, Settings, Search } from "lucide-react";
 import { useActionsData } from "@/hooks/use-actions-data";
 import { useToast } from "@/hooks/use-toast";
 import { deleteActionClient, duplicateActionClient, runActionClient, updateActionClient } from "@/lib/client-actions";
+
+type ActionRow = {
+  id: string;
+  name: string;
+  group?: string;
+  enabled: boolean;
+  triggers?: any[];
+  subActions?: any[];
+};
+
+type SortMode = "group" | "name" | "status" | "steps";
+
+function compareText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function normalizeActionGroup(action: ActionRow): string {
+  const raw = String(action.group || "").trim();
+  const text = `${raw} ${action.name || ""}`.toLowerCase();
+
+  if (raw && raw.toLowerCase() !== "ungrouped") return raw;
+  if (text.includes("streamup") || text.includes("point") || text.includes("gamble") || text.includes("leader")) return "Currency";
+  if (text.includes("mod") || text.includes("set") || text.includes("reset") || text.includes("give")) return "Moderation";
+  if (text.includes("cuddle") || text.includes("hug") || text.includes("dance") || text.includes("highfive") || text.includes("fistbump") || text.includes("headpat") || text.includes("love") || text.includes("lurk")) return "Chat Actions";
+  if (text.includes("follow") || text.includes("raid") || text.includes("shoutout")) return "Stream Info";
+  if (text.includes("ai") || text.includes("athena") || text.includes("voice")) return "AI & Voice";
+  if (text.includes("obs") || text.includes("overlay") || text.includes("scene")) return "Overlays & OBS";
+  return "Ungrouped";
+}
+
+function triggerLabel(trigger: any): string {
+  const value = String(trigger?.type ?? "").trim();
+  if (!value) return "Trigger";
+  if (value === "0") return "Command";
+  if (value === "1") return "Chat message";
+  if (value === "4") return "Follow";
+  if (value === "9") return "Raid";
+  return value;
+}
 
 export default function ActionsPage() {
   const { actions, isLoading, error, refresh } = useActionsData();
   const { toast } = useToast();
   const [skipShoutoutOverlay, setSkipShoutoutOverlay] = useState(false);
   const [isSavingShoutoutMode, setIsSavingShoutoutMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortMode, setSortMode] = useState<SortMode>("group");
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (error) {
@@ -109,9 +161,46 @@ export default function ActionsPage() {
     }
   };
 
+  const toggleGroup = (group: string) => {
+    setOpenGroups((current) => ({ ...current, [group]: !current[group] }));
+  };
+
   const enabledCount = actions.filter((action) => action.enabled).length;
   const triggerCount = actions.reduce((count, action) => count + (action.triggers?.length || 0), 0);
   const subActionCount = actions.reduce((count, action) => count + (action.subActions?.length || 0), 0);
+  const normalizedActions = actions as ActionRow[];
+  const availableGroups = Array.from(new Set(normalizedActions.map(normalizeActionGroup))).sort(compareText);
+  const filteredActions = normalizedActions
+    .filter((action) => {
+      const group = normalizeActionGroup(action);
+      const query = searchQuery.trim().toLowerCase();
+      const haystack = [
+        action.name,
+        action.group,
+        group,
+        ...(Array.isArray(action.triggers) ? action.triggers.map(triggerLabel) : []),
+      ].join(" ").toLowerCase();
+      if (query && !haystack.includes(query)) return false;
+      if (groupFilter !== "all" && group !== groupFilter) return false;
+      if (statusFilter === "enabled" && !action.enabled) return false;
+      if (statusFilter === "disabled" && action.enabled) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortMode === "status" && a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+      if (sortMode === "steps") return (b.subActions?.length || 0) - (a.subActions?.length || 0);
+      if (sortMode === "name") return compareText(a.name || "", b.name || "");
+      const groupCompare = compareText(normalizeActionGroup(a), normalizeActionGroup(b));
+      if (groupCompare !== 0) return groupCompare;
+      return compareText(a.name || "", b.name || "");
+    });
+  const groupedActions = availableGroups
+    .map((group) => ({
+      group,
+      actions: filteredActions.filter((action) => normalizeActionGroup(action) === group),
+      total: normalizedActions.filter((action) => normalizeActionGroup(action) === group).length,
+    }))
+    .filter((section) => section.actions.length > 0);
 
   return (
     <div className="space-y-6">
@@ -211,7 +300,7 @@ export default function ActionsPage() {
           <div className="flex items-center justify-between gap-3 border-b border-border/70 px-6 py-4">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold tracking-tight">Action list</h3>
-              <p className="text-sm text-muted-foreground">Each action can have multiple triggers and a full sub-action chain.</p>
+              <p className="text-sm text-muted-foreground">Grouped and sorted so imported action chains are easier to scan.</p>
             </div>
             <div className="hidden items-center gap-2 md:flex">
               <div className="flex items-center justify-between rounded-full border border-border/70 bg-background/40 px-3 py-1.5 text-xs text-muted-foreground">
@@ -239,6 +328,49 @@ export default function ActionsPage() {
                 aria-label="Toggle skip shoutout overlay"
               />
             </div>
+          </div>
+          <div className="grid gap-3 border-b border-border/70 px-6 py-4 lg:grid-cols-[1fr_180px_180px_180px]">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search actions, triggers, or groups"
+                className="pl-9"
+              />
+            </div>
+            <Select value={groupFilter} onValueChange={setGroupFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Group" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All groups</SelectItem>
+                {availableGroups.map((group) => (
+                  <SelectItem key={group} value={group}>{group}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="enabled">Enabled only</SelectItem>
+                <SelectItem value="disabled">Disabled only</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="group">Group, then name</SelectItem>
+                <SelectItem value="name">Name A-Z</SelectItem>
+                <SelectItem value="status">Enabled first</SelectItem>
+                <SelectItem value="steps">Most steps first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -290,7 +422,34 @@ export default function ActionsPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {actions.map((action) => (
+                {!isLoading && actions.length > 0 && filteredActions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      <div className="py-8">
+                        <div className="text-sm font-medium text-foreground">No actions match those filters.</div>
+                        <div className="mt-1 text-sm text-muted-foreground">Try a different search, group, or status.</div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {groupedActions.map((section) => (
+                  <Fragment key={section.group}>
+                    <TableRow className="bg-muted/35 hover:bg-muted/50">
+                      <TableCell colSpan={5} className="py-2">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 text-left"
+                          onClick={() => toggleGroup(section.group)}
+                        >
+                          <span className="flex items-center gap-2">
+                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openGroups[section.group] ? "rotate-90" : ""}`} />
+                            <span className="font-medium">{section.group}</span>
+                          </span>
+                          <Badge variant="outline">{section.actions.length}/{section.total}</Badge>
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                    {openGroups[section.group] ? section.actions.map((action) => (
                   <TableRow key={action.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -300,11 +459,11 @@ export default function ActionsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {action.triggers.length === 0 ? (
+                        {(action.triggers?.length || 0) === 0 ? (
                           <Badge variant="outline">No triggers</Badge>
                         ) : (
-                          action.triggers.map((trigger, i) => (
-                            <Badge key={i} variant="outline">{trigger.type}</Badge>
+                          action.triggers?.map((trigger, i) => (
+                            <Badge key={i} variant="outline">{triggerLabel(trigger)}</Badge>
                           ))
                         )}
                       </div>
@@ -312,7 +471,7 @@ export default function ActionsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-muted-foreground" />
-                        <span>{action.subActions.length} sub-actions</span>
+                        <span>{action.subActions?.length || 0} sub-actions</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -356,6 +515,8 @@ export default function ActionsPage() {
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
+                    )) : null}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

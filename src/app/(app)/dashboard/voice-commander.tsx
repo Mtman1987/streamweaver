@@ -75,6 +75,25 @@ async function sendDiscordRouteMessage(channelId: string, message: string, usern
     }
 }
 
+async function postTtsToCurrent(audioUrl: string, tenantId?: string | null) {
+    const query = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+    await fetch(`/api/tts/current${query}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioUrl }),
+    });
+}
+
+async function playTtsLocally(audioUrl: string) {
+    const audio = new Audio(audioUrl);
+    try {
+        await applySavedSink(audio);
+    } catch (error) {
+        console.warn('[VoiceCommander] applySavedSink failed for local TTS playback:', error);
+    }
+    await audio.play();
+}
+
 
 export function VoiceCommander({ variant = 'card', className }: VoiceCommanderProps) {
     const { toast } = useToast();
@@ -691,10 +710,9 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         });
                         if (ttsRes.ok) {
                             const ttsData = await ttsRes.json();
-                            await fetch('/api/tts/current', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ audioUrl: ttsData.audioDataUri })
+                            await postTtsToCurrent(ttsData.audioDataUri, tenantId);
+                            await playTtsLocally(ttsData.audioDataUri).catch((playError) => {
+                                console.warn('[VoiceCommander] Local private TTS playback failed:', playError);
                             });
                         }
                     } catch (ttsError) {
@@ -749,11 +767,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         });
                         if (ttsRes.ok) {
                             const ttsData = await ttsRes.json();
-                            await fetch('/api/tts/current', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ audioUrl: ttsData.audioDataUri })
-                            });
+                            await postTtsToCurrent(ttsData.audioDataUri, tenantId);
                         }
                     } catch (ttsError) {
                         console.error('[VoiceCommander] TTS failed:', ttsError);
@@ -867,11 +881,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                             const ttsData = await ttsRes.json();
                             const useTTSPlayer = process.env.NEXT_PUBLIC_USE_TTS_PLAYER !== 'false';
                             if (useTTSPlayer) {
-                                await fetch('/api/tts/current', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ audioUrl: ttsData.audioDataUri })
-                                });
+                                await postTtsToCurrent(ttsData.audioDataUri, tenantId);
                             } else {
                                 const audio = new Audio(ttsData.audioDataUri);
                                 try { await applySavedSink(audio); } catch {}
@@ -1129,21 +1139,30 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                "Press V or click to talk";
     }
 
+    const isEmbedded = variant === 'embedded';
+
     const commanderBody = (
-        <div className="flex flex-col gap-3 w-full min-w-0 overflow-x-auto">
-            <div className="flex flex-col items-center gap-2">
+        <div className={cn("w-full min-w-0 overflow-x-auto", isEmbedded ? "grid gap-4 lg:grid-cols-[auto_1fr]" : "flex flex-col gap-3")}>
+            <div className={cn("flex items-center gap-3", isEmbedded ? "lg:flex-col lg:items-center lg:justify-start" : "flex-col")}>
                 <motion.div whileTap={{ scale: 0.95 }}>
                     <Button
                         onClick={handleMicClick}
                         disabled={isTranscribing || isProcessing}
-                        className={cn("w-16 h-16 rounded-full transition-colors flex-shrink-0", isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90')}
+                        className={cn(
+                            "rounded-full transition-colors flex-shrink-0",
+                            isEmbedded ? "h-14 w-14" : "w-16 h-16",
+                            isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+                        )}
                     >
                         {isTranscribing || isProcessing ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Mic className="h-6 w-6" />}
                     </Button>
                 </motion.div>
-                <p className="text-xs text-muted-foreground text-center truncate">{getStatusText()}</p>
+                <p className={cn("text-xs text-muted-foreground", isEmbedded ? "max-w-[11rem] text-left lg:text-center" : "text-center truncate")}>
+                    {getStatusText()}
+                </p>
             </div>
-            <div className="space-y-2 min-w-0">
+            <div className="space-y-3 min-w-0">
+                <div className={cn("grid gap-3 min-w-0", isEmbedded && "md:grid-cols-2")}>
                 <div className="min-w-0">
                     <h4 className="font-medium mb-1 text-xs truncate">Destination</h4>
                     <RadioGroup value={destination} onValueChange={(v) => setDestination(v as Destination)} className="flex flex-wrap gap-1 text-xs min-w-0">
@@ -1186,6 +1205,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         </div>
                     </RadioGroup>
                 </div>
+                </div>
                 <div className="min-w-0">
                     <h4 className="font-medium mb-1 text-xs truncate">Voice Settings</h4>
                     <div className="flex items-center gap-2">
@@ -1196,7 +1216,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 {messages.length > 0 && (
                     <div className="mt-2">
                         <h4 className="font-medium mb-1 text-xs truncate">History</h4>
-                        <div className="space-y-1 max-h-16 overflow-y-auto">
+                        <div className={cn("space-y-1 overflow-y-auto", isEmbedded ? "max-h-24" : "max-h-16")}>
                             {messages.slice(0, 3).map(msg => {
                                 const botName = localStorage.getItem('bot_name') || 'AI Bot';
                                 const isAiMessage = msg.speaker === 'ai-input' || msg.text.toLowerCase().includes(botName.toLowerCase());
@@ -1214,7 +1234,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
         </div>
     );
 
-    if (variant === 'embedded') {
+    if (isEmbedded) {
         return (
             <div className={cn("min-w-0 overflow-x-auto", className)}>
                 {commanderBody}

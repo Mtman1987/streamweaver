@@ -10,6 +10,7 @@ const PERSISTED_DIRS = ['logs', 'tmp', 'config', 'tokens', 'actions', 'commands'
 
 ;(async() => {
   ensurePersistentDirs()
+  seedRuntimeSnapshot()
   seedTenantDiscordConfig()
 
   if (process.argv.slice(-2).join(' ') === 'node server.js') {
@@ -53,6 +54,22 @@ function ensurePersistentDirs() {
     if (!fs.existsSync(appPath)) {
       fs.symlinkSync(persistentPath, appPath, 'junction')
     }
+  }
+}
+
+function seedRuntimeSnapshot() {
+  const bundledRuntimeRoot = path.join(process.cwd(), 'data', 'runtime')
+  const bundledGlobalRoot = path.join(bundledRuntimeRoot, 'global')
+  const bundledTenantsRoot = path.join(bundledRuntimeRoot, 'tenants')
+  const persistentGlobalRoot = path.join(PERSIST_ROOT, 'global')
+  const persistentTenantsRoot = path.join(PERSIST_ROOT, 'tenants')
+
+  if (fs.existsSync(bundledGlobalRoot)) {
+    seedPersistentDir(bundledGlobalRoot, persistentGlobalRoot)
+  }
+
+  if (fs.existsSync(bundledTenantsRoot)) {
+    seedPersistentDir(bundledTenantsRoot, persistentTenantsRoot)
   }
 }
 

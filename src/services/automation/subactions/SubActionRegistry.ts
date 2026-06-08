@@ -639,19 +639,21 @@ export class SubActionRegistry {
       handler: 'handleGetDateTime'
     });
 
-    // C# Code Execution
+    // Programmable Code Execution
     this.register({
       id: 99999,
-      name: 'Execute C# Code',
+      name: 'Execute JavaScript Code',
       category: 'Advanced/Code',
-      description: 'Execute custom C# code',
+      description: 'Execute custom JavaScript with StreamWeaver helpers',
       fields: [
-        { name: 'code', type: 'code', label: 'C# Code', required: true },
-        { name: 'precompile', type: 'boolean', label: 'Pre-compile', default: true },
+        { name: 'language', type: 'select', label: 'Language', required: true, default: 'javascript', options: [{ label: 'JavaScript', value: 'javascript' }] },
+        { name: 'description', type: 'text', label: 'Description', required: false },
+        { name: 'code', type: 'code', label: 'JavaScript Code', required: true },
+        { name: 'timeoutMs', type: 'number', label: 'Timeout (ms)', default: 10000, min: 100 },
         { name: 'saveResultToVariable', type: 'boolean', label: 'Save Result To Variable', default: false },
-        { name: 'variableName', type: 'variable', label: 'Variable Name', required: false }
+        { name: 'saveToVariable', type: 'variable', label: 'Variable Name', required: false }
       ],
-      handler: 'handleExecuteCSharpCode'
+      handler: 'handleExecuteCode'
     });
 
     // Discord

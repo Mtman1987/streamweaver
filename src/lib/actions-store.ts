@@ -117,7 +117,7 @@ export type CreateActionInput = {
 
 export async function createAction(input: CreateActionInput, tenantId?: string): Promise<Action> {
   const now = new Date().toISOString();
-  const id = randomUUID();
+  const id = String((input as any).id || randomUUID());
   const created: any = {
     ...input,
     id,
