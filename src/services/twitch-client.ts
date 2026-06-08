@@ -1,9 +1,10 @@
 import * as tmi from 'tmi.js';
 import { getStoredTokens, ensureValidToken, isTwitchAuthFailure } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
-import { listTenants, communityBotTokensPath } from '../lib/tenant';
+import { listTenants, communityBotTokensPath, getAdminTwitchId } from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
 import { promises as fsp } from 'fs';
+import { getConfiguredAppUrl } from '../lib/runtime-origin';
 
 interface TenantClients {
   broadcasterClient: tmi.Client | null;
@@ -30,6 +31,7 @@ const communityBotChannels = new Set<string>();
 let communityBotConnectPromise: Promise<tmi.Client | null> | null = null;
 const tenantsNeedingReauth = new Set<string>();
 const lastReauthNotice = new Map<string, number>();
+const REAUTH_NOTICE_INTERVAL_MS = 60_000;
 
 function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
   return Boolean(client && communityBotClient && client === communityBotClient);
@@ -184,10 +186,67 @@ async function ensureCommunityBotForChannel(
 async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {
   const key = `${tenantId}:${String(username || 'chat').toLowerCase()}`;
   const now = Date.now();
-  if (now - (lastReauthNotice.get(key) || 0) < 60_000) return;
+  if (now - (lastReauthNotice.get(key) || 0) < REAUTH_NOTICE_INTERVAL_MS) return;
   lastReauthNotice.set(key, now);
   const mention = username ? `@${username}, ` : '';
-  await client.say(channel, `${mention}StreamWeaver needs the streamer to re-authorize Twitch before commands can run. Open StreamWeaver > Integrations > Twitch > Re-authorize.`);
+  const appUrl = getConfiguredAppUrl();
+  await client.say(channel, `${mention}StreamWeaver needs the streamer to re-authorize Twitch before commands can run. Re-authorize here: ${appUrl}/integrations`);
+}
+
+async function sendMessageWithClient(client: tmi.Client, channel: string, message: string): Promise<boolean> {
+  try {
+    const channelLogin = channel.replace(/^#/, '').toLowerCase();
+    try {
+      await client.join(channelLogin);
+    } catch {
+      // Best effort. If already joined or join races, say() may still work.
+    }
+    await client.say(channelLogin, message);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryDeliverReauthNotice(tenantId: string, channel: string): Promise<void> {
+  const normalizedChannel = channel.replace(/^#/, '').toLowerCase();
+  const key = `${tenantId}:startup`;
+  const now = Date.now();
+  if (now - (lastReauthNotice.get(key) || 0) < REAUTH_NOTICE_INTERVAL_MS) return;
+
+  const appUrl = getConfiguredAppUrl();
+  const message = `StreamWeaver needs the streamer to re-authorize Twitch before commands can run. Re-authorize here: ${appUrl}/integrations`;
+  const tenant = tenantClients.get(tenantId);
+
+  if (tenant?.botClient && await sendMessageWithClient(tenant.botClient, normalizedChannel, message)) {
+    lastReauthNotice.set(key, now);
+    return;
+  }
+
+  if (tenant?.broadcasterClient && await sendMessageWithClient(tenant.broadcasterClient, normalizedChannel, message)) {
+    lastReauthNotice.set(key, now);
+    return;
+  }
+
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  if (clientId && clientSecret) {
+    const sharedBot = await ensureCommunityBotForChannel(normalizedChannel, clientId, clientSecret);
+    if (sharedBot && await sendMessageWithClient(sharedBot, normalizedChannel, message)) {
+      lastReauthNotice.set(key, now);
+      return;
+    }
+  }
+
+  const adminTenantId = getAdminTwitchId();
+  const adminTenant = tenantClients.get(adminTenantId);
+  if (adminTenant?.botClient && await sendMessageWithClient(adminTenant.botClient, normalizedChannel, message)) {
+    lastReauthNotice.set(key, now);
+    return;
+  }
+  if (adminTenant?.broadcasterClient && await sendMessageWithClient(adminTenant.broadcasterClient, normalizedChannel, message)) {
+    lastReauthNotice.set(key, now);
+  }
 }
 
 function scheduleRetry(tenantId: string) {
@@ -252,6 +311,7 @@ export async function setupTwitchClient(tenantId: string) {
           tenant.botClient = sharedBot;
           tenant.botUsername = communityBotUsername || 'community-bot';
         }
+        await tryDeliverReauthNotice(tenantId, tokens.broadcasterUsername);
       }
       setupInProgress.delete(tenantId);
       return;
@@ -366,6 +426,9 @@ export async function setupTwitchClient(tenantId: string) {
 
     if (broadcasterTokenMismatch) {
       console.warn(`[Twitch:${tenantId}] Bot chat connected where possible; broadcaster send is disabled until re-authorization.`);
+      if (broadcasterUsername) {
+        await tryDeliverReauthNotice(tenantId, broadcasterUsername);
+      }
       setupInProgress.delete(tenantId);
       return;
     }
@@ -457,6 +520,9 @@ export async function setupTwitchClient(tenantId: string) {
           tenant.botClient = sharedBot;
           tenant.botUsername = communityBotUsername || 'community-bot';
         }
+        await tryDeliverReauthNotice(tenantId, tenant.broadcasterUsername);
+      } else if (tenant?.broadcasterUsername) {
+        await tryDeliverReauthNotice(tenantId, tenant.broadcasterUsername);
       }
       return;
     }

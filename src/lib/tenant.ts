@@ -53,6 +53,10 @@ export function isAdmin(twitchId: string): boolean {
   return Boolean(ADMIN_TWITCH_ID && twitchId === ADMIN_TWITCH_ID);
 }
 
+export function getAdminTwitchId(): string {
+  return ADMIN_TWITCH_ID;
+}
+
 // Subdirectories created for each new tenant
 const TENANT_SUBDIRS = ['tokens', 'config', 'data', 'actions', 'commands', 'logs'];
 
