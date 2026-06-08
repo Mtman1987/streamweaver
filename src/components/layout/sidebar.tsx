@@ -124,9 +124,9 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
   const { setVisible } = useLogPanel();
 
   return (
-    <Sidebar className="border-r border-sidebar-border/80 bg-sidebar">
-      <SidebarHeader className="gap-4 border-b border-sidebar-border/60 px-4 py-4">
-        <Link href="/dashboard" className="flex items-center gap-3 rounded-2xl border border-sidebar-border/60 bg-sidebar-accent/50 px-3 py-2">
+    <Sidebar className="border-r-0 bg-transparent">
+      <SidebarHeader className="gap-4 border-b border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(10,14,28,0.94),rgba(10,14,28,0.72))] px-4 py-4 backdrop-blur-xl">
+        <Link href="/dashboard" className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 shadow-[0_18px_40px_rgba(3,8,24,0.22)]">
           <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-sidebar-border bg-sidebar">
             <Image src="/StreamWeaver.png" alt="StreamWeaver" fill className="object-cover" />
           </div>
@@ -137,7 +137,7 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-3 py-3">
+      <SidebarContent className="bg-[linear-gradient(180deg,rgba(8,11,24,0.84),rgba(8,11,24,0.66))] px-3 py-3 backdrop-blur-xl">
         {workspaceGroups.map((group) => (
           <SidebarGroup key={group.label} className="py-2">
             <SidebarGroupLabel className="px-2 text-[11px] uppercase tracking-[0.24em] text-sidebar-foreground/45">
@@ -162,8 +162,8 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border/60 px-4 py-4">
-        <div className="rounded-2xl border border-sidebar-border/60 bg-sidebar-accent/45 p-3">
+      <SidebarFooter className="border-t border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(8,11,24,0.74),rgba(8,11,24,0.94))] px-4 py-4 backdrop-blur-xl">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3 shadow-[0_16px_36px_rgba(3,8,24,0.2)]">
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <div className="text-xs uppercase tracking-[0.22em] text-sidebar-foreground/45">Account</div>

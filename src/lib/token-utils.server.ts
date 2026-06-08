@@ -90,6 +90,11 @@ export async function refreshAccessToken(
   return await response.json();
 }
 
+export function isTwitchAuthFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /login authentication failed|authentication failed|invalid oauth|bad auth|invalid refresh token|failed to refresh token/i.test(message);
+}
+
 export async function validateAccessToken(accessToken: string): Promise<boolean> {
   try {
     const response = await fetch('https://id.twitch.tv/oauth2/validate', {

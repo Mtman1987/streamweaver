@@ -137,7 +137,8 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-xl sm:px-6">
+    <header className="app-surface sticky top-0 z-20 px-3 pt-3 sm:px-5 lg:px-6">
+      <div className="app-shell-section border-white/10 bg-[linear-gradient(180deg,rgba(13,17,33,0.88),rgba(10,13,24,0.72))] px-4 py-3 backdrop-blur-xl sm:px-6">
       <div className="flex items-center gap-3">
         <div className="md:hidden">
           <SidebarTrigger />
@@ -197,6 +198,7 @@ export default function Header() {
           <Flame className="mr-1 h-3.5 w-3.5 text-primary" />
           Live workspace
         </Badge>
+      </div>
       </div>
     </header>
   );

@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { getStoredTokens, storeTokens, type StoredTokens } from '@/lib/token-utils.server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { tenantPath } from '@/lib/tenant';
+import { communityBotTokensPath, tenantPath } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
 
 type Role = 'broadcaster' | 'bot' | 'community-bot';
@@ -62,6 +62,25 @@ export async function POST(request: NextRequest) {
   }
 
   const updated = stripRole(tokens, role);
+
+  if (role === 'community-bot') {
+    try {
+      await fs.unlink(communityBotTokensPath());
+    } catch {
+      // ignore
+    }
+
+    try {
+      const wsPort = process.env.WS_PORT || '8090';
+      await fetch(`http://127.0.0.1:${wsPort}/api/twitch/community-bot/disconnect`, {
+        method: 'POST',
+      }).catch(() => {});
+    } catch {
+      // Runtime disconnect is best-effort; deleting the global token file remains source of truth.
+    }
+
+    return apiOk({ ok: true });
+  }
 
   if (role === 'broadcaster' && tenantId) {
     try {

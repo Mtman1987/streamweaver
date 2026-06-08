@@ -58,6 +58,42 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
 
 let lastTTSCall = 0;
 const TTS_RATE_LIMIT = 2000; // 2 seconds between TTS calls
+const TTS_FETCH_TIMEOUT_MS = 20_000;
+const TTS_DOWNLOAD_TIMEOUT_MS = 30_000;
+
+async function fetchWithRetry(
+  input: string,
+  init: RequestInit,
+  options: { attempts?: number; timeoutMs?: number; retryOnStatuses?: number[] } = {},
+): Promise<Response> {
+  const attempts = options.attempts ?? 2;
+  const timeoutMs = options.timeoutMs ?? TTS_FETCH_TIMEOUT_MS;
+  const retryOnStatuses = new Set(options.retryOnStatuses ?? [408, 425, 429, 500, 502, 503, 504]);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(input, { ...init, signal: controller.signal });
+      if (response.ok || !retryOnStatuses.has(response.status) || attempt === attempts) {
+        return response;
+      }
+
+      const body = await response.text().catch(() => '');
+      lastError = new Error(`HTTP ${response.status} ${body}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'fetch failed'));
+}
 
 export async function generateTTS(text: string, voiceOverride?: string, tenantId?: string): Promise<string> {
   const normalizedText = normalizeTextForTTS(text);
@@ -150,7 +186,7 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
 async function generateOpenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
   const voiceOption = getTtsVoiceOption(voice, 'openai');
   const openaiVoice = voiceOption.openaiVoice || 'nova';
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+  const response = await fetchWithRetry('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -162,7 +198,7 @@ async function generateOpenAITTS(text: string, voice: string, apiKey: string): P
       voice: openaiVoice,
       response_format: 'mp3',
     }),
-  });
+  }, { attempts: 2, timeoutMs: TTS_FETCH_TIMEOUT_MS });
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
@@ -177,7 +213,7 @@ async function generateEdenAITTS(text: string, voice: string, apiKey: string): P
   const voiceOption = getTtsVoiceOption(voice, 'edenai');
   const edenaiProvider = voiceOption.edenaiProvider || 'openai';
   const edenaiOption = voiceOption.edenaiOption || (voiceOption.gender === 'Female' ? 'FEMALE' : 'MALE');
-  const response = await fetch('https://api.edenai.run/v2/audio/text_to_speech', {
+  const response = await fetchWithRetry('https://api.edenai.run/v2/audio/text_to_speech', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -189,7 +225,7 @@ async function generateEdenAITTS(text: string, voice: string, apiKey: string): P
       text,
       option: edenaiOption,
     }),
-  });
+  }, { attempts: 2, timeoutMs: TTS_FETCH_TIMEOUT_MS });
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
@@ -203,7 +239,7 @@ async function generateEdenAITTS(text: string, voice: string, apiKey: string): P
     throw new Error(`EdenAI TTS returned no audio for ${edenaiProvider}`);
   }
 
-  const audioRes = await fetch(audioUrl);
+  const audioRes = await fetchWithRetry(audioUrl, {}, { attempts: 2, timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
   if (!audioRes.ok) {
     throw new Error(`EdenAI audio download failed: ${audioRes.status}`);
   }

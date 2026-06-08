@@ -69,20 +69,24 @@ export default function AppShell({
     <Suspense fallback={null}>
       <LogPanelProviderLazy>
         <LiveStreamersProvider>
-          <AppSidebar userProfile={userProfile} />
-          <SidebarInset className="bg-background">
-            <Header />
-            <main className="flex-1 px-4 pb-4 pt-0 sm:px-6 lg:px-8">
-              <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-1 flex-col gap-6">
-                <div className="flex-1">
-                  {children}
+          <div className="app-frame">
+            <AppSidebar userProfile={userProfile} />
+            <SidebarInset className="bg-transparent">
+              <Header />
+              <main className="app-surface flex-1 px-3 pb-4 pt-3 sm:px-5 lg:px-6">
+                <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-1 flex-col gap-6">
+                  <div className="app-shell-content flex-1 overflow-hidden">
+                    <div className="flex-1 px-4 pb-5 pt-4 sm:px-6 sm:pb-6">
+                      {children}
+                    </div>
+                  </div>
+                  <Suspense fallback={null}>
+                    <LogPanel />
+                  </Suspense>
                 </div>
-                <Suspense fallback={null}>
-                  <LogPanel />
-                </Suspense>
-              </div>
-            </main>
-          </SidebarInset>
+              </main>
+            </SidebarInset>
+          </div>
         </LiveStreamersProvider>
       </LogPanelProviderLazy>
     </Suspense>

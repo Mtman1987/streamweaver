@@ -4,6 +4,8 @@ import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getConfigSection } from '@/lib/local-config/service';
 import { listTenantFlowPackages } from '@/lib/flow-packages';
 import { getStoredTokens } from '@/lib/token-utils.server';
+import { communityBotTokensPath } from '@/lib/tenant';
+import { promises as fs } from 'fs';
 
 function hasConfiguredAiKey(automation: Record<string, any>): boolean {
   const provider = String(automation.aiProvider || '');
@@ -17,13 +19,22 @@ export async function GET(request: NextRequest) {
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId;
 
-    const [tokens, twitch, discord, automation, obs, packages] = await Promise.all([
+    const [tokens, twitch, discord, automation, obs, packages, communityBotConfigured] = await Promise.all([
       getStoredTokens(tenantId),
       getConfigSection('twitch', tenantId),
       getConfigSection('discord', tenantId),
       getConfigSection('automation', tenantId),
       getConfigSection('obs', tenantId),
       listTenantFlowPackages(tenantId),
+      (async () => {
+        try {
+          const raw = await fs.readFile(communityBotTokensPath(), 'utf-8');
+          const data = JSON.parse(raw);
+          return Boolean(data?.communityBotToken && data?.communityBotRefreshToken);
+        } catch {
+          return false;
+        }
+      })(),
     ]);
 
     const obsSceneCount = Object.values(obs.scenes || {}).filter((value) => String(value || '').trim().length > 0).length;
@@ -41,12 +52,23 @@ export async function GET(request: NextRequest) {
       },
       {
         id: 'bot',
-        title: 'Connect bot account',
-        description: 'Add a separate bot identity so commands and AI replies can run safely.',
+        title: 'Connect optional bot account',
+        description: 'Optional. Your own bot account overrides the shared community bot, and the broadcaster can still handle chat if neither exists.',
         href: '/integrations',
-        ctaLabel: 'Connect bot account',
-        required: true,
-        complete: Boolean(tokens?.botToken && tokens?.botRefreshToken),
+        ctaLabel: 'Review bot options',
+        required: false,
+        complete: Boolean(
+          (tokens?.botToken && tokens?.botRefreshToken) ||
+          communityBotConfigured ||
+          (tokens?.broadcasterToken && tokens?.broadcasterRefreshToken)
+        ),
+        detail: tokens?.botToken && tokens?.botRefreshToken
+          ? 'Using your dedicated Twitch bot account'
+          : communityBotConfigured
+            ? 'Using the shared community bot'
+            : tokens?.broadcasterToken && tokens?.broadcasterRefreshToken
+              ? 'Using your broadcaster account as the chat sender fallback'
+              : 'No chat sender available until Twitch broadcaster auth is connected',
       },
       {
         id: 'ai',

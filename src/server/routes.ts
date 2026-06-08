@@ -406,6 +406,22 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 });
                 return;
             }
+
+            if (pathname === '/api/twitch/community-bot/disconnect' && req.method === 'POST') {
+                try {
+                    console.log('[HTTP] Disconnecting shared community bot...');
+                    const { disconnectCommunityBot } = twitchClientModule;
+                    await disconnectCommunityBot();
+                    console.log('[HTTP] Shared community bot disconnected');
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e: any) {
+                    console.error('[HTTP] Shared community bot disconnect failed:', e);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+                return;
+            }
             
             if (pathname === '/api/brb' && req.method === 'POST') {
                 let body = '';

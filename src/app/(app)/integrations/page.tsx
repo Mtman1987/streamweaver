@@ -342,12 +342,12 @@ export default function IntegrationsPage() {
             connected={twitchStatus.botConnected}
             label="Stream Bot"
             username={twitchStatus.botUsername}
-            description={twitchStatus.botConnected ? "Sends messages in your chat" : "Must be a different account than Broadcaster"}
+            description={twitchStatus.botConnected ? "Your dedicated chat bot account" : "Optional. Must be a different account than Broadcaster if you connect one"}
           >
             {twitchStatus.botConnected ? (
               <Button size="sm" variant="ghost" className="text-xs" onClick={() => connectTwitch("bot")}>Re-authorize</Button>
             ) : (
-              <Button size="sm" onClick={() => connectTwitch("bot")}>Connect</Button>
+              <Button size="sm" onClick={() => connectTwitch("bot")}>Connect Optional Bot</Button>
             )}
           </AccountRow>
 
@@ -355,7 +355,7 @@ export default function IntegrationsPage() {
             connected={twitchStatus.communityBotConnected}
             label="Community Bot"
             username={twitchStatus.communityBotUsername}
-            description="Shared bot for Chat Tag & cross-stream features"
+            description="Optional shared bot for Chat Tag and cross-stream features. StreamWeaver still works without it."
           >
             <div className="flex items-center gap-2">
               {twitchStatus.communityBotConnected ? (

@@ -132,3 +132,33 @@
     letter-spacing: -0.03em;
   }
 }
+
+@layer components {
+  .app-frame {
+    @apply relative min-h-screen;
+  }
+
+  .app-frame::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(circle at 14% 18%, rgba(139, 92, 246, 0.14), transparent 18rem),
+      radial-gradient(circle at 86% 12%, rgba(34, 211, 238, 0.12), transparent 16rem),
+      linear-gradient(180deg, rgba(8, 10, 22, 0.3), rgba(8, 10, 22, 0.68));
+  }
+
+  .app-surface {
+    @apply relative z-10;
+  }
+
+  .app-shell-content {
+    @apply rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(14,18,34,0.76),rgba(8,11,24,0.84))] shadow-[0_30px_80px_rgba(3,8,24,0.38)] backdrop-blur-xl;
+  }
+
+  .app-shell-section {
+    @apply rounded-[1.5rem] border border-white/10 bg-white/[0.03] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+  }
+}

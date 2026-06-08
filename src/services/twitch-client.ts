@@ -1,5 +1,5 @@
 import * as tmi from 'tmi.js';
-import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
+import { getStoredTokens, ensureValidToken, isTwitchAuthFailure } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
 import { listTenants, communityBotTokensPath } from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
@@ -46,8 +46,7 @@ function isClientUsable(client: tmi.Client | null | undefined): client is tmi.Cl
 }
 
 function isAuthFailure(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error || '');
-  return /login authentication failed|authentication failed|invalid oauth|bad auth/i.test(message);
+  return isTwitchAuthFailure(error);
 }
 
 async function getTokenIdentity(accessToken: string): Promise<{ userId: string; login: string } | null> {
@@ -546,12 +545,40 @@ export function getCommunityBotRuntimeState(): { connected: boolean; username: s
   };
 }
 
+export async function disconnectCommunityBot(): Promise<void> {
+  const priorSharedClient = communityBotClient;
+
+  if (communityBotClient) {
+    try {
+      communityBotClient.removeAllListeners();
+      await disconnectIfOpen(communityBotClient);
+    } catch (error) {
+      console.warn('[Twitch:community-bot] Disconnect cleanup warning:', error);
+    }
+  }
+
+  communityBotClient = null;
+  communityBotConnectPromise = null;
+  communityBotUsername = '';
+  communityBotChannels.clear();
+
+  for (const [, tenant] of tenantClients) {
+    if (priorSharedClient && tenant.botClient === priorSharedClient) {
+      tenant.botClient = null;
+      tenant.botUsername = '';
+    }
+  }
+}
+
 /**
  * Reconnect any tenants whose IRC clients have dropped.
  * Called periodically from the polling service.
  */
 export async function reconnectDisconnectedTenants(): Promise<void> {
   for (const [tenantId, tenant] of tenantClients) {
+    if (tenantsNeedingReauth.has(tenantId)) {
+      continue;
+    }
     if (tenant.status === 'disconnected' && !setupInProgress.has(tenantId)) {
       console.log(`[Twitch:${tenantId}] Health check: disconnected, reconnecting...`);
       tenant.retryCount = 0;
