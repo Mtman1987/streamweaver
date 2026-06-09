@@ -132,6 +132,12 @@ export async function decideBotInteraction(input: {
   tenantId?: string;
   platform: 'twitch' | 'discord';
   mode?: BotShareMode;
+  additionalMentions?: Array<{
+    character: WorldLoreCharacter;
+    trigger: string;
+  }>;
+  allowedSpeakerStableIds?: string[];
+  allowedTargetStableIds?: string[];
 }): Promise<BotInteractionDecision | null> {
   const mode = input.mode || await getBotShareMode(input.tenantId);
   if (mode !== 'on') return null;
@@ -142,6 +148,24 @@ export async function decideBotInteraction(input: {
 
   const messageLower = input.message.toLowerCase();
   const mentioned = findMentionedCharacters(messageLower, characters);
+  for (const extra of input.additionalMentions || []) {
+    const index = triggerIndex(messageLower, extra.trigger);
+    if (index < 0) continue;
+    const existing = mentioned.find((entry) => entry.character.stableId === extra.character.stableId);
+    if (existing) {
+      if (index < existing.index || (index === existing.index && extra.trigger.length > existing.trigger.length)) {
+        existing.index = index;
+        existing.trigger = extra.trigger;
+      }
+      continue;
+    }
+    mentioned.push({
+      character: extra.character,
+      index,
+      trigger: extra.trigger,
+    });
+  }
+  mentioned.sort((a, b) => a.index - b.index || b.trigger.length - a.trigger.length);
 
   const currentBotLower = normalize(input.currentBotName);
   const currentBotMention = mentioned.find((entry) =>
@@ -149,6 +173,9 @@ export async function decideBotInteraction(input: {
   );
   const speaker = mentioned[0]?.character || currentBotMention?.character;
   if (!speaker) return null;
+  if (input.allowedSpeakerStableIds?.length && !input.allowedSpeakerStableIds.includes(speaker.stableId)) {
+    return null;
+  }
   if (await isBotTriggerIgnored({
     tenantId: input.tenantId,
     stableId: speaker.stableId,
@@ -172,6 +199,9 @@ export async function decideBotInteraction(input: {
   if (!targets.length) return null;
   const allowedTargets: WorldLoreCharacter[] = [];
   for (const target of targets) {
+    if (input.allowedTargetStableIds?.length && !input.allowedTargetStableIds.includes(target.stableId)) {
+      continue;
+    }
     if (!(await isBotTriggerIgnored({
       tenantId: input.tenantId,
       stableId: target.stableId,

@@ -525,6 +525,105 @@ async function resolveTenantForLoreBot(character: any, fallbackTenantId?: string
     return fallbackTenantId;
 }
 
+function getLoreCharacterFirstIndex(message: string, character: WorldLoreCharacter | null | undefined): number {
+    if (!character) return -1;
+    return firstNameIndex(message.toLowerCase(), [
+        character.currentName,
+        ...(character.aliases || []),
+        ...(character.previousNames || []),
+    ]);
+}
+
+async function getLoreCharacterForTenant(tenantId?: string): Promise<WorldLoreCharacter | null> {
+    if (!tenantId) return null;
+    try {
+        const { getBotName, getBotAliases } = await import('../lib/bot-settings-store');
+        const lore = await readWorldLore();
+        const characters = Object.values(lore?.characters || {});
+        const names = new Set([
+            getBotName(tenantId),
+            ...String(getBotAliases(tenantId) || '').split(',').map((value) => value.trim()),
+        ].map((value) => normalizeBotHandle(value)).filter(Boolean));
+        return characters.find((character) =>
+            loreCharacterNames(character).some((name) => names.has(normalizeBotHandle(name)))
+        ) || null;
+    } catch {
+        return null;
+    }
+}
+
+async function getExplicitTwitchBotMentions(message: string): Promise<Array<{
+    index: number;
+    trigger: string;
+    tenantId?: string;
+    character: WorldLoreCharacter;
+}>> {
+    const matches = Array.from(message.toLowerCase().matchAll(/(^|[^a-z0-9_])@([a-z0-9_]+)/gi));
+    if (!matches.length) return [];
+
+    try {
+        const handles = new Map<string, number>();
+        for (const match of matches) {
+            const handle = normalizeBotHandle(match[2] || '');
+            if (!handle) continue;
+            const index = typeof match.index === 'number' ? match.index : message.toLowerCase().indexOf(`@${handle}`);
+            const existing = handles.get(handle);
+            if (existing === undefined || index < existing) {
+                handles.set(handle, index);
+            }
+        }
+        if (!handles.size) return [];
+
+        const lore = await readWorldLore();
+        const characters = Object.values(lore?.characters || {});
+        const { listTenants } = await import('../lib/tenant');
+        const { getStoredTokens } = await import('../lib/token-utils.server');
+        const { getBotName, getBotAliases } = await import('../lib/bot-settings-store');
+        const resolved: Array<{
+            index: number;
+            trigger: string;
+            tenantId?: string;
+            character: WorldLoreCharacter;
+        }> = [];
+
+        for (const tid of await listTenants()) {
+            const tokens = await getStoredTokens(tid);
+            const botUsername = normalizeBotHandle(tokens?.botUsername || '');
+            if (!botUsername || !handles.has(botUsername)) continue;
+
+            const configuredName = getBotName(tid).trim() || tokens?.botUsername || botUsername;
+            const configuredAliases = String(getBotAliases(tid) || '')
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean);
+            const candidateNames = new Set([
+                configuredName,
+                tokens?.botUsername || '',
+                ...configuredAliases,
+            ].map((value) => normalizeBotHandle(value)).filter(Boolean));
+            const loreCharacter = characters.find((character) =>
+                loreCharacterNames(character).some((name) => candidateNames.has(normalizeBotHandle(name)))
+            );
+
+            resolved.push({
+                index: handles.get(botUsername) ?? 0,
+                trigger: `@${botUsername}`,
+                tenantId: tid,
+                character: loreCharacter || {
+                    stableId: `${tid}:bot`,
+                    currentName: configuredName,
+                    aliases: Array.from(new Set([tokens?.botUsername, ...configuredAliases].filter((value): value is string => Boolean(value)))),
+                },
+            });
+        }
+
+        return resolved.sort((a, b) => a.index - b.index || a.character.currentName.localeCompare(b.character.currentName));
+    } catch (error) {
+        console.error('[Dispatcher] Failed to resolve explicit Twitch bot mentions:', error);
+        return [];
+    }
+}
+
 export async function handleTwitchMessage(channel: string, tags: any, message: string, self: boolean) {
     const username = tags.username!;
     const displayName = tags['display-name'] || username;
@@ -2673,10 +2772,19 @@ If no good match, respond with: Could not find matching user`;
             let responseTenantId = tenantId;
             let responseBotName = botName;
             let athenaDenied = false;
+            const explicitTwitchBotMentions = await getExplicitTwitchBotMentions(actualMessage);
             const firstLoreBot = await getFirstMentionedLoreBot(actualMessage);
+            const localLoreBot = await getLoreCharacterForTenant(tenantId);
+            const firstExplicitTwitchBot = explicitTwitchBotMentions[0];
             const firstLoreTenantId = firstLoreBot ? await resolveTenantForLoreBot(firstLoreBot, undefined) : undefined;
-            if (firstLoreBot && firstLoreTenantId && firstLoreTenantId !== tenantId) {
-                const isAthenaEverywhere = firstLoreBot.stableId === ATHENA_STABLE_ID;
+            const firstLoreIndex = getLoreCharacterFirstIndex(actualMessage, firstLoreBot);
+            const shouldPreferExplicitTwitchBot = !!firstExplicitTwitchBot
+                && (firstLoreIndex < 0 || firstExplicitTwitchBot.index <= firstLoreIndex);
+            const routedExternalBot = shouldPreferExplicitTwitchBot ? firstExplicitTwitchBot?.character : firstLoreBot;
+            const routedExternalTenantId = shouldPreferExplicitTwitchBot ? firstExplicitTwitchBot?.tenantId : firstLoreTenantId;
+
+            if (routedExternalBot && routedExternalTenantId && routedExternalTenantId !== tenantId) {
+                const isAthenaEverywhere = routedExternalBot.stableId === ATHENA_STABLE_ID;
                 const canUseAthena = !isAthenaEverywhere || (
                     await getAthenaEverywhereMode() === 'on'
                     && await canRouteAthenaForUser({
@@ -2685,10 +2793,10 @@ If no good match, respond with: Could not find matching user`;
                     })
                 );
                 if (canUseAthena) {
-                    responseTenantId = firstLoreTenantId;
-                    responseBotName = firstLoreBot.currentName;
-                    botName = firstLoreBot.currentName;
-                    console.log(`[Dispatcher] Cross-bot first mention routing "${actualMessage}" from #${replyChannel} to ${firstLoreBot.currentName} tenant ${firstLoreTenantId}`);
+                    responseTenantId = routedExternalTenantId;
+                    responseBotName = routedExternalBot.currentName;
+                    botName = routedExternalBot.currentName;
+                    console.log(`[Dispatcher] Cross-bot first mention routing "${actualMessage}" from #${replyChannel} to ${routedExternalBot.currentName} tenant ${routedExternalTenantId}`);
                 } else if (isAthenaEverywhere) {
                     athenaDenied = true;
                     console.log(`[Dispatcher] Athena mention ignored for non-whitelisted user ${actualUsername} in #${replyChannel}`);
@@ -2711,11 +2819,25 @@ If no good match, respond with: Could not find matching user`;
 
             try {
                 const { decideBotInteraction, appendBotInteraction } = await import('../lib/bot-interactions-store');
+                const canUseAthenaInThisChat = await getAthenaEverywhereMode() === 'on'
+                    && await canRouteAthenaForUser({
+                        username: actualUsername,
+                        tenantId: ATHENA_WHITELIST_TENANT_ID,
+                    });
+                const allowedTwitchParticipants = new Set<string>(explicitTwitchBotMentions.map((entry) => entry.character.stableId));
+                if (localLoreBot?.stableId) allowedTwitchParticipants.add(localLoreBot.stableId);
+                if (canUseAthenaInThisChat) allowedTwitchParticipants.add(ATHENA_STABLE_ID);
                 const decision = await decideBotInteraction({
                     message: actualMessage,
                     currentBotName: responseBotName,
                     tenantId: responseTenantId,
                     platform: 'twitch',
+                    additionalMentions: explicitTwitchBotMentions.map((entry) => ({
+                        character: entry.character,
+                        trigger: entry.trigger,
+                    })),
+                    allowedSpeakerStableIds: Array.from(allowedTwitchParticipants),
+                    allowedTargetStableIds: Array.from(allowedTwitchParticipants),
                 });
 
                 if (decision?.shouldRespond) {
