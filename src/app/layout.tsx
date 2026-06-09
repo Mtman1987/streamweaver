@@ -43,6 +43,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
       <body>
+        <div className="sw-starfield sw-starfield-a" />
+        <div className="sw-starfield sw-starfield-b" />
+        <div className="sw-starfield sw-starfield-c" />
         <OverlayDocumentMode />
         {/* <DashboardConnection /> */}
         <SidebarProvider>
