@@ -123,6 +123,12 @@
     background-image: none !important;
   }
 
+  body.overlay-document::before,
+  body.overlay-document::after {
+    display: none !important;
+    background: none !important;
+  }
+
   body.overlay-document {
     overflow: hidden;
   }
@@ -145,9 +151,10 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(circle at 14% 18%, rgba(139, 92, 246, 0.14), transparent 18rem),
-      radial-gradient(circle at 86% 12%, rgba(34, 211, 238, 0.12), transparent 16rem),
-      linear-gradient(180deg, rgba(8, 10, 22, 0.3), rgba(8, 10, 22, 0.68));
+      radial-gradient(circle at 14% 18%, rgba(139, 92, 246, 0.18), transparent 18rem),
+      radial-gradient(circle at 86% 12%, rgba(34, 211, 238, 0.16), transparent 16rem),
+      radial-gradient(circle at 50% 62%, rgba(96, 165, 250, 0.08), transparent 28rem),
+      linear-gradient(180deg, rgba(8, 10, 22, 0.2), rgba(8, 10, 22, 0.58));
   }
 
   .app-surface {
@@ -155,7 +162,29 @@
   }
 
   .app-shell-content {
-    @apply rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(14,18,34,0.76),rgba(8,11,24,0.84))] shadow-[0_30px_80px_rgba(3,8,24,0.38)] backdrop-blur-xl;
+    @apply rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(12,16,32,0.58),rgba(7,10,22,0.7))] shadow-[0_30px_80px_rgba(3,8,24,0.38)] backdrop-blur-xl;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .app-shell-content::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 16% 18%, rgba(255, 255, 255, 0.12) 0, transparent 1px),
+      radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.11) 0, transparent 1px),
+      radial-gradient(circle at 56% 74%, rgba(34, 211, 238, 0.16) 0, transparent 1.6px),
+      radial-gradient(circle at 26% 68%, rgba(139, 92, 246, 0.16) 0, transparent 1.6px);
+    background-size: 140px 140px, 180px 180px, 220px 220px, 260px 260px;
+    opacity: 0.55;
+    z-index: 0;
+  }
+
+  .app-shell-content > * {
+    position: relative;
+    z-index: 1;
   }
 
   .app-shell-section {

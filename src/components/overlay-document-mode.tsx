@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const OVERLAY_PREFIXES = [
   '/overlay/',
   '/xpn/overlay/',
+  '/tts/',
 ];
 
 const OVERLAY_PATHS = new Set([
@@ -14,8 +15,8 @@ const OVERLAY_PATHS = new Set([
   '/gamble-overlay',
   '/gym-battle-overlay',
   '/partner-checkin',
-  '/pokemon-collection-overlay',
   '/pokemon-overlay',
+  '/pokemon-collection-overlay',
   '/pokemon-pack-overlay',
   '/pokemon-trade-overlay',
   '/shoutout-player',

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
+import { getOverlayTenantId } from '@/lib/client-tenant';
 
 export default function BicCounterOverlay() {
   const [total, setTotal] = useState<number | null>(null);
@@ -10,9 +11,11 @@ export default function BicCounterOverlay() {
   const [flash, setFlash] = useState(false);
   const [burst, setBurst] = useState(false);
   const prevTotal = useRef(0);
+  const tenantId = getOverlayTenantId();
+  const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
 
   const fetchLatest = () =>
-    fetch(`/api/bic-counter?ts=${Date.now()}`, { cache: 'no-store' })
+    fetch(`/api/bic-counter?ts=${Date.now()}${tenantQuery}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null);
 
   // Load initial count from global API
@@ -27,7 +30,7 @@ export default function BicCounterOverlay() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [tenantQuery]);
 
   // Listen for live updates via WebSocket
   useEffect(() => {
@@ -36,7 +39,7 @@ export default function BicCounterOverlay() {
 
     const connect = () => {
       try {
-        ws = new WebSocket(getBrowserWebSocketUrl());
+        ws = new WebSocket(getBrowserWebSocketUrl(tenantId || undefined));
         ws.onclose = () => { reconnect = setTimeout(connect, 3000); };
         ws.onerror = () => {};
         ws.onmessage = (e) => {
@@ -64,7 +67,7 @@ export default function BicCounterOverlay() {
 
     connect();
     return () => { clearTimeout(reconnect); ws?.close(); };
-  }, []);
+  }, [tenantId]);
 
   // Also poll as fallback every 5s
   useEffect(() => {
@@ -85,7 +88,7 @@ export default function BicCounterOverlay() {
         .catch(() => {});
     }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tenantQuery]);
 
   return (
     <div style={{

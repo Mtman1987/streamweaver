@@ -1,14 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getBicData, getVictimList } from '@/services/bic-storage';
 import { getOverlayData } from '@/services/overlay-manager';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const tenantId = request.nextUrl.searchParams.get('tenant') || undefined;
   const data = getBicData();
   const victims = getVictimList();
-  const overlay = await getOverlayData('bic-counter');
+  const overlay = await getOverlayData('bic-counter', tenantId);
   const top = victims[0];
   return NextResponse.json(
     {
