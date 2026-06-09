@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getStoredTokens, ensureValidToken } from '@/lib/token-utils.server';
+import { getStoredTokens, ensureValidToken, isTwitchAuthFailure } from '@/lib/token-utils.server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getConfigSection, initializeLocalConfig } from '@/lib/local-config/service';
@@ -97,6 +97,14 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
+    if (isTwitchAuthFailure(error)) {
+      return apiError('Twitch re-authorization required', {
+        status: 401,
+        code: 'TWITCH_REAUTH_REQUIRED',
+        details: { details: String((error as any)?.message || error) },
+      });
+    }
+
     console.error('[Chatters API] Error:', error);
 
     return apiError('Failed to fetch chatters', {

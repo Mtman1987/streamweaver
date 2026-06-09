@@ -269,12 +269,12 @@ async function isLoreBotUsername(username: string): Promise<boolean> {
 }
 
 function pickCrossBotReplyLimit(): number {
-    const weightedLimits = [1, 2, 2, 3, 3, 4];
+    const weightedLimits = [1, 2, 2, 3, 3];
     return weightedLimits[Math.floor(Math.random() * weightedLimits.length)] || 2;
 }
 
 function randomCrossBotDelayMs(): number {
-    return 5_000 + Math.floor(Math.random() * 10_001);
+    return 10_000 + Math.floor(Math.random() * 5_001);
 }
 
 function delay(ms: number): Promise<void> {
@@ -292,6 +292,7 @@ async function sendTwitchCrossBotFollowUp(input: {
     speakerStableId?: string;
     speakerTenantId?: string;
     speakerReply: string;
+    targets?: any[];
 }) {
     try {
         const { getBotShareMode, appendBotInteraction } = await import('../lib/bot-interactions-store');
@@ -300,25 +301,9 @@ async function sendTwitchCrossBotFollowUp(input: {
         if (await isKnownBot(input.userName.toLowerCase(), input.speakerTenantId)) return;
 
         const { isBotTriggerIgnored } = require('../lib/bot-trigger-ignore-store');
-
-        const { readWorldLore } = await import('../lib/world-lore-store');
-        const lore = await readWorldLore();
-        const characters = Object.values(lore?.characters || {}) as any[];
-        if (!characters.length) return;
-
-        const replyLower = `${input.triggerMessage}\n${input.speakerReply}`.toLowerCase();
         const speakerId = input.speakerStableId || '';
-
-        const findTargets = (text: string, excludeIds: Set<string>) => {
-            return characters.filter((character: any) => {
-                if (speakerId && character.stableId === speakerId) return false;
-                if (excludeIds.has(character.stableId)) return false;
-                const names = [character.currentName, ...(character.aliases || []), ...(character.previousNames || [])]
-                    .filter(Boolean)
-                    .map((value: string) => value.toLowerCase());
-                return names.some((name: string) => new RegExp(`(^|[^a-z0-9_])@?${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9_]|$)`, 'i').test(text));
-            });
-        };
+        const seedTargets = Array.isArray(input.targets) ? input.targets : [];
+        if (!seedTargets.length) return;
 
         const tenantFromStableId = (stableId: string): string | undefined => {
             const [prefix] = stableId.split(':');
@@ -326,9 +311,9 @@ async function sendTwitchCrossBotFollowUp(input: {
             return prefix;
         };
 
-        const allFound = findTargets(replyLower, new Set());
         const initialTargets: any[] = [];
-        for (const t of allFound) {
+        for (const t of seedTargets) {
+            if (speakerId && t.stableId === speakerId) continue;
             if (!(await isBotTriggerIgnored({ tenantId: tenantFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
                 initialTargets.push(t);
             }
@@ -407,13 +392,6 @@ async function sendTwitchCrossBotFollowUp(input: {
             lastSpeakerId = target.stableId;
             lastSpeakerName = target.currentName;
             lastReply = reply;
-
-            const newTargets = findTargets(reply.toLowerCase(), responded);
-            for (const t of newTargets) {
-                if (!(await isBotTriggerIgnored({ tenantId: tenantFromStableId(t.stableId), stableId: t.stableId, botName: t.currentName }, input.speakerTenantId))) {
-                    queue.push(t);
-                }
-            }
         }
     } catch (error) {
         console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error);
@@ -2781,6 +2759,7 @@ If no good match, respond with: Could not find matching user`;
                                     speakerStableId: decision.speaker.stableId,
                                     speakerTenantId: responseTenantId,
                                     speakerReply: aiReply,
+                                    targets: decision.targets,
                                 }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
                                 return;
                             }
@@ -2849,6 +2828,7 @@ If no good match, respond with: Could not find matching user`;
                                 speakerStableId: firstLoreBot?.stableId,
                                 speakerTenantId: responseTenantId,
                                 speakerReply: aiReply,
+                                targets: [],
                             }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
                             
                             // Generate TTS for AI response

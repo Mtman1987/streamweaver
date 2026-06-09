@@ -159,12 +159,14 @@ export async function decideBotInteraction(input: {
   const explicitTargets = mentioned
     .map((entry) => entry.character)
     .filter((character) => character.stableId !== speaker.stableId);
-  const inferredTargets = inferRelationshipTargets({
-    messageLower,
-    speaker,
-    characters,
-    relationships: lore?.relationships || {},
-  });
+  const inferredTargets = input.platform === 'discord'
+    ? inferRelationshipTargets({
+        messageLower,
+        speaker,
+        characters,
+        relationships: lore?.relationships || {},
+      })
+    : [];
   const targets = uniqueCharacters([...explicitTargets, ...inferredTargets])
     .filter((character) => character.stableId !== speaker.stableId);
   if (!targets.length) return null;
