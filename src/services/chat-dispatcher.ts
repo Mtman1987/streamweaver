@@ -2,6 +2,7 @@ import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { sendDiscordEmbed, sendDiscordMessage } from './discord';
+import { buildBotAvatarUrl, getDiscordBotWebhookIdentity } from './discord-branding';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
@@ -407,7 +408,18 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     const silentTenantId = tenantId ? `__kick_silent__:${tenantId}` : undefined;
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
-    const reply = (message: string) => sendDiscordMessage(sourceChannelId, message).catch(() => {});
+    const reply = (message: string) => {
+        const webhookIdentity = getDiscordBotWebhookIdentity(tenantId);
+        const avatarUrl = webhookIdentity.avatarUrl || buildBotAvatarUrl(tenantId);
+        return sendDiscordMessage(
+            sourceChannelId,
+            message,
+            webhookIdentity.username,
+            avatarUrl,
+        ).catch((error) => {
+            console.error('[Discord Dispatcher] Failed to send command reply:', error);
+        });
+    };
     const isMod = await hasEffectiveDiscordModAccess(msg);
 
     const mtFixItIntent = detectMtFixItIntent(content);
