@@ -39,6 +39,8 @@ export interface StoredTokens {
   lastUpdated?: string;
 }
 
+const refreshLocks = new Map<string, Promise<string>>();
+
 function tokensFilePath(tenantId?: string): string {
   if (tenantId) {
     return tenantPath(tenantId, 'tokens/twitch-tokens.json');
@@ -48,6 +50,12 @@ function tokensFilePath(tenantId?: string): string {
 
 function communityTokensFilePath(): string {
   return communityBotTokensPath();
+}
+
+function getStorageTarget(tokenType: 'broadcaster' | 'bot' | 'community-bot', tenantId?: string): string {
+  return tokenType === 'community-bot' && !tenantId
+    ? communityTokensFilePath()
+    : tokensFilePath(tenantId);
 }
 
 export async function getStoredTokens(tenantId?: string): Promise<StoredTokens | null> {
@@ -106,17 +114,32 @@ export async function validateAccessToken(accessToken: string): Promise<boolean>
   }
 }
 
-export async function ensureValidToken(
+async function readCurrentTokensForType(
+  tokenType: 'broadcaster' | 'bot' | 'community-bot',
+  fallbackTokens: StoredTokens,
+  tenantId?: string
+): Promise<StoredTokens> {
+  const filePath = getStorageTarget(tokenType, tenantId);
+  try {
+    const data = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return fallbackTokens;
+  }
+}
+
+async function refreshStoredToken(
   clientId: string,
   clientSecret: string,
   tokenType: 'broadcaster' | 'bot' | 'community-bot',
-  tokens: StoredTokens,
+  fallbackTokens: StoredTokens,
   tenantId?: string
 ): Promise<string> {
   const tokenKey = tokenType === 'broadcaster' ? 'broadcasterToken' : tokenType === 'bot' ? 'botToken' : 'communityBotToken';
   const refreshTokenKey = tokenType === 'broadcaster' ? 'broadcasterRefreshToken' : tokenType === 'bot' ? 'botRefreshToken' : 'communityBotRefreshToken';
   const expiryKey = tokenType === 'broadcaster' ? 'broadcasterTokenExpiry' : tokenType === 'bot' ? 'botTokenExpiry' : 'communityBotTokenExpiry';
 
+  const tokens = await readCurrentTokensForType(tokenType, fallbackTokens, tenantId);
   let accessToken = tokens[tokenKey];
   const refreshToken = tokens[refreshTokenKey];
   const tokenExpiry = tokens[expiryKey];
@@ -134,42 +157,84 @@ export async function ensureValidToken(
     needsRefresh = !isValid;
   }
 
-  if (needsRefresh) {
-    console.log(`[Token] ${tokenType} token is invalid or expired, refreshing...`);
-    const newTokenData = await refreshAccessToken(refreshToken, clientId, clientSecret);
-    const newExpiry = now + (newTokenData.expires_in - 60) * 1000;
-
-    const updatedTokens: StoredTokens = {
-      ...tokens,
-      [tokenKey]: newTokenData.access_token,
-      [refreshTokenKey]: newTokenData.refresh_token,
-      [expiryKey]: newExpiry,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    // Keep login and broadcaster tokens in sync when they're the same user
-    // to prevent stale refresh tokens from Twitch's single-grant-per-app policy
-    if (tokenType === 'broadcaster' && tokens.loginUsername && tokens.broadcasterUsername &&
-        tokens.loginUsername.toLowerCase() === tokens.broadcasterUsername.toLowerCase()) {
-      updatedTokens.loginToken = newTokenData.access_token;
-      updatedTokens.loginRefreshToken = newTokenData.refresh_token;
-      updatedTokens.loginTokenExpiry = newExpiry;
-    }
-    if (tokenType === 'bot') {
-      // Bot is always a different user, no sync needed
-    }
-
-    if (tokenType === 'community-bot' && !tenantId) {
-      const filePath = communityTokensFilePath();
-      const dir = resolve(filePath, '..');
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(filePath, JSON.stringify(updatedTokens, null, 2));
-    } else {
-      await storeTokens(updatedTokens, tenantId);
-    }
-    console.log(`[Token] Successfully refreshed ${tokenType} token`);
-    accessToken = newTokenData.access_token;
+  if (!needsRefresh) {
+    return accessToken;
   }
 
+  console.log(`[Token] ${tokenType} token is invalid or expired, refreshing...`);
+  const newTokenData = await refreshAccessToken(refreshToken, clientId, clientSecret);
+  const newExpiry = now + (newTokenData.expires_in - 60) * 1000;
+
+  const updatedTokens: StoredTokens = {
+    ...tokens,
+    [tokenKey]: newTokenData.access_token,
+    [refreshTokenKey]: newTokenData.refresh_token || refreshToken,
+    [expiryKey]: newExpiry,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  if (tokenType === 'broadcaster' && tokens.loginUsername && tokens.broadcasterUsername &&
+      tokens.loginUsername.toLowerCase() === tokens.broadcasterUsername.toLowerCase()) {
+    updatedTokens.loginToken = newTokenData.access_token;
+    updatedTokens.loginRefreshToken = newTokenData.refresh_token || refreshToken;
+    updatedTokens.loginTokenExpiry = newExpiry;
+  }
+
+  if (tokenType === 'community-bot' && !tenantId) {
+    const filePath = communityTokensFilePath();
+    const dir = resolve(filePath, '..');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(updatedTokens, null, 2));
+  } else {
+    await storeTokens(updatedTokens, tenantId);
+  }
+
+  console.log(`[Token] Successfully refreshed ${tokenType} token`);
+  accessToken = newTokenData.access_token;
   return accessToken;
+}
+
+export async function forceRefreshStoredToken(
+  clientId: string,
+  clientSecret: string,
+  tokenType: 'broadcaster' | 'bot' | 'community-bot',
+  tenantId?: string
+): Promise<string> {
+  const tokens = await readCurrentTokensForType(tokenType, {}, tenantId);
+  const refreshTokenKey = tokenType === 'broadcaster' ? 'broadcasterRefreshToken' : tokenType === 'bot' ? 'botRefreshToken' : 'communityBotRefreshToken';
+  const tokenKey = tokenType === 'broadcaster' ? 'broadcasterToken' : tokenType === 'bot' ? 'botToken' : 'communityBotToken';
+  if (!tokens[refreshTokenKey] || !tokens[tokenKey]) {
+    throw new Error(`Missing ${tokenType} token or refresh token`);
+  }
+
+  const expiryKey = tokenType === 'broadcaster' ? 'broadcasterTokenExpiry' : tokenType === 'bot' ? 'botTokenExpiry' : 'communityBotTokenExpiry';
+  const forcedTokens: StoredTokens = {
+    ...tokens,
+    [expiryKey]: 0,
+  };
+  return refreshStoredToken(clientId, clientSecret, tokenType, forcedTokens, tenantId);
+}
+
+export async function ensureValidToken(
+  clientId: string,
+  clientSecret: string,
+  tokenType: 'broadcaster' | 'bot' | 'community-bot',
+  tokens: StoredTokens,
+  tenantId?: string
+): Promise<string> {
+  const lockKey = `${getStorageTarget(tokenType, tenantId)}::${tokenType}`;
+  const inFlight = refreshLocks.get(lockKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const run = refreshStoredToken(clientId, clientSecret, tokenType, tokens, tenantId)
+    .finally(() => {
+      if (refreshLocks.get(lockKey) === run) {
+        refreshLocks.delete(lockKey);
+      }
+    });
+
+  refreshLocks.set(lockKey, run);
+  return run;
 }

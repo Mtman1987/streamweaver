@@ -33,6 +33,46 @@ const tenantsNeedingReauth = new Set<string>();
 const lastReauthNotice = new Map<string, number>();
 const REAUTH_NOTICE_INTERVAL_MS = 60_000;
 
+async function dispatchIncomingTwitchMessage(
+  channel: string,
+  tags: Record<string, any>,
+  message: string,
+  self: boolean,
+  fallbackTenantId?: string,
+): Promise<void> {
+  const channelName = channel.replace('#', '').toLowerCase();
+  const msgTenantId = channelToTenant.get(channelName) || fallbackTenantId;
+
+  const { isMirroredSharedMessage, resolveRoomIdToLogin, shouldIgnoreMirrored } = await import('./shared-chat');
+  if (shouldIgnoreMirrored(tags, msgTenantId)) return;
+
+  let effectiveChannel = channel;
+  const isMirrored = isMirroredSharedMessage(tags);
+  if (isMirrored) {
+    const sourceRoomId = tags['source-room-id'] || tags['source-id'];
+    effectiveChannel = '#' + await resolveRoomIdToLogin(sourceRoomId, channelName);
+  }
+
+  if (typeof (global as any).broadcast === 'function') {
+    (global as any).broadcast({
+      type: 'twitch-message',
+      payload: {
+        id: tags.id || Date.now().toString(),
+        user: tags.username,
+        message,
+        color: tags.color,
+        badges: tags.badges,
+        emotes: tags.emotes,
+        isMirrored,
+        sourceChannel: isMirrored ? effectiveChannel.replace('#', '') : undefined,
+        tenantId: msgTenantId,
+      },
+    }, msgTenantId);
+  }
+
+  await handleTwitchMessage(effectiveChannel, tags, message, self);
+}
+
 function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
   return Boolean(client && communityBotClient && client === communityBotClient);
 }
@@ -45,6 +85,10 @@ function isClientUsable(client: tmi.Client | null | undefined): client is tmi.Cl
   } catch {
     return true;
   }
+}
+
+export function shouldDispatchIncomingFromCommunityBot(broadcasterClient: tmi.Client | null | undefined): boolean {
+  return !isClientUsable(broadcasterClient);
 }
 
 function isAuthFailure(error: unknown): boolean {
@@ -138,17 +182,20 @@ async function ensureCommunityBotForChannel(
       });
       client.on('message', async (channel, tags, message, self) => {
         try {
-          if (self) return;
           const channelName = channel.replace('#', '').toLowerCase();
           const tenantId = channelToTenant.get(channelName);
           if (!tenantId) return;
+          const tenant = tenantClients.get(tenantId);
+          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {
+            return;
+          }
 
-          if (tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {
+          if (!self && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {
             await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);
             return;
           }
 
-          await handleTwitchMessage(channel, tags, message, self);
+          await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);
         } catch (error) {
           console.error('[Twitch:community-bot] Message handler failed:', error);
           return;
@@ -469,40 +516,7 @@ export async function setupTwitchClient(tenantId: string) {
     });
 
     tenant.broadcasterClient.on('message', async (channel, tags, message, self) => {
-      // Resolve tenant from channel
-      const channelName = channel.replace('#', '').toLowerCase();
-      const msgTenantId = channelToTenant.get(channelName) || tenantId;
-
-      // Check for shared chat
-      const { isMirroredSharedMessage, resolveRoomIdToLogin, shouldIgnoreMirrored } = await import('./shared-chat');
-      if (shouldIgnoreMirrored(tags)) return;
-
-      let effectiveChannel = channel;
-      const isMirrored = isMirroredSharedMessage(tags);
-      if (isMirrored) {
-        const sourceRoomId = tags['source-room-id'] || tags['source-id'];
-        effectiveChannel = '#' + await resolveRoomIdToLogin(sourceRoomId, channelName);
-      }
-
-      // Broadcast to WebSocket clients
-      if (typeof (global as any).broadcast === 'function') {
-        (global as any).broadcast({
-          type: 'twitch-message',
-          payload: {
-            id: tags.id || Date.now().toString(),
-            user: tags.username,
-            message,
-            color: tags.color,
-            badges: tags.badges,
-            emotes: tags.emotes,
-            isMirrored,
-            sourceChannel: isMirrored ? effectiveChannel.replace('#', '') : undefined,
-            tenantId: msgTenantId,
-          },
-        }, msgTenantId);
-      }
-
-      await handleTwitchMessage(effectiveChannel, tags, message, self);
+      await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);
     });
 
     await tenant.broadcasterClient.connect();

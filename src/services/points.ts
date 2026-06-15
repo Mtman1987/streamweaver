@@ -1,4 +1,11 @@
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
+import { getChatOutputContext } from './chat-output-context';
+import {
+  addDiscordStreamHubPointsToAll,
+  getDiscordStreamHubPoints,
+  setDiscordStreamHubPoints,
+  setDiscordStreamHubPointsToAll,
+} from './discord-stream-hub';
 
 const POINTS_FILE = 'points.json';
 const MAX_SAFE_POINTS = BigInt(Number.MAX_SAFE_INTEGER);
@@ -155,7 +162,26 @@ async function savePoints(data: PointsRecord, ctx?: StorageContext): Promise<voi
   await writeJsonFile(POINTS_FILE, data, ctx);
 }
 
+function getDiscordOutputContext() {
+  const output = getChatOutputContext();
+  return output?.platform === 'discord' && output.userId ? output : null;
+}
+
 export async function getPoints(userId: string, ctx?: StorageContext): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const result = await getDiscordStreamHubPoints();
+    const points = BigInt(Math.max(0, Math.trunc(Number(result.points || 0))));
+    return {
+      points: Number(points),
+      pointsRaw: points.toString(),
+      pointsDisplay: formatCompactPointAmount(points),
+      level: calculateLevel(points),
+      totalEarned: Number(points),
+      totalEarnedRaw: points.toString(),
+    };
+  }
+
   const store = await loadPoints(ctx);
   const entry = store[userId.toLowerCase()];
   if (!entry) return { points: 0, pointsRaw: '0', pointsDisplay: '0', level: 1, totalEarned: 0, totalEarnedRaw: '0' };
@@ -173,6 +199,12 @@ export async function getPoints(userId: string, ctx?: StorageContext): Promise<{
 }
 
 export async function getPointBalance(userId: string, ctx?: StorageContext): Promise<bigint> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const result = await getDiscordStreamHubPoints();
+    return BigInt(Math.max(0, Math.trunc(Number(result.points || 0))));
+  }
+
   const store = await loadPoints(ctx);
   const entry = store[userId.toLowerCase()];
   return normalizeStoredPointAmount(entry?.points ?? 0);
@@ -183,6 +215,17 @@ export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {
 }
 
 export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const delta = parsePointAmount(amount);
+    const result = await addDiscordStreamHubPointsToAll({
+      points: Number(delta),
+      serverId: discordContext.guildId,
+    });
+    console.log(`DiscordStreamHub added ${formatCompactPointAmount(delta)} points to ${result.count} users`);
+    return result.count;
+  }
+
   const store = await loadPoints(ctx);
   const now = new Date().toISOString();
   const delta = parsePointAmount(amount);
@@ -212,6 +255,17 @@ export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext):
 }
 
 export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const points = normalizePoints(amount);
+    const result = await setDiscordStreamHubPointsToAll({
+      points: Number(points),
+      serverId: discordContext.guildId,
+    });
+    console.log(`DiscordStreamHub set ${result.count} users to ${formatCompactPointAmount(points)} points`);
+    return result.count;
+  }
+
   const store = await loadPoints(ctx);
   const now = new Date().toISOString();
   const points = normalizePoints(amount);
@@ -236,6 +290,16 @@ export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext):
 }
 
 export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const result = await setDiscordStreamHubPointsToAll({
+      points: 0,
+      serverId: discordContext.guildId,
+    });
+    console.log(`DiscordStreamHub reset points for ${result.count} users`);
+    return result.count;
+  }
+
   const store = await loadPoints(ctx);
   const now = new Date().toISOString();
   let count = 0;
@@ -263,6 +327,30 @@ export async function addPoints(
   reason?: string,
   ctx?: StorageContext
 ): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const current = await getDiscordStreamHubPoints();
+    const delta = parsePointAmount(amount);
+    const next = current.points + Number(delta);
+    const clamped = Math.max(0, Math.trunc(next));
+    const updated = await setDiscordStreamHubPoints({
+      userId: discordContext.userId!,
+      username: discordContext.username || userId,
+      displayName: discordContext.displayName || discordContext.username || userId,
+      serverId: discordContext.guildId,
+      points: clamped,
+    });
+    const points = BigInt(Math.max(0, Math.trunc(Number(updated.points || 0))));
+    return {
+      points: Number(points),
+      pointsRaw: points.toString(),
+      pointsDisplay: formatCompactPointAmount(points),
+      level: calculateLevel(points),
+      totalEarned: Number(points),
+      totalEarnedRaw: points.toString(),
+    };
+  }
+
   const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date().toISOString();
@@ -299,6 +387,27 @@ export async function setPoints(
   value: PointAmount,
   ctx?: StorageContext
 ): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext) {
+    const normalized = normalizePoints(value);
+    const updated = await setDiscordStreamHubPoints({
+      userId: discordContext.userId!,
+      username: discordContext.username || userId,
+      displayName: discordContext.displayName || discordContext.username || userId,
+      serverId: discordContext.guildId,
+      points: Number(normalized),
+    });
+    const points = BigInt(Math.max(0, Math.trunc(Number(updated.points || 0))));
+    return {
+      points: Number(points),
+      pointsRaw: points.toString(),
+      pointsDisplay: formatCompactPointAmount(points),
+      level: calculateLevel(points),
+      totalEarned: Number(points),
+      totalEarnedRaw: points.toString(),
+    };
+  }
+
   const store = await loadPoints(ctx);
   const key = userId.toLowerCase();
   const now = new Date().toISOString();

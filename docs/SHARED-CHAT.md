@@ -35,8 +35,8 @@ The mode is persisted in `data/chat-mode.json` and survives restarts.
 When the bot needs to send a message, `sendWithSharedChatAwareness()` handles the logic:
 
 1. **Check if channel is in shared chat** — calls `GET /helix/shared_chat/session?broadcaster_id=` (cached 60 seconds)
-2. **If in shared chat** → tries the Helix API with `for_source_only: true` so the message only appears in the originating channel, not mirrored to other participants
-3. **If Helix fails** (permissions, token issues) → falls back to normal IRC `client.say()` which is already channel-scoped
+2. **If in shared chat** → tries the Helix API with an **App Access Token** and `for_source_only: true` so the message only appears in the originating channel, not mirrored to other participants
+3. **If Helix fails** (permissions, missing `user:bot` / `channel:bot` authorization, token issues) → falls back to normal IRC `client.say()`
 4. **If NOT in shared chat** → uses normal IRC `client.say()`
 
 ### Why This Matters
@@ -92,8 +92,9 @@ No configuration needed. Shared chat detection is automatic. The system:
 ## Permissions Note
 
 For the Helix API source-only sending to work, the bot account needs:
-- `user:write:chat` scope (granted during bot OAuth)
-- Moderator status in the channel (optional but recommended)
+- `user:write:chat` scope
+- `user:bot` scope
+- Moderator status in the channel, or the broadcaster must authorize `channel:bot`
 
 If the bot doesn't have mod status, StreamWeaver logs a one-time suggestion:
 > `Shared chat tip: /mod botname to reduce mirrored bot messages.`

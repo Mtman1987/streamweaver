@@ -1,7 +1,7 @@
 import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
-import { sendDiscordMessage } from './discord';
+import { sendDiscordEmbed, sendDiscordMessage } from './discord';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
@@ -21,6 +21,7 @@ import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
 import { ATHENA_WHITELIST_TENANT_ID } from './athena-whitelist';
 import { readWorldLore, type WorldLoreCharacter } from '../lib/world-lore-store';
+import { readUserConfigSync } from '../lib/user-config';
 import { handleKickMessage as dispatchKickMessage } from './kick-dispatcher';
 import { SubActionType, TriggerType } from './automation/types';
 import type { KickMessage } from './kick';
@@ -30,12 +31,115 @@ import { globalPath, tenantPath } from '../lib/tenant';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
+import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
+import { sendDiscordCommandShoutout } from './discord-command-shoutout';
+import { registerManualShoutout } from './discord-manual-shoutouts';
+import { buildDiscordAdminCommandsSummary, buildDiscordCommandsSummary } from './discord-command-catalog';
+import { hasDiscordModAccess } from './discord-permissions';
+import { detectBotRelayRequest } from './bot-relay';
+import { checkDiscordStreamHubAdminAccess, lookupDiscordStreamHubTwitchTarget } from './discord-stream-hub';
+import { getTenantBroadcasterChannel, resolveTwitchReplyChannel } from './tenant-chat-routing';
+import {
+    beginPendingMtSupportRequest,
+    consumePendingMtSupportRequest,
+    detectMtFixItIntent,
+    getMtSupportPrompt,
+    submitMtSupportReport,
+} from './mt-support-report';
 
 type DiscordDispatchOptions = {
     skipPublicHistory?: boolean;
     skipAiMentions?: boolean;
     skipTwitchBridge?: boolean;
 };
+
+function parseTimeoutDuration(input: string | undefined): { seconds: number; consumed: boolean } {
+    const raw = String(input || '').trim().toLowerCase();
+    if (!raw) return { seconds: 600, consumed: false };
+    const match = raw.match(/^(\d+)(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)?$/i);
+    if (!match) return { seconds: 600, consumed: false };
+
+    const value = Number(match[1]);
+    const unit = match[2] || 's';
+    const multiplier =
+        unit.startsWith('d') ? 86400 :
+        unit.startsWith('h') ? 3600 :
+        unit.startsWith('m') ? 60 :
+        1;
+    return { seconds: Math.max(1, Math.min(1_209_600, value * multiplier)), consumed: true };
+}
+
+let portableDiscordCommandNamesPromise: Promise<Set<string>> | null = null;
+
+async function getPortableDiscordCommandNames(): Promise<Set<string>> {
+    if (!portableDiscordCommandNamesPromise) {
+        portableDiscordCommandNamesPromise = (async () => {
+            const sourcePath = resolve(process.cwd(), 'src', 'services', 'chat-dispatcher.ts');
+            const source = await fs.readFile(sourcePath, 'utf-8').catch(() => '');
+            const names = new Set<string>();
+            for (const match of source.matchAll(/!([a-z0-9][a-z0-9_-]*)/gi)) {
+                names.add(match[1].toLowerCase());
+            }
+            names.delete('command');
+            return names;
+        })();
+    }
+    return portableDiscordCommandNamesPromise;
+}
+
+async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
+    if (hasDiscordModAccess(msg)) return true;
+
+    const guildId = msg.guildId || msg.guild_id;
+    const userId = msg.author?.id || msg.userId || msg.user_id;
+    const access = await checkDiscordStreamHubAdminAccess({ guildId, userId });
+    return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);
+}
+
+async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: string): Promise<boolean> {
+    const sourceChannelId = msg.channelId || msg.channel_id;
+    const actualMessage = String(msg.content || '').trim();
+    if (!sourceChannelId || !actualMessage.startsWith('!')) return false;
+
+    const cmdName = actualMessage.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
+    if (!cmdName) return false;
+
+    const configuredCommands = await getAllCommands(tenantId);
+    const configuredMatch = configuredCommands.some((command: any) =>
+        String(command?.command || '').toLowerCase().replace(/^!/, '') === cmdName && command?.enabled !== false
+    );
+    const portableNames = await getPortableDiscordCommandNames();
+    if (!configuredMatch && !portableNames.has(cmdName)) {
+        return false;
+    }
+
+    const username = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'DiscordUser';
+    const isMod = await hasEffectiveDiscordModAccess(msg);
+
+    const tags = {
+        username,
+        'display-name': msg.author?.globalName || msg.author?.global_name || username,
+        mod: isMod,
+        badges: {
+            broadcaster: Boolean(msg.isOwner),
+        },
+        id: msg.messageId || msg.message_id || `${Date.now()}`,
+    };
+
+    const broadcasterChannel = await getTenantBroadcasterChannel(tenantId);
+    await runWithChatOutputContext({
+        platform: 'discord',
+        channelId: sourceChannelId,
+        guildId: msg.guildId || msg.guild_id,
+        userId: msg.author?.id || msg.userId || msg.user_id,
+        username,
+        displayName: msg.author?.globalName || msg.author?.global_name || username,
+    }, async () => {
+        await handleTwitchMessage(`#${broadcasterChannel}`, tags, actualMessage, false);
+    });
+
+    return true;
+}
 
 async function bridgeDiscordMessageToTwitch(msg: any, tenantId?: string) {
     if (String(msg.content || '').startsWith('[')) return;
@@ -55,6 +159,239 @@ async function bridgeDiscordMessageToTwitch(msg: any, tenantId?: string) {
     await sendChatMessage(twitchMessage, 'bot', undefined, tenantId).catch(e => console.error('[Bridge] Failed:', e));
 }
 
+async function getTenantDiscordDmChannelId(tenantId?: string): Promise<string | null> {
+    if (!tenantId) return null;
+    try {
+        const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
+        const config = JSON.parse(raw);
+        const value = String(config?.dmChannelId || '').trim();
+        return value || null;
+    } catch {
+        return null;
+    }
+}
+
+export async function resolveRelayTarget(input: {
+    namedTarget?: string;
+    structuredTarget?: WorldLoreCharacter;
+    fallbackTenantId?: string;
+}): Promise<{ tenantId?: string; character: WorldLoreCharacter } | null> {
+    if (input.structuredTarget) {
+        const tenantId = await resolveTenantForLoreBot(input.structuredTarget, input.fallbackTenantId);
+        if (tenantId) {
+            return { tenantId, character: input.structuredTarget };
+        }
+    }
+
+    const rawTarget = String(input.namedTarget || '').replace(/^@/, '').trim().toLowerCase();
+    if (!rawTarget) return null;
+
+    try {
+        const { listTenants } = await import('../lib/tenant');
+        const { getStoredTokens } = await import('../lib/token-utils.server');
+        const { getBotName, getBotAliases } = await import('../lib/bot-settings-store');
+        for (const tid of await listTenants()) {
+            const tokens = await getStoredTokens(tid).catch(() => null);
+            const broadcasterUsername = String(tokens?.broadcasterUsername || tokens?.loginUsername || '').trim().toLowerCase();
+            const configuredBotName = String(getBotName(tid) || '').trim();
+            const configuredAliases = String(getBotAliases(tid) || '').split(',').map((value) => value.trim()).filter(Boolean);
+            const botNames = new Set([configuredBotName, ...configuredAliases].map((value) => value.toLowerCase()));
+            if (broadcasterUsername === rawTarget || botNames.has(rawTarget)) {
+                const loreCharacter = await getLoreCharacterForTenant(tid);
+                return {
+                    tenantId: tid,
+                    character: loreCharacter || {
+                        stableId: `${tid}:bot`,
+                        currentName: configuredBotName || rawTarget,
+                        aliases: Array.from(new Set([rawTarget, ...configuredAliases])),
+                    },
+                };
+            }
+        }
+    } catch (error) {
+        console.error('[Dispatcher] Failed to resolve relay target:', error);
+    }
+
+    return null;
+}
+
+async function buildRelayDeliveryMessage(input: {
+    sourceUserName: string;
+    speaker: WorldLoreCharacter;
+    target: WorldLoreCharacter;
+    relayMessage: string;
+    targetTenantId?: string;
+    deliveryMode: 'live' | 'dm';
+}): Promise<string> {
+    const targetPersonality = [
+        `You are ${input.target.currentName}.`,
+        input.target.archetype ? `Archetype: ${input.target.archetype}.` : '',
+        input.target.summary || '',
+        input.target.personalityNotes?.length ? input.target.personalityNotes.join(' ') : '',
+        input.deliveryMode === 'live'
+            ? 'You are speaking in your streamer live chat.'
+            : 'You are privately DMing your streamer because they are offline.',
+    ].filter(Boolean).join('\n');
+
+    const prompt = [
+        'Cross-bot relay delivery.',
+        `${input.sourceUserName} asked ${input.speaker.currentName} to pass along: "${input.relayMessage}"`,
+        input.deliveryMode === 'live'
+            ? 'Tell your streamer or chat about it in one short natural sentence.'
+            : 'Tell your streamer privately in one short natural sentence.',
+        'Do not mention internal systems or say this is automated.',
+    ].join('\n');
+
+    const aiRes = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: input.sourceUserName,
+            message: prompt,
+            personality: targetPersonality,
+            responseName: input.target.currentName,
+            tenantId: input.targetTenantId,
+            context: input.deliveryMode === 'live' ? 'twitch-cross-bot' : 'discord-cross-bot',
+        }),
+    });
+
+    if (!aiRes.ok) {
+        throw new Error(`Relay AI failed: ${aiRes.status}`);
+    }
+
+    const data = await aiRes.json();
+    const reply = String(data.response || data.data?.response || '').trim();
+    if (!reply) throw new Error('Relay AI returned an empty response');
+    return reply;
+}
+
+export async function deliverBotRelay(input: {
+    sourcePlatform: 'twitch' | 'discord';
+    sourceUserName: string;
+    triggerMessage: string;
+    speaker: WorldLoreCharacter;
+    speakerTenantId?: string;
+    target: WorldLoreCharacter;
+    targetTenantId?: string;
+    relayMessage: string;
+}): Promise<{ delivered: boolean; mode?: 'live' | 'dm'; error?: string }> {
+    const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, input.speakerTenantId);
+    if (!targetTenantId) {
+        return { delivered: false, error: `could not resolve ${input.target.currentName}` };
+    }
+
+    try {
+        const broadcasterChannel = await getTenantBroadcasterChannel(targetTenantId);
+        const liveLookup = await lookupDiscordStreamHubTwitchTarget(broadcasterChannel);
+        const shouldTryDmBackup = liveLookup?.isLive !== true;
+        console.log('[Dispatcher] Bot relay delivery target resolved:', {
+            targetTenantId,
+            broadcasterChannel,
+            targetBot: input.target.currentName,
+            liveLookup,
+            firstDelivery: 'twitch-chat',
+            shouldTryDmBackup,
+        });
+        const relayText = await buildRelayDeliveryMessage({
+            sourceUserName: input.sourceUserName,
+            speaker: input.speaker,
+            target: input.target,
+            relayMessage: input.relayMessage,
+            targetTenantId,
+            deliveryMode: 'live',
+        });
+
+        let chatDelivered = false;
+        let chatError = '';
+        try {
+            await sendChatMessage(relayText, 'bot', broadcasterChannel, targetTenantId);
+            chatDelivered = true;
+        } catch (error: any) {
+            chatError = error?.message || 'unknown Twitch chat error';
+            console.warn('[Dispatcher] Bot relay Twitch chat delivery failed:', {
+                targetTenantId,
+                broadcasterChannel,
+                targetBot: input.target.currentName,
+                error: chatError,
+            });
+        }
+
+        if (!shouldTryDmBackup) {
+            if (chatDelivered) {
+                await appendPublicChatMessages([{
+                    type: 'ai',
+                    username: input.target.currentName,
+                    message: relayText,
+                    timestamp: new Date().toISOString(),
+                }], 300, targetTenantId).catch(() => {});
+
+                recordDashboardActivity({
+                    id: `relay-${Date.now()}`,
+                    tenantId: targetTenantId,
+                    platform: 'Twitch',
+                    user: input.target.currentName,
+                    message: `${input.speaker.currentName} relayed: ${input.relayMessage}`,
+                });
+
+                return { delivered: true, mode: 'live' };
+            }
+            return { delivered: false, error: chatError || `could not send to ${broadcasterChannel}'s Twitch chat` };
+        }
+
+        let dmDelivered = false;
+        let dmError = '';
+        try {
+            const dmChannelId = await getTenantDiscordDmChannelId(targetTenantId);
+            if (!dmChannelId) {
+                throw new Error(`${input.target.currentName} does not have a DM channel configured`);
+            }
+            const dmText = chatDelivered
+                ? await buildRelayDeliveryMessage({
+                    sourceUserName: input.sourceUserName,
+                    speaker: input.speaker,
+                    target: input.target,
+                    relayMessage: input.relayMessage,
+                    targetTenantId,
+                    deliveryMode: 'dm',
+                })
+                : relayText;
+            await sendDiscordMessage(dmChannelId, dmText);
+            dmDelivered = true;
+        } catch (error: any) {
+            dmError = error?.message || 'unknown Discord DM error';
+            console.warn('[Dispatcher] Bot relay DM backup failed:', {
+                targetTenantId,
+                targetBot: input.target.currentName,
+                error: dmError,
+            });
+        }
+
+        if (chatDelivered || dmDelivered) {
+            await appendPublicChatMessages([{
+                type: 'ai',
+                username: input.target.currentName,
+                message: relayText,
+                timestamp: new Date().toISOString(),
+            }], 300, targetTenantId).catch(() => {});
+
+            recordDashboardActivity({
+                id: `relay-${Date.now()}`,
+                tenantId: targetTenantId,
+                platform: chatDelivered ? 'Twitch' : 'Discord',
+                user: input.target.currentName,
+                message: `${input.speaker.currentName} relayed: ${input.relayMessage}`,
+            });
+
+            return { delivered: true, mode: chatDelivered ? 'live' : 'dm' };
+        }
+
+        return { delivered: false, error: chatError || dmError || `could not deliver to ${input.target.currentName}` };
+    } catch (error: any) {
+        console.error('[Dispatcher] Bot relay delivery failed:', error);
+        return { delivered: false, error: error?.message || 'unknown error' };
+    }
+}
+
 async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promise<boolean> {
     const content = String(msg.content || '').trim();
     if (!content.startsWith('!')) return false;
@@ -67,9 +404,113 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     const actualMessage = content;
     const cmdName = actualMessage.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
     if (!cmdName) return false;
+    const silentTenantId = tenantId ? `__kick_silent__:${tenantId}` : undefined;
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
     const reply = (message: string) => sendDiscordMessage(sourceChannelId, message).catch(() => {});
+    const isMod = await hasEffectiveDiscordModAccess(msg);
+
+    const mtFixItIntent = detectMtFixItIntent(content);
+    if (mtFixItIntent.matched) {
+        if (!mtFixItIntent.description) {
+            beginPendingMtSupportRequest({
+                platform: 'discord',
+                tenantId,
+                username: actualUsername,
+                channelId: sourceChannelId,
+            });
+            await reply(`@${actualUsername}, ${getMtSupportPrompt('discord')}`);
+            return true;
+        }
+
+        const result = await submitMtSupportReport({
+            platform: 'discord',
+            tenantId,
+            username: actualUsername,
+            channelId: sourceChannelId,
+            description: mtFixItIntent.description,
+            triggerMessage: content,
+        });
+        await reply(
+            result.ok
+                ? `@${actualUsername}, support report sent to Mtman1987.`
+                : `@${actualUsername}, I could not send the support report: ${result.error || 'unknown error'}`,
+        );
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!commands') {
+        await reply(buildDiscordCommandsSummary());
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!admin') {
+        await reply(buildDiscordAdminCommandsSummary({ isMod }));
+        return true;
+    }
+
+    if (cmdName === 'so') {
+        const targetName = actualMessage.substring(4).trim().replace('@', '');
+        if (!targetName) {
+            await reply(`@${actualUsername}, usage: !so @username`);
+            return true;
+        }
+        try {
+            const sent = await sendDiscordCommandShoutout({
+                channelId: sourceChannelId,
+                requesterName: actualUsername,
+                targetName,
+            });
+            if (sent.messageId && sent.isLive) {
+                await registerManualShoutout({
+                    channelId: sourceChannelId,
+                    messageId: sent.messageId,
+                    twitchLogin: sent.twitchLogin,
+                    requesterName: actualUsername,
+                    targetName,
+                    tenantId,
+                });
+            }
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !so failed:', error);
+            await reply(`@${actualUsername}, shoutout failed: ${error?.message || 'unknown error'}`);
+        }
+        return true;
+    }
+
+    if (cmdName === 'timeout') {
+        if (!isMod) {
+            await reply(`@${actualUsername}, only mods can use !timeout.`);
+            return true;
+        }
+
+        const cmdArgs = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/).filter(Boolean);
+        const targetUser = cmdArgs[0]?.replace(/^@/, '').trim();
+        if (!targetUser) {
+            await reply(`@${actualUsername}, usage: !timeout @user [duration] [reason]`);
+            return true;
+        }
+
+        const parsedDuration = parseTimeoutDuration(cmdArgs[1]);
+        const reason = parsedDuration.consumed ? cmdArgs.slice(2).join(' ') : cmdArgs.slice(1).join(' ');
+        try {
+            const { timeoutUser } = await import('./twitch');
+            const ok = await timeoutUser(targetUser, parsedDuration.seconds, reason, tenantId);
+            await reply(
+                ok
+                    ? `@${actualUsername}, timed out @${targetUser} for ${parsedDuration.seconds}s${reason ? `: ${reason}` : '.'}`
+                    : `@${actualUsername}, timeout failed for @${targetUser}.`
+            );
+        } catch (error) {
+            console.error('[Discord Dispatcher] !timeout failed:', error);
+            await reply(`@${actualUsername}, timeout failed for @${targetUser}.`);
+        }
+        return true;
+    }
+
+    if (await routeDiscordCommandThroughTwitchRuntime(msg, tenantId)) {
+        return true;
+    }
 
     if (actualMessage.toLowerCase() === '!points') {
         try {
@@ -97,6 +538,72 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         const utc = now.toLocaleString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
 
         await reply(`🕐 PST: ${pst} | MST: ${mst} | CST: ${cst} | EST: ${est} | UTC: ${utc}`);
+        return true;
+    }
+
+    if (actualMessage.toLowerCase().startsWith('!gamble ')) {
+        try {
+            const betInput = actualMessage.substring(8).trim();
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleClassicGamble(actualUsername, betInput, userPoints, silentTenantId);
+            if (!result) {
+                await reply(`@${actualUsername}, invalid bet. Try !gamble <amount>, !gamble all, !gamble half, or !gamble random.`);
+                return true;
+            }
+
+            await setPoints(actualUsername, result.newTotal, tenantCtx);
+            const summary = result.outcome === 'jackpot'
+                ? `JACKPOT! +${result.displayAmountDisplay}`
+                : result.outcome === 'win'
+                    ? `win! +${result.displayAmountDisplay}`
+                    : `loss. -${result.displayAmountDisplay}`;
+            await reply(`@${actualUsername}, ${summary} points. New total: ${result.newTotalDisplay}`);
+        } catch (error) {
+            console.error('[Discord Dispatcher] !gamble failed:', error);
+            await reply(`@${actualUsername}, gamble failed right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!gamble') {
+        try {
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleClassicGamble(actualUsername, '', userPoints, silentTenantId);
+            if (!result) {
+                await reply(`@${actualUsername}, invalid bet. Try !gamble <amount>, !gamble all, !gamble half, or !gamble random.`);
+                return true;
+            }
+
+            await setPoints(actualUsername, result.newTotal, tenantCtx);
+            const summary = result.outcome === 'jackpot'
+                ? `JACKPOT! +${result.displayAmountDisplay}`
+                : result.outcome === 'win'
+                    ? `win! +${result.displayAmountDisplay}`
+                    : `loss. -${result.displayAmountDisplay}`;
+            await reply(`@${actualUsername}, ${summary} points. New total: ${result.newTotalDisplay}`);
+        } catch (error) {
+            console.error('[Discord Dispatcher] !gamble failed:', error);
+            await reply(`@${actualUsername}, gamble failed right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase().startsWith('!roll ')) {
+        try {
+            const betInput = actualMessage.substring(6).trim();
+            const userPoints = await getPointBalance(actualUsername, tenantCtx);
+            const result = await handleRoll(actualUsername, betInput, userPoints, silentTenantId);
+            if (!result) {
+                await reply(`@${actualUsername}, usage: !roll <amount>`);
+                return true;
+            }
+
+            await setPoints(actualUsername, result.newTotal, tenantCtx);
+            await reply(`@${actualUsername} rolled a ${result.roll}! ${result.outcome} ${result.changeDisplay} points. New total: ${result.newTotalDisplay}`);
+        } catch (error) {
+            console.error('[Discord Dispatcher] !roll failed:', error);
+            await reply(`@${actualUsername}, roll failed right now.`);
+        }
         return true;
     }
 
@@ -284,6 +791,54 @@ function delay(ms: number): Promise<void> {
 // Pagination state for card listings
 const cardListings = new Map<string, { cards: string[], page: number }>();
 
+function formatPokemonPackCardInfo(pack: any[]): string {
+    return pack.map((card: any) => {
+        const isHolo = card.rarity && card.rarity.includes('Holo');
+        const isRare = card.rarity && card.rarity.includes('Rare');
+        const marker = isRare ? ' ✨' : (isHolo ? ' ⭐' : '');
+        return `${card.name} #${card.number}${marker}`;
+    }).join(', ');
+}
+
+async function sendDiscordPokemonPackSummary(
+    channelId: string,
+    username: string,
+    result: any,
+    totalCards: number,
+    rareCount: number,
+    fallbackMessage: string,
+): Promise<void> {
+    const rarityScore = (rarity?: string) => {
+        const normalized = String(rarity || '').toLowerCase();
+        if (normalized.includes('secret')) return 6;
+        if (normalized.includes('ultra')) return 5;
+        if (normalized.includes('holo')) return 4;
+        if (normalized.includes('rare')) return 3;
+        if (normalized.includes('uncommon')) return 2;
+        return 1;
+    };
+    const featureCard = [...(result.pack || [])].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0];
+    const cardLines = (result.pack || []).map((card: any) =>
+        `${card.name} #${card.number} - ${card.rarity || 'Common'}`
+    );
+
+    try {
+        await sendDiscordEmbed(channelId, {
+            content: `@${username} opened a ${result.setName} pack.`,
+            embeds: [{
+                title: `${result.setName} Pack Opened`,
+                description: cardLines.join('\n').slice(0, 3900),
+                color: 0xf5c542,
+                image: featureCard?.imageUrl ? { url: featureCard.imageUrl } : undefined,
+                footer: { text: `Total: ${totalCards} cards (${rareCount} rare)` },
+            }],
+        });
+    } catch (error) {
+        console.warn('[Pokemon] Discord pack embed failed, falling back to text:', error);
+        await sendDiscordMessage(channelId, fallbackMessage);
+    }
+}
+
 async function sendTwitchCrossBotFollowUp(input: {
     channel: string;
     userName: string;
@@ -373,13 +928,19 @@ async function sendTwitchCrossBotFollowUp(input: {
             console.log(`[Dispatcher] Waiting ${Math.round(waitMs / 1000)}s before ${target.currentName} cross-bot follow-up (${count + 1}/${replyLimit})`);
             await delay(waitMs);
 
-            await sendChatMessage(reply, 'bot', input.channel, targetTenantId).catch((error) => {
+            const targetChannel = await resolveTwitchReplyChannel({
+                sourceChannel: input.channel,
+                sourceTenantId: input.speakerTenantId,
+                responseTenantId: targetTenantId,
+            });
+
+            await sendChatMessage(reply, 'bot', targetChannel, targetTenantId).catch((error) => {
                 console.error('[Dispatcher] Twitch cross-bot send failed:', error);
             });
             await appendBotInteraction({
                 platform: 'twitch',
                 tenantId: targetTenantId,
-                channelId: input.channel,
+                channelId: targetChannel,
                 sourceUser: input.userName,
                 speakerBotId: target.stableId,
                 speakerBotName: target.currentName,
@@ -807,6 +1368,60 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
     }
     
+    const mtFixItIntent = detectMtFixItIntent(actualMessage);
+
+    if (!self && mtFixItIntent.matched) {
+        if (!mtFixItIntent.description) {
+            beginPendingMtSupportRequest({
+                platform: 'twitch',
+                tenantId,
+                username: actualUsername,
+                channelId: replyChannel,
+            });
+            await replyMaybeKick(`@${actualUsername}, ${getMtSupportPrompt('twitch')}`, 'bot').catch(() => {});
+            return;
+        }
+
+        const result = await submitMtSupportReport({
+            platform: 'twitch',
+            tenantId,
+            username: actualUsername,
+            channelId: replyChannel,
+            description: mtFixItIntent.description,
+            triggerMessage: actualMessage,
+        });
+        await replyMaybeKick(
+            result.ok
+                ? `@${actualUsername}, support report sent to Mtman1987.`
+                : `@${actualUsername}, I could not send the support report: ${result.error || 'unknown error'}`,
+            'bot',
+        ).catch(() => {});
+        return;
+    }
+
+    if (!self && !actualMessage.startsWith('!') && consumePendingMtSupportRequest({
+        platform: 'twitch',
+        tenantId,
+        username: actualUsername,
+        channelId: replyChannel,
+    })) {
+        const result = await submitMtSupportReport({
+            platform: 'twitch',
+            tenantId,
+            username: actualUsername,
+            channelId: replyChannel,
+            description: actualMessage,
+            triggerMessage: '!mtfixit',
+        });
+        await replyMaybeKick(
+            result.ok
+                ? `@${actualUsername}, support report sent to Mtman1987.`
+                : `@${actualUsername}, I could not send the support report: ${result.error || 'unknown error'}`,
+            'bot',
+        ).catch(() => {});
+        return;
+    }
+
     const isCommand = actualMessage.startsWith('!');
     
     // Get usernames from stored tokens (OAuth source of truth), then user config as fallback
@@ -821,7 +1436,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     try {
         const fsSync = require('fs');
         const path = require('path');
-        const { tenantPath: tp } = require('../lib/tenant');
+        const { tenantPath: tp, communityBotTokensPath } = require('../lib/tenant');
         const tokensPath = tenantId
             ? tp(tenantId, 'tokens/twitch-tokens.json')
             : path.join(process.cwd(), 'tokens', 'twitch-tokens.json');
@@ -829,6 +1444,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const tokens = JSON.parse(fsSync.readFileSync(tokensPath, 'utf8'));
             if (tokens.botUsername) botUsername = tokens.botUsername;
             if (tokens.broadcasterUsername) broadcasterUsername = tokens.broadcasterUsername;
+        }
+        if (!botUsername || botUsername === 'streamweaverbot') {
+            const communityTokensPath = communityBotTokensPath();
+            if (fsSync.existsSync(communityTokensPath)) {
+                const communityTokens = JSON.parse(fsSync.readFileSync(communityTokensPath, 'utf8'));
+                if (communityTokens.communityBotUsername) {
+                    botUsername = communityTokens.communityBotUsername;
+                }
+            }
         }
     } catch {}
     
@@ -2167,10 +2791,46 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        const outputContext = getChatOutputContext();
+
         // Handle !commands
         if (actualMessage.toLowerCase() === '!commands') {
-            const cmdSummary = '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands';
+            const cmdSummary = outputContext?.platform === 'discord'
+                ? buildDiscordCommandsSummary()
+                : '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands';
             await reply(cmdSummary, 'broadcaster').catch(() => {});
+            return;
+        }
+
+        if (actualMessage.toLowerCase().startsWith('!timeout')) {
+            if (!(tags.mod || tags.badges?.broadcaster)) {
+                await reply(`@${actualUsername}, only mods can use !timeout.`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            const cmdArgs = actualMessage.substring('!timeout'.length).trim().split(/\s+/).filter(Boolean);
+            const targetUser = cmdArgs[0]?.replace(/^@/, '').trim();
+            if (!targetUser) {
+                await reply(`@${actualUsername}, usage: !timeout @user [duration] [reason]`, 'broadcaster').catch(() => {});
+                return;
+            }
+
+            const parsedDuration = parseTimeoutDuration(cmdArgs[1]);
+            const reason = parsedDuration.consumed ? cmdArgs.slice(2).join(' ') : cmdArgs.slice(1).join(' ');
+
+            try {
+                const { timeoutUser } = require('./twitch');
+                const ok = await timeoutUser(targetUser, parsedDuration.seconds, reason, tenantId);
+                await reply(
+                    ok
+                        ? `Timed out @${targetUser} for ${parsedDuration.seconds}s${reason ? `: ${reason}` : '.'}`
+                        : `Failed to timeout @${targetUser}.`,
+                    'broadcaster'
+                ).catch(() => {});
+            } catch (error) {
+                console.error('[Dispatcher] !timeout failed:', error);
+                await reply(`Failed to timeout @${targetUser}.`, 'broadcaster').catch(() => {});
+            }
             return;
         }
         
@@ -2211,10 +2871,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !admin
         if (actualMessage.toLowerCase() === '!admin') {
             if (tags.mod || tags.badges?.broadcaster) {
-                const adminSummary = '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>, !addflow <prompt>, !approveflow <!command>, !disableflow <!command>, !deleteflow <!command>';
+                const adminSummary = outputContext?.platform === 'discord'
+                    ? buildDiscordAdminCommandsSummary({ isMod: true })
+                    : '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>, !addflow <prompt>, !approveflow <!command>, !disableflow <!command>, !deleteflow <!command>';
                 await reply(adminSummary, 'broadcaster').catch(() => {});
             } else {
-                await reply(`@${actualUsername}, only mods can view admin commands!`, 'broadcaster').catch(() => {});
+                const deniedSummary = outputContext?.platform === 'discord'
+                    ? buildDiscordAdminCommandsSummary({ isMod: false })
+                    : `@${actualUsername}, only mods can view admin commands!`;
+                await reply(deniedSummary, 'broadcaster').catch(() => {});
             }
             return;
         }
@@ -2446,18 +3111,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         const { openPack } = require('./pokemon-packs');
                         const result = await openPack(1, actualUsername, undefined, tenantId);
                         if (result) {
-                            const cardInfo = result.pack.map((c: any) => {
-                              const isHolo = c.rarity && c.rarity.includes('Holo');
-                              const isRare = c.rarity && c.rarity.includes('Rare');
-                              const marker = isRare ? ' ✨' : (isHolo ? ' ⭐' : '');
-                              return `${c.name} #${c.number}${marker}`;
-                            }).join(', ');
+                            const cardInfo = formatPokemonPackCardInfo(result.pack);
                             
                             const { getUserCards } = require('./pokemon-collection');
                             const allCards = await getUserCards(actualUsername);
                             const rareCount = allCards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
-                            
-                            await reply(`@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
+                            const packMessage = `@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`;
+                            const outputContext = getChatOutputContext();
+                            if (outputContext?.platform === 'discord') {
+                                await sendDiscordPokemonPackSummary(outputContext.channelId, actualUsername, result, allCards.length, rareCount, packMessage);
+                            } else {
+                                await reply(packMessage, 'broadcaster').catch(() => {});
+                            }
                         }
                     }
                 } else if (action && action.subActions && action.subActions.length > 0) {
@@ -2489,18 +3154,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const { openPack } = require('./pokemon-packs');
                     const result = await openPack(1, actualUsername, undefined, tenantId);
                     if (result) {
-                        const cardInfo = result.pack.map((c: any) => {
-                          const isHolo = c.rarity && c.rarity.includes('Holo');
-                          const isRare = c.rarity && c.rarity.includes('Rare');
-                          const marker = isRare ? ' ✨' : (isHolo ? ' ⭐' : '');
-                          return `${c.name} #${c.number}${marker}`;
-                        }).join(', ');
+                        const cardInfo = formatPokemonPackCardInfo(result.pack);
                         
                         const { getUserCards } = require('./pokemon-collection');
                         const allCards = await getUserCards(actualUsername);
                         const rareCount = allCards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
-                        
-                        await reply(`@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`, 'broadcaster').catch(() => {});
+                        const packMessage = `@${actualUsername} opened a ${result.setName} pack and got: ${cardInfo} | Total: ${allCards.length} cards (${rareCount} rare)`;
+                        const outputContext = getChatOutputContext();
+                        if (outputContext?.platform === 'discord') {
+                            await sendDiscordPokemonPackSummary(outputContext.channelId, actualUsername, result, allCards.length, rareCount, packMessage);
+                        } else {
+                            await reply(packMessage, 'broadcaster').catch(() => {});
+                        }
                     }
                 } else if (actionType === 'pokemon-collection-show') {
                     const { getUserCards } = require('./pokemon-collection');
@@ -2844,6 +3509,46 @@ If no good match, respond with: Could not find matching user`;
                     if (athenaDenied && decision.speaker.stableId === ATHENA_STABLE_ID) {
                         console.log(`[Dispatcher] Athena cross-bot response suppressed for non-whitelisted user ${actualUsername} in #${replyChannel}`);
                     } else {
+                        const relayRequest = detectBotRelayRequest({
+                            message: actualMessage,
+                            speakerName: decision.speaker.currentName,
+                            targets: decision.targets,
+                        });
+                        if (relayRequest.matched && relayRequest.relayMessage) {
+                            const resolvedRelayTarget = await resolveRelayTarget({
+                                namedTarget: relayRequest.targetName,
+                                structuredTarget: relayRequest.target,
+                                fallbackTenantId: responseTenantId,
+                            });
+                            if (resolvedRelayTarget) {
+                                await sendChatMessage(
+                                    `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`,
+                                    'bot',
+                                    replyChannel,
+                                    responseTenantId
+                                ).catch(() => {});
+                                const relayResult = await deliverBotRelay({
+                                    sourcePlatform: 'twitch',
+                                    sourceUserName: actualUsername,
+                                    triggerMessage: actualMessage,
+                                    speaker: decision.speaker,
+                                    speakerTenantId: responseTenantId,
+                                    target: resolvedRelayTarget.character,
+                                    targetTenantId: resolvedRelayTarget.tenantId,
+                                    relayMessage: relayRequest.relayMessage,
+                                });
+                                if (!relayResult.delivered && relayResult.error) {
+                                    await sendChatMessage(
+                                        `I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`,
+                                        'bot',
+                                        replyChannel,
+                                        responseTenantId
+                                    ).catch(() => {});
+                                }
+                                return;
+                            }
+                        }
+
                         console.log(`[Dispatcher] Cross-bot interaction triggered: ${decision.reason}`);
                         const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                             method: 'POST',
@@ -2861,7 +3566,12 @@ If no good match, respond with: Could not find matching user`;
                             const data = await response.json();
                             const aiReply = data.response?.trim() || data.data?.response?.trim() || '';
                             if (aiReply) {
-                                await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
+                                const responseChannel = await resolveTwitchReplyChannel({
+                                    sourceChannel: replyChannel,
+                                    sourceTenantId: tenantId,
+                                    responseTenantId,
+                                });
+                                await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
                                 await appendBotInteraction({
                                     platform: 'twitch',
                                     tenantId: responseTenantId,
@@ -2874,7 +3584,7 @@ If no good match, respond with: Could not find matching user`;
                                     responseMessage: aiReply,
                                 }).catch(() => {});
                                 await sendTwitchCrossBotFollowUp({
-                                    channel: replyChannel,
+                                    channel: responseChannel,
                                     userName: actualUsername,
                                     triggerMessage: actualMessage,
                                     speakerName: decision.speaker.currentName,
@@ -2940,10 +3650,15 @@ If no good match, respond with: Could not find matching user`;
                         
                         if (aiReply) {
                             // Send the chat message
-                            await sendChatMessage(aiReply, 'bot', replyChannel, responseTenantId).catch(() => {});
+                            const responseChannel = await resolveTwitchReplyChannel({
+                                sourceChannel: replyChannel,
+                                sourceTenantId: tenantId,
+                                responseTenantId,
+                            });
+                            await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
                             const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
                             await sendTwitchCrossBotFollowUp({
-                                channel: replyChannel,
+                                channel: responseChannel,
                                 userName: actualUsername,
                                 triggerMessage: actualMessage,
                                 speakerName: responseBotName,
@@ -3001,6 +3716,62 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
     if (!sourceChannelId) return { commandHandled: false };
 
     const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
+    const normalizedContent = String(msg.content || '').trim();
+
+    if (!msg.author?.bot && normalizedContent && !normalizedContent.startsWith('[')) {
+        const mtFixItIntent = detectMtFixItIntent(normalizedContent);
+        if (mtFixItIntent.matched) {
+            if (!mtFixItIntent.description) {
+                beginPendingMtSupportRequest({
+                    platform: 'discord',
+                    tenantId,
+                    username: sourceUserName,
+                    channelId: sourceChannelId,
+                });
+                await sendDiscordMessage(sourceChannelId, `@${sourceUserName}, ${getMtSupportPrompt('discord')}`).catch(() => {});
+                return { commandHandled: true };
+            }
+
+            const result = await submitMtSupportReport({
+                platform: 'discord',
+                tenantId,
+                username: sourceUserName,
+                channelId: sourceChannelId,
+                description: mtFixItIntent.description,
+                triggerMessage: normalizedContent,
+            });
+            await sendDiscordMessage(
+                sourceChannelId,
+                result.ok
+                    ? `@${sourceUserName}, support report sent to Mtman1987.`
+                    : `@${sourceUserName}, I could not send the support report: ${result.error || 'unknown error'}`,
+            ).catch(() => {});
+            return { commandHandled: true };
+        }
+
+        if (!normalizedContent.startsWith('!') && consumePendingMtSupportRequest({
+            platform: 'discord',
+            tenantId,
+            username: sourceUserName,
+            channelId: sourceChannelId,
+        })) {
+            const result = await submitMtSupportReport({
+                platform: 'discord',
+                tenantId,
+                username: sourceUserName,
+                channelId: sourceChannelId,
+                description: normalizedContent,
+                triggerMessage: '!mtfixit',
+            });
+            await sendDiscordMessage(
+                sourceChannelId,
+                result.ok
+                    ? `@${sourceUserName}, support report sent to Mtman1987.`
+                    : `@${sourceUserName}, I could not send the support report: ${result.error || 'unknown error'}`,
+            ).catch(() => {});
+            return { commandHandled: true };
+        }
+    }
 
     if (!options.skipPublicHistory && !msg.author?.bot && !msg.content.startsWith('[') && String(msg.content || '').trim()) {
         appendPublicChatMessages([{
@@ -3040,12 +3811,6 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
             channelId: sourceChannelId,
         }, tenantId);
         if (commandHandled) {
-            if (!options.skipTwitchBridge) {
-                await bridgeDiscordMessageToTwitch({
-                    ...msg,
-                    channelId: sourceChannelId,
-                }, tenantId);
-            }
             return { commandHandled: true };
         }
     }

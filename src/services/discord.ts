@@ -4,7 +4,19 @@ import * as local from './discord-local';
 import { sendWebhookMessage } from './discord-webhooks';
 
 export async function sendDiscordMessage(channelId: string, message: string, username?: string, avatarUrl?: string): Promise<void> {
-    await sendWebhookMessage(channelId, message, username, avatarUrl);
+    try {
+        await sendWebhookMessage(channelId, message, username, avatarUrl);
+    } catch (error) {
+        console.warn('[Discord] Webhook send failed, falling back to bot message:', error);
+        await local.sendDiscordMessage(channelId, message);
+    }
+}
+
+export async function sendDiscordEmbed(
+    channelId: string,
+    options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[] },
+): Promise<Record<string, unknown>> {
+    return local.sendDiscordEmbed(channelId, options);
 }
 export async function getDiscordUser(
     userId: string

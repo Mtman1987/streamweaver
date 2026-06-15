@@ -11,7 +11,7 @@
 
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
-import { tenantPath } from '../lib/tenant';
+import { communityBotTokensPath, tenantPath } from '../lib/tenant';
 
 let appAccessToken: string | null = null;
 let appTokenExpiry = 0;
@@ -118,6 +118,49 @@ function getClientId(): string {
   return process.env.TWITCH_CLIENT_ID || process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID || '';
 }
 
+function getClientSecret(): string {
+  return process.env.TWITCH_CLIENT_SECRET || process.env.NEXT_PUBLIC_TWITCH_CLIENT_SECRET || '';
+}
+
+type SharedChatLookupAuth = {
+  label: 'broadcaster' | 'bot' | 'app';
+  token: string;
+};
+
+async function getSharedChatLookupAuthCandidates(tenantId?: string): Promise<SharedChatLookupAuth[]> {
+  const candidates: SharedChatLookupAuth[] = [];
+  const clientId = getClientId();
+  const clientSecret = getClientSecret();
+
+  if (tenantId && clientId && clientSecret) {
+    try {
+      const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+      const tokens = await getStoredTokens(tenantId);
+
+      if (tokens?.broadcasterToken && tokens?.broadcasterRefreshToken) {
+        candidates.push({
+          label: 'broadcaster',
+          token: await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId),
+        });
+      }
+
+      if (tokens?.botToken && tokens?.botRefreshToken) {
+        candidates.push({
+          label: 'bot',
+          token: await ensureValidToken(clientId, clientSecret, 'bot', tokens, tenantId),
+        });
+      }
+    } catch (error) {
+      console.warn(`[SharedChat] Failed to load tenant lookup tokens for ${tenantId}:`, error);
+    }
+  }
+
+  candidates.push({ label: 'app', token: await getAppToken() });
+  return candidates.filter((candidate, index, list) =>
+    Boolean(candidate.token) && list.findIndex((entry) => entry.token === candidate.token) === index,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Shared-chat detection
 // ---------------------------------------------------------------------------
@@ -125,42 +168,62 @@ function getClientId(): string {
 /**
  * Check if a channel is currently in a shared-chat session via Helix.
  */
-export async function isChannelInSharedChat(channelLogin: string): Promise<boolean> {
+export async function isChannelInSharedChat(channelLogin: string, tenantId?: string): Promise<boolean> {
   const key = channelLogin.toLowerCase();
   const cached = sharedChatCache.get(key);
   if (cached && Date.now() < cached.expires) return cached.isShared;
 
   try {
-    const token = await getAppToken();
     const clientId = getClientId();
+    const candidates = await getSharedChatLookupAuthCandidates(tenantId);
 
-    // Resolve login → user ID
-    const userRes = await fetch(
-      `https://api.twitch.tv/helix/users?login=${encodeURIComponent(key)}`,
-      { headers: { 'Client-ID': clientId, Authorization: `Bearer ${token}` } },
-    );
-    const userData = await userRes.json();
-    const broadcasterId = userData.data?.[0]?.id;
-    if (!broadcasterId) {
-      sharedChatCache.set(key, { isShared: false, expires: Date.now() + CACHE_TTL });
-      return false;
+    for (const candidate of candidates) {
+      const headers = { 'Client-ID': clientId, Authorization: `Bearer ${candidate.token}` };
+
+      const userRes = await fetch(
+        `https://api.twitch.tv/helix/users?login=${encodeURIComponent(key)}`,
+        { headers },
+      );
+      if (!userRes.ok) {
+        console.warn(`[SharedChat] User lookup failed for ${key} via ${candidate.label} token (${userRes.status})`);
+        continue;
+      }
+
+      const userData = await userRes.json();
+      const broadcasterId = userData.data?.[0]?.id;
+      if (!broadcasterId) {
+        sharedChatCache.set(key, { isShared: false, expires: Date.now() + CACHE_TTL });
+        return false;
+      }
+
+      const scRes = await fetch(
+        `https://api.twitch.tv/helix/shared_chat/session?broadcaster_id=${broadcasterId}`,
+        { headers },
+      );
+
+      if (scRes.status === 404 || scRes.status === 204) {
+        sharedChatCache.set(key, { isShared: false, expires: Date.now() + CACHE_TTL });
+        return false;
+      }
+
+      if (!scRes.ok) {
+        console.warn(`[SharedChat] Session lookup failed for ${key} via ${candidate.label} token (${scRes.status})`);
+        continue;
+      }
+
+      const scData = await scRes.json();
+      const session = Array.isArray(scData?.data) ? scData.data[0] : scData?.data;
+      const participantCount = Array.isArray(session?.participants) ? session.participants.length : 0;
+      const isShared = Boolean(session?.session_id || participantCount > 1);
+      sharedChatCache.set(key, { isShared, expires: Date.now() + CACHE_TTL });
+      console.log(
+        `[SharedChat] Detection for ${key} via ${candidate.label} token: isShared=${isShared} participants=${participantCount}`,
+      );
+      return isShared;
     }
 
-    // Check shared chat session
-    const scRes = await fetch(
-      `https://api.twitch.tv/helix/shared_chat/session?broadcaster_id=${broadcasterId}`,
-      { headers: { 'Client-ID': clientId, Authorization: `Bearer ${token}` } },
-    );
-
-    if (scRes.status === 404 || scRes.status === 204) {
-      sharedChatCache.set(key, { isShared: false, expires: Date.now() + CACHE_TTL });
-      return false;
-    }
-
-    const scData = await scRes.json();
-    const isShared = Boolean(scData?.data?.session_id || scData?.data?.participants?.length);
-    sharedChatCache.set(key, { isShared, expires: Date.now() + CACHE_TTL });
-    return isShared;
+    sharedChatCache.set(key, { isShared: false, expires: Date.now() + CACHE_TTL });
+    return false;
   } catch (e) {
     console.error(`[SharedChat] Detection failed for ${key}:`, e);
     sharedChatCache.set(key, { isShared: false, expires: Date.now() + CACHE_TTL });
@@ -174,25 +237,54 @@ export async function isChannelInSharedChat(channelLogin: string): Promise<boole
 
 /**
  * Get a valid user access token for the bot or broadcaster from stored tokens.
- * POST /helix/chat/messages requires a user token, NOT an app token.
  * Uses ensureValidToken to auto-refresh expired tokens.
  */
-async function getUserToken(as: 'bot' | 'broadcaster', tenantId?: string): Promise<string | null> {
+type HelixAuthCandidate = {
+  kind: 'bot' | 'community-bot' | 'broadcaster';
+  token: string;
+};
+
+async function getUserTokenCandidates(as: 'bot' | 'broadcaster', tenantId?: string): Promise<HelixAuthCandidate[]> {
   try {
     const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
     const clientId = process.env.TWITCH_CLIENT_ID || process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
     const clientSecret = process.env.TWITCH_CLIENT_SECRET;
-    if (!clientId || !clientSecret) return null;
+    if (!clientId || !clientSecret) return [];
 
     const tokens = await getStoredTokens(tenantId);
-    if (!tokens) return null;
+    const candidates: HelixAuthCandidate[] = [];
 
-    // Try bot token first for 'bot', fall back to broadcaster
-    const tokenType = as === 'bot' && tokens.botToken ? 'bot' : 'broadcaster';
-    return await ensureValidToken(clientId, clientSecret, tokenType, tokens, tenantId);
+    if (as === 'bot' && tokens?.botToken && tokens?.botRefreshToken) {
+      candidates.push({
+        kind: 'bot',
+        token: await ensureValidToken(clientId, clientSecret, 'bot', tokens, tenantId),
+      });
+    }
+
+    try {
+      const raw = await fs.readFile(communityBotTokensPath(), 'utf-8');
+      const communityTokens = JSON.parse(raw);
+      if (communityTokens?.communityBotToken && communityTokens?.communityBotRefreshToken) {
+        candidates.push({
+          kind: 'community-bot',
+          token: await ensureValidToken(clientId, clientSecret, 'community-bot', communityTokens),
+        });
+      }
+    } catch {}
+
+    if (tokens?.broadcasterToken && tokens?.broadcasterRefreshToken) {
+      candidates.push({
+        kind: 'broadcaster',
+        token: await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId),
+      });
+    }
+
+    return candidates.filter((candidate, index, list) =>
+      Boolean(candidate.token) && list.findIndex((entry) => entry.token === candidate.token) === index,
+    );
   } catch (e) {
-    console.warn('[SharedChat] getUserToken failed:', e);
-    return null;
+    console.warn('[SharedChat] getUserTokenCandidates failed:', e);
+    return [];
   }
 }
 
@@ -200,7 +292,7 @@ async function sendViaHelixAPI(
   targetChannel: string,
   senderLogin: string,
   message: string,
-  userToken: string,
+  userAuthCandidates: HelixAuthCandidate[] = [],
   attempt = 0,
 ): Promise<{ success: boolean; reason?: string }> {
   try {
@@ -225,11 +317,13 @@ async function sendViaHelixAPI(
     const senderId = sData.data?.[0]?.id;
     if (!senderId) return { success: false, reason: 'sender-not-found' };
 
+    let lastStatus = 0;
+    let lastErrorText = '';
     const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
       method: 'POST',
       headers: {
         'Client-ID': clientId,
-        Authorization: `Bearer ${userToken}`,
+        Authorization: `Bearer ${appToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -240,22 +334,42 @@ async function sendViaHelixAPI(
       }),
     });
 
-    if (res.ok) return { success: true };
+    if (res.ok) {
+      console.log(`[SharedChat] Source-only Helix send succeeded using app token for #${targetChannel}`);
+      return { success: true };
+    }
 
-    const errText = await res.text();
-    console.warn(`[SharedChat] Helix send failed (${res.status}): ${errText}`);
+    lastStatus = res.status;
+    lastErrorText = await res.text();
+    console.warn(`[SharedChat] Helix source-only send failed using app token (${res.status}): ${lastErrorText}`);
 
-    const lower = errText.toLowerCase();
+    const lower = lastErrorText.toLowerCase();
+    const senderAuthKinds = userAuthCandidates.map((candidate) => candidate.kind).join(', ') || 'none';
     if (
       lower.includes('channel:bot') ||
+      lower.includes('user:bot') ||
+      lower.includes('user:write:chat') ||
       lower.includes('sender must be a moderator') ||
       lower.includes('must have authorized')
     ) {
+      console.warn(
+        `[SharedChat] Source-only app-token send requires sender authorization (user:bot + user:write:chat) and broadcaster authorization/channel mod status. Available sender token kinds: ${senderAuthKinds}`,
+      );
       return { success: false, reason: 'permission' };
     }
 
-    if (res.status === 401 && attempt < 1) {
-      return sendViaHelixAPI(targetChannel, senderLogin, message, userToken, attempt + 1);
+    if (lastStatus === 401 && attempt < 1) {
+      return sendViaHelixAPI(targetChannel, senderLogin, message, userAuthCandidates, attempt + 1);
+    }
+
+    if (
+      (lastErrorText || '').toLowerCase().includes('sender must be a moderator') ||
+      (lastErrorText || '').toLowerCase().includes('channel:bot') ||
+      (lastErrorText || '').toLowerCase().includes('user:bot') ||
+      (lastErrorText || '').toLowerCase().includes('user:write:chat') ||
+      (lastErrorText || '').toLowerCase().includes('must have authorized')
+    ) {
+      return { success: false, reason: 'permission' };
     }
 
     return { success: false, reason: 'api-error' };
@@ -282,6 +396,46 @@ export interface SendOptions {
   tenantId?: string;
 }
 
+function getClientDebugState(client: any): { readyState: string; joinedChannels: string[] } {
+  let readyState = 'unknown';
+  try {
+    readyState = typeof client?.readyState === 'function'
+      ? String(client.readyState() || 'unknown')
+      : 'unavailable';
+  } catch {
+    readyState = 'error';
+  }
+
+  const joinedChannels = typeof client?.getChannels === 'function'
+    ? client.getChannels().map((entry: string) => String(entry || '').replace(/^#/, '').toLowerCase())
+    : [];
+
+  return { readyState, joinedChannels };
+}
+
+async function ensureJoinedAndSay(client: any, normalizedChannel: string, message: string): Promise<void> {
+  const { readyState, joinedChannels } = getClientDebugState(client);
+  console.log(`[SharedChat] Preparing IRC send to #${normalizedChannel}; readyState=${readyState}; joined=${joinedChannels.join(', ') || '(none)'}`);
+
+  if (!joinedChannels.includes(normalizedChannel)) {
+    console.warn(`[SharedChat] Client was not joined to #${normalizedChannel}; joining before send.`);
+    try {
+      await client.join(normalizedChannel);
+    } catch (error) {
+      console.warn(`[SharedChat] Join before send failed for #${normalizedChannel}:`, error);
+    }
+  }
+
+  const { readyState: refreshedReadyState, joinedChannels: refreshedChannels } = getClientDebugState(client);
+  console.log(`[SharedChat] Sending IRC message to #${normalizedChannel}; joined channels: ${refreshedChannels.join(', ') || '(unknown)'}`);
+
+  if (refreshedReadyState !== 'OPEN' && refreshedReadyState !== 'unavailable' && refreshedReadyState !== 'unknown') {
+    throw new Error(`Twitch IRC client not open (readyState=${refreshedReadyState})`);
+  }
+
+  await client.say(`#${normalizedChannel}`, message);
+}
+
 /**
  * Send a chat message with shared-chat awareness.
  * If the channel is in shared chat, tries Helix API with source-only first.
@@ -291,7 +445,7 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
   const { client, channel, message, as, tenantId } = opts;
   const normalized = channel.toLowerCase().replace(/^#/, '');
 
-  const inShared = await isChannelInSharedChat(normalized);
+  const inShared = await isChannelInSharedChat(normalized, tenantId);
 
   // Broadcast shared chat status to UI
   if (typeof (global as any).broadcast === 'function') {
@@ -310,9 +464,9 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
           : (process.env.TWITCH_BROADCASTER_USERNAME || process.env.NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME || '')
       ).toLowerCase();
 
-    const userToken = await getUserToken(as, tenantId);
-    if (senderLogin && userToken) {
-      const result = await sendViaHelixAPI(normalized, senderLogin, message, userToken);
+    const userAuthCandidates = await getUserTokenCandidates(as, tenantId);
+    if (senderLogin) {
+      const result = await sendViaHelixAPI(normalized, senderLogin, message, userAuthCandidates);
       if (result.success) {
         console.log(`[SharedChat] Source-only message sent to ${normalized}`);
         return;
@@ -320,23 +474,43 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
 
       console.warn(`[SharedChat] API fallback to IRC for ${normalized} (${result.reason})`);
 
-      if (result.reason === 'permission') {
-        const lastWarn = sourceWarnedAt.get(normalized) || 0;
-        if (Date.now() - lastWarn > SOURCE_WARN_COOLDOWN) {
-          sourceWarnedAt.set(normalized, Date.now());
-          try {
-            await client.say(
-              `#${normalized}`,
-              `Shared chat tip: /mod ${senderLogin} to reduce mirrored bot messages.`,
-            );
-          } catch {}
+        if (result.reason === 'permission') {
+          const lastWarn = sourceWarnedAt.get(normalized) || 0;
+          if (Date.now() - lastWarn > SOURCE_WARN_COOLDOWN) {
+            sourceWarnedAt.set(normalized, Date.now());
+            try {
+              await ensureJoinedAndSay(
+                client,
+                normalized,
+                `Shared chat tip: ask the streamer to /mod ${senderLogin} to reduce mirrored bot messages.`,
+              );
+            } catch {}
+          }
         }
       }
-    }
   }
 
   // Normal IRC send
-  await client.say(`#${normalized}`, message);
+  try {
+    await ensureJoinedAndSay(client, normalized, message);
+  } catch (error) {
+    console.warn(`[SharedChat] Primary IRC send failed for #${normalized}; attempting reconnect once.`, error);
+    if (tenantId) {
+      try {
+        const twitchClientModule = require('./twitch-client');
+        await twitchClientModule.setupTwitchClient(String(tenantId));
+        const retryClient = twitchClientModule.getTwitchClient(as === 'broadcaster' ? 'broadcaster' : 'bot', String(tenantId))
+          || twitchClientModule.getTwitchClient('bot', String(tenantId));
+        if (retryClient) {
+          await ensureJoinedAndSay(retryClient, normalized, message);
+          return;
+        }
+      } catch (retryError) {
+        console.error(`[SharedChat] Reconnect retry failed for tenant ${tenantId}:`, retryError);
+      }
+    }
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------

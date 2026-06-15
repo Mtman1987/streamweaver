@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getChatOutputContext } from './chat-output-context';
 
 // In-memory cache for the app access token
 let appAccessToken: { token: string; expires: number } | null = null;
@@ -64,6 +65,12 @@ export async function sendChatMessage(
   tenantId?: string
 ): Promise<void> {
   if (tenantId?.startsWith('__kick_silent__')) return;
+  const outputContext = getChatOutputContext();
+  if (outputContext?.platform === 'discord') {
+    const { sendDiscordMessage } = await import('./discord');
+    await sendDiscordMessage(outputContext.channelId, message);
+    return;
+  }
   try {
     const wsPort = process.env.WS_PORT || '8090';
     const body: any = { message, as, bridgeToDiscord: true };
@@ -438,6 +445,158 @@ export async function updateChannelInfo(updates: { game_name?: string; title?: s
     return res.ok || res.status === 204;
   } catch (error) {
     console.error('[Twitch] updateChannelInfo error:', error);
+    return false;
+  }
+}
+
+type TwitchBroadcasterContext = {
+  clientId: string;
+  broadcasterId: string;
+  broadcasterToken: string;
+};
+
+async function getBroadcasterContext(tenantId?: string): Promise<TwitchBroadcasterContext | null> {
+  try {
+    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = await getStoredTokens(tenantId);
+    if (!tokens) return null;
+
+    const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+    const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { Authorization: `Bearer ${broadcasterToken}` },
+    });
+    if (!valRes.ok) return null;
+
+    const valData = await valRes.json();
+    const broadcasterId = String(valData?.user_id || '').trim();
+    if (!broadcasterId) return null;
+
+    return { clientId, broadcasterId, broadcasterToken };
+  } catch (error) {
+    console.error('[Twitch] getBroadcasterContext error:', error);
+    return null;
+  }
+}
+
+function clampTimeoutDuration(seconds: number): number {
+  if (!Number.isFinite(seconds)) return 600;
+  return Math.max(1, Math.min(1_209_600, Math.floor(seconds)));
+}
+
+export async function timeoutUser(username: string, durationSeconds = 600, reason = '', tenantId?: string): Promise<boolean> {
+  try {
+    const context = await getBroadcasterContext(tenantId);
+    if (!context) return false;
+
+    const targetLogin = String(username || '').replace(/^@/, '').trim();
+    if (!targetLogin) return false;
+
+    const user = await getTwitchUser(targetLogin, 'login');
+    if (!user?.id) return false;
+
+    const res = await fetch(
+      `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${context.broadcasterId}&moderator_id=${context.broadcasterId}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${context.broadcasterToken}`,
+          'Client-ID': context.clientId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: {
+            user_id: user.id,
+            duration: clampTimeoutDuration(durationSeconds),
+            reason: String(reason || '').trim().slice(0, 500),
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error('[Twitch] timeoutUser failed:', res.status, res.statusText, await res.text().catch(() => ''));
+    }
+
+    return res.ok;
+  } catch (error) {
+    console.error('[Twitch] timeoutUser error:', error);
+    return false;
+  }
+}
+
+export async function banUser(username: string, reason = '', tenantId?: string): Promise<boolean> {
+  try {
+    const context = await getBroadcasterContext(tenantId);
+    if (!context) return false;
+
+    const targetLogin = String(username || '').replace(/^@/, '').trim();
+    if (!targetLogin) return false;
+
+    const user = await getTwitchUser(targetLogin, 'login');
+    if (!user?.id) return false;
+
+    const res = await fetch(
+      `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${context.broadcasterId}&moderator_id=${context.broadcasterId}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${context.broadcasterToken}`,
+          'Client-ID': context.clientId,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: {
+            user_id: user.id,
+            reason: String(reason || '').trim().slice(0, 500),
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error('[Twitch] banUser failed:', res.status, res.statusText, await res.text().catch(() => ''));
+    }
+
+    return res.ok;
+  } catch (error) {
+    console.error('[Twitch] banUser error:', error);
+    return false;
+  }
+}
+
+export async function unbanUser(username: string, tenantId?: string): Promise<boolean> {
+  try {
+    const context = await getBroadcasterContext(tenantId);
+    if (!context) return false;
+
+    const targetLogin = String(username || '').replace(/^@/, '').trim();
+    if (!targetLogin) return false;
+
+    const user = await getTwitchUser(targetLogin, 'login');
+    if (!user?.id) return false;
+
+    const res = await fetch(
+      `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${context.broadcasterId}&moderator_id=${context.broadcasterId}&user_id=${user.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${context.broadcasterToken}`,
+          'Client-ID': context.clientId,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      console.error('[Twitch] unbanUser failed:', res.status, res.statusText, await res.text().catch(() => ''));
+    }
+
+    return res.ok || res.status === 204;
+  } catch (error) {
+    console.error('[Twitch] unbanUser error:', error);
     return false;
   }
 }

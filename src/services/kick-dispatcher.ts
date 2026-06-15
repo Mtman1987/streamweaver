@@ -134,7 +134,8 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.reply) await reply(data.reply);
+        const hasBroadcast = Boolean(data.broadcast);
+        if (data.reply && !hasBroadcast) await reply(data.reply);
         if (data.broadcast) {
           // Broadcast tag events to other Kick channels if needed
           console.log(`[KickDispatcher] SPMT broadcast: ${data.broadcast.slice(0, 80)}`);

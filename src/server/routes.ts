@@ -200,7 +200,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         // 1) explicit tenantId from caller
                         // 2) targetChannel mapping
                         // 3) single-tenant fallback only when exactly one tenant is active
-                        const channel = targetChannel || process.env.TWITCH_BROADCASTER_USERNAME || '';
+                        let channel = targetChannel || '';
                         let client = null;
                         let tid: string | undefined = undefined;
 
@@ -220,6 +220,24 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                                 client = getTc(clientType, tid);
                                 console.log(`[HTTP /api/twitch/send-message] Found client for tenant ${tid} via channel ${channel}`);
                             }
+                        }
+
+                        if ((!channel || !channel.trim()) && requestedTenantId) {
+                            try {
+                                const { getStoredTokens } = require('../lib/token-utils.server');
+                                const tokens = await getStoredTokens(String(requestedTenantId));
+                                const tenantChannel = String(tokens?.broadcasterUsername || '').trim().toLowerCase();
+                                if (tenantChannel) {
+                                    channel = tenantChannel;
+                                    console.log(`[HTTP /api/twitch/send-message] Resolved channel '${channel}' from tenant ${requestedTenantId} tokens`);
+                                }
+                            } catch (resolveChannelError) {
+                                console.warn('[HTTP /api/twitch/send-message] Failed to resolve tenant broadcaster channel:', resolveChannelError);
+                            }
+                        }
+
+                        if ((!channel || !channel.trim()) && !requestedTenantId) {
+                            channel = process.env.TWITCH_BROADCASTER_USERNAME || '';
                         }
                         
                         // Safety fallback for legacy single-tenant mode only.
@@ -272,10 +290,15 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         
                         console.log(`[HTTP /api/twitch/send-message] Client username: ${(client as any).getUsername()}`);
                         
-                        const sendChannel = targetChannel || '';
+                        const sendChannel = channel || '';
                         
                         // If no target channel specified, use the client's connected channel
                         const finalChannel = sendChannel || (client.getChannels?.()[0]?.replace('#', '') || '');
+                        console.log(`[HTTP /api/twitch/send-message] Final channel: ${finalChannel || '(empty)'}`);
+
+                        if (!finalChannel) {
+                            throw new Error('No Twitch channel could be resolved for outbound message');
+                        }
                         
                         await sendWithSharedChatAwareness({
                             client,

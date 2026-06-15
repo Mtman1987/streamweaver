@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     'moderator:manage:announcements',
     'channel:read:redemptions',
     'user:write:chat',
+    'user:bot',
     'channel:bot'
   ].join(' ');
 

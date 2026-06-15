@@ -472,6 +472,7 @@ function ActiveCommandsPageClient() {
     if (value === SubActionType.SEND_MESSAGE) return "Send Chat Message";
     if (value === SubActionType.RUN_ACTION) return "Run Action";
     if (value === SubActionType.GET_USER_INFO) return "Get User Info";
+    if (value === SubActionType.TWITCH_TIMEOUT_USER) return "Timeout User";
     if (value === SubActionType.IF_ELSE) return "If / Else";
     if (value === SubActionType.IF_BLOCK) return "IF Block";
     if (value === SubActionType.ELSE_BLOCK) return "ELSE Block";
@@ -489,6 +490,7 @@ function ActiveCommandsPageClient() {
     if (sa.type === SubActionType.SEND_MESSAGE) return String(sa.text || "");
     if (sa.type === SubActionType.RUN_ACTION) return `actionId=${String(sa.actionId || "")}`;
     if (sa.type === SubActionType.GET_USER_INFO) return `user=${String(sa.userLogin || "")}`;
+    if (sa.type === SubActionType.TWITCH_TIMEOUT_USER) return `user=${String(sa.userName || sa.userLogin || "")} duration=${String(sa.duration || 600)}s`;
     if (sa.type === SubActionType.IF_ELSE) return `${String(sa.input || "")} op=${String(sa.operation ?? "")} ${String(sa.value ?? "")}`;
     if (sa.type === SubActionType.HTTP_REQUEST) return `${String(sa.method || "POST")} ${String(sa.url || "")}`;
     if (sa.type === SubActionType.VOICE_REPLY_PROMPT) return `${String(sa.readbackTemplate || "%userName% said %message%")} -> ${sa.autoSend === false ? "manual" : "auto"}`;
@@ -873,6 +875,14 @@ function ActiveCommandsPageClient() {
               selectedCommandId={aiWorkflowMode === "edit" ? selectedCommandId : null}
               mode={aiWorkflowMode}
             />
+          </div>
+
+          <div className="mt-4 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+            Command arguments you can use in steps:
+            <div><code>%input0%</code> = first argument, usually the target user.</div>
+            <div><code>%targetUser%</code> = normalized first argument without the leading <code>@</code>.</div>
+            <div><code>%rawInput%</code> = everything after the command.</div>
+            <div>Example: <code>!timeout @user</code> gives <code>%input0%</code> as <code>@user</code> and <code>%targetUser%</code> as <code>user</code>.</div>
           </div>
         </div>
 
@@ -1423,12 +1433,13 @@ function ActiveCommandsPageClient() {
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={String(SubActionType.SEND_MESSAGE)}>Send Chat Message</SelectItem>
-                      <SelectItem value={String(SubActionType.RUN_ACTION)}>Run Action</SelectItem>
-                      <SelectItem value={String(SubActionType.GET_USER_INFO)}>Get User Info</SelectItem>
-                      <SelectItem value={String(SubActionType.IF_ELSE)}>If / Else</SelectItem>
-                      <SelectItem value={String(SubActionType.BREAK)}>Break</SelectItem>
+                      <SelectContent>
+                        <SelectItem value={String(SubActionType.SEND_MESSAGE)}>Send Chat Message</SelectItem>
+                        <SelectItem value={String(SubActionType.RUN_ACTION)}>Run Action</SelectItem>
+                        <SelectItem value={String(SubActionType.GET_USER_INFO)}>Get User Info</SelectItem>
+                        <SelectItem value={String(SubActionType.TWITCH_TIMEOUT_USER)}>Timeout User</SelectItem>
+                        <SelectItem value={String(SubActionType.IF_ELSE)}>If / Else</SelectItem>
+                        <SelectItem value={String(SubActionType.BREAK)}>Break</SelectItem>
                       <SelectItem value={String(SubActionType.WAIT)}>Wait</SelectItem>
                       <SelectItem value={String(SubActionType.HTTP_REQUEST)}>HTTP Request</SelectItem>
                       <SelectItem value={String(SubActionType.VOICE_REPLY_PROMPT)}>Voice Reply Prompt</SelectItem>
@@ -1617,6 +1628,37 @@ function ActiveCommandsPageClient() {
                         onCheckedChange={(checked) => setSubActionDraft((d: any) => ({ ...d, useBot: checked }))}
                       />
                     </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {Number(subActionDraft.type) === SubActionType.TWITCH_TIMEOUT_USER ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Target User</div>
+                    <Input
+                      value={String(subActionDraft.userName || subActionDraft.userLogin || "")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, userName: e.target.value, userLogin: e.target.value }))}
+                      placeholder="%targetUser%"
+                    />
+                    <div className="text-xs text-muted-foreground">Use %targetUser% or %input0% for commands like !timeout @user.</div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Duration (seconds)</div>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={String(subActionDraft.duration ?? 300)}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, duration: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Reason</div>
+                    <Input
+                      value={String(subActionDraft.reason || "")}
+                      onChange={(e) => setSubActionDraft((d: any) => ({ ...d, reason: e.target.value }))}
+                      placeholder="Timed out by chat command"
+                    />
                   </div>
                 </div>
               ) : null}

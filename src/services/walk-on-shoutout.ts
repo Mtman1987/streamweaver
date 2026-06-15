@@ -110,7 +110,7 @@ async function sendBroadcasterWelcome(displayName: string, tenantId?: string, op
 // CLIP FETCHING
 // ============================
 
-async function fetchClip(username: string): Promise<TwitchClip | null> {
+export async function fetchClip(username: string): Promise<TwitchClip | null> {
     try {
         const clientId = process.env.TWITCH_CLIENT_ID;
         const clientSecret = process.env.TWITCH_CLIENT_SECRET;

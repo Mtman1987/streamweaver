@@ -85,6 +85,7 @@ function normalizeSubActionType(value: unknown): number {
   if (text === 'math-operation' || text === 'math') return SubActionType.MATH_OPERATION;
   if (text === 'string-operation' || text === 'string') return SubActionType.STRING_OPERATION;
   if (text === 'http-request' || text === 'http_request' || text === 'fetch-url') return SubActionType.HTTP_REQUEST;
+  if (text === 'twitch-timeout-user' || text === 'timeout-user' || text === 'timeout') return SubActionType.TWITCH_TIMEOUT_USER;
   if (text === 'comment' || text === 'log') return SubActionType.COMMENT;
   if (
     text === 'voice-reply' ||
@@ -313,6 +314,71 @@ function isTimerPrompt(message: string): boolean {
   );
 }
 
+function isTimeoutPrompt(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('!timeout') || (lower.includes('timeout') && lower.includes('5 min'));
+}
+
+function buildTimeoutAutomationDraft(message: string, selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
+  const commandLabel = inferCommandLabel(message) || '!timeout';
+  const triggers = [...asWorkflowArray(currentWorkflow?.triggers)];
+  const hasCommandTrigger = triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
+  if (!hasCommandTrigger && selectedCommandId) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      commandId: selectedCommandId,
+    });
+  } else if (!hasCommandTrigger) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      command: commandLabel,
+    });
+  }
+
+  return {
+    assistantMessage: `I drafted a ${commandLabel} moderation workflow that parses the first argument as the target user, times them out for 5 minutes, and then announces it in chat.`,
+    automation: {
+      name: currentWorkflow?.name?.trim() || workflowNameForCommand(commandLabel, 'Timeout Workflow'),
+      triggers,
+      subActions: [
+        {
+          id: newId(),
+          type: SubActionType.TWITCH_TIMEOUT_USER,
+          enabled: true,
+          weight: 0,
+          index: 0,
+          userName: '%targetUser%',
+          duration: 300,
+          reason: 'Timed out by chat command',
+        },
+        {
+          id: newId(),
+          type: SubActionType.SEND_MESSAGE,
+          enabled: true,
+          weight: 0,
+          index: 1,
+          text: '%targetUser% is in timeout for 5 minutes.',
+          useBot: true,
+        },
+      ],
+      ...(!selectedCommandId ? { command: { name: commandLabel.replace(/^!/, ''), command: commandLabel } } : {}),
+      metadata: {
+        generatedFallback: 'timeout',
+      },
+    },
+    suggestedChanges: [
+      'The first command argument becomes %targetUser%, so moderators can use !timeout @user.',
+      'Change the duration or message text if you want a different moderation policy.',
+    ],
+  };
+}
+
 function buildTimerAutomationDraft(message: string, selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
   const commandLabel = inferCommandLabel(message) || '!settimer';
   const triggers = [...asWorkflowArray(currentWorkflow?.triggers)];
@@ -411,6 +477,65 @@ function buildTimerAutomationDraft(message: string, selectedCommandId?: string |
     suggestedChanges: [
       'Swap the broadcaster chat replies to bot replies if you want the bot account to announce the timer.',
       'Add an OBS/browser-source step afterward if you want a visible countdown overlay instead of chat-only feedback.',
+    ],
+  };
+}
+
+function isLurkPrompt(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /\blurk\b/.test(lower) && !/\bunlurk\b/.test(lower);
+}
+
+function buildLurkAutomationDraft(selectedCommandId?: string | null, currentWorkflow?: any): AssistantAutomationResponse {
+  const commandLabel = '!lurk';
+  const triggers = [...asWorkflowArray(currentWorkflow?.triggers)];
+  const hasCommandTrigger = triggers.some((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
+
+  if (!hasCommandTrigger && selectedCommandId) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      commandId: selectedCommandId,
+    });
+  } else if (!hasCommandTrigger) {
+    triggers.unshift({
+      id: newId(),
+      type: TriggerType.COMMAND,
+      enabled: true,
+      exclusions: [],
+      command: commandLabel,
+    });
+  }
+
+  return {
+    assistantMessage: selectedCommandId
+      ? 'I drafted a reusable !lurk workflow using the app command/action flow, not a hardcoded dispatcher reply.'
+      : 'I drafted a reusable !lurk workflow using the app command/action flow. Save it, then publish the resulting flow package if you want it in the community library.',
+    automation: {
+      name: currentWorkflow?.name?.trim() || 'Lurk Workflow',
+      triggers,
+      subActions: [
+        {
+          id: newId(),
+          type: SubActionType.SEND_MESSAGE,
+          enabled: true,
+          weight: 0,
+          index: 0,
+          text: '%userName% is lurking in the shadows 👀',
+          useBot: true,
+        },
+      ],
+      ...(!selectedCommandId ? { command: { name: 'lurk', command: commandLabel } } : {}),
+      metadata: {
+        generatedFallback: 'lurk',
+        communityPackageId: 'flow.utility.lurk',
+      },
+    },
+    suggestedChanges: [
+      'Adjust the reply text if you want a custom lurk voice.',
+      'Publish the flow package after saving if you want other streamers to import it from Community.',
     ],
   };
 }
@@ -566,8 +691,16 @@ async function buildFallbackAutomation(message: string, selectedCommandId?: stri
     return buildTimerAutomationDraft(message, selectedCommandId, currentWorkflow);
   }
 
+  if (isTimeoutPrompt(message)) {
+    return buildTimeoutAutomationDraft(message, selectedCommandId, currentWorkflow);
+  }
+
   if (isRpsChallengePrompt(message)) {
     return buildRpsAutomationDraft(message, selectedCommandId, currentWorkflow);
+  }
+
+  if (isLurkPrompt(message)) {
+    return buildLurkAutomationDraft(selectedCommandId, currentWorkflow);
   }
 
   const commandLabel = inferCommandLabel(message);
@@ -662,7 +795,7 @@ export async function generateAutomationAssistantResponse(input: AssistantAutoma
   const fallback = isCodePrompt(message)
     ? buildCodeFallback(message)
     : await buildFallbackAutomation(message, selectedCommandId, currentWorkflow);
-  if (isVoiceReplyPrompt(message)) {
+  if (isVoiceReplyPrompt(message) || isTimeoutPrompt(message) || isLurkPrompt(message)) {
     return fallback;
   }
 

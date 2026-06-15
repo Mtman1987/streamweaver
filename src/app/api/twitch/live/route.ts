@@ -22,6 +22,14 @@ const twitchLiveSchema = z.object({
 
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
+type SharedSessionResponse = {
+  data?: Array<{
+    session_id: string;
+    host_broadcaster_id: string;
+    participants: Array<{ broadcaster_id: string }>;
+  }>;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const parsed = twitchLiveSchema.safeParse(await request.json().catch(() => null));
@@ -121,17 +129,72 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const userById = new Map(allUsers.map((user) => [user.id, user]));
+    const liveUserIds = Array.from(new Set(liveStreams.map((stream) => stream.user_id).filter(Boolean)));
+    const sharedInfoByLogin: Record<
+      string,
+      { sharedSessionId: string; isSharedHost: boolean; sharedWith: string[] }
+    > = {};
+
+    for (const broadcasterId of liveUserIds) {
+      try {
+        const sessionResponse = await fetch(
+          `https://api.twitch.tv/helix/shared_chat/session?broadcaster_id=${encodeURIComponent(broadcasterId)}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken.replace('oauth:', '')}`,
+              'Client-ID': clientId,
+            }
+          }
+        );
+
+        if (!sessionResponse.ok) continue;
+
+        const sessionData = await sessionResponse.json() as SharedSessionResponse;
+        const session = sessionData.data?.[0];
+        if (!session || !Array.isArray(session.participants) || session.participants.length <= 1) continue;
+
+        const participantLogins = session.participants
+          .map((participant) => userById.get(participant.broadcaster_id)?.login)
+          .filter((login): login is string => Boolean(login));
+
+        for (const participant of session.participants) {
+          const login = userById.get(participant.broadcaster_id)?.login;
+          if (!login) continue;
+          sharedInfoByLogin[login.toLowerCase()] = {
+            sharedSessionId: session.session_id,
+            isSharedHost: participant.broadcaster_id === session.host_broadcaster_id,
+            sharedWith: participantLogins.filter((entry) => entry.toLowerCase() !== login.toLowerCase()),
+          };
+        }
+      } catch (error) {
+        if (VERBOSE_LOGS) {
+          console.warn(`[Twitch Live] Shared chat lookup failed for broadcaster ${broadcasterId}:`, error);
+        }
+      }
+
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    }
+
     // Map back to usernames
     const liveUsers = liveStreams.map(stream => {
-      const user = allUsers.find(u => u.id === stream.user_id);
+      const user = userById.get(stream.user_id);
+      const username = (user?.login || stream.user_login || '').toLowerCase();
+      const sharedInfo = sharedInfoByLogin[username];
       return {
-        username: user?.login || stream.user_login,
+        id: user?.id || stream.user_id,
+        username,
         displayName: user?.display_name || stream.user_name,
         profile_image_url: user?.profile_image_url,
         title: stream.title,
         gameName: stream.game_name,
         viewerCount: stream.viewer_count,
-        thumbnailUrl: stream.thumbnail_url
+        thumbnailUrl: stream.thumbnail_url,
+        startedAt: stream.started_at,
+        isSharedChat: Boolean(sharedInfo),
+        sharedSessionId: sharedInfo?.sharedSessionId || null,
+        isSharedHost: sharedInfo?.isSharedHost || false,
+        sharedWith: sharedInfo?.sharedWith || [],
       };
     });
 

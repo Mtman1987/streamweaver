@@ -6,6 +6,7 @@
 import { SubAction } from '../types';
 import { ExecutionContext } from '../SubActionExecutor';
 import { SubActionHandlerResult } from './SubActionHandlers';
+import { banUser, timeoutUser, unbanUser } from '@/services/twitch';
 
 export class TwitchHandlers {
   private static twitchService: any; // Will be injected
@@ -87,6 +88,9 @@ export class TwitchHandlers {
       
       if (this.twitchService) {
         await this.twitchService.timeoutUser(userName, duration, reason);
+      } else {
+        const ok = await timeoutUser(userName, duration, reason, context.tenantId);
+        if (!ok) throw new Error('timeout request was rejected');
       }
       
       return { success: true };
@@ -104,6 +108,9 @@ export class TwitchHandlers {
       
       if (this.twitchService) {
         await this.twitchService.banUser(userName, reason);
+      } else {
+        const ok = await banUser(userName, reason, context.tenantId);
+        if (!ok) throw new Error('ban request was rejected');
       }
       
       return { success: true };
@@ -120,6 +127,9 @@ export class TwitchHandlers {
       
       if (this.twitchService) {
         await this.twitchService.unbanUser(userName);
+      } else {
+        const ok = await unbanUser(userName, context.tenantId);
+        if (!ok) throw new Error('unban request was rejected');
       }
       
       return { success: true };

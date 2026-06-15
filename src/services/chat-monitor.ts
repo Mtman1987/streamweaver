@@ -10,6 +10,9 @@ import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed } from './discord-branding';
 import { getBotName } from '@/lib/bot-settings-store';
 import { getProcessingOwner, pollOwns, type ProcessingArea } from './discord-processing-owner';
+import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-state';
+import { registerHandledDiscordMessage } from './discord-message-dedupe';
+import { shouldPollerDispatchDiscordMessage } from './discord-poller-filter';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -257,7 +260,10 @@ export async function checkChatActivity() {
         
         // Process duplicate-prone public Discord work once, according to the configured owner.
         for (const msg of newMessages.reverse()) {
-            if (!msg.content.startsWith('[') && msg.author && !msg.author.bot && !sentToTwitchIds.has(msg.id)) {
+            if (shouldPollerDispatchDiscordMessage(msg.content, {
+                username: msg.author?.username || msg.author?.global_name || msg.author?.globalName,
+                channelId: msg.channel_id || logChannelId,
+            }) && msg.author && !msg.author.bot && !sentToTwitchIds.has(msg.id)) {
                 const decision = getPublicDiscordPollDecision(msg.content);
                 const detail = {
                     messageId: msg.id,
@@ -273,6 +279,16 @@ export async function checkChatActivity() {
                 }
 
                 logDedupeGate(decision.area, 'allow', detail);
+                if (!registerHandledDiscordMessage({
+                    messageId: msg.id,
+                    channelId: msg.channel_id || logChannelId,
+                    userId: msg.author?.id,
+                    username: msg.author?.username || msg.author?.global_name || msg.author?.globalName,
+                    content: msg.content,
+                    createdAt: msg.timestamp || msg.createdAt || msg.created_at,
+                })) {
+                    continue;
+                }
                 await handleDiscordMessage(msg);
                 sentToTwitchIds.add(msg.id);
             }
@@ -293,29 +309,6 @@ export async function checkChatActivity() {
     }
 }
 
-
-
-async function getDmSweepStatePath(tenantId: string): Promise<string> {
-    return tenantPath(tenantId, 'data/discord-dm-sweep-state.json');
-}
-
-async function loadDmLastMessageId(tenantId: string): Promise<string | null> {
-    try {
-        const raw = await fs.readFile(await getDmSweepStatePath(tenantId), 'utf-8');
-        const parsed = JSON.parse(raw);
-        return typeof parsed?.lastMessageId === 'string' ? parsed.lastMessageId : null;
-    } catch {
-        return null;
-    }
-}
-
-async function saveDmLastMessageId(tenantId: string, lastMessageId: string): Promise<void> {
-    try {
-        const statePath = await getDmSweepStatePath(tenantId);
-        await fs.mkdir(resolve(statePath, '..'), { recursive: true });
-        await fs.writeFile(statePath, JSON.stringify({ lastMessageId }, null, 2), 'utf-8');
-    } catch {}
-}
 
 
 export async function checkDmChannelActivity(): Promise<void> {

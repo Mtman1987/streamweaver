@@ -144,6 +144,36 @@ function normalizeCommandComparable(value: unknown): string {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+function getTriggerCommandText(trigger: any): string {
+  return String(
+    trigger?.command ||
+    trigger?.commandName ||
+    trigger?.config?.command ||
+    trigger?.pattern ||
+    ''
+  ).trim();
+}
+
+function getCommandFileNameLike(commandText: string): string {
+  return `commands/${slugify(commandText || 'command')}.json`;
+}
+
+function buildCommandFromTrigger(trigger: any, action: InventoryEntry): Record<string, any> | null {
+  const commandText = getTriggerCommandText(trigger);
+  if (!commandText.startsWith('!')) return null;
+  return {
+    id: String(trigger?.commandId || `${action.id || action.name}-command`),
+    name: commandText,
+    command: commandText,
+    enabled: action.enabled,
+    group: action.group || 'Imported Flows',
+    description: `Recovered from action trigger on ${action.name}`,
+    sources: 1,
+    caseSensitive: false,
+    regex: false,
+  };
+}
+
 function mergeManifestItems<T extends FlowPackageItem>(
   items: T[],
   edits: Array<z.infer<typeof flowPackageItemManifestSchema>>
@@ -235,7 +265,7 @@ export function getRequiredFlowPackageActionKeys(pkg: FlowPackage, selectedComma
       }
 
       const triggerType = String(trigger?.type || '').toLowerCase();
-      const triggerCommand = String(trigger?.config?.command || trigger?.pattern || '').trim().toLowerCase();
+      const triggerCommand = getTriggerCommandText(trigger).toLowerCase();
       if ((triggerType === 'chat command' || triggerType === 'command') && triggerCommand && selectedCommandTexts.has(triggerCommand) && action.id) {
         requiredActionIds.add(String(action.id));
       }
@@ -315,6 +345,40 @@ function buildActionItemMetadata(action: Record<string, any>, moduleName: string
       : 'Optional helper, variant, or supporting action.',
     sourceId: action.id ? String(action.id) : undefined,
   });
+}
+
+function extractTriggeredCommandsForAction(action: InventoryEntry, commands: InventoryEntry[]): Array<Record<string, any>> {
+  const rawAction = action.raw as Record<string, any>;
+  const triggers = Array.isArray(rawAction.triggers) ? rawAction.triggers : [];
+  const commandMap = new Map<string, Record<string, any>>();
+  const commandsById = new Map(
+    commands
+      .filter((command) => command.id)
+      .map((command) => [String(command.id), sanitizeCommandExport(command.raw)])
+  );
+
+  for (const trigger of triggers) {
+    const triggerType = Number(trigger?.type);
+    const triggerTypeText = String(trigger?.type || '').toLowerCase();
+    const isCommandTrigger =
+      triggerType === 401 ||
+      triggerTypeText === 'chat command' ||
+      triggerTypeText === 'command';
+    if (!isCommandTrigger) continue;
+
+    const triggerCommandId = String(trigger?.commandId || '').trim();
+    if (triggerCommandId && commandsById.has(triggerCommandId)) {
+      commandMap.set(triggerCommandId, commandsById.get(triggerCommandId) as Record<string, any>);
+      continue;
+    }
+
+    const recovered = buildCommandFromTrigger(trigger, action);
+    if (recovered) {
+      commandMap.set(String(recovered.id), recovered);
+    }
+  }
+
+  return [...commandMap.values()];
 }
 
 function hydrateFlowPackageMetadata(pkg: FlowPackage): FlowPackage {
@@ -1192,12 +1256,18 @@ export async function listTenantFlowPackages(tenantId?: string): Promise<FlowPac
     if (claimedActions.has(action.path)) continue;
     if (!shouldPackageStandaloneAction(action)) continue;
 
+    const actionCommands = extractTriggeredCommandsForAction(action, commands);
+    const actionCommandFiles = actionCommands.map((command) =>
+      String(command?.path || getCommandFileNameLike(String(command.command || command.name || 'command')))
+    );
+    const packageKind: FlowPackage['packageKind'] = actionCommands.length > 0 ? 'command_flow' : 'action_flow';
+
     upsertPackage(hydrateFlowPackageMetadata(flowPackageSchema.parse({
       version: 1,
       kind: 'streamweaver.flow-package',
       packageId: `flow.${getPrimaryFlowKey(action).replace(/[^a-z0-9._-]+/gi, '-')}`,
       name: action.name,
-      packageKind: 'action_flow',
+      packageKind,
       installUnit: 'flow',
       sourceModule: action.module,
       freezeTier: action.freezeTier,
@@ -1205,9 +1275,9 @@ export async function listTenantFlowPackages(tenantId?: string): Promise<FlowPac
       collection: getCollection(action.module),
       exportedAt: new Date().toISOString(),
       exportedByTenantId: tenantId,
-      commandFiles: [],
+      commandFiles: actionCommandFiles,
       actionFiles: [action.path],
-      commands: [],
+      commands: actionCommands,
       actions: [sanitizeActionExport(action.raw)],
       dependencies: [],
       matchingNotes: [],

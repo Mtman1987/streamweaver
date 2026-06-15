@@ -1,0 +1,41 @@
+{
+  "id": "7a3c4d91-2cb1-4d3c-a8e7-c4e1a9b7d222",
+  "name": "Lurk Workflow",
+  "enabled": true,
+  "group": "AI Automations",
+  "alwaysRun": false,
+  "randomAction": false,
+  "concurrent": false,
+  "excludeFromHistory": false,
+  "excludeFromPending": false,
+  "triggers": [
+    {
+      "id": "5d0a7b13-6c5a-4a81-b0ab-0e6c4a5d9912",
+      "type": 401,
+      "enabled": true,
+      "exclusions": [],
+      "commandId": "9f2c7b2e-5e3d-4b18-9c6a-6d1b8e2c4a11"
+    }
+  ],
+  "subActions": [
+    {
+      "id": "2f6a9e45-0e9e-46e3-9d0e-d4a85c3f1144",
+      "type": 10,
+      "enabled": true,
+      "weight": 0,
+      "index": 0,
+      "text": "%userName% is lurking in the shadows 👀",
+      "useBot": true
+    }
+  ],
+  "aiGenerated": true,
+  "aiPrompt": "make !lurk send a bot message saying %userName% is lurking in the shadows",
+  "draftStatus": "live",
+  "requiresReview": false,
+  "metadata": {
+    "createdBy": "codex",
+    "createdFrom": "chat-ai"
+  },
+  "createdAt": "2026-06-09T17:05:00.000Z",
+  "updatedAt": "2026-06-09T17:05:00.000Z"
+}
