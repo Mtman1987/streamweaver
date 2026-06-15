@@ -14,9 +14,13 @@ export type ProcessingArea =
 export type ProcessingOwner = 'route' | 'poll' | 'both' | 'off';
 
 const DEFAULT_OWNERS: Record<ProcessingArea, ProcessingOwner> = {
-  'public-command': 'poll',
+  // Default public Discord side effects to the route because /api/discord/chat is
+  // the first intake point and currently has the newer Discord-specific command,
+  // AI, cross-bot, cleanup, and webhook identity behavior. Polling can be made
+  // the owner later by setting the matching DUPLICATE_PRONE_* env var.
+  'public-command': 'route',
   'public-ai': 'route',
-  'public-bridge': 'poll',
+  'public-bridge': 'route',
   'public-history': 'route',
   'state-command': 'route',
   'ignore-command': 'route',
