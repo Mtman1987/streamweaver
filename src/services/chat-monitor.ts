@@ -17,6 +17,7 @@ let sentToTwitchIds = new Set<string>();
 let recentlySentMessages = new Set<string>();
 let isLoadingHistory: Map<string, boolean> = new Map();
 const lastMissingDiscordLogNotice = new Map<string, number>();
+const lastPollDisabledNotice = new Map<string, number>();
 
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 const MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS = 10 * 60 * 1000;
@@ -25,6 +26,19 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function logDedupeGate(area: ProcessingArea, action: 'allow' | 'skip', detail: Record<string, unknown>) {
     console.warn(`[DedupeGate] ${action.toUpperCase()} ${area} owner=${getProcessingOwner(area)}`, detail);
+}
+
+function maybeLogPollDisabled(key = 'global') {
+    const now = Date.now();
+    const lastNotice = lastPollDisabledNotice.get(key) || 0;
+    if (now - lastNotice > MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS) {
+        console.warn('[DedupeGate] Public Discord poll dispatch disabled before Discord fetch', {
+            publicCommandOwner: getProcessingOwner('public-command'),
+            publicAiOwner: getProcessingOwner('public-ai'),
+            reason: 'poll owns neither public-command nor public-ai',
+        });
+        lastPollDisabledNotice.set(key, now);
+    }
 }
 
 function getPublicDiscordPollDecision(messageText: string): { allowed: boolean; area: ProcessingArea; reason: string } {
@@ -204,6 +218,11 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
 
 export async function checkChatActivity() {
     try {
+        if (!pollOwns('public-command') && !pollOwns('public-ai')) {
+            maybeLogPollDisabled('global');
+            return;
+        }
+
         const logChannelId = await getDiscordChannelId('logChannelId');
         
         if (!logChannelId) {
