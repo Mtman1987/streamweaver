@@ -9,6 +9,7 @@ import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed } from './discord-branding';
 import { getBotName } from '@/lib/bot-settings-store';
+import { getProcessingOwner, pollOwns, type ProcessingArea } from './discord-processing-owner';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -22,6 +23,17 @@ const MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS = 10 * 60 * 1000;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function logDedupeGate(area: ProcessingArea, action: 'allow' | 'skip', detail: Record<string, unknown>) {
+    console.warn(`[DedupeGate] ${action.toUpperCase()} ${area} owner=${getProcessingOwner(area)}`, detail);
+}
+
+function getPublicDiscordPollDecision(messageText: string): { allowed: boolean; area: ProcessingArea; reason: string } {
+    const trimmed = String(messageText || '').trim();
+    if (trimmed.startsWith('!')) {
+        return { allowed: pollOwns('public-command'), area: 'public-command', reason: 'public Discord command dispatch' };
+    }
+    return { allowed: pollOwns('public-ai'), area: 'public-ai', reason: 'public Discord AI/mention dispatch' };
+}
 
 function isDiscordEmbeddableImageUrl(value: unknown): value is string {
     if (typeof value !== 'string') return false;
@@ -203,7 +215,7 @@ export async function checkChatActivity() {
         try {
             messages = await getChannelMessages(logChannelId, 10);
         } catch (error) {
-            // Silently handle errors to prevent spam
+            console.warn('[ChatMonitor] Failed to fetch Discord public chat activity:', error);
             return;
         }
 
@@ -224,9 +236,24 @@ export async function checkChatActivity() {
             newMessages.push(msg);
         }
         
-        // Process Discord → Twitch bridging
+        // Process duplicate-prone public Discord work once, according to the configured owner.
         for (const msg of newMessages.reverse()) {
             if (!msg.content.startsWith('[') && msg.author && !msg.author.bot && !sentToTwitchIds.has(msg.id)) {
+                const decision = getPublicDiscordPollDecision(msg.content);
+                const detail = {
+                    messageId: msg.id,
+                    author: msg.author?.username || msg.author?.global_name || msg.author?.globalName || 'unknown',
+                    preview: String(msg.content || '').slice(0, 120),
+                    reason: decision.reason,
+                };
+
+                if (!decision.allowed) {
+                    logDedupeGate(decision.area, 'skip', detail);
+                    sentToTwitchIds.add(msg.id);
+                    continue;
+                }
+
+                logDedupeGate(decision.area, 'allow', detail);
                 await handleDiscordMessage(msg);
                 sentToTwitchIds.add(msg.id);
             }
@@ -243,7 +270,7 @@ export async function checkChatActivity() {
         }
         
     } catch (error) {
-        // Silently handle errors to prevent spam
+        console.warn('[ChatMonitor] checkChatActivity failed:', error);
     }
 }
 
