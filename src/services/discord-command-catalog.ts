@@ -17,7 +17,7 @@ const DISCORD_POKEMON_COMMANDS = [
 ];
 
 const DISCORD_INFO_COMMANDS = [
-  '!time', '!followage', '!uptime', '!watchtime', '!stats',
+  '!time', '!watchtime',
 ];
 
 const DISCORD_LEADER_COMMANDS = [
@@ -34,6 +34,34 @@ const DISCORD_ADMIN_COMMANDS = [
   '!greetingmode', '!welcomemode', '!clipmode', '!chatmode', '!athenaeverywhere',
   '!brb', '!back', '!addflow <prompt>', '!approveflow <!command>', '!disableflow <!command>', '!deleteflow <!command>',
 ];
+
+function commandName(label: string): string {
+  return label
+    .trim()
+    .split(/\s+/)[0]
+    .replace(/^!/, '')
+    .toLowerCase();
+}
+
+export const DISCORD_ROUTED_COMMAND_NAMES = Array.from(new Set([
+  ...DISCORD_FUN_COMMANDS,
+  ...DISCORD_POKEMON_COMMANDS,
+  ...DISCORD_LEADER_COMMANDS,
+  '!setgame <game>',
+  '!settitle <title>',
+  '!raidmessage <msg>',
+  '!greetingmode',
+  '!welcomemode',
+  '!clipmode',
+  '!chatmode',
+  '!athenaeverywhere',
+  '!brb',
+  '!back',
+  '!addflow <prompt>',
+  '!approveflow <!command>',
+  '!disableflow <!command>',
+  '!deleteflow <!command>',
+])).map(commandName);
 
 export function buildDiscordCommandsSummary(): string {
   return [

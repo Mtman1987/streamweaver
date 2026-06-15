@@ -35,7 +35,7 @@ import type { StorageContext } from './storage';
 import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
 import { sendDiscordCommandShoutout } from './discord-command-shoutout';
 import { registerManualShoutout } from './discord-manual-shoutouts';
-import { buildDiscordAdminCommandsSummary, buildDiscordCommandsSummary } from './discord-command-catalog';
+import { buildDiscordAdminCommandsSummary, buildDiscordCommandsSummary, DISCORD_ROUTED_COMMAND_NAMES } from './discord-command-catalog';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest } from './bot-relay';
 import { checkDiscordStreamHubAdminAccess, lookupDiscordStreamHubTwitchTarget } from './discord-stream-hub';
@@ -70,24 +70,6 @@ function parseTimeoutDuration(input: string | undefined): { seconds: number; con
     return { seconds: Math.max(1, Math.min(1_209_600, value * multiplier)), consumed: true };
 }
 
-let portableDiscordCommandNamesPromise: Promise<Set<string>> | null = null;
-
-async function getPortableDiscordCommandNames(): Promise<Set<string>> {
-    if (!portableDiscordCommandNamesPromise) {
-        portableDiscordCommandNamesPromise = (async () => {
-            const sourcePath = resolve(process.cwd(), 'src', 'services', 'chat-dispatcher.ts');
-            const source = await fs.readFile(sourcePath, 'utf-8').catch(() => '');
-            const names = new Set<string>();
-            for (const match of source.matchAll(/!([a-z0-9][a-z0-9_-]*)/gi)) {
-                names.add(match[1].toLowerCase());
-            }
-            names.delete('command');
-            return names;
-        })();
-    }
-    return portableDiscordCommandNamesPromise;
-}
-
 async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
     if (hasDiscordModAccess(msg)) return true;
 
@@ -109,8 +91,7 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
     const configuredMatch = configuredCommands.some((command: any) =>
         String(command?.command || '').toLowerCase().replace(/^!/, '') === cmdName && command?.enabled !== false
     );
-    const portableNames = await getPortableDiscordCommandNames();
-    if (!configuredMatch && !portableNames.has(cmdName)) {
+    if (!configuredMatch && !DISCORD_ROUTED_COMMAND_NAMES.includes(cmdName)) {
         return false;
     }
 
