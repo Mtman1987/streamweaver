@@ -12,7 +12,7 @@ const DISCORD_LINK_COMMANDS = [
 ];
 
 const DISCORD_INFO_COMMANDS = [
-  '!time', '!followers', '!uptime', '!stats',
+  '!points', '!watchtime', '!time', '!followers', '!uptime', '!stats',
 ];
 
 const DISCORD_UTILITY_COMMANDS = [
@@ -54,11 +54,9 @@ export const DISCORD_ROUTED_COMMAND_NAMES = Array.from(new Set([
 ])).map(commandName);
 
 export const DISCORD_UNSUPPORTED_COMMAND_MESSAGES: Record<string, string> = {
-  points: 'Discord points are not wired to StreamWeaver yet. This needs a DiscordStreamHub-backed version first.',
   gamble: 'Discord gambling is disabled until Discord points are wired correctly.',
   roll: 'Discord roll is disabled until Discord points are wired correctly.',
   double: 'Discord double is disabled until Discord points are wired correctly.',
-  watchtime: 'Discord watchtime needs a Discord-native activity tracker first.',
   leader: 'Discord leaderboards need Discord-native point and activity data first.',
   pleader: 'Discord leaderboards need Discord-native point and activity data first.',
   wleader: 'Discord leaderboards need Discord-native point and activity data first.',

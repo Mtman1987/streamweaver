@@ -43,7 +43,7 @@ import {
 } from './discord-command-catalog';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest } from './bot-relay';
-import { checkDiscordStreamHubAdminAccess, lookupDiscordStreamHubTwitchTarget } from './discord-stream-hub';
+import { checkDiscordStreamHubAdminAccess, getDiscordStreamHubActivitySummary, getDiscordStreamHubPoints, lookupDiscordStreamHubTwitchTarget } from './discord-stream-hub';
 import { getTenantBroadcasterChannel, resolveTwitchReplyChannel } from './tenant-chat-routing';
 import {
     beginPendingMtSupportRequest,
@@ -73,6 +73,23 @@ function parseTimeoutDuration(input: string | undefined): { seconds: number; con
         unit.startsWith('m') ? 60 :
         1;
     return { seconds: Math.max(1, Math.min(1_209_600, value * multiplier)), consumed: true };
+}
+
+function formatDiscordActivityMinutes(minutes: number): string {
+    const totalMinutes = Math.max(0, Math.trunc(Number(minutes || 0)));
+    const hours = Math.floor(totalMinutes / 60);
+    const remainder = totalMinutes % 60;
+    if (!hours) return `${remainder}m`;
+    if (!remainder) return `${hours}h`;
+    return `${hours}h ${remainder}m`;
+}
+
+function formatIsoDateLabel(value?: string | null): string {
+    const iso = String(value || '').trim();
+    if (!iso) return 'unknown';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return 'unknown';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
@@ -450,6 +467,65 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
 
     if (actualMessage.toLowerCase() === '!admin') {
         await reply(buildDiscordAdminCommandsSummary({ isMod }));
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!points') {
+        try {
+            const result = await getDiscordStreamHubPoints({
+                userId: msg.author?.id || msg.userId || msg.user_id,
+                username: msg.author?.username || actualUsername,
+                displayName: msg.author?.globalName || msg.author?.global_name || actualUsername,
+                serverId: msg.guildId || msg.guild_id,
+            });
+            const rankText = result.rank ? ` (rank #${result.rank})` : '';
+            await reply(`@${actualUsername}, you have ${Number(result.points || 0).toLocaleString()} Discord points${rankText}.`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !points failed:', error);
+            await reply(`@${actualUsername}, I couldn't load your Discord points right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!watchtime' || actualMessage.toLowerCase() === '!watch time') {
+        try {
+            const result = await getDiscordStreamHubActivitySummary({
+                userId: msg.author?.id || msg.userId || msg.user_id,
+                serverId: msg.guildId || msg.guild_id,
+            });
+            const summary = result.summary;
+            const hasActivity = summary && (
+                summary.messageCount > 0 ||
+                summary.voiceMinutes > 0 ||
+                summary.helpfulReactions > 0 ||
+                summary.streamAttendance > 0 ||
+                summary.activeDays > 0
+            );
+
+            if (!result.found || !summary || !hasActivity) {
+                await reply(`@${actualUsername}, no Discord activity has been tracked for you here yet.`);
+                return true;
+            }
+
+            const parts = [
+                `${summary.messageCount.toLocaleString()} messages`,
+                `${summary.activeDays.toLocaleString()} active days`,
+                `${formatDiscordActivityMinutes(summary.voiceMinutes)} voice time`,
+            ];
+            if (summary.helpfulReactions > 0) {
+                parts.push(`${summary.helpfulReactions.toLocaleString()} helpful reactions`);
+            }
+            if (summary.streamAttendance > 0) {
+                parts.push(`${summary.streamAttendance.toLocaleString()} stream check-ins`);
+            }
+
+            await reply(
+                `@${actualUsername}, Discord activity: ${parts.join(', ')}. First seen ${formatIsoDateLabel(summary.firstSeenAt)}; last seen ${formatIsoDateLabel(summary.lastSeenAt)}.`
+            );
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !watchtime failed:', error);
+            await reply(`@${actualUsername}, I couldn't load your Discord activity right now.`);
+        }
         return true;
     }
 

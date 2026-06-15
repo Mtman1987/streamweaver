@@ -23,8 +23,13 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
 
   console.log(`[KickDispatcher] Message from ${username}: ${message.slice(0, 100)} (tenant: ${tenantId})`);
 
-  // Community channels only support SPMT commands (no points/storage)
+  // Community Kick channels are owned by the dedicated chat-tag app now.
   const isCommunityChannel = tenantId.startsWith('kick_community_');
+  if (isCommunityChannel) {
+    console.log(`[KickDispatcher] Ignoring message for community-only channel ${tenantId}`);
+    return;
+  }
+
   if (!isCommunityChannel) {
     try {
       const { getStoredTokens } = require('../lib/token-utils.server');
@@ -106,58 +111,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
   // Always skip streamweaverbot's own messages
   if (username.toLowerCase() === 'streamweaverbot') return;
 
-  // Handle spmt commands — forward to chat-tag app
-  const lowerMsg = message.toLowerCase().trim();
-  if (lowerMsg.startsWith('spmt ') || lowerMsg.startsWith('@spmt ')) {
-    console.log(`[KickDispatcher] SPMT command detected: "${message}" — forwarding to chat-tag`);
-    try {
-      const CHAT_TAG_API = process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev';
-      const CHAT_TAG_SECRET = process.env.CHAT_TAG_SECRET || process.env.BOT_SECRET_KEY || '1234';
-      // Resolve Twitch username from tenant tokens so chat-tag can auto-link
-      let twitchUsername = username;
-      try {
-        const { tenantPath: tp } = require('../lib/tenant');
-        const tokensFile = tp(tenantId, 'tokens/twitch-tokens.json');
-        const twitchTokens = JSON.parse(require('fs').readFileSync(tokensFile, 'utf-8'));
-        if (twitchTokens.broadcasterUsername) twitchUsername = twitchTokens.broadcasterUsername;
-      } catch {}
-      const res = await fetch(`${CHAT_TAG_API}/api/kick/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username,
-          twitchUsername: twitchUsername,
-          message: message,
-          channel: kick.getChannelName() || '',
-          secret: CHAT_TAG_SECRET,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const hasBroadcast = Boolean(data.broadcast);
-        if (data.reply && !hasBroadcast) await reply(data.reply);
-        if (data.broadcast) {
-          // Broadcast tag events to other Kick channels if needed
-          console.log(`[KickDispatcher] SPMT broadcast: ${data.broadcast.slice(0, 80)}`);
-        }
-      } else {
-        console.warn(`[KickDispatcher] chat-tag returned ${res.status}`);
-      }
-    } catch (e: any) {
-      console.error('[KickDispatcher] SPMT forward failed:', e.message);
-    }
-    return;
-  }
-
   if (isCommand) {
-    // Community channels: only allow basic commands, skip tenant-specific ones
-    if (isCommunityChannel) {
-      const cmdName = message.substring(1).split(' ')[0].toLowerCase();
-      if (cmdName === 'commands') {
-        await reply('🎮 SPMT: spmt help | spmt status | spmt tag @user | spmt live | spmt score');
-      }
-      return;
-    }
     incrementMetric('totalCommands').catch(() => {});
     const cmdName = message.substring(1).split(' ')[0].toLowerCase();
     const args = message.substring(cmdName.length + 2).trim();
@@ -833,7 +787,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         return;
       }
       case 'commands': {
-        await reply('Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | Games: !gamble,!roll,!double,!coinflip | Pokemon: !pack,!collection,!show,!deck,!setdeck,!gymteam | Info: !points,!time,!watchtime,!leader,!pleader,!wleader,!cleader | Mods: !admin | Kick: !link,!unlink | SPMT: spmt help');
+        await reply('Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | Games: !gamble,!roll,!double,!coinflip | Pokemon: !pack,!collection,!show,!deck,!setdeck,!gymteam | Info: !points,!time,!watchtime,!leader,!pleader,!wleader,!cleader | Mods: !admin | Kick: !link,!unlink');
         return;
       }
       case 'admin': {

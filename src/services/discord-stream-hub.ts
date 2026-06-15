@@ -11,6 +11,11 @@ type DiscordStreamHubPointsSetPayload = DiscordStreamHubPointsPayload & {
   points: number;
 };
 
+type DiscordStreamHubActivityPayload = {
+  userId: string;
+  serverId?: string;
+};
+
 type DiscordStreamHubClipLookup = {
   found: boolean;
   serverId?: string;
@@ -165,4 +170,60 @@ export async function lookupDiscordStreamHubTwitchTarget(twitchLogin: string, se
   } catch {
     return null;
   }
+}
+
+export async function getDiscordStreamHubActivitySummary(payload: DiscordStreamHubActivityPayload): Promise<{
+  found: boolean;
+  summary?: {
+    messageCount: number;
+    voiceMinutes: number;
+    helpfulReactions: number;
+    streamAttendance: number;
+    activeDays: number;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    lastSeenChannelId: string | null;
+    lastSeenChannelName: string | null;
+    username?: string;
+    displayName?: string;
+    avatarUrl?: string;
+  } | null;
+}> {
+  const data = await postDiscordStreamHub<{
+    found?: boolean;
+    summary?: {
+      messageCount?: number;
+      voiceMinutes?: number;
+      helpfulReactions?: number;
+      streamAttendance?: number;
+      activeDays?: number;
+      firstSeenAt?: string | null;
+      lastSeenAt?: string | null;
+      lastSeenChannelId?: string | null;
+      lastSeenChannelName?: string | null;
+      username?: string;
+      displayName?: string;
+      avatarUrl?: string;
+    } | null;
+  }>('/api/discord/activity/user', payload);
+
+  return {
+    found: Boolean(data.found),
+    summary: data.summary
+      ? {
+          messageCount: Number(data.summary.messageCount || 0),
+          voiceMinutes: Number(data.summary.voiceMinutes || 0),
+          helpfulReactions: Number(data.summary.helpfulReactions || 0),
+          streamAttendance: Number(data.summary.streamAttendance || 0),
+          activeDays: Number(data.summary.activeDays || 0),
+          firstSeenAt: data.summary.firstSeenAt || null,
+          lastSeenAt: data.summary.lastSeenAt || null,
+          lastSeenChannelId: data.summary.lastSeenChannelId || null,
+          lastSeenChannelName: data.summary.lastSeenChannelName || null,
+          username: data.summary.username,
+          displayName: data.summary.displayName,
+          avatarUrl: data.summary.avatarUrl,
+        }
+      : null,
+  };
 }

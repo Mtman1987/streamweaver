@@ -21,7 +21,6 @@ export const LIMITS = {
 } as const;
 
 export const EVENT_TYPES = {
-    TAG_STATE_UPDATE: 'tag-state-update',
     TWITCH_STATUS: 'twitch-status',
     TWITCH_MESSAGE: 'twitch-message',
     VOICE_USER_JOINED: 'voice-user-joined',
