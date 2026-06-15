@@ -35,7 +35,12 @@ import type { StorageContext } from './storage';
 import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
 import { sendDiscordCommandShoutout } from './discord-command-shoutout';
 import { registerManualShoutout } from './discord-manual-shoutouts';
-import { buildDiscordAdminCommandsSummary, buildDiscordCommandsSummary, DISCORD_ROUTED_COMMAND_NAMES } from './discord-command-catalog';
+import {
+    buildDiscordAdminCommandsSummary,
+    buildDiscordCommandsSummary,
+    DISCORD_ROUTED_COMMAND_NAMES,
+    DISCORD_UNSUPPORTED_COMMAND_MESSAGES,
+} from './discord-command-catalog';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest } from './bot-relay';
 import { checkDiscordStreamHubAdminAccess, lookupDiscordStreamHubTwitchTarget } from './discord-stream-hub';
@@ -403,6 +408,12 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     };
     const isMod = await hasEffectiveDiscordModAccess(msg);
 
+    const unsupportedMessage = DISCORD_UNSUPPORTED_COMMAND_MESSAGES[cmdName];
+    if (unsupportedMessage) {
+        await reply(`@${actualUsername}, ${unsupportedMessage}`);
+        return true;
+    }
+
     const mtFixItIntent = detectMtFixItIntent(content);
     if (mtFixItIntent.matched) {
         if (!mtFixItIntent.description) {
@@ -505,17 +516,6 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         return true;
     }
 
-    if (actualMessage.toLowerCase() === '!points') {
-        try {
-            const userPoints = await getPoints(actualUsername, tenantCtx);
-            await reply(`@${actualUsername} has ${userPoints.pointsDisplay} points!`);
-        } catch (error) {
-            console.error('[Discord Dispatcher] Points fetch failed:', error);
-            await reply(`@${actualUsername}, couldn't fetch your points!`);
-        }
-        return true;
-    }
-
     if (actualMessage.toLowerCase() === '!coinflip') {
         const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
         await reply(`@${actualUsername} flipped a coin: ${result}! 🪙`);
@@ -531,72 +531,6 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         const utc = now.toLocaleString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
 
         await reply(`🕐 PST: ${pst} | MST: ${mst} | CST: ${cst} | EST: ${est} | UTC: ${utc}`);
-        return true;
-    }
-
-    if (actualMessage.toLowerCase().startsWith('!gamble ')) {
-        try {
-            const betInput = actualMessage.substring(8).trim();
-            const userPoints = await getPointBalance(actualUsername, tenantCtx);
-            const result = await handleClassicGamble(actualUsername, betInput, userPoints, silentTenantId);
-            if (!result) {
-                await reply(`@${actualUsername}, invalid bet. Try !gamble <amount>, !gamble all, !gamble half, or !gamble random.`);
-                return true;
-            }
-
-            await setPoints(actualUsername, result.newTotal, tenantCtx);
-            const summary = result.outcome === 'jackpot'
-                ? `JACKPOT! +${result.displayAmountDisplay}`
-                : result.outcome === 'win'
-                    ? `win! +${result.displayAmountDisplay}`
-                    : `loss. -${result.displayAmountDisplay}`;
-            await reply(`@${actualUsername}, ${summary} points. New total: ${result.newTotalDisplay}`);
-        } catch (error) {
-            console.error('[Discord Dispatcher] !gamble failed:', error);
-            await reply(`@${actualUsername}, gamble failed right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase() === '!gamble') {
-        try {
-            const userPoints = await getPointBalance(actualUsername, tenantCtx);
-            const result = await handleClassicGamble(actualUsername, '', userPoints, silentTenantId);
-            if (!result) {
-                await reply(`@${actualUsername}, invalid bet. Try !gamble <amount>, !gamble all, !gamble half, or !gamble random.`);
-                return true;
-            }
-
-            await setPoints(actualUsername, result.newTotal, tenantCtx);
-            const summary = result.outcome === 'jackpot'
-                ? `JACKPOT! +${result.displayAmountDisplay}`
-                : result.outcome === 'win'
-                    ? `win! +${result.displayAmountDisplay}`
-                    : `loss. -${result.displayAmountDisplay}`;
-            await reply(`@${actualUsername}, ${summary} points. New total: ${result.newTotalDisplay}`);
-        } catch (error) {
-            console.error('[Discord Dispatcher] !gamble failed:', error);
-            await reply(`@${actualUsername}, gamble failed right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase().startsWith('!roll ')) {
-        try {
-            const betInput = actualMessage.substring(6).trim();
-            const userPoints = await getPointBalance(actualUsername, tenantCtx);
-            const result = await handleRoll(actualUsername, betInput, userPoints, silentTenantId);
-            if (!result) {
-                await reply(`@${actualUsername}, usage: !roll <amount>`);
-                return true;
-            }
-
-            await setPoints(actualUsername, result.newTotal, tenantCtx);
-            await reply(`@${actualUsername} rolled a ${result.roll}! ${result.outcome} ${result.changeDisplay} points. New total: ${result.newTotalDisplay}`);
-        } catch (error) {
-            console.error('[Discord Dispatcher] !roll failed:', error);
-            await reply(`@${actualUsername}, roll failed right now.`);
-        }
         return true;
     }
 

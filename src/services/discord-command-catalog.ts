@@ -7,32 +7,23 @@ const DISCORD_FUN_COMMANDS = [
   '!lurk', '!unlurk', '!hydrate', '!stretch', '!yes', '!yup', '!no',
 ];
 
-const DISCORD_GAME_COMMANDS = [
-  '!points', '!gamble', '!roll', '!double', '!coinflip',
-];
-
-const DISCORD_POKEMON_COMMANDS = [
-  '!pack', '!collection', '!show <card>', '!trade <user>', '!offer <card>', '!accept', '!cancel',
-  '!challenge', '!attack', '!switch', '!setdeck', '!deck', '!eevee',
+const DISCORD_LINK_COMMANDS = [
+  '!discord', '!instagram', '!merch', '!tiktok', '!twitter', '!webpage', '!youtube',
 ];
 
 const DISCORD_INFO_COMMANDS = [
-  '!time', '!watchtime',
-];
-
-const DISCORD_LEADER_COMMANDS = [
-  '!leader', '!pleader', '!wleader', '!cleader', '!bleader', '!bitsleader',
+  '!time', '!followers', '!uptime', '!stats',
 ];
 
 const DISCORD_UTILITY_COMMANDS = [
-  '!commands', '!so <user>', '!botshare', '!mtfixit',
+  '!commands', '!so <user>', '!botshare', '!mtfixit', '!raidmessage <msg>',
 ];
 
 const DISCORD_ADMIN_COMMANDS = [
-  '!admin', '!setgame <game>', '!settitle <title>', '!raidmessage <msg>', '!ignore <user>',
+  '!admin', '!ignore <user>',
   '!timeout <user> [duration] [reason]',
   '!greetingmode', '!welcomemode', '!clipmode', '!chatmode', '!athenaeverywhere',
-  '!brb', '!back', '!addflow <prompt>', '!approveflow <!command>', '!disableflow <!command>', '!deleteflow <!command>',
+  '!addflow <prompt>', '!approveflow <!command>', '!disableflow <!command>', '!deleteflow <!command>',
 ];
 
 function commandName(label: string): string {
@@ -45,32 +36,63 @@ function commandName(label: string): string {
 
 export const DISCORD_ROUTED_COMMAND_NAMES = Array.from(new Set([
   ...DISCORD_FUN_COMMANDS,
-  ...DISCORD_POKEMON_COMMANDS,
-  ...DISCORD_LEADER_COMMANDS,
-  '!setgame <game>',
-  '!settitle <title>',
+  ...DISCORD_LINK_COMMANDS,
+  ...DISCORD_INFO_COMMANDS,
+  '!so <user>',
   '!raidmessage <msg>',
   '!greetingmode',
   '!welcomemode',
   '!clipmode',
   '!chatmode',
   '!athenaeverywhere',
-  '!brb',
-  '!back',
   '!addflow <prompt>',
   '!approveflow <!command>',
   '!disableflow <!command>',
   '!deleteflow <!command>',
+  '!timeout <user> [duration] [reason]',
+  '!ignore <user>',
 ])).map(commandName);
+
+export const DISCORD_UNSUPPORTED_COMMAND_MESSAGES: Record<string, string> = {
+  points: 'Discord points are not wired to StreamWeaver yet. This needs a DiscordStreamHub-backed version first.',
+  gamble: 'Discord gambling is disabled until Discord points are wired correctly.',
+  roll: 'Discord roll is disabled until Discord points are wired correctly.',
+  double: 'Discord double is disabled until Discord points are wired correctly.',
+  watchtime: 'Discord watchtime needs a Discord-native activity tracker first.',
+  leader: 'Discord leaderboards need Discord-native point and activity data first.',
+  pleader: 'Discord leaderboards need Discord-native point and activity data first.',
+  wleader: 'Discord leaderboards need Discord-native point and activity data first.',
+  cleader: 'Discord leaderboards need Discord-native point and activity data first.',
+  bleader: 'Discord leaderboards need Discord-native point and activity data first.',
+  bitsleader: 'Discord leaderboards need Discord-native point and activity data first.',
+  pack: 'Discord pack commands need a Discord-specific embed and preview flow first.',
+  collection: 'Discord collection commands need a Discord-specific presentation first.',
+  show: 'Discord card display needs a Discord-specific presentation first.',
+  trade: 'Discord trading needs a Discord-specific interaction flow first.',
+  offer: 'Discord trading needs a Discord-specific interaction flow first.',
+  accept: 'Discord trading needs a Discord-specific interaction flow first.',
+  cancel: 'Discord trading needs a Discord-specific interaction flow first.',
+  challenge: 'Discord battle commands need a Discord-specific interaction flow first.',
+  attack: 'Discord battle commands need a Discord-specific interaction flow first.',
+  switch: 'Discord battle commands need a Discord-specific interaction flow first.',
+  setdeck: 'Discord deck commands need a Discord-specific interaction flow first.',
+  deck: 'Discord deck commands need a Discord-specific interaction flow first.',
+  eevee: 'Discord pack commands need a Discord-specific embed and preview flow first.',
+  followage: 'Discord followage is Twitch-specific and is not supported here.',
+  followed: 'Discord followed status needs a Twitch identity mapping first.',
+  clip: 'Discord clip needs explicit tenant targeting or a Discord-native clip design first.',
+  brb: 'BRB controls are Twitch/stream-state specific and are not supported in Discord.',
+  back: 'BRB controls are Twitch/stream-state specific and are not supported in Discord.',
+  setgame: 'Setting stream game from Discord is disabled here.',
+  settitle: 'Setting stream title from Discord is disabled here.',
+};
 
 export function buildDiscordCommandsSummary(): string {
   return [
     `Discord commands`,
     `Fun: ${DISCORD_FUN_COMMANDS.join(', ')}`,
-    `Games: ${DISCORD_GAME_COMMANDS.join(', ')}`,
-    `Pokemon: ${DISCORD_POKEMON_COMMANDS.join(', ')}`,
+    `Links: ${DISCORD_LINK_COMMANDS.join(', ')}`,
     `Info: ${DISCORD_INFO_COMMANDS.join(', ')}`,
-    `Leaders: ${DISCORD_LEADER_COMMANDS.join(', ')}`,
     `Utility: ${DISCORD_UTILITY_COMMANDS.join(', ')}`,
     `Use !admin for mod-only Discord commands.`,
   ].join(' | ');
