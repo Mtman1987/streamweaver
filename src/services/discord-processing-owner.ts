@@ -1,25 +1,25 @@
-export type DiscordProcessingArea =
+export type ProcessingArea =
   | 'public-command'
   | 'public-ai'
   | 'public-bridge'
   | 'public-history'
-  | 'botshare'
-  | 'ignore'
+  | 'state-command'
+  | 'ignore-command'
   | 'crossbot'
   | 'cleanup'
   | 'dm-image'
   | 'dm-genmode'
   | 'dm-private-ai';
 
-export type DiscordProcessingOwner = 'route' | 'poll' | 'both' | 'off';
+export type ProcessingOwner = 'route' | 'poll' | 'both' | 'off';
 
-const DEFAULT_OWNERS: Record<DiscordProcessingArea, DiscordProcessingOwner> = {
+const DEFAULT_OWNERS: Record<ProcessingArea, ProcessingOwner> = {
   'public-command': 'poll',
   'public-ai': 'route',
   'public-bridge': 'poll',
   'public-history': 'route',
-  botshare: 'route',
-  ignore: 'route',
+  'state-command': 'route',
+  'ignore-command': 'route',
   crossbot: 'route',
   cleanup: 'route',
   'dm-image': 'route',
@@ -27,21 +27,21 @@ const DEFAULT_OWNERS: Record<DiscordProcessingArea, DiscordProcessingOwner> = {
   'dm-private-ai': 'route',
 };
 
-const ENV_NAMES: Record<DiscordProcessingArea, string> = {
-  'public-command': 'DISCORD_PUBLIC_COMMAND_OWNER',
-  'public-ai': 'DISCORD_PUBLIC_AI_OWNER',
-  'public-bridge': 'DISCORD_PUBLIC_BRIDGE_OWNER',
-  'public-history': 'DISCORD_PUBLIC_HISTORY_OWNER',
-  botshare: 'DISCORD_BOTSHARE_OWNER',
-  ignore: 'DISCORD_IGNORE_OWNER',
-  crossbot: 'DISCORD_CROSSBOT_OWNER',
-  cleanup: 'DISCORD_CLEANUP_OWNER',
-  'dm-image': 'DISCORD_DM_IMAGE_OWNER',
-  'dm-genmode': 'DISCORD_DM_GENMODE_OWNER',
-  'dm-private-ai': 'DISCORD_DM_PRIVATE_AI_OWNER',
+const ENV_NAMES: Record<ProcessingArea, string> = {
+  'public-command': 'DUPLICATE_PRONE_PUBLIC_COMMAND_OWNER',
+  'public-ai': 'DUPLICATE_PRONE_PUBLIC_AI_OWNER',
+  'public-bridge': 'DUPLICATE_PRONE_PUBLIC_BRIDGE_OWNER',
+  'public-history': 'DUPLICATE_PRONE_PUBLIC_HISTORY_OWNER',
+  'state-command': 'DUPLICATE_PRONE_STATE_COMMAND_OWNER',
+  'ignore-command': 'DUPLICATE_PRONE_IGNORE_COMMAND_OWNER',
+  crossbot: 'DUPLICATE_PRONE_CROSSBOT_OWNER',
+  cleanup: 'DUPLICATE_PRONE_CLEANUP_OWNER',
+  'dm-image': 'DUPLICATE_PRONE_DM_IMAGE_OWNER',
+  'dm-genmode': 'DUPLICATE_PRONE_DM_GENMODE_OWNER',
+  'dm-private-ai': 'DUPLICATE_PRONE_DM_PRIVATE_AI_OWNER',
 };
 
-function normalizeOwner(value: string | undefined, fallback: DiscordProcessingOwner): DiscordProcessingOwner {
+function normalizeOwner(value: string | undefined, fallback: ProcessingOwner): ProcessingOwner {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'route' || normalized === 'poll' || normalized === 'both' || normalized === 'off') {
     return normalized;
@@ -49,16 +49,23 @@ function normalizeOwner(value: string | undefined, fallback: DiscordProcessingOw
   return fallback;
 }
 
-export function getDiscordProcessingOwner(area: DiscordProcessingArea): DiscordProcessingOwner {
+export function getProcessingOwner(area: ProcessingArea): ProcessingOwner {
   return normalizeOwner(process.env[ENV_NAMES[area]], DEFAULT_OWNERS[area]);
 }
 
-export function discordRouteOwns(area: DiscordProcessingArea): boolean {
-  const owner = getDiscordProcessingOwner(area);
+export function routeOwns(area: ProcessingArea): boolean {
+  const owner = getProcessingOwner(area);
   return owner === 'route' || owner === 'both';
 }
 
-export function discordPollOwns(area: DiscordProcessingArea): boolean {
-  const owner = getDiscordProcessingOwner(area);
+export function pollOwns(area: ProcessingArea): boolean {
+  const owner = getProcessingOwner(area);
   return owner === 'poll' || owner === 'both';
 }
+
+// Backwards-compatible names for the first Discord-specific draft of this helper.
+export type DiscordProcessingArea = ProcessingArea;
+export type DiscordProcessingOwner = ProcessingOwner;
+export const getDiscordProcessingOwner = getProcessingOwner;
+export const discordRouteOwns = routeOwns;
+export const discordPollOwns = pollOwns;
