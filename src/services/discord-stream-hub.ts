@@ -36,6 +36,25 @@ function getDiscordStreamHubSecret(): string {
   return process.env.BOT_SECRET_KEY || '';
 }
 
+function truncateDiscordStreamHubErrorBody(body: string): string {
+  const compact = String(body || '').replace(/\s+/g, ' ').trim();
+  if (!compact) return '';
+  return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
+}
+
+async function readDiscordStreamHubErrorBody(response: Response): Promise<string> {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const text = await response.text().catch(() => '');
+  if (!text) return '';
+  if (contentType.includes('text/html')) return '[html response]';
+  return truncateDiscordStreamHubErrorBody(text);
+}
+
+function createDiscordStreamHubAbortSignal(timeoutMs = 8000): AbortSignal | undefined {
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') return undefined;
+  return AbortSignal.timeout(timeoutMs);
+}
+
 async function postDiscordStreamHub<T>(path: string, payload: Record<string, unknown>): Promise<T> {
   const secret = getDiscordStreamHubSecret();
   const response = await fetch(`${getDiscordStreamHubUrl()}${path}`, {
@@ -46,10 +65,12 @@ async function postDiscordStreamHub<T>(path: string, payload: Record<string, unk
     },
     body: JSON.stringify(payload),
     cache: 'no-store',
+    signal: createDiscordStreamHubAbortSignal(),
   });
 
   if (!response.ok) {
-    throw new Error(`DiscordStreamHub ${path} failed: ${response.status} ${await response.text().catch(() => '')}`);
+    const details = await readDiscordStreamHubErrorBody(response);
+    throw new Error(`DiscordStreamHub ${path} failed: ${response.status}${details ? ` ${details}` : ''}`);
   }
 
   return response.json() as Promise<T>;
@@ -68,10 +89,12 @@ async function getDiscordStreamHub<T>(path: string, searchParams?: Record<string
       ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
     },
     cache: 'no-store',
+    signal: createDiscordStreamHubAbortSignal(),
   });
 
   if (!response.ok) {
-    throw new Error(`DiscordStreamHub ${path} failed: ${response.status} ${await response.text().catch(() => '')}`);
+    const details = await readDiscordStreamHubErrorBody(response);
+    throw new Error(`DiscordStreamHub ${path} failed: ${response.status}${details ? ` ${details}` : ''}`);
   }
 
   return response.json() as Promise<T>;
@@ -172,7 +195,7 @@ export async function checkDiscordStreamHubAdminAccess(payload: {
       matchedBy: data.matchedBy ?? null,
     };
   } catch (error) {
-    console.warn('[DiscordStreamHub] Admin access check failed:', error);
+    console.warn('[DiscordStreamHub] Admin access check failed:', error instanceof Error ? error.message : String(error));
     return null;
   }
 }
