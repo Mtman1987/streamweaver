@@ -5,6 +5,18 @@ import { getChatOutputContext } from './chat-output-context';
 let appAccessToken: { token: string; expires: number } | null = null;
 let badgeCache: { badges: any, expires: number } | null = null;
 
+function getTwitchClientId(): string {
+  const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID || process.env.TWITCH_CLIENT_ID;
+  if (!clientId) {
+    throw new Error('Twitch client ID is missing from environment variables.');
+  }
+  return clientId;
+}
+
+function clearCachedAppAccessToken() {
+  appAccessToken = null;
+}
+
 /**
  * Gets a Twitch App Access Token using Client Credentials Grant Flow.
  * Caches the token to avoid re-fetching on every request.
@@ -105,22 +117,26 @@ type TwitchUser = {
 
 // Get User Information from Twitch API
 export async function getTwitchUser(usernameOrId: string, by: "login" | "id" = "login"): Promise<{ id: string; bio: string; lastGame: string; displayName: string; profileImageUrl: string; createdAt?: string; } | null> {
-    const appToken = await getTwitchAppAccessToken();
-    const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID || process.env.TWITCH_CLIENT_ID;
-
-    if (!clientId) {
-        throw new Error("Twitch client ID is missing from environment variables.");
-    }
+    const clientId = getTwitchClientId();
 
     try {
         const userQuery = by === 'login' ? `login=${usernameOrId}` : `id=${usernameOrId}`;
+        const fetchUserResponse = async () => {
+            const appToken = await getTwitchAppAccessToken();
+            return fetch(`https://api.twitch.tv/helix/users?${userQuery}`, {
+                headers: {
+                    'Authorization': `Bearer ${appToken}`,
+                    'Client-ID': clientId,
+                },
+            });
+        };
+
         // Step 1: Get user ID from username
-        const userResponse = await fetch(`https://api.twitch.tv/helix/users?${userQuery}`, {
-            headers: {
-                'Authorization': `Bearer ${appToken}`,
-                'Client-ID': clientId,
-            },
-        });
+        let userResponse = await fetchUserResponse();
+        if (userResponse.status === 401) {
+            clearCachedAppAccessToken();
+            userResponse = await fetchUserResponse();
+        }
 
         if (!userResponse.ok) {
             const errorBody = await userResponse.text();
@@ -138,9 +154,10 @@ export async function getTwitchUser(usernameOrId: string, by: "login" | "id" = "
         const { id, description, display_name, profile_image_url, created_at } = user;
 
         // Step 2: Get channel information (for last game played)
+        const channelAppToken = await getTwitchAppAccessToken();
         const channelResponse = await fetch(`https://api.twitch.tv/helix/channels?broadcaster_id=${id}`, {
             headers: {
-                'Authorization': `Bearer ${appToken}`,
+                'Authorization': `Bearer ${channelAppToken}`,
                 'Client-ID': clientId,
             },
         });
@@ -186,8 +203,7 @@ export async function getTwitchUserById(userId: string): Promise<{ id: string; b
  * @returns A promise that resolves to the badge sets.
  */
 export async function getChannelBadges(broadcasterId?: string): Promise<any> {
-    const appToken = await getTwitchAppAccessToken();
-    const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
+    const clientId = getTwitchClientId();
     const url = broadcasterId
         ? `https://api.twitch.tv/helix/chat/badges?broadcaster_id=${broadcasterId}`
         : 'https://api.twitch.tv/helix/chat/badges/global';
@@ -200,12 +216,21 @@ export async function getChannelBadges(broadcasterId?: string): Promise<any> {
     }
 
     try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${appToken}`,
-                'Client-ID': clientId!,
-            },
-        });
+        const fetchBadgeResponse = async () => {
+            const appToken = await getTwitchAppAccessToken();
+            return fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${appToken}`,
+                    'Client-ID': clientId,
+                },
+            });
+        };
+
+        let response = await fetchBadgeResponse();
+        if (response.status === 401) {
+            clearCachedAppAccessToken();
+            response = await fetchBadgeResponse();
+        }
 
         if (!response.ok) {
             throw new Error(`Failed to fetch Twitch badges: ${response.statusText}`);
@@ -611,12 +636,12 @@ export async function checkTwitchLiveStatus(): Promise<void> {
         if (!broadcasterId) return;
         
         const appToken = await getTwitchAppAccessToken();
-        const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
+        const clientId = getTwitchClientId();
         
         const response = await fetch(`https://api.twitch.tv/helix/streams?user_id=${broadcasterId}`, {
             headers: {
                 'Authorization': `Bearer ${appToken}`,
-                'Client-ID': clientId!,
+                'Client-ID': clientId,
             },
         });
         
