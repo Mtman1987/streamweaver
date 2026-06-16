@@ -43,7 +43,17 @@ import {
 } from './discord-command-catalog';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest } from './bot-relay';
-import { checkDiscordStreamHubAdminAccess, getDiscordStreamHubActivitySummary, getDiscordStreamHubPoints, lookupDiscordStreamHubTwitchTarget } from './discord-stream-hub';
+import {
+    addDiscordStreamHubPointsToAll,
+    checkDiscordStreamHubAdminAccess,
+    getDiscordStreamHubActivityLeaderboard,
+    getDiscordStreamHubActivitySummary,
+    getDiscordStreamHubPoints,
+    getDiscordStreamHubPointsLeaderboard,
+    lookupDiscordStreamHubTwitchTarget,
+    setDiscordStreamHubPoints,
+    setDiscordStreamHubPointsToAll,
+} from './discord-stream-hub';
 import { getTenantBroadcasterChannel, resolveTwitchReplyChannel } from './tenant-chat-routing';
 import {
     beginPendingMtSupportRequest,
@@ -90,6 +100,55 @@ function formatIsoDateLabel(value?: string | null): string {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return 'unknown';
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDiscordLeaderboard(entries: Array<{ displayName?: string; username?: string; points?: number }>, emptyLabel: string): string {
+    if (!entries.length) return emptyLabel;
+    return entries
+        .map((entry, index) => `#${index + 1} ${(entry.displayName || entry.username || `User ${index + 1}`)} ${Number(entry.points || 0).toLocaleString()}`)
+        .join(' | ');
+}
+
+function formatDiscordActivityLeaderboard(entries: Array<{
+    displayName?: string;
+    username?: string;
+    messageCount: number;
+    activeDays: number;
+    voiceMinutes: number;
+}>, emptyLabel: string): string {
+    if (!entries.length) return emptyLabel;
+    return entries
+        .map((entry, index) => `#${index + 1} ${(entry.displayName || entry.username || `User ${index + 1}`)} ${entry.messageCount} msgs, ${entry.activeDays} days, ${formatDiscordActivityMinutes(entry.voiceMinutes)}`)
+        .join(' | ');
+}
+
+function parseDiscordCommandTarget(msg: any, rawTarget: string): { userId: string; username?: string; displayName?: string } | null {
+    const target = String(rawTarget || '').trim();
+    const mentionMatch = target.match(/^<@!?(\d+)>$/);
+    if (!mentionMatch) return null;
+
+    const targetId = mentionMatch[1];
+    const mentionsUsers = msg.mentions?.users;
+    const mentionsMembers = msg.mentions?.members;
+
+    const readMention = (source: any) => {
+        if (!source) return null;
+        if (typeof source.get === 'function') {
+            return source.get(targetId) || null;
+        }
+        if (Array.isArray(source)) {
+            return source.find((entry: any) => String(entry?.id || entry?.user?.id) === targetId) || null;
+        }
+        return source[targetId] || null;
+    };
+
+    const user = readMention(mentionsUsers);
+    const member = readMention(mentionsMembers);
+    return {
+        userId: targetId,
+        username: user?.username || member?.user?.username,
+        displayName: user?.globalName || user?.global_name || member?.displayName || member?.nick || user?.username,
+    };
 }
 
 async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
@@ -424,6 +483,143 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         });
     };
     const isMod = await hasEffectiveDiscordModAccess(msg);
+    const discordServerId = msg.guildId || msg.guild_id;
+
+    if (actualMessage.toLowerCase() === '!leader' || actualMessage.toLowerCase() === '!pleader') {
+        try {
+            const entries = await getDiscordStreamHubPointsLeaderboard({
+                serverId: discordServerId,
+                limit: 5,
+            });
+            await reply(`Discord points leaders: ${formatDiscordLeaderboard(entries, 'no Discord points leaderboard yet.')}`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] points leaderboard failed:', error);
+            await reply(`@${actualUsername}, I couldn't load the Discord points leaderboard right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!wleader') {
+        try {
+            const entries = await getDiscordStreamHubActivityLeaderboard({
+                serverId: discordServerId,
+                limit: 5,
+            });
+            await reply(`Discord activity leaders: ${formatDiscordActivityLeaderboard(entries, 'no Discord activity leaderboard yet.')}`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] activity leaderboard failed:', error);
+            await reply(`@${actualUsername}, I couldn't load the Discord activity leaderboard right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase().startsWith('!addpoints ') || actualMessage.toLowerCase().startsWith('!setpoints ')) {
+        if (!isMod) {
+            await reply(`@${actualUsername}, only mods can use that command.`);
+            return true;
+        }
+
+        const match = actualMessage.match(/^!(addpoints|setpoints)\s+(\S+)\s+(-?\d+)\s*$/i);
+        if (!match) {
+            await reply(`@${actualUsername}, usage: !${cmdName} @user amount`);
+            return true;
+        }
+
+        const target = parseDiscordCommandTarget(msg, match[2]);
+        if (!target?.userId) {
+            await reply(`@${actualUsername}, mention the Discord user you want to update.`);
+            return true;
+        }
+
+        try {
+            const amount = Number(match[3]);
+            const current = await getDiscordStreamHubPoints({
+                userId: target.userId,
+                username: target.username,
+                displayName: target.displayName,
+                serverId: discordServerId,
+            });
+            const nextPoints = cmdName === 'addpoints'
+                ? Math.max(0, Math.trunc(Number(current.points || 0) + amount))
+                : Math.max(0, Math.trunc(amount));
+            const updated = await setDiscordStreamHubPoints({
+                userId: target.userId,
+                username: target.username || target.displayName || target.userId,
+                displayName: target.displayName || target.username || target.userId,
+                serverId: discordServerId,
+                points: nextPoints,
+            });
+            await reply(`@${actualUsername}, ${(target.displayName || target.username || 'that user')} now has ${Number(updated.points || 0).toLocaleString()} Discord points.`);
+        } catch (error: any) {
+            console.error(`[Discord Dispatcher] !${cmdName} failed:`, error);
+            await reply(`@${actualUsername}, I couldn't update that Discord points balance right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase().startsWith('!addtoall ')) {
+        if (!isMod) {
+            await reply(`@${actualUsername}, only mods can use that command.`);
+            return true;
+        }
+        const match = actualMessage.match(/^!addtoall\s+(-?\d+)\s*$/i);
+        if (!match) {
+            await reply(`@${actualUsername}, usage: !addToAll amount`);
+            return true;
+        }
+        try {
+            const result = await addDiscordStreamHubPointsToAll({
+                points: Number(match[1]),
+                serverId: discordServerId,
+            });
+            await reply(`@${actualUsername}, updated Discord points for ${result.count} members.`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !addtoall failed:', error);
+            await reply(`@${actualUsername}, I couldn't update the Discord points leaderboard right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase().startsWith('!settoall ')) {
+        if (!isMod) {
+            await reply(`@${actualUsername}, only mods can use that command.`);
+            return true;
+        }
+        const match = actualMessage.match(/^!settoall\s+(-?\d+)\s*$/i);
+        if (!match) {
+            await reply(`@${actualUsername}, usage: !setToAll amount`);
+            return true;
+        }
+        try {
+            const result = await setDiscordStreamHubPointsToAll({
+                points: Number(match[1]),
+                serverId: discordServerId,
+            });
+            await reply(`@${actualUsername}, set Discord points for ${result.count} members.`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !settoall failed:', error);
+            await reply(`@${actualUsername}, I couldn't set the Discord points leaderboard right now.`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!resetallpoints') {
+        if (!isMod) {
+            await reply(`@${actualUsername}, only mods can use that command.`);
+            return true;
+        }
+        try {
+            const result = await setDiscordStreamHubPointsToAll({
+                points: 0,
+                serverId: discordServerId,
+            });
+            await reply(`@${actualUsername}, reset Discord points for ${result.count} members.`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !resetallpoints failed:', error);
+            await reply(`@${actualUsername}, I couldn't reset Discord points right now.`);
+        }
+        return true;
+    }
 
     const unsupportedMessage = DISCORD_UNSUPPORTED_COMMAND_MESSAGES[cmdName];
     if (unsupportedMessage) {

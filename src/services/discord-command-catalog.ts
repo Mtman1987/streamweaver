@@ -12,7 +12,7 @@ const DISCORD_LINK_COMMANDS = [
 ];
 
 const DISCORD_INFO_COMMANDS = [
-  '!points', '!watchtime', '!time', '!followers', '!uptime', '!stats',
+  '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!time', '!followers', '!uptime', '!stats',
 ];
 
 const DISCORD_UTILITY_COMMANDS = [
@@ -21,6 +21,7 @@ const DISCORD_UTILITY_COMMANDS = [
 
 const DISCORD_ADMIN_COMMANDS = [
   '!admin', '!ignore <user>',
+  '!addPoints @user <amount>', '!setPoints @user <amount>', '!addToAll <amount>', '!setToAll <amount>', '!resetAllPoints',
   '!timeout <user> [duration] [reason]',
   '!greetingmode', '!welcomemode', '!clipmode', '!chatmode', '!athenaeverywhere',
   '!addflow <prompt>', '!approveflow <!command>', '!disableflow <!command>', '!deleteflow <!command>',
@@ -51,15 +52,17 @@ export const DISCORD_ROUTED_COMMAND_NAMES = Array.from(new Set([
   '!deleteflow <!command>',
   '!timeout <user> [duration] [reason]',
   '!ignore <user>',
+  '!addPoints @user <amount>',
+  '!setPoints @user <amount>',
+  '!addToAll <amount>',
+  '!setToAll <amount>',
+  '!resetAllPoints',
 ])).map(commandName);
 
 export const DISCORD_UNSUPPORTED_COMMAND_MESSAGES: Record<string, string> = {
   gamble: 'Discord gambling is disabled until Discord points are wired correctly.',
   roll: 'Discord roll is disabled until Discord points are wired correctly.',
   double: 'Discord double is disabled until Discord points are wired correctly.',
-  leader: 'Discord leaderboards need Discord-native point and activity data first.',
-  pleader: 'Discord leaderboards need Discord-native point and activity data first.',
-  wleader: 'Discord leaderboards need Discord-native point and activity data first.',
   cleader: 'Discord leaderboards need Discord-native point and activity data first.',
   bleader: 'Discord leaderboards need Discord-native point and activity data first.',
   bitsleader: 'Discord leaderboards need Discord-native point and activity data first.',

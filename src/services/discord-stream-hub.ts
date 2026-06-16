@@ -55,6 +55,28 @@ async function postDiscordStreamHub<T>(path: string, payload: Record<string, unk
   return response.json() as Promise<T>;
 }
 
+async function getDiscordStreamHub<T>(path: string, searchParams?: Record<string, string | number | undefined>): Promise<T> {
+  const secret = getDiscordStreamHubSecret();
+  const url = new URL(`${getDiscordStreamHubUrl()}${path}`);
+  Object.entries(searchParams || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    url.searchParams.set(key, String(value));
+  });
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+    },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(`DiscordStreamHub ${path} failed: ${response.status} ${await response.text().catch(() => '')}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export function getDiscordPointsContext() {
   const output = getChatOutputContext();
   if (!output || output.platform !== 'discord' || !output.userId) return null;
@@ -226,4 +248,68 @@ export async function getDiscordStreamHubActivitySummary(payload: DiscordStreamH
         }
       : null,
   };
+}
+
+export async function getDiscordStreamHubPointsLeaderboard(payload: { serverId?: string; limit?: number }): Promise<Array<{
+  userId: string;
+  points: number;
+  username?: string;
+  displayName?: string;
+}>> {
+  const data = await getDiscordStreamHub<Array<{
+    id?: string;
+    userProfileId?: string;
+    points?: number;
+    lastEventMetadata?: Record<string, unknown> | null;
+  }>>('/api/points/leaderboard', {
+    serverId: payload.serverId,
+    limit: payload.limit,
+  });
+
+  return Array.isArray(data)
+    ? data.map((entry) => ({
+        userId: String(entry.userProfileId || entry.id || ''),
+        points: Number(entry.points || 0),
+        username: typeof entry.lastEventMetadata?.username === 'string' ? entry.lastEventMetadata.username : undefined,
+        displayName: typeof entry.lastEventMetadata?.displayName === 'string' ? entry.lastEventMetadata.displayName : undefined,
+      }))
+    : [];
+}
+
+export async function getDiscordStreamHubActivityLeaderboard(payload: { serverId?: string; limit?: number }): Promise<Array<{
+  userId: string;
+  username?: string;
+  displayName?: string;
+  messageCount: number;
+  voiceMinutes: number;
+  helpfulReactions: number;
+  streamAttendance: number;
+  activeDays: number;
+  activityScore: number;
+}>> {
+  const data = await postDiscordStreamHub<Array<{
+    userId?: string;
+    username?: string;
+    displayName?: string;
+    messageCount?: number;
+    voiceMinutes?: number;
+    helpfulReactions?: number;
+    streamAttendance?: number;
+    activeDays?: number;
+    activityScore?: number;
+  }>>('/api/discord/activity/leaderboard', payload);
+
+  return Array.isArray(data)
+    ? data.map((entry) => ({
+        userId: String(entry.userId || ''),
+        username: entry.username,
+        displayName: entry.displayName,
+        messageCount: Number(entry.messageCount || 0),
+        voiceMinutes: Number(entry.voiceMinutes || 0),
+        helpfulReactions: Number(entry.helpfulReactions || 0),
+        streamAttendance: Number(entry.streamAttendance || 0),
+        activeDays: Number(entry.activeDays || 0),
+        activityScore: Number(entry.activityScore || 0),
+      }))
+    : [];
 }
