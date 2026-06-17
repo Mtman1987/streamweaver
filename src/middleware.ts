@@ -73,12 +73,24 @@ function isPublicApiRequest(request: NextRequest): boolean {
   return false;
 }
 
+function hasSharedBotAccess(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization') || '';
+  if (!authHeader.startsWith('Bearer ')) return false;
+  const token = authHeader.slice('Bearer '.length).trim();
+  const sharedSecret = String(process.env.BOT_SECRET_KEY || '').trim();
+  return Boolean(sharedSecret && token && token === sharedSecret);
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow internal server-to-server API requests (localhost)
   const host = request.headers.get('host') || '';
   if ((host.startsWith('127.0.0.1') || host.startsWith('localhost')) && pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  if (pathname === '/api/ai/shoutout' && hasSharedBotAccess(request)) {
     return NextResponse.next();
   }
 
