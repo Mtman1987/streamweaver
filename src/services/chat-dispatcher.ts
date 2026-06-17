@@ -169,10 +169,17 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
     if (!cmdName) return false;
 
     const configuredCommands = await getAllCommands(tenantId);
-    const configuredMatch = configuredCommands.some((command: any) =>
-        String(command?.command || '').toLowerCase().replace(/^!/, '') === cmdName && command?.enabled !== false
+    const configuredCommand = configuredCommands.find((command: any) =>
+        String(command?.command || '').toLowerCase().replace(/^!/, '') === cmdName
     );
-    if (!configuredMatch && !DISCORD_ROUTED_COMMAND_NAMES.includes(cmdName)) {
+
+    // Let the native Discord executor handle configured commands. That path already
+    // supports linked actions, simple responses, and social commands with Discord-first replies.
+    if (configuredCommand) {
+        return false;
+    }
+
+    if (!DISCORD_ROUTED_COMMAND_NAMES.includes(cmdName)) {
         return false;
     }
 

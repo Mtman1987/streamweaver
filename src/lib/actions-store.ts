@@ -14,6 +14,45 @@ function getActionsDir(tenantId?: string): string {
   return ROOT_ACTIONS_DIR;
 }
 
+function loadActionsFromDir(dir: string): any[] {
+  if (!fs.existsSync(dir)) return [];
+
+  const files = fs.readdirSync(dir);
+  const actions: any[] = [];
+
+  for (const file of files) {
+    if (file.endsWith('.json') && file !== '_metadata.json') {
+      try {
+        const content = fs.readFileSync(path.join(dir, file), 'utf8');
+        const action = JSON.parse(content);
+        actions.push(action);
+      } catch (e) {
+        console.warn(`Failed to load action file ${file}:`, e);
+      }
+    }
+  }
+
+  return actions;
+}
+
+function mergeActions(base: any[], overrides: any[]): any[] {
+  const merged = new Map<string, any>();
+
+  for (const action of base) {
+    const key = String(action?.id || action?.name || '').trim().toLowerCase();
+    if (!key) continue;
+    merged.set(key, action);
+  }
+
+  for (const action of overrides) {
+    const key = String(action?.id || action?.name || '').trim().toLowerCase();
+    if (!key) continue;
+    merged.set(key, action);
+  }
+
+  return Array.from(merged.values());
+}
+
 // Back-compat for API routes that referenced ACTIONS_FILE_PATH.
 export const ACTIONS_FILE_PATH = SB_ACTIONS_FILE_PATH;
 
@@ -77,25 +116,19 @@ export async function importAction(actionJson: string, tenantId?: string): Promi
 }
 
 export async function getAllActions(tenantId?: string): Promise<Action[]> {
-  const dir = getActionsDir(tenantId);
-  // Try individual files first, fall back to monolithic
-  if (fs.existsSync(dir)) {
-    const files = fs.readdirSync(dir);
-    const actions: any[] = [];
-    
-    for (const file of files) {
-      if (file.endsWith('.json') && file !== '_metadata.json') {
-        try {
-          const content = fs.readFileSync(path.join(dir, file), 'utf8');
-          const action = JSON.parse(content);
-          actions.push(action);
-        } catch (e) {
-          console.warn(`Failed to load action file ${file}:`, e);
-        }
-      }
+  // Prefer shared root action files, then overlay any tenant-specific overrides.
+  if (tenantId) {
+    const rootActions = loadActionsFromDir(ROOT_ACTIONS_DIR);
+    const tenantActions = loadActionsFromDir(getActionsDir(tenantId));
+    const merged = mergeActions(rootActions, tenantActions);
+    if (merged.length > 0) {
+      return merged.map(normalizeAction);
     }
-    
-    return actions.map(normalizeAction);
+  } else {
+    const rootActions = loadActionsFromDir(ROOT_ACTIONS_DIR);
+    if (rootActions.length > 0) {
+      return rootActions.map(normalizeAction);
+    }
   }
   
   // Fallback to monolithic file

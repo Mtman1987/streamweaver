@@ -14,6 +14,45 @@ function getCommandsDir(tenantId?: string): string {
   return ROOT_COMMANDS_DIR;
 }
 
+function loadCommandsFromDir(dir: string): any[] {
+  if (!fs.existsSync(dir)) return [];
+
+  const files = fs.readdirSync(dir);
+  const commands: any[] = [];
+
+  for (const file of files) {
+    if (file.endsWith('.json') && file !== '_metadata.json') {
+      try {
+        const content = fs.readFileSync(path.join(dir, file), 'utf8');
+        const command = JSON.parse(content);
+        commands.push(command);
+      } catch (e) {
+        console.warn(`Failed to load command file ${file}:`, e);
+      }
+    }
+  }
+
+  return commands;
+}
+
+function mergeCommands(base: any[], overrides: any[]): any[] {
+  const merged = new Map<string, any>();
+
+  for (const command of base) {
+    const key = String(command?.id || command?.command || '').trim().toLowerCase();
+    if (!key) continue;
+    merged.set(key, command);
+  }
+
+  for (const command of overrides) {
+    const key = String(command?.id || command?.command || '').trim().toLowerCase();
+    if (!key) continue;
+    merged.set(key, command);
+  }
+
+  return Array.from(merged.values());
+}
+
 export const COMMANDS_FILE_PATH = path.resolve(process.cwd(), 'src', 'data', 'commands.json');
 
 export interface CommandDTO {
@@ -136,26 +175,19 @@ export async function importCommand(commandJson: string, tenantId?: string): Pro
 }
 
 export async function getAllCommands(tenantId?: string): Promise<CommandDTO[]> {
-  const dir = getCommandsDir(tenantId);
-  // Try individual files first, fall back to monolithic
-  if (fs.existsSync(dir)) {
-    const files = fs.readdirSync(dir);
-    const commands: any[] = [];
-    
-    for (const file of files) {
-      if (file.endsWith('.json') && file !== '_metadata.json') {
-        try {
-          const content = fs.readFileSync(path.join(dir, file), 'utf8');
-          const command = JSON.parse(content);
-          commands.push(command);
-        } catch (e) {
-          console.warn(`Failed to load command file ${file}:`, e);
-        }
-      }
+  // Prefer shared root command files, then overlay any tenant-specific overrides.
+  if (tenantId) {
+    const rootCommands = loadCommandsFromDir(ROOT_COMMANDS_DIR);
+    const tenantCommands = loadCommandsFromDir(getCommandsDir(tenantId));
+    const merged = mergeCommands(rootCommands, tenantCommands);
+    if (merged.length > 0) {
+      return merged as any;
     }
-    
-    // Return raw commands with all fields preserved
-    return commands as any;
+  } else {
+    const rootCommands = loadCommandsFromDir(ROOT_COMMANDS_DIR);
+    if (rootCommands.length > 0) {
+      return rootCommands as any;
+    }
   }
   
   // Fallback to monolithic file
@@ -328,26 +360,8 @@ export async function updateAllCommandsEnabled(enabled: boolean, tenantId?: stri
 }
 
 export async function getCommandById(id: string, tenantId?: string): Promise<Command | undefined> {
-  const dir = getCommandsDir(tenantId);
-  if (fs.existsSync(dir)) {
-    const files = fs.readdirSync(dir);
-    const file = files.find(f => f.includes(id) && f.endsWith('.json'));
-    if (file) {
-      try {
-        const content = fs.readFileSync(path.join(dir, file), 'utf8');
-        return JSON.parse(content) as Command;
-      } catch (e) {
-        console.warn(`Failed to load command file ${file}:`, e);
-      }
-    }
-    return undefined;
-  }
-  
-  // Fallback to monolithic
-  const file = await readSbCommandsFile();
-  const commands = Array.isArray(file.commands) ? (file.commands as any[]) : [];
-  const found = commands.find((c) => String(c?.id) === id);
-  return found as Command | undefined;
+  const commands = await getAllCommands(tenantId);
+  return commands.find((command) => String((command as any)?.id) === id) as Command | undefined;
 }
 
 export async function deleteCommand(id: string, tenantId?: string): Promise<boolean> {
