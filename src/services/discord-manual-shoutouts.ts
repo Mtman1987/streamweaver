@@ -70,6 +70,8 @@ async function processEntries(): Promise<void> {
         const { payload, isLive } = await buildDiscordCommandShoutoutPayload({
           requesterName: entry.requesterName,
           targetName: entry.targetName,
+          tenantId: entry.tenantId,
+          allowGifGeneration: true,
         });
 
         if (!isLive) {

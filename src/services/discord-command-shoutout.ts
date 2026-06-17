@@ -95,9 +95,49 @@ async function getAiShoutout(username: string): Promise<string> {
   }
 }
 
+async function triggerGifGeneration(username: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${getDiscordStreamHubUrl()}/api/generate-gif`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        contentType: 'spotlight',
+      }),
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      console.warn('[Discord Shoutout] GIF generation request failed:', response.status, await response.text().catch(() => ''));
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.warn('[Discord Shoutout] GIF generation request errored:', error);
+    return false;
+  }
+}
+
+async function waitForGifLookup(username: string, retries = 2): Promise<DshMediaLookup | null> {
+  let media: DshMediaLookup | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    media = await getDshMediaLookup(username).catch(() => null);
+    if (media?.gifUrl) return media;
+    if (attempt < retries) {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+  }
+  return media;
+}
+
 export async function buildDiscordCommandShoutoutPayload(input: {
   requesterName: string;
   targetName: string;
+  tenantId?: string;
+  allowGifGeneration?: boolean;
 }): Promise<{ payload: { embeds: Record<string, unknown>[]; components: Record<string, unknown>[] }; isLive: boolean; twitchLogin: string; }> {
   const username = input.targetName.replace(/^@/, '').trim().toLowerCase();
   if (!username) {
@@ -110,7 +150,13 @@ export async function buildDiscordCommandShoutoutPayload(input: {
     fetchClip(username).catch(() => null),
     getAiShoutout(username).catch(() => ''),
   ]);
-  const dshMedia = await getDshMediaLookup(username).catch(() => null);
+  let dshMedia = await getDshMediaLookup(username).catch(() => null);
+  if (input.allowGifGeneration && !dshMedia?.gifUrl) {
+    const generationStarted = await triggerGifGeneration(username);
+    if (generationStarted) {
+      dshMedia = await waitForGifLookup(username);
+    }
+  }
 
   const displayName = user?.displayName || input.targetName.replace(/^@/, '').trim();
   const twitchUrl = `https://twitch.tv/${username}`;
@@ -210,8 +256,12 @@ export async function sendDiscordCommandShoutout(input: {
   channelId: string;
   requesterName: string;
   targetName: string;
+  tenantId?: string;
 }): Promise<{ messageId: string | null; isLive: boolean; twitchLogin: string; }> {
-  const { payload, isLive, twitchLogin } = await buildDiscordCommandShoutoutPayload(input);
+  const { payload, isLive, twitchLogin } = await buildDiscordCommandShoutoutPayload({
+    ...input,
+    allowGifGeneration: true,
+  });
   const sent = await sendDiscordEmbed(input.channelId, payload);
   return {
     messageId: typeof sent?.id === 'string' ? sent.id : null,

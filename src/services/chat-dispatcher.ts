@@ -10,6 +10,7 @@ import { givePoints, stealPoints } from './points-transfer';
 import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
+import { matchShoutoutTarget } from './shoutout-matcher';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation } from './translation-manager';
 import { handleLeaderboardCommand } from './leaderboard-commands';
@@ -736,6 +737,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
                 channelId: sourceChannelId,
                 requesterName: actualUsername,
                 targetName,
+                tenantId,
             });
             if (sent.messageId && sent.isLive) {
                 await registerManualShoutout({
@@ -3583,49 +3585,21 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     let chatters = [];
                     if (chattersResponse.ok) {
                         const chattersData = await chattersResponse.json();
-                        chatters = chattersData.chatters?.map((c: any) => c.user_display_name || c.user_login) || [];
+                        chatters = chattersData.chatters?.map((c: any) => c.user_login || c.user_display_name).filter(Boolean) || [];
                         console.log('[Dispatcher] Fetched chatters:', chatters.join(', '));
                     }
-                    
-                    const aiPrompt = `Voice command: "${actualMessage}"
-Active chatters: ${chatters.join(', ')}
 
-Find the best matching username from the chatters list and respond with ONLY the shoutout command in this format: !so @username
-
-If no good match, respond with: Could not find matching user`;
-                    
-                    console.log('[Dispatcher] Calling AI generate for shoutout matching...');
-                    const aiResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/generate`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            prompt: aiPrompt,
-                            temperature: 0.1,
-                            maxOutputTokens: 50,
-                        })
-                    });
-                    
-                    console.log('[Dispatcher] AI generate response status:', aiResponse.status);
-                    
-                    if (aiResponse.ok) {
-                        const aiData = await aiResponse.json();
-                        const aiShoutoutReply = aiData?.text?.trim();
-                        console.log('[Dispatcher] AI generate reply:', aiShoutoutReply);
-                        
-                        if (aiShoutoutReply && aiShoutoutReply.startsWith('!so @')) {
-                            const targetName = aiShoutoutReply.substring(5).trim();
-                            console.log(`[Dispatcher] AI matched shoutout target: ${targetName}`);
-                            const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
-                            await handleWalkOnShoutout(targetName, targetName, profileImage, true, tenantId).catch(err => {
-                            });
-                        } else {
-                            console.log('[Dispatcher] AI did not return valid shoutout command');
-                            await replyMaybeKick('Could not find matching user in chat', 'bot').catch(() => {});
-
-                        }
+                    const matchedUsername = await matchShoutoutTarget(actualMessage, chatters);
+                    if (matchedUsername) {
+                        console.log(`[Dispatcher] Matched shoutout target: ${matchedUsername}`);
+                        const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${matchedUsername}-profile_image-300x300.png`;
+                        await handleWalkOnShoutout(matchedUsername, matchedUsername, profileImage, true, tenantId).catch(() => {});
+                    } else {
+                        console.log('[Dispatcher] No shoutout target match found');
+                        await replyMaybeKick('Could not find matching user in chat', 'bot').catch(() => {});
                     }
                 } catch (error) {
-                    console.error('[Dispatcher] AI shoutout matching failed:', error);
+                    console.error('[Dispatcher] Shoutout matching failed:', error);
                 }
                 return;
             }
