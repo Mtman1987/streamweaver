@@ -4,7 +4,7 @@ import { resolve } from 'path';
 import { promises as fs } from 'fs';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
 import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
-import { tenantPath } from '../lib/tenant';
+import { getAdminTwitchId, tenantPath } from '../lib/tenant';
 import { readUserConfigSync } from '../lib/user-config';
 
 function isAuthorized(headers: http.IncomingHttpHeaders): boolean {
@@ -227,30 +227,36 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             }
                         }
 
-                        if ((!channel || !channel.trim()) && !requestedTenantId) {
-                            channel = process.env.TWITCH_BROADCASTER_USERNAME || '';
+                        // Owner fallback: ambiguous traffic should resolve to the admin tenant, never
+                        // to the first connected tenant.
+                        if (!client) {
+                            const ownerTenantId = getAdminTwitchId();
+                            if (ownerTenantId) {
+                                tid = ownerTenantId;
+                                client = getTc(clientType, tid);
+                                if ((!channel || !channel.trim()) && tid) {
+                                    try {
+                                        const { getStoredTokens } = require('../lib/token-utils.server');
+                                        const tokens = await getStoredTokens(String(tid));
+                                        const ownerChannel = String(tokens?.broadcasterUsername || '').trim().toLowerCase();
+                                        if (ownerChannel) {
+                                            channel = ownerChannel;
+                                        }
+                                    } catch (resolveOwnerChannelError) {
+                                        console.warn('[HTTP /api/twitch/send-message] Failed to resolve owner broadcaster channel:', resolveOwnerChannelError);
+                                    }
+                                }
+                                console.warn(`[HTTP /api/twitch/send-message] Using owner fallback tenant: ${tid}`);
+                            }
                         }
-                        
-                        // Safety fallback for legacy single-tenant mode only.
+
+                        // Safety fallback for strict single-tenant mode only.
                         if (!client) {
                             const tenantIds = getActiveTenantIds();
                             if (tenantIds.length === 1) {
                                 tid = tenantIds[0];
                                 client = getTc(clientType, tid);
                                 console.log(`[HTTP /api/twitch/send-message] Using single-tenant fallback: ${tid}`);
-                            }
-                        }
-                        
-                        // Last-resort legacy fallback to preserve existing behavior for older call sites.
-                        if (!client) {
-                            const tenantIds = getActiveTenantIds();
-                            for (const tenantId of tenantIds) {
-                                client = getTc(clientType, tenantId);
-                                if (client) {
-                                    tid = tenantId;
-                                    console.warn(`[HTTP /api/twitch/send-message] Using legacy multi-tenant fallback (tenant=${tenantId}). Caller should provide tenantId or targetChannel.`);
-                                    break;
-                                }
                             }
                         }
 

@@ -3,7 +3,7 @@ import { apiOk } from '@/lib/api-response';
 import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { readUserConfigSync } from '@/lib/user-config';
-import { listTenants, tenantPath } from '@/lib/tenant';
+import { getAdminTwitchId, listTenants, tenantPath } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
@@ -900,12 +900,9 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
       if (tenants.length === 0) return undefined;
       if (tenants.length === 1) return tenants[0];
 
-      // DM payloads may not include guild context; default to owner tenant for reliability.
-      // Configurable via DISCORD_DM_OWNER_TENANT_ID (falls back to legacy hardcoded value
-      // for backwards compatibility with existing deployments).
-      const ownerTenantId = (process.env.DISCORD_DM_OWNER_TENANT_ID || '94371378').trim();
-      if (ownerTenantId && tenants.includes(ownerTenantId)) return ownerTenantId;
-      return [...tenants].sort((a, b) => a.localeCompare(b))[0];
+      // DM payloads may not include guild context; route ambiguous traffic to the owner tenant.
+      const ownerTenantId = (process.env.DISCORD_DM_OWNER_TENANT_ID || getAdminTwitchId()).trim();
+      if (ownerTenantId) return ownerTenantId;
     } catch {}
     return undefined;
   }
@@ -919,7 +916,7 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
       } catch {}
     }
   } catch {}
-  // Fallback: return first tenant (single-tenant compat)
+  // If the guild is unknown, only fall back automatically in strict single-tenant mode.
   try {
     const tenants = await listTenants();
     if (tenants.length === 1) return tenants[0];
