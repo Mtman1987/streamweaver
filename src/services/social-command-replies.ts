@@ -154,7 +154,7 @@ export async function generateSocialCommandReply(input: GenerateSocialCommandRep
         personality,
         responseName: botName,
         tenantId: input.tenantId,
-        context: input.platform === 'discord' ? 'discord-command' : 'twitch-command',
+        context: input.platform === 'discord' ? 'discord' : 'twitch',
       }),
     });
 
