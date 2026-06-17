@@ -79,8 +79,16 @@ export async function sendChatMessage(
   if (tenantId?.startsWith('__kick_silent__')) return;
   const outputContext = getChatOutputContext();
   if (outputContext?.platform === 'discord') {
-    const { sendDiscordMessage } = await import('./discord');
-    await sendDiscordMessage(outputContext.channelId, message);
+    const { sendStructuredDiscordReply } = await import('./discord-structured-replies');
+    await sendStructuredDiscordReply({
+      channelId: outputContext.channelId,
+      message,
+      tenantId,
+      rotateSpeaker: outputContext.speakerMode === 'command',
+      sourceMessageId: outputContext.messageId,
+      sourceMessage: outputContext.messageContent,
+      sourceUser: outputContext.displayName || outputContext.username,
+    });
     return;
   }
   try {

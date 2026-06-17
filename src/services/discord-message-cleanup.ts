@@ -33,7 +33,7 @@ type DiscordBotMessageHistoryEntry = PendingDiscordCleanup & {
 
 const CLEANUP_FILE = 'discord-message-cleanup.json';
 const HISTORY_FILE = 'discord-bot-message-history.json';
-const DEFAULT_DELETE_DELAY_MS = 5 * 60 * 1000;
+const DEFAULT_DELETE_DELAY_MS = 10 * 60 * 1000;
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 let processing = false;
@@ -50,10 +50,14 @@ function historyFilePath(): string {
   return globalPath(HISTORY_FILE);
 }
 
-function deleteDelayMs(): number {
+export function getDiscordMessageCleanupDelayMs(): number {
   const configured = Number(process.env.DISCORD_BOT_MESSAGE_CLEANUP_MS || '');
   if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_DELETE_DELAY_MS;
   return Math.max(1000, configured);
+}
+
+export function getDiscordMessageCleanupDeleteAt(now = Date.now()): string {
+  return new Date(now + getDiscordMessageCleanupDelayMs()).toISOString();
 }
 
 function unique(values: string[]): string[] {
@@ -118,7 +122,7 @@ export async function recordDiscordMessageCleanup(input: DiscordCleanupInput): P
   if (!input.channelId || (!triggerMessageId && replyMessageIds.length === 0)) return null;
 
   const now = new Date();
-  const deleteAt = new Date(now.getTime() + deleteDelayMs()).toISOString();
+  const deleteAt = getDiscordMessageCleanupDeleteAt(now.getTime());
   const queue = await readQueue();
   const existing = triggerMessageId
     ? queue.find((entry) => entry.channelId === input.channelId && entry.triggerMessageId === triggerMessageId)

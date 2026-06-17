@@ -7,9 +7,7 @@ const DISCORD_FUN_COMMANDS = [
   '!lurk', '!unlurk', '!hydrate', '!stretch', '!yes', '!yup', '!no',
 ];
 
-const DISCORD_LINK_COMMANDS = [
-  '!discord', '!instagram', '!merch', '!tiktok', '!twitter', '!webpage', '!youtube',
-];
+const DISCORD_LINK_COMMANDS: string[] = [];
 
 const DISCORD_INFO_COMMANDS = [
   '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!time', '!followers', '!uptime', '!stats',
@@ -60,6 +58,13 @@ export const DISCORD_ROUTED_COMMAND_NAMES = Array.from(new Set([
 ])).map(commandName);
 
 export const DISCORD_UNSUPPORTED_COMMAND_MESSAGES: Record<string, string> = {
+  discord: 'Discord link commands are disabled here until their real reply flow is wired.',
+  instagram: 'Social link commands are disabled here until their real reply flow is wired.',
+  merch: 'Social link commands are disabled here until their real reply flow is wired.',
+  tiktok: 'Social link commands are disabled here until their real reply flow is wired.',
+  twitter: 'Social link commands are disabled here until their real reply flow is wired.',
+  webpage: 'Social link commands are disabled here until their real reply flow is wired.',
+  youtube: 'Social link commands are disabled here until their real reply flow is wired.',
   gamble: 'Discord gambling is disabled until Discord points are wired correctly.',
   roll: 'Discord roll is disabled until Discord points are wired correctly.',
   double: 'Discord double is disabled until Discord points are wired correctly.',
@@ -89,14 +94,17 @@ export const DISCORD_UNSUPPORTED_COMMAND_MESSAGES: Record<string, string> = {
 };
 
 export function buildDiscordCommandsSummary(): string {
-  return [
+  const sections = [
     `Discord commands`,
     `Fun: ${DISCORD_FUN_COMMANDS.join(', ')}`,
-    `Links: ${DISCORD_LINK_COMMANDS.join(', ')}`,
     `Info: ${DISCORD_INFO_COMMANDS.join(', ')}`,
     `Utility: ${DISCORD_UTILITY_COMMANDS.join(', ')}`,
     `Use !admin for mod-only Discord commands.`,
-  ].join(' | ');
+  ];
+  if (DISCORD_LINK_COMMANDS.length > 0) {
+    sections.splice(2, 0, `Links: ${DISCORD_LINK_COMMANDS.join(', ')}`);
+  }
+  return sections.join(' | ');
 }
 
 export function buildDiscordAdminCommandsSummary(options: CatalogOptions): string {

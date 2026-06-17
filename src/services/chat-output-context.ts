@@ -7,6 +7,9 @@ type DiscordChatOutputContext = {
   userId?: string;
   username?: string;
   displayName?: string;
+  messageId?: string;
+  messageContent?: string;
+  speakerMode?: 'command' | 'bot' | 'system';
 };
 
 type ChatOutputContext = DiscordChatOutputContext;

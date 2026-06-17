@@ -130,6 +130,14 @@ async function getTenantOwnerBranding(tenantId?: string, botName?: string): Prom
         : { name: ownerName };
 }
 
+function formatDeleteCountdown(deleteAt?: string): string {
+    const ts = Date.parse(String(deleteAt || ''));
+    if (!Number.isFinite(ts)) return '';
+    const remainingMs = Math.max(0, ts - Date.now());
+    const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+    return `deletes in ${remainingMinutes}m`;
+}
+
 export async function getDiscordBotProfileAvatarUrl(): Promise<string> {
     if (discordBotAvatarCache && discordBotAvatarCache.expiresAt > Date.now()) {
         return discordBotAvatarCache.url;
@@ -164,6 +172,7 @@ export async function buildDiscordBotEmbed(input: {
     tenantId?: string;
     botName?: string;
     footerText?: string;
+    deleteAt?: string;
     authorUrl?: string;
     authorName?: string;
     authorIconUrl?: string;
@@ -175,6 +184,14 @@ export async function buildDiscordBotEmbed(input: {
     const authorIconUrl = input.authorIconUrl
         || owner.iconUrl;
     const avatarMediaUrl = getConfiguredBotAvatarMediaUrl(resolvedTenantId) || buildBotAvatarUrl(resolvedTenantId);
+    const footerParts = [STREAMWEAVER_BRAND_NAME];
+    if (owner.name && owner.name !== STREAMWEAVER_BRAND_NAME) {
+        footerParts.push(owner.name);
+    }
+    const deleteCountdown = formatDeleteCountdown(input.deleteAt);
+    if (deleteCountdown) {
+        footerParts.push(deleteCountdown);
+    }
     return {
         description: input.description,
         thumbnail: { url: avatarMediaUrl },
@@ -184,7 +201,7 @@ export async function buildDiscordBotEmbed(input: {
             ...(input.authorUrl ? { url: input.authorUrl } : {}),
         },
         footer: {
-            text: input.footerText || STREAMWEAVER_BRAND_NAME,
+            text: input.footerText || footerParts.join(' • '),
             icon_url: buildStreamWeaverLogoUrl(),
         },
         color: 0x5865F2,

@@ -2,7 +2,6 @@ import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { deleteMessage, sendDiscordEmbed, sendDiscordMessage } from './discord';
-import { buildBotAvatarUrl, getDiscordBotWebhookIdentity } from './discord-branding';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
@@ -18,6 +17,7 @@ import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
 import { getPoints, getPointBalance, setPoints } from './points';
 import { getAIConfig } from './ai-provider';
+import { getBotName } from '../lib/bot-settings-store';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
@@ -35,12 +35,14 @@ import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
 import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
 import { sendDiscordCommandShoutout } from './discord-command-shoutout';
+import { resolveStructuredDiscordReplySpeaker, sendStructuredDiscordReply } from './discord-structured-replies';
 import {
     buildDiscordAdminCommandsSummary,
     buildDiscordCommandsSummary,
     DISCORD_ROUTED_COMMAND_NAMES,
     DISCORD_UNSUPPORTED_COMMAND_MESSAGES,
 } from './discord-command-catalog';
+import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest } from './bot-relay';
 import {
@@ -160,6 +162,33 @@ async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
     return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);
 }
 
+const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
+
+const DISCORD_NATIVE_COMMAND_NAMES = new Set([
+    ...DISCORD_NATIVE_SOCIAL_COMMANDS,
+    'commands', 'admin', 'so', 'points', 'watchtime', 'time', 'coinflip',
+    'leader', 'pleader', 'wleader',
+    'followers', 'uptime', 'stats',
+    'timeout', 'raidmessage', 'mtfixit',
+    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',
+    'ignore',
+    'addflow', 'approveflow', 'disableflow', 'deleteflow',
+]);
+
+async function commandHasActionTrigger(commandId: string, tenantId?: string): Promise<boolean> {
+    if (!commandId) return false;
+    const actions = await getAllActions(tenantId);
+    return actions.some((action: any) =>
+        action?.enabled &&
+        Array.isArray(action.triggers) &&
+        action.triggers.some((trigger: any) =>
+            trigger?.enabled !== false &&
+            Number(trigger?.type) === 401 &&
+            String(trigger?.commandId || '') === String(commandId)
+        )
+    );
+}
+
 async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: string): Promise<boolean> {
     const sourceChannelId = msg.channelId || msg.channel_id;
     const actualMessage = String(msg.content || '').trim();
@@ -173,9 +202,19 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
         String(command?.command || '').toLowerCase().replace(/^!/, '') === cmdName
     );
 
-    // Let the native Discord executor handle configured commands. That path already
-    // supports linked actions, simple responses, and social commands with Discord-first replies.
-    if (configuredCommand) {
+    // Let the native Discord executor handle commands that already have a real
+    // Discord-side implementation. Route the remaining built-ins through the
+    // Twitch dispatcher so shared handlers like mode toggles still work.
+    if (
+        configuredCommand &&
+        (
+            DISCORD_NATIVE_COMMAND_NAMES.has(cmdName) ||
+            Boolean((configuredCommand as any)?.response) ||
+            Boolean((configuredCommand as any)?.actionId) ||
+            Boolean((configuredCommand as any)?.actions?.length) ||
+            await commandHasActionTrigger(String((configuredCommand as any)?.id || ''), tenantId)
+        )
+    ) {
         return false;
     }
 
@@ -204,6 +243,9 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
         userId: msg.author?.id || msg.userId || msg.user_id,
         username,
         displayName: msg.author?.globalName || msg.author?.global_name || username,
+        messageId: msg.messageId || msg.message_id,
+        messageContent: actualMessage,
+        speakerMode: 'command',
     }, async () => {
         await handleTwitchMessage(`#${broadcasterChannel}`, tags, actualMessage, false);
     });
@@ -474,21 +516,19 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     const actualMessage = content;
     const cmdName = actualMessage.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
     if (!cmdName) return false;
-    const silentTenantId = tenantId ? `__kick_silent__:${tenantId}` : undefined;
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
-    const reply = (message: string) => {
-        const webhookIdentity = getDiscordBotWebhookIdentity(tenantId);
-        const avatarUrl = webhookIdentity.avatarUrl || buildBotAvatarUrl(tenantId);
-        return sendDiscordMessage(
-            sourceChannelId,
-            message,
-            webhookIdentity.username,
-            avatarUrl,
-        ).catch((error) => {
-            console.error('[Discord Dispatcher] Failed to send command reply:', error);
-        });
-    };
+    const reply = (message: string) => sendStructuredDiscordReply({
+        channelId: sourceChannelId,
+        message,
+        tenantId,
+        rotateSpeaker: true,
+        sourceMessageId: msg.messageId || msg.message_id,
+        sourceMessage: actualMessage,
+        sourceUser: actualUsername,
+    }).catch((error) => {
+        console.error('[Discord Dispatcher] Failed to send command reply:', error);
+    });
     const isMod = await hasEffectiveDiscordModAccess(msg);
     const discordServerId = msg.guildId || msg.guild_id;
 
@@ -817,6 +857,54 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         return true;
     }
 
+    if (actualMessage.toLowerCase() === '!followers') {
+        try {
+            const { getChannelInfo } = require('./twitch');
+            const info = await getChannelInfo(tenantId);
+            await reply(
+                info
+                    ? `Current followers: ${info.followerCount?.toLocaleString() || 'Unknown'}`
+                    : `@${actualUsername}, couldn't fetch follower count!`
+            );
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !followers failed:', error);
+            await reply(`@${actualUsername}, couldn't fetch follower count!`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!uptime') {
+        try {
+            const { getStreamUptime } = require('./twitch');
+            const uptime = await getStreamUptime(tenantId);
+            await reply(
+                uptime
+                    ? `Stream uptime: ${uptime.hours}h ${uptime.minutes}m`
+                    : 'Stream is offline!'
+            );
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !uptime failed:', error);
+            await reply(`@${actualUsername}, couldn't fetch uptime!`);
+        }
+        return true;
+    }
+
+    if (actualMessage.toLowerCase() === '!stats') {
+        try {
+            const { getChannelInfo } = require('./twitch');
+            const info = await getChannelInfo(tenantId);
+            await reply(
+                info
+                    ? `📊 Followers: ${info.followerCount?.toLocaleString() || 0} | Views: ${info.viewCount?.toLocaleString() || 0}`
+                    : `@${actualUsername}, couldn't fetch stats!`
+            );
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !stats failed:', error);
+            await reply(`@${actualUsername}, stats request timed out!`);
+        }
+        return true;
+    }
+
     const commands = await getAllCommands(tenantId);
     const configuredCommand = commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName);
     const command = configuredCommand || commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName && c.enabled);
@@ -866,10 +954,22 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     if (actionsForCommand.length > 0) {
         const { SubActionExecutor } = await import('./automation/SubActionExecutor');
         const executor = new SubActionExecutor();
-        for (const action of actionsForCommand) {
-            console.log(`[Discord Dispatcher] Executing command-triggered action ${action.id} for ${cmdName}`);
-            await executor.executeAction(action, executionContext);
-        }
+        await runWithChatOutputContext({
+            platform: 'discord',
+            channelId: sourceChannelId,
+            guildId: msg.guildId || msg.guild_id,
+            userId: msg.author?.id || msg.userId || msg.user_id,
+            username: actualUsername,
+            displayName: actualUsername,
+            messageId: msg.messageId || msg.message_id,
+            messageContent: actualMessage,
+            speakerMode: 'command',
+        }, async () => {
+            for (const action of actionsForCommand) {
+                console.log(`[Discord Dispatcher] Executing command-triggered action ${action.id} for ${cmdName}`);
+                await executor.executeAction(action, executionContext);
+            }
+        });
         return true;
     }
 
@@ -878,33 +978,32 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         return true;
     }
 
-    if (!(command as any).actionId) {
-        const socialCommands: Record<string, string> = {
-            'hug': '{user} wraps {target} in the cosmic warmth of love and understanding 🤗',
-            'boop': '{user} boops {target} on the nose! *boop* 👉',
-            'cuddle': '{user} cuddles up with {target} in a cozy embrace 🥰',
-            'dance': '{user} breaks out into a dance with {target}! 💃🕺',
-            'fistbump': '{user} gives {target} an epic fist bump! 👊',
-            'headpat': '{user} gently pats {target} on the head *pat pat* 🤚',
-            'highfive': '{user} high-fives {target}! ✋',
-            'love': '{user} sends love to {target}! ❤️',
-            'tickle': '{user} tickles {target}! *giggle* 😆',
-            'lurk': '{user} is lurking in the shadows 👀',
-            'unlurk': '{user} emerges from the shadows! Welcome back! 👋',
-            'hydrate': 'Time to hydrate! 💧 Stay healthy, chat!',
-            'stretch': 'Stretch break! 🤸 Take care of your body!',
-            'yes': 'Yes! ✅',
-            'yup': 'Yup! 👍',
-            'no': 'Nope! ❌',
-            'hover': '{user} hovers mysteriously 🛸',
-        };
-
-        if (socialCommands[cmdName]) {
-            const target = actualMessage.substring(cmdName.length + 2).trim() || 'someone';
-            const response = socialCommands[cmdName]
-                .replace('{user}', actualUsername)
-                .replace('{target}', target);
-            await reply(response);
+    if (!(command as any).actionId && isSocialCommandName(cmdName)) {
+        const speaker = await resolveStructuredDiscordReplySpeaker({
+            tenantId,
+            rotateSpeaker: true,
+        });
+        const response = await generateSocialCommandReply({
+            platform: 'discord',
+            commandName: cmdName,
+            userName: actualUsername,
+            target: actualMessage.substring(cmdName.length + 2).trim(),
+            tenantId: speaker.tenantId || tenantId,
+            botName: speaker.botName,
+        });
+        if (response) {
+            await sendStructuredDiscordReply({
+                channelId: sourceChannelId,
+                message: response,
+                tenantId: speaker.tenantId || tenantId,
+                botName: speaker.botName,
+                speaker,
+                sourceMessageId: msg.messageId || msg.message_id,
+                sourceMessage: actualMessage,
+                sourceUser: actualUsername,
+            }).catch((error) => {
+                console.error('[Discord Dispatcher] Failed to send social command reply:', error);
+            });
             return true;
         }
     }
@@ -914,12 +1013,24 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
         if (action?.subActions?.length) {
             const { SubActionExecutor } = await import('./automation/SubActionExecutor');
             const executor = new SubActionExecutor();
-            await executor.executeAction(action, executionContext);
+            await runWithChatOutputContext({
+                platform: 'discord',
+                channelId: sourceChannelId,
+                guildId: msg.guildId || msg.guild_id,
+                userId: msg.author?.id || msg.userId || msg.user_id,
+                username: actualUsername,
+                displayName: actualUsername,
+                messageId: msg.messageId || msg.message_id,
+                messageContent: actualMessage,
+                speakerMode: 'command',
+            }, async () => {
+                await executor.executeAction(action, executionContext);
+            });
             return true;
         }
     }
 
-    return true;
+    return false;
 }
 
 const CORE_POKEMON_CONFIRMATION_COMMANDS = new Set(['accept', 'cancel', 'swap']);
@@ -3260,34 +3371,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             
-            // Handle simple social commands (only if no actionId)
-            if (!(command as any).actionId) {
-                const socialCommands: Record<string, string> = {
-                    'hug': '{user} wraps {target} in the cosmic warmth of love and understanding 🤗',
-                    'boop': '{user} boops {target} on the nose! *boop* 👉',
-                    'cuddle': '{user} cuddles up with {target} in a cozy embrace 🥰',
-                    'dance': '{user} breaks out into a dance with {target}! 💃🕺',
-                    'fistbump': '{user} gives {target} an epic fist bump! 👊',
-                    'headpat': '{user} gently pats {target} on the head *pat pat* 🤚',
-                    'highfive': '{user} high-fives {target}! ✋',
-                    'love': '{user} sends love to {target}! ❤️',
-                    'tickle': '{user} tickles {target}! *giggle* 😆',
-                    'lurk': '{user} is lurking in the shadows 👀',
-                    'unlurk': '{user} emerges from the shadows! Welcome back! 👋',
-                    'hydrate': 'Time to hydrate! 💧 Stay healthy, chat!',
-                    'stretch': 'Stretch break! 🤸 Take care of your body!',
-                    'yes': 'Yes! ✅',
-                    'yup': 'Yup! 👍',
-                    'no': 'Nope! ❌',
-                    'hover': '{user} hovers mysteriously 🛸',
-                };
-                
-                if (socialCommands[cmdName]) {
-                    const args = actualMessage.substring(cmdName.length + 2).trim();
-                    const target = args || 'someone';
-                    const response = socialCommands[cmdName]
-                        .replace('{user}', actualUsername)
-                        .replace('{target}', target);
+    if (!(command as any).actionId && isSocialCommandName(cmdName)) {
+                const response = await generateSocialCommandReply({
+                    platform: 'twitch',
+                    commandName: cmdName,
+                    userName: actualUsername,
+                    target: actualMessage.substring(cmdName.length + 2).trim(),
+                    tenantId,
+                    botName: getBotName(tenantId),
+                });
+                if (response) {
                     await reply(response, 'bot').catch(() => {});
                     return;
                 }

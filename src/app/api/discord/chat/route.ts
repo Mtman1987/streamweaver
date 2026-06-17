@@ -6,16 +6,16 @@ import { readUserConfigSync } from '@/lib/user-config';
 import { getAdminTwitchId, listTenants, tenantPath } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
-import { sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
-import { getTwitchUser } from '@/services/twitch';
-import { getStoredTokens } from '@/lib/token-utils.server';
+import { deleteMessage, sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed, getDiscordBotProfileAvatarUrl, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
+import { getAvatarUrlForTenant } from '@/services/discord-webhook-avatar';
+import { sendStructuredDiscordReply } from '@/services/discord-structured-replies';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
-import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
+import { getDiscordMessageCleanupDeleteAt, processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
 import { deliverBotRelay, handleDiscordMessage, resolveRelayTarget } from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
@@ -157,6 +157,18 @@ export async function POST(request: NextRequest) {
       if (!replyChannelId) return;
       if (relayOnly) {
         collectReply({ content: replyMessage, username });
+        return;
+      }
+      if (message.trim().startsWith('!')) {
+        await sendStructuredDiscordReply({
+          channelId: replyChannelId,
+          message: replyMessage,
+          tenantId,
+          rotateSpeaker: true,
+          sourceMessageId: normalized.messageId,
+          sourceMessage: message,
+          sourceUser: userName,
+        });
         return;
       }
       await sendDiscordRouteReply(replyChannelId, replyMessage, username);
@@ -612,17 +624,31 @@ export async function POST(request: NextRequest) {
       if (resolvedRelayTarget) {
         const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
         if (channelId) {
+          const deleteAt = getDiscordMessageCleanupDeleteAt();
           const ackEmbed = await buildDiscordBotEmbed({
             description: ackReply,
             tenantId: botTenantId || tenantId || undefined,
             botName,
+            deleteAt,
           });
           if (relayOnly) {
             collectReply({ content: ackReply, embeds: [ackEmbed] });
           } else {
             const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
-            const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrl(botTenantId || tenantId);
-            await sendWebhookMessage(channelId, ackReply, webhookIdentity.username, avatarUrl, [ackEmbed]).catch(() => {});
+            const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
+            const sentAck = await sendWebhookMessage(channelId, ackReply, webhookIdentity.username, avatarUrl, [ackEmbed]).catch(() => null);
+            if (normalized.messageId) {
+              await deleteMessage(channelId, normalized.messageId).catch(() => {});
+            }
+            await recordDiscordMessageCleanup({
+              tenantId: botTenantId || tenantId || undefined,
+              channelId,
+              replyMessageIds: [sentAck?.id || ''],
+              replyMessages: [ackReply],
+              sourceUser: userName,
+              botName,
+              triggerMessage: message,
+            }).catch(() => {});
           }
         }
 
@@ -682,18 +708,20 @@ export async function POST(request: NextRequest) {
     let discordReplySent = false;
     if (channelId) {
       try {
+        const deleteAt = getDiscordMessageCleanupDeleteAt();
         const aiEmbed = await buildDiscordBotEmbed({
           description: aiReply,
           tenantId: botTenantId || tenantId || undefined,
           botName,
+          deleteAt,
         });
         let sentReply: any = null;
         if (relayOnly) {
           collectReply({ content: aiReply, embeds: [aiEmbed] });
         } else {
           const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
-          const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrl(botTenantId || tenantId);
-          sentReply = await sendWebhookMessage(channelId, aiReply, userName, avatarUrl, [aiEmbed]);
+          const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
+          sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, avatarUrl, [aiEmbed]);
         }
         discordReplySent = true;
         console.log(`[Discord Chat] Bot responded via webhook in channel ${channelId}`);
@@ -713,6 +741,9 @@ export async function POST(request: NextRequest) {
         }
 
         if (!relayOnly) {
+          if (normalized.messageId) {
+            await deleteMessage(channelId, normalized.messageId).catch(() => {});
+          }
           const followUpDecision = botInteractionDecision?.shouldRespond
             ? botInteractionDecision
             : await decideReplyMentionInteraction({
@@ -733,7 +764,6 @@ export async function POST(request: NextRequest) {
           await recordDiscordMessageCleanup({
             tenantId: botTenantId || tenantId || undefined,
             channelId,
-            triggerMessageId: normalized.messageId,
             triggerMessage: message,
             replyMessageIds: [
               sentReply?.id || '',
@@ -937,68 +967,6 @@ async function maybeShortenUrl(url: string): Promise<string> {
   }
 }
 
-/**
- * Get the bot's profile avatar URL for Discord webhook impersonation.
- * Discord expects a direct image URL here. The overlay avatar endpoint can be
- * video/GIF-backed and is not reliable for webhook profile pictures.
- */
-const DEFAULT_DISCORD_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
-const avatarCache = new Map<string, { url: string; expiresAt: number }>();
-
-function firstUrl(...values: unknown[]): string {
-  for (const value of values) {
-    const text = firstString(value);
-    if (/^https?:\/\//i.test(text)) return text;
-  }
-  return '';
-}
-
-async function getAvatarUrl(tenantId?: string): Promise<string> {
-  const cacheKey = tenantId || 'global';
-  const cached = avatarCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.url;
-
-  let avatarUrl = '';
-  const config = readUserConfigSync(tenantId);
-  const tokens = (await getStoredTokens(tenantId).catch(() => null)) as Record<string, any> | null;
-
-  avatarUrl = firstUrl(
-    tokens?.botAvatarUrl,
-    tokens?.botProfileImageUrl,
-    tokens?.botProfileImage,
-    config.TWITCH_BOT_AVATAR_URL,
-    config.TWITCH_BOT_PROFILE_IMAGE_URL,
-    config.BOT_AVATAR_URL,
-    tokens?.broadcasterAvatarUrl,
-    tokens?.broadcasterProfileImageUrl,
-    tokens?.loginAvatarUrl,
-    tokens?.loginProfileImageUrl,
-    config.TWITCH_BROADCASTER_AVATAR_URL
-  );
-
-  if (!avatarUrl) {
-    const botUsername = firstString(tokens?.botUsername, config.TWITCH_BOT_USERNAME);
-    const broadcasterUsername = firstString(tokens?.broadcasterUsername, config.TWITCH_BROADCASTER_USERNAME);
-    const username = botUsername || broadcasterUsername;
-    if (username) {
-      try {
-        const twitchUser = await getTwitchUser(username);
-        avatarUrl = twitchUser?.profileImageUrl || '';
-      } catch (error) {
-        console.warn('[Discord Chat] Failed to fetch Twitch avatar for webhook:', {
-          tenantId: tenantId || null,
-          username,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
-
-  const resolved = avatarUrl || DEFAULT_DISCORD_AVATAR;
-  avatarCache.set(cacheKey, { url: resolved, expiresAt: Date.now() + 60 * 60 * 1000 });
-  return resolved;
-}
-
 async function decideReplyMentionInteraction(input: {
   speakerBotName: string;
   speakerTenantId?: string;
@@ -1147,12 +1115,14 @@ async function sendCrossBotTargetReplies(input: {
     }
 
     const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
-    const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrl(targetTenantId);
+    const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(targetTenantId);
+    const deleteAt = getDiscordMessageCleanupDeleteAt();
     const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, avatarUrl, [
       await buildDiscordBotEmbed({
         description: reply,
         tenantId: targetTenantId,
         botName: target.currentName,
+        deleteAt,
       }),
     ]);
     console.log('[Discord Chat] Cross-bot target responded via webhook:', {
