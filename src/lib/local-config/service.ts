@@ -95,14 +95,14 @@ function migrateFromLegacy(config: LocalConfigMap, tenantId?: string): LocalConf
       clientSecret: config.twitch.clientSecret || process.env.TWITCH_CLIENT_SECRET || '',
       botUsername: legacyBotUsername || config.twitch.botUsername || process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME || '',
     },
-    discord: {
-      ...config.discord,
-      botToken: config.discord.botToken || process.env.DISCORD_BOT_TOKEN || '',
-      logChannelId: config.discord.logChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID || '',
-      aiChatChannelId: config.discord.aiChatChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID || '',
-      shareChannelId: config.discord.shareChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_SHARE_CHANNEL_ID || '',
-      metricsChannelId: config.discord.metricsChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_METRICS_CHANNEL_ID || '',
-    },
+      discord: {
+        ...config.discord,
+        botToken: config.discord.botToken || process.env.DISCORD_BOT_TOKEN || '',
+        logChannelId: config.discord.logChannelId || '',
+        aiChatChannelId: config.discord.aiChatChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID || '',
+        shareChannelId: config.discord.shareChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_SHARE_CHANNEL_ID || '',
+        metricsChannelId: config.discord.metricsChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_METRICS_CHANNEL_ID || '',
+      },
     automation: {
       ...config.automation,
       aiProvider: (legacyUserConfig.AI_PROVIDER as any) || config.automation.aiProvider,

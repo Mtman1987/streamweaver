@@ -28,22 +28,13 @@ function getStatusWebSocketUrl(): string {
 async function getDiscordBridgeTarget(tenantId?: string): Promise<string | null> {
     if (!tenantId) return null;
 
-    let logChannelId = '';
     try {
         const channelsData = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
         const channels = JSON.parse(channelsData);
         if (channels?.discordBridgeEnabled === false) return null;
-        if (typeof channels?.logChannelId === 'string') {
-            logChannelId = channels.logChannelId.trim();
-        }
+        return typeof channels?.logChannelId === 'string' ? channels.logChannelId.trim() || null : null;
     } catch {}
-
-    if (!logChannelId) {
-        const userConfig = readUserConfigSync(tenantId);
-        logChannelId = String(userConfig.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID || '').trim();
-    }
-
-    return logChannelId || null;
+    return null;
 }
 
 async function mirrorOutboundTwitchMessageToDiscord(input: {

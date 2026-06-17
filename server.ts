@@ -452,10 +452,7 @@ async function startServer() {
         console.log('[STEP 5] Starting polling services...');
         const pollingModule = require('./src/services/polling');
         pollingService = pollingModule.pollingService;
-        const { checkChatActivity, checkDmChannelActivity } = require('./src/services/chat-monitor');
-        pollingService.addTask('chat-monitor', async () => {
-            try { await checkChatActivity(); } catch (e) { /* silent */ }
-        }, 10000);
+        const { checkDmChannelActivity } = require('./src/services/chat-monitor');
         pollingService.addTask('dm-sweep', async () => {
             try { await checkDmChannelActivity(); } catch (e) { /* silent */ }
         }, 30000);

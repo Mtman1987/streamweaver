@@ -9,7 +9,6 @@ const KEY_MAPPING: Record<string, string> = {
   geminiApiKey: 'GEMINI_API_KEY',
   openaiApiKey: 'OPENAI_API_KEY',
   inworldApiKey: 'INWORLD_API_KEY',
-  discordLogChannelId: 'NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID',
   discordAiChatChannelId: 'NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID',
   discordWebhookUrl: 'DISCORD_WEBHOOK_URL',
   defaultTtsVoice: 'TTS_VOICE',

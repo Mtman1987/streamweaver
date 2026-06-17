@@ -1159,10 +1159,9 @@ async function sendTwitchCrossBotFollowUp(input: {
 }
 
 async function getDiscordLogChannelId(tenantId?: string): Promise<string | null> {
+    if (!tenantId) return null;
     try {
-        const p = tenantId
-            ? tenantPath(tenantId, 'tokens/discord-channels.json')
-            : resolve(process.cwd(), 'tokens', 'discord-channels.json');
+        const p = tenantPath(tenantId, 'tokens/discord-channels.json');
         const data = await fs.readFile(p, 'utf-8');
         const config = JSON.parse(data);
         if (config.discordBridgeEnabled === false) return null;
@@ -3910,8 +3909,7 @@ If no good match, respond with: Could not find matching user`;
 }
 
 export async function handleDiscordMessage(msg: any, tenantId?: string, options: DiscordDispatchOptions = {}): Promise<{ commandHandled: boolean }> {
-    const logChannelId = await getDiscordLogChannelId(tenantId);
-    const sourceChannelId = msg.channelId || msg.channel_id || logChannelId;
+    const sourceChannelId = msg.channelId || msg.channel_id;
     if (!sourceChannelId) return { commandHandled: false };
 
     const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';

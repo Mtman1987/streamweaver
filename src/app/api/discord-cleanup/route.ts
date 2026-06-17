@@ -1,32 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolve } from 'path';
 import * as fs from 'fs/promises';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
+import { getTenantFromRequest } from '@/lib/tenant-context';
+import { tenantPath } from '@/lib/tenant';
 
 const discordCleanupSchema = z.object({
   action: z.enum(['cleanup']).optional().default('cleanup'),
   channelId: z.string().trim().min(1).max(64).optional(),
+  tenantId: z.string().trim().max(128).optional(),
 });
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
-async function getDiscordChannelId(): Promise<string | null> {
-    const SETTINGS_FILE = resolve(process.cwd(), 'tokens', 'discord-channels.json');
-    const LEGACY_SETTINGS_FILE = resolve(process.cwd(), 'src', 'data', 'discord-channels.json');
-    
+async function getDiscordChannelId(tenantId?: string): Promise<string | null> {
+    if (!tenantId) return null;
     try {
-        const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
+        const data = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
         const settings = JSON.parse(data);
         return settings.logChannelId || null;
     } catch {
-        try {
-            const legacyData = await fs.readFile(LEGACY_SETTINGS_FILE, 'utf-8');
-            const settings = JSON.parse(legacyData);
-            return settings.logChannelId || null;
-        } catch {
-            return null;
-        }
+        return null;
     }
 }
 
@@ -41,10 +35,12 @@ export async function POST(request: NextRequest) {
       return apiError('Invalid request body', { status: 400, code: 'INVALID_BODY' });
     }
 
+    const session = getTenantFromRequest(request);
+    const tenantId = parsed.data.tenantId || session?.tenantId || request.nextUrl.searchParams.get('tenantId') || undefined;
     const { action, channelId } = parsed.data;
 
     // Use configured chat log channel if no channelId provided
-    const targetChannelId = channelId || await getDiscordChannelId();
+    const targetChannelId = channelId || await getDiscordChannelId(tenantId);
     
     if (!targetChannelId) {
       return apiError('No channel ID provided and no chat log channel configured', { status: 400, code: 'INVALID_BODY' });
@@ -62,7 +58,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const targetChannelId = await getDiscordChannelId();
+  const session = getTenantFromRequest(request);
+  const tenantId = request.nextUrl.searchParams.get('tenantId') || session?.tenantId || undefined;
+  const targetChannelId = await getDiscordChannelId(tenantId);
   
   console.log('[Cleanup] Channel ID found:', targetChannelId);
   

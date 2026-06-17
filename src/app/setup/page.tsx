@@ -21,7 +21,6 @@ export default function SetupPage() {
   const [twitchBroadcasterUsername, setTwitchBroadcasterUsername] = useState('');
   const [twitchBroadcasterId, setTwitchBroadcasterId] = useState('');
 
-  const [discordLogChannelId, setDiscordLogChannelId] = useState('');
   const [discordAiChatChannelId, setDiscordAiChatChannelId] = useState('');
   const [discordShoutoutChannelId, setDiscordShoutoutChannelId] = useState('');
   const [discordShareChannelId, setDiscordShareChannelId] = useState('');
@@ -41,7 +40,6 @@ export default function SetupPage() {
         setTwitchBroadcasterUsername(cfg.TWITCH_BROADCASTER_USERNAME || '');
         setTwitchBroadcasterId(cfg.TWITCH_BROADCASTER_ID || cfg.NEXT_PUBLIC_HARDCODED_ADMIN_TWITCH_ID || '');
 
-        setDiscordLogChannelId(cfg.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID || '');
         setDiscordAiChatChannelId(cfg.NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID || '');
         setDiscordShoutoutChannelId(cfg.NEXT_PUBLIC_DISCORD_SHOUTOUT_CHANNEL_ID || '');
         setDiscordShareChannelId(cfg.NEXT_PUBLIC_DISCORD_SHARE_CHANNEL_ID || '');
@@ -73,7 +71,6 @@ export default function SetupPage() {
           NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME: twitchBroadcasterUsername,
           NEXT_PUBLIC_HARDCODED_ADMIN_TWITCH_ID: twitchBroadcasterId,
 
-          NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID: discordLogChannelId,
           NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID: discordAiChatChannelId,
           NEXT_PUBLIC_DISCORD_SHOUTOUT_CHANNEL_ID: discordShoutoutChannelId,
           NEXT_PUBLIC_DISCORD_SHARE_CHANNEL_ID: discordShareChannelId,
@@ -120,17 +117,6 @@ export default function SetupPage() {
               placeholder="123456789"
               value={twitchBroadcasterId}
               onChange={(e) => setTwitchBroadcasterId(e.target.value)}
-              disabled={loading || saving}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="discordLog">Discord log channel ID (optional)</Label>
-            <Input
-              id="discordLog"
-              placeholder="123456789012345678"
-              value={discordLogChannelId}
-              onChange={(e) => setDiscordLogChannelId(e.target.value)}
               disabled={loading || saving}
             />
           </div>

@@ -148,16 +148,13 @@ async function getAlertDiscordChannelId(tenantId?: string): Promise<string | nul
   const configured =
     process.env.WALKON_ALERT_DISCORD_CHANNEL_ID ||
     tenantConfig.WALKON_ALERT_DISCORD_CHANNEL_ID ||
-    tenantConfig.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID ||
-    globalConfig.WALKON_ALERT_DISCORD_CHANNEL_ID ||
-    globalConfig.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID ||
-    process.env.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID;
+    globalConfig.WALKON_ALERT_DISCORD_CHANNEL_ID;
   if (configured) return configured;
 
+  if (!tenantId) return null;
+
   try {
-    const channelsPath = tenantId
-      ? tenantPath(tenantId, 'tokens/discord-channels.json')
-      : resolve(process.cwd(), 'tokens', 'discord-channels.json');
+    const channelsPath = tenantPath(tenantId, 'tokens/discord-channels.json');
     const channels = JSON.parse(await fs.readFile(channelsPath, 'utf-8'));
     return channels.logChannelId || channels.shoutoutChannelId || null;
   } catch {

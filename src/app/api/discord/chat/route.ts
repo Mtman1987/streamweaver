@@ -119,12 +119,13 @@ function normalizeDiscordPayload(body: any): NormalizedDiscordPayload {
 export async function POST(request: NextRequest) {
   try {
     startManualShoutoutPoller();
-    let body;
+    let body: any;
     try {
-      body = await request.json();
-    } catch {
       const raw = await request.text();
       body = JSON.parse(raw.replace(/[\x00-\x1F\x7F]/g, ''));
+    } catch (error) {
+      console.error('[Discord Chat] Invalid JSON payload:', error);
+      return apiOk({ success: false, error: 'invalid-json' });
     }
 
     const normalized = normalizeDiscordPayload(body);

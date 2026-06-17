@@ -462,10 +462,9 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
 }
 
 async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | null> {
+    if (!tenantId) return null;
     try {
-        const p = tenantId
-            ? tenantPath(tenantId, 'tokens/discord-channels.json')
-            : resolve(process.cwd(), 'tokens', 'discord-channels.json');
+        const p = tenantPath(tenantId, 'tokens/discord-channels.json');
         const data = await fs.readFile(p, 'utf-8');
         const channels = JSON.parse(data);
         if (channels.discordBridgeEnabled === false) return null;

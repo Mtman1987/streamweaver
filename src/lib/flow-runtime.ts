@@ -39,8 +39,7 @@ const nodeExecutors: Record<string, NodeExecutor> = {
     return DEFAULT_OUTCOME;
   },
   'action:send-discord': async (node, context) => {
-    const channelId =
-      node.data?.channelId ?? process.env.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID;
+    const channelId = node.data?.channelId;
     if (!channelId) {
       throw new Error('Send Discord node requires a channel ID.');
     }

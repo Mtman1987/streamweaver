@@ -2,55 +2,24 @@ import { ChatHistoryMessage, DiscordMessage } from '../types/game-types';
 import { LIMITS } from '../constants';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
-import { handleDiscordMessage } from './chat-dispatcher';
 import { tenantPath } from '../lib/tenant';
 import { isDiscordApiError } from './discord-local';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed } from './discord-branding';
 import { getBotName } from '@/lib/bot-settings-store';
-import { getProcessingOwner, pollOwns, type ProcessingArea } from './discord-processing-owner';
 import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-state';
-import { registerHandledDiscordMessage } from './discord-message-dedupe';
-import { shouldPollerDispatchDiscordMessage } from './discord-poller-filter';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
-let sentToTwitchIds = new Set<string>();
 let recentlySentMessages = new Set<string>();
 let isLoadingHistory: Map<string, boolean> = new Map();
 const lastMissingDiscordLogNotice = new Map<string, number>();
-const lastPollDisabledNotice = new Map<string, number>();
 
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 const MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS = 10 * 60 * 1000;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function logDedupeGate(area: ProcessingArea, action: 'allow' | 'skip', detail: Record<string, unknown>) {
-    console.warn(`[DedupeGate] ${action.toUpperCase()} ${area} owner=${getProcessingOwner(area)}`, detail);
-}
-
-function maybeLogPollDisabled(key = 'global') {
-    const now = Date.now();
-    const lastNotice = lastPollDisabledNotice.get(key) || 0;
-    if (now - lastNotice > MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS) {
-        console.warn('[DedupeGate] Public Discord poll dispatch disabled before Discord fetch', {
-            publicCommandOwner: getProcessingOwner('public-command'),
-            publicAiOwner: getProcessingOwner('public-ai'),
-            reason: 'poll owns neither public-command nor public-ai',
-        });
-        lastPollDisabledNotice.set(key, now);
-    }
-}
-
-function getPublicDiscordPollDecision(messageText: string): { allowed: boolean; area: ProcessingArea; reason: string } {
-    const trimmed = String(messageText || '').trim();
-    if (trimmed.startsWith('!')) {
-        return { allowed: pollOwns('public-command'), area: 'public-command', reason: 'public Discord command dispatch' };
-    }
-    return { allowed: pollOwns('public-ai'), area: 'public-ai', reason: 'public Discord AI/mention dispatch' };
-}
 
 function isDiscordEmbeddableImageUrl(value: unknown): value is string {
     if (typeof value !== 'string') return false;
@@ -82,23 +51,15 @@ async function maybeShortenUrl(url: string): Promise<string> {
 }
 
 async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId' | 'dmChannelId', tenantId?: string): Promise<string | null> {
-    const SETTINGS_FILE = tenantId 
-        ? tenantPath(tenantId, 'tokens/discord-channels.json')
-        : resolve(process.cwd(), 'tokens', 'discord-channels.json');
-    const LEGACY_SETTINGS_FILE = resolve(process.cwd(), 'src', 'data', 'discord-channels.json');
+    if (!tenantId) return null;
+    const SETTINGS_FILE = tenantPath(tenantId, 'tokens/discord-channels.json');
     
     try {
         const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
         const settings = JSON.parse(data);
         return settings[type] || null;
     } catch {
-        try {
-            const legacyData = await fs.readFile(LEGACY_SETTINGS_FILE, 'utf-8');
-            const settings = JSON.parse(legacyData);
-            return settings[type] || null;
-        } catch {
-            return null;
-        }
+        return null;
     }
 }
 
@@ -220,93 +181,7 @@ export async function loadChatHistory(tenantId?: string): Promise<ChatHistoryMes
 }
 
 export async function checkChatActivity() {
-    try {
-        if (!pollOwns('public-command') && !pollOwns('public-ai')) {
-            maybeLogPollDisabled('global');
-            return;
-        }
-
-        const logChannelId = await getDiscordChannelId('logChannelId');
-        
-        if (!logChannelId) {
-            return; // No channel configured, skip silently
-        }
-        
-        const { getChannelMessages } = require('./discord');
-        let messages;
-        try {
-            messages = await getChannelMessages(logChannelId, 10);
-        } catch (error) {
-            console.warn('[ChatMonitor] Failed to fetch Discord public chat activity:', error);
-            return;
-        }
-
-        if (!messages || messages.length === 0) return;
-
-        const globalKey = 'global';
-
-        // If we don't have a baseline (first run), set it to the latest message and stop.
-        if (!lastDiscordMessageId.has(globalKey)) {
-            lastDiscordMessageId.set(globalKey, messages[0].id);
-            return;
-        }
-
-        const lastId = lastDiscordMessageId.get(globalKey);
-        const newMessages = [];
-        for (const msg of messages) {
-            if (msg.id === lastId) break;
-            newMessages.push(msg);
-        }
-        
-        // Process duplicate-prone public Discord work once, according to the configured owner.
-        for (const msg of newMessages.reverse()) {
-            if (shouldPollerDispatchDiscordMessage(msg.content, {
-                username: msg.author?.username || msg.author?.global_name || msg.author?.globalName,
-                channelId: msg.channel_id || logChannelId,
-            }) && msg.author && !msg.author.bot && !sentToTwitchIds.has(msg.id)) {
-                const decision = getPublicDiscordPollDecision(msg.content);
-                const detail = {
-                    messageId: msg.id,
-                    author: msg.author?.username || msg.author?.global_name || msg.author?.globalName || 'unknown',
-                    preview: String(msg.content || '').slice(0, 120),
-                    reason: decision.reason,
-                };
-
-                if (!decision.allowed) {
-                    logDedupeGate(decision.area, 'skip', detail);
-                    sentToTwitchIds.add(msg.id);
-                    continue;
-                }
-
-                logDedupeGate(decision.area, 'allow', detail);
-                if (!registerHandledDiscordMessage({
-                    messageId: msg.id,
-                    channelId: msg.channel_id || logChannelId,
-                    userId: msg.author?.id,
-                    username: msg.author?.username || msg.author?.global_name || msg.author?.globalName,
-                    content: msg.content,
-                    createdAt: msg.timestamp || msg.createdAt || msg.created_at,
-                })) {
-                    continue;
-                }
-                await handleDiscordMessage(msg);
-                sentToTwitchIds.add(msg.id);
-            }
-        }
-        
-        if (messages.length > 0 && messages[0].id !== lastId) {
-            lastDiscordMessageId.set(globalKey, messages[0].id);
-        }
-
-        // Prune sentToTwitchIds to prevent unbounded memory growth
-        if (sentToTwitchIds.size > 500) {
-            const idsArray = Array.from(sentToTwitchIds);
-            sentToTwitchIds = new Set(idsArray.slice(idsArray.length - 200));
-        }
-        
-    } catch (error) {
-        console.warn('[ChatMonitor] checkChatActivity failed:', error);
-    }
+    return;
 }
 
 

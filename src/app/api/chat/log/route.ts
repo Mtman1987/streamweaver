@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { sendDiscordMessage } from '@/services/discord';
-import { readUserConfig } from '@/lib/user-config';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
+import { promises as fs } from 'fs';
+import { tenantPath } from '@/lib/tenant';
 
 const chatLogSchema = z.object({
   username: z.string().trim().min(1).max(128),
@@ -18,7 +19,7 @@ const chatLogSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    const userConfig = await readUserConfig(session?.tenantId);
+    const tenantId = session?.tenantId;
 
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] !== process.env.BOT_SECRET_KEY) {
@@ -32,10 +33,14 @@ export async function POST(request: NextRequest) {
 
     const { username, message, platform } = parsed.data;
 
-    // Log to Discord
-    const discordChannelId =
-      userConfig.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID ||
-      process.env.NEXT_PUBLIC_DISCORD_LOG_CHANNEL_ID;
+    let discordChannelId = '';
+    if (tenantId) {
+      try {
+        const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
+        const settings = JSON.parse(raw);
+        discordChannelId = String(settings.logChannelId || '').trim();
+      } catch {}
+    }
     if (!discordChannelId) {
       return apiError('Discord log channel not configured', { status: 500, code: 'MISSING_CONFIG' });
     }
