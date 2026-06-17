@@ -1,7 +1,7 @@
 import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
-import { sendDiscordEmbed, sendDiscordMessage } from './discord';
+import { deleteMessage, sendDiscordEmbed, sendDiscordMessage } from './discord';
 import { buildBotAvatarUrl, getDiscordBotWebhookIdentity } from './discord-branding';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
@@ -35,7 +35,6 @@ import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
 import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
 import { sendDiscordCommandShoutout } from './discord-command-shoutout';
-import { registerManualShoutout } from './discord-manual-shoutouts';
 import {
     buildDiscordAdminCommandsSummary,
     buildDiscordCommandsSummary,
@@ -727,27 +726,30 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     }
 
     if (cmdName === 'so') {
-        const targetName = actualMessage.substring(4).trim().replace('@', '');
-        if (!targetName) {
+        const rawTarget = actualMessage.substring(4).trim();
+        if (!rawTarget) {
             await reply(`@${actualUsername}, usage: !so @username`);
             return true;
         }
         try {
+            const mentionTarget = parseDiscordCommandTarget(msg, rawTarget);
             const sent = await sendDiscordCommandShoutout({
+                serverId: discordServerId,
                 channelId: sourceChannelId,
                 requesterName: actualUsername,
-                targetName,
+                requesterDiscordId: msg.author?.id || msg.userId || msg.user_id,
+                targetName: rawTarget,
+                targetDiscordUserId: mentionTarget?.userId,
+                sourceMessageId: msg.messageId || msg.message_id,
                 tenantId,
             });
-            if (sent.messageId && sent.isLive) {
-                await registerManualShoutout({
-                    channelId: sourceChannelId,
-                    messageId: sent.messageId,
-                    twitchLogin: sent.twitchLogin,
-                    requesterName: actualUsername,
-                    targetName,
-                    tenantId,
-                });
+            if (sent.messageId) {
+                const sourceMessageId = msg.messageId || msg.message_id;
+                if (sourceMessageId) {
+                    await deleteMessage(sourceChannelId, sourceMessageId).catch((error) => {
+                        console.warn('[Discord Dispatcher] Failed to delete source !so command:', error);
+                    });
+                }
             }
         } catch (error: any) {
             console.error('[Discord Dispatcher] !so failed:', error);

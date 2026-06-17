@@ -20,7 +20,6 @@ import { appendPublicChatMessages } from '@/lib/public-chat-store';
 import { deliverBotRelay, handleDiscordMessage, resolveRelayTarget } from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
 import { registerHandledDiscordMessage } from '@/services/discord-message-dedupe';
-import { startManualShoutoutPoller } from '@/services/discord-manual-shoutouts';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
 import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub';
 import { detectBotRelayRequest } from '@/services/bot-relay';
@@ -118,7 +117,6 @@ function normalizeDiscordPayload(body: any): NormalizedDiscordPayload {
  */
 export async function POST(request: NextRequest) {
   try {
-    startManualShoutoutPoller();
     let body: any;
     try {
       const raw = await request.text();

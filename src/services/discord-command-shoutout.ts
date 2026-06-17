@@ -1,6 +1,6 @@
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildStreamWeaverLogoUrl } from './discord-branding';
-import { sendDiscordEmbed } from './discord-local';
+import { createDiscordStreamHubManualShoutout } from './discord-stream-hub';
 import { getTwitchUser } from './twitch';
 import { fetchClip } from './walk-on-shoutout';
 
@@ -253,19 +253,27 @@ export async function buildDiscordCommandShoutoutPayload(input: {
 }
 
 export async function sendDiscordCommandShoutout(input: {
+  serverId?: string;
   channelId: string;
   requesterName: string;
+  requesterDiscordId?: string;
   targetName: string;
+  targetDiscordUserId?: string;
+  sourceMessageId?: string;
   tenantId?: string;
 }): Promise<{ messageId: string | null; isLive: boolean; twitchLogin: string; }> {
-  const { payload, isLive, twitchLogin } = await buildDiscordCommandShoutoutPayload({
-    ...input,
-    allowGifGeneration: true,
+  const sent = await createDiscordStreamHubManualShoutout({
+    serverId: input.serverId,
+    channelId: input.channelId,
+    requesterName: input.requesterName,
+    requesterDiscordId: input.requesterDiscordId,
+    targetName: input.targetName,
+    targetDiscordUserId: input.targetDiscordUserId,
+    sourceMessageId: input.sourceMessageId,
   });
-  const sent = await sendDiscordEmbed(input.channelId, payload);
   return {
-    messageId: typeof sent?.id === 'string' ? sent.id : null,
-    isLive,
-    twitchLogin,
+    messageId: typeof sent?.messageId === 'string' ? sent.messageId : null,
+    isLive: Boolean(sent?.isLive),
+    twitchLogin: String(sent?.twitchLogin || input.targetName.replace(/^@/, '').trim().toLowerCase()),
   };
 }

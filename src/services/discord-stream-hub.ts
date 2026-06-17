@@ -24,6 +24,17 @@ type DiscordStreamHubClipLookup = {
   isLive?: boolean;
 };
 
+type DiscordStreamHubManualShoutoutPayload = {
+  serverId?: string;
+  guildId?: string;
+  channelId: string;
+  requesterName: string;
+  requesterDiscordId?: string;
+  targetName?: string;
+  targetDiscordUserId?: string;
+  sourceMessageId?: string;
+};
+
 function getDiscordStreamHubUrl(): string {
   return (
     process.env.DISCORD_STREAM_HUB_URL ||
@@ -215,6 +226,26 @@ export async function lookupDiscordStreamHubTwitchTarget(twitchLogin: string, se
   } catch {
     return null;
   }
+}
+
+export async function createDiscordStreamHubManualShoutout(payload: DiscordStreamHubManualShoutoutPayload): Promise<{
+  success: boolean;
+  messageId?: string | null;
+  isLive?: boolean;
+  twitchLogin?: string;
+}> {
+  const data = await postDiscordStreamHub<{
+    success?: boolean;
+    messageId?: string | null;
+    isLive?: boolean;
+    twitchLogin?: string;
+  }>('/api/discord/manual-shoutout', payload);
+  return {
+    success: Boolean(data?.success),
+    messageId: data?.messageId ?? null,
+    isLive: data?.isLive,
+    twitchLogin: data?.twitchLogin,
+  };
 }
 
 export async function getDiscordStreamHubActivitySummary(payload: DiscordStreamHubActivityPayload): Promise<{
