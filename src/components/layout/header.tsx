@@ -146,7 +146,7 @@ export default function Header() {
 
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="relative h-10 w-10 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
-            <Image src="/StreamWeaver.png" alt="StreamWeaver" fill className="object-cover" />
+            <Image src="/app-icon.png" alt="StreamWeaver" fill className="object-cover" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
