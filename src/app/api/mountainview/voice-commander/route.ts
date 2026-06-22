@@ -38,7 +38,9 @@ async function postJson(url: string, body: unknown): Promise<{ ok: boolean; stat
 
 export async function POST(request: NextRequest) {
   try {
-    const parsed = mountainViewVoiceSchema.safeParse(await request.json().catch(() => null));
+    const rawBody = await request.json().catch(() => null);
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;
+    const parsed = mountainViewVoiceSchema.safeParse(body);
     if (!parsed.success) {
       return apiError('Invalid MountainView voice command payload', {
         status: 400,
