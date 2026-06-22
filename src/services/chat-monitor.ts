@@ -10,6 +10,7 @@ import { buildDiscordBotEmbed, buildTtsOverlayUrl } from './discord-branding';
 import { getBotName } from '@/lib/bot-settings-store';
 import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-state';
 import { runImageCommand } from './image-command';
+import { queueTtsOverlay } from './tts-overlay-queue';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -61,50 +62,6 @@ async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 's
         return settings[type] || null;
     } catch {
         return null;
-    }
-}
-
-async function queueDiscordTts(text: string, tenantId?: string): Promise<boolean> {
-    const cleanText = String(text || '').trim();
-    if (!cleanText) return false;
-
-    try {
-        const baseUrl = getInternalAppUrl();
-        const headers = {
-            'Content-Type': 'application/json',
-            'x-mountainview-bridge': '1',
-        };
-        const ttsRes = await fetch(`${baseUrl}/api/tts`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                text: cleanText.slice(0, 2000),
-                tenantId,
-            }),
-        });
-        if (!ttsRes.ok) {
-            console.warn(`[DM Sweep:${tenantId || 'global'}] TTS generation failed:`, ttsRes.status);
-            return false;
-        }
-
-        const ttsData = await ttsRes.json().catch(() => null);
-        const audioUrl = typeof ttsData?.audioDataUri === 'string' ? ttsData.audioDataUri : '';
-        if (!audioUrl) return false;
-
-        const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-        const queueRes = await fetch(`${baseUrl}/api/tts/current${tenantQuery}`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ audioUrl }),
-        });
-        if (!queueRes.ok) {
-            console.warn(`[DM Sweep:${tenantId || 'global'}] TTS queue failed:`, queueRes.status);
-            return false;
-        }
-        return true;
-    } catch (error) {
-        console.warn(`[DM Sweep:${tenantId || 'global'}] TTS queue error:`, error);
-        return false;
     }
 }
 
@@ -338,7 +295,9 @@ export async function checkDmChannelActivity(): Promise<void> {
                         }
                     }
                     const ttsUrl = buildTtsOverlayUrl(tenantId);
-                    await queueDiscordTts(result.prompt, tenantId);
+                    await queueTtsOverlay(result.prompt, tenantId).then((result) => {
+                        if (!result.ok) console.warn(`[DM Sweep:${tenantId || 'global'}] TTS overlay queue failed:`, result.error);
+                    });
                     for (const rawImageUrl of result.images) {
                         const imageUrl = await maybeShortenUrl(String(rawImageUrl).trim());
                         const embeddableImageUrl = isDiscordEmbeddableImageUrl(imageUrl) ? imageUrl : null;
@@ -391,7 +350,9 @@ export async function checkDmChannelActivity(): Promise<void> {
                 if (!reply) continue;
 
                 const ttsUrl = buildTtsOverlayUrl(tenantId);
-                await queueDiscordTts(reply, tenantId);
+                await queueTtsOverlay(reply, tenantId).then((result) => {
+                    if (!result.ok) console.warn(`[DM Sweep:${tenantId || 'global'}] TTS overlay queue failed:`, result.error);
+                });
                 await sendDiscordEmbed(dmChannelId, {
                     embeds: [await buildDiscordBotEmbed({
                         description: reply,

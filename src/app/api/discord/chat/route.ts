@@ -31,6 +31,7 @@ import {
   submitMtSupportReport,
 } from '@/services/mt-support-report';
 import { runImageCommand } from '@/services/image-command';
+import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -696,7 +697,7 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: false, error: 'empty-response' });
     }
 
-    // Send response to Discord only (no Twitch, no TTS — conversation stays in Discord)
+    // Send response to Discord and queue the same reply for the persistent TTS overlay.
     let discordReplySent = false;
     if (channelId) {
       try {
@@ -714,6 +715,8 @@ export async function POST(request: NextRequest) {
           const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
           const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
           sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, avatarUrl, [aiEmbed]);
+          const ttsResult = await queueTtsOverlay(aiReply, botTenantId || tenantId || undefined);
+          if (!ttsResult.ok) console.warn('[Discord Chat] TTS overlay queue failed:', ttsResult.error);
         }
         discordReplySent = true;
         console.log(`[Discord Chat] Bot responded via webhook in channel ${channelId}`);
@@ -1117,6 +1120,8 @@ async function sendCrossBotTargetReplies(input: {
         deleteAt,
       }),
     ]);
+    const ttsResult = await queueTtsOverlay(reply, targetTenantId);
+    if (!ttsResult.ok) console.warn('[Discord Chat] Cross-bot TTS overlay queue failed:', ttsResult.error);
     console.log('[Discord Chat] Cross-bot target responded via webhook:', {
       target: target.currentName,
       channelId: input.channelId,
