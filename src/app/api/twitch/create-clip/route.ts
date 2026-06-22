@@ -5,6 +5,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 
 export async function POST(req: NextRequest) {
     try {
+        const url = new URL(req.url);
         const clientId = process.env.TWITCH_CLIENT_ID;
         const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 
@@ -13,12 +14,13 @@ export async function POST(req: NextRequest) {
         }
 
         const session = getTenantFromRequest(req);
-        const tokens = await getStoredTokens(session?.tenantId);
+        const tenantId = session?.tenantId || url.searchParams.get('tenantId')?.trim() || undefined;
+        const tokens = await getStoredTokens(tenantId);
         if (!tokens) {
             return apiError('No Twitch tokens available', { status: 401, code: 'MISSING_TOKENS' });
         }
 
-        const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, session?.tenantId);
+        const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
         
         // Get broadcaster ID
         const userResponse = await fetch(`https://api.twitch.tv/helix/users`, {
@@ -29,7 +31,17 @@ export async function POST(req: NextRequest) {
         });
 
         if (!userResponse.ok) {
-            return apiError('Failed to get broadcaster info', { status: 500, code: 'TWITCH_USER_LOOKUP_FAILED' });
+            const errorText = await userResponse.text().catch(() => '');
+            console.error('[Twitch] Failed to get broadcaster info for clip:', {
+                tenantId: tenantId || 'global',
+                status: userResponse.status,
+                body: errorText,
+            });
+            return apiError('Failed to get broadcaster info', {
+                status: userResponse.status,
+                code: 'TWITCH_USER_LOOKUP_FAILED',
+                details: { twitchStatus: userResponse.status, twitchError: errorText },
+            });
         }
 
         const userData = await userResponse.json();
@@ -49,21 +61,28 @@ export async function POST(req: NextRequest) {
         });
 
         if (!clipResponse.ok) {
-            const errorData = await clipResponse.json();
-            console.error('Failed to create clip:', errorData);
+            const errorData = await clipResponse.json().catch(async () => ({ message: await clipResponse.text().catch(() => '') }));
+            console.error('[Twitch] Failed to create clip:', {
+                tenantId: tenantId || 'global',
+                broadcasterId,
+                status: clipResponse.status,
+                error: errorData,
+            });
             return apiError('Failed to create clip', {
                 status: clipResponse.status,
                 code: 'TWITCH_CLIP_CREATE_FAILED',
-                details: { details: errorData },
+                details: { twitchStatus: clipResponse.status, twitchError: errorData },
             });
         }
 
         const clipData = await clipResponse.json();
         console.log('[Twitch] Clip created:', clipData);
+        const clip = clipData.data?.[0] || null;
 
         return apiOk({ 
             success: true, 
-            clip: clipData.data[0] 
+            clip,
+            url: clip?.edit_url || (clip?.id ? `https://clips.twitch.tv/${clip.id}` : undefined),
         });
 
     } catch (error: any) {

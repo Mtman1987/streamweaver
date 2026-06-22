@@ -3033,21 +3033,26 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !clip command
         if (actualMessage.toLowerCase() === '!clip') {
             try {
-                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/create-clip`, { 
+                const tenantQuery = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+                const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/create-clip${tenantQuery}`, {
                     method: 'POST',
                     signal: AbortSignal.timeout(10000),
                 });
+                const data = await response.json().catch(() => null);
                 if (response.ok) {
-                    const data = await response.json();
-                    if (data.url) {
-                        await reply(`📹 Clip created! ${data.url}`, 'broadcaster').catch(() => {});
+                    const clipUrl = data?.url || data?.clip?.edit_url || (data?.clip?.id ? `https://clips.twitch.tv/${data.clip.id}` : '');
+                    if (clipUrl) {
+                        await reply(`📹 Clip created! ${clipUrl}`, 'broadcaster').catch(() => {});
                     } else {
                         await reply(`@${actualUsername}, clip created but no URL returned!`, 'broadcaster').catch(() => {});
                     }
                 } else {
-                    const errorText = await response.text().catch(() => 'Unknown error');
-                    console.error('[Dispatcher] Clip creation failed:', response.status, errorText);
-                    await reply(`@${actualUsername}, failed to create clip! (${response.status})`, 'broadcaster').catch(() => {});
+                    const twitchError = data?.details?.twitchError;
+                    const twitchMessage = typeof twitchError === 'string'
+                        ? twitchError
+                        : twitchError?.message || twitchError?.error || data?.error || 'Unknown error';
+                    console.error('[Dispatcher] Clip creation failed:', response.status, data || twitchMessage);
+                    await reply(`@${actualUsername}, failed to create clip: ${twitchMessage} (${response.status})`, 'broadcaster').catch(() => {});
                 }
             } catch (error) {
                 console.error('[Dispatcher] Clip creation failed:', error);
