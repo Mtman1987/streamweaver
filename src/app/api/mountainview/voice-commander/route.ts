@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { appendCommanderMemory, isCommander } from '@/lib/commander-memory';
+import { handleTwitchMessage } from '@/services/chat-dispatcher';
+import { tenantPath, globalPath } from '@/lib/tenant';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname } from 'path';
 import { z } from 'zod';
 
 const mountainViewVoiceSchema = z.object({
@@ -10,9 +14,23 @@ const mountainViewVoiceSchema = z.object({
   wakeWord: z.string().trim().max(64).optional(),
   tenantId: z.string().trim().max(128).optional(),
   username: z.string().trim().max(128).optional(),
+  channel: z.string().trim().max(128).optional(),
+  dispatch: z.boolean().optional(),
   source: z.string().trim().max(128).optional(),
   payload: z.unknown().optional(),
 });
+
+type VoiceTranscriptRecord = {
+  id: string;
+  createdAt: string;
+  transcript: string;
+  destination: string;
+  source: string;
+  username: string;
+  tenantId: string;
+  wakeWord: string | null;
+  dispatched: boolean;
+};
 
 function getBaseUrl(request: NextRequest): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
@@ -36,6 +54,47 @@ async function postJson(url: string, body: unknown): Promise<{ ok: boolean; stat
   return { ok: response.ok, status: response.status, data, text };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+async function appendVoiceTranscript(record: VoiceTranscriptRecord): Promise<void> {
+  const file = record.tenantId && record.tenantId !== 'global'
+    ? tenantPath(record.tenantId, 'logs/mountainview-voice-transcripts.json')
+    : globalPath('logs/mountainview-voice-transcripts.json');
+
+  let records: VoiceTranscriptRecord[] = [];
+  try {
+    const parsed = JSON.parse(await readFile(file, 'utf8'));
+    records = Array.isArray(parsed) ? parsed : [];
+  } catch {}
+
+  records.push(record);
+  const trimmed = records.slice(-300);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(trimmed, null, 2), 'utf8');
+}
+
+async function dispatchTranscriptToStreamWeaverChat(input: {
+  transcript: string;
+  tenantId?: string;
+  username: string;
+  channel?: string;
+}) {
+  const channel = input.channel || input.username || 'mtman1987';
+  const tags = {
+    id: `mountainview-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    username: input.username,
+    'display-name': input.username,
+    mod: true,
+    badges: { broadcaster: '1' },
+    source: 'mountainview-ai',
+  };
+
+  await handleTwitchMessage(`#${channel.replace(/^#/, '')}`, tags, input.transcript, false);
+  return { channel, tags: { username: tags.username, mod: tags.mod, badges: tags.badges } };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.json().catch(() => null);
@@ -57,6 +116,41 @@ export async function POST(request: NextRequest) {
 
     const username = command.username || 'mtman1987';
     const tenantId = command.tenantId || undefined;
+    const payload = asRecord(command.payload);
+    const shouldDispatch = command.dispatch === true || command.destination === 'twitch' || payload.dispatch === true;
+    const transcriptRecord: VoiceTranscriptRecord = {
+      id: `mv_voice_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      createdAt: new Date().toISOString(),
+      transcript,
+      destination: command.destination,
+      source: command.source || String(payload.source || 'mountainview-ai'),
+      username,
+      tenantId: tenantId || 'global',
+      wakeWord: command.wakeWord || null,
+      dispatched: shouldDispatch,
+    };
+    await appendVoiceTranscript(transcriptRecord);
+
+    if (shouldDispatch) {
+      const dispatchResult = await dispatchTranscriptToStreamWeaverChat({
+        transcript,
+        tenantId,
+        username,
+        channel: command.channel || String(payload.channel || ''),
+      });
+
+      return apiOk({
+        routed: true,
+        dispatched: true,
+        source: 'mountainview-ai',
+        destination: command.destination,
+        wakeWord: command.wakeWord || null,
+        transcript,
+        dispatch: dispatchResult,
+        memory: { saved: true, id: transcriptRecord.id },
+      });
+    }
+
     const context = command.destination === 'private' ? 'private' : 'voice';
     const baseUrl = getBaseUrl(request);
 
