@@ -29,7 +29,7 @@ function getTtsStateMap(): TtsStateMap {
 
 function getTenantKey(request: NextRequest): string {
   const session = getTenantFromRequest(request);
-  const tenantFromQuery = request.nextUrl.searchParams.get('tenant');
+  const tenantFromQuery = request.nextUrl.searchParams.get('tenant') || request.nextUrl.searchParams.get('tenantId');
   return session?.tenantId || tenantFromQuery || 'global';
 }
 

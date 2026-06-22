@@ -1,6 +1,6 @@
 'use server';
 
-export type TargetLanguage = 'es' | 'fr' | 'ru';
+export type TargetLanguage = 'es' | 'fr' | 'ru' | 'de' | 'ja';
 
 export interface TranslationResult {
   translatedText: string;
@@ -29,6 +29,8 @@ export async function translateToLanguage(text: string, targetLanguage: TargetLa
     'es': 'es',
     'fr': 'fr',
     'ru': 'ru',
+    'de': 'de',
+    'ja': 'ja',
     'en': 'en'
   };
 
