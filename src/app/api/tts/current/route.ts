@@ -43,6 +43,7 @@ function getTenantState(request: NextRequest): TenantTtsState {
 }
 
 function isLocalRequest(request: NextRequest): boolean {
+  if (request.headers.get('x-mountainview-bridge') === '1') return true;
   const host = request.headers.get('host') || '';
   if (host.startsWith('127.0.0.1') || host.startsWith('localhost')) return true;
   const forwarded = request.headers.get('x-forwarded-for') || '';

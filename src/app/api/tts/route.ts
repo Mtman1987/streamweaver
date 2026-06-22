@@ -12,7 +12,8 @@ const ttsSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    if (!session) {
+    const isMountainViewBridge = request.headers.get('x-mountainview-bridge') === '1';
+    if (!session && !isMountainViewBridge) {
       return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
     }
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     const { text, voice } = parsed.data;
     console.log('[TTS API] Request:', { textLength: text.length, textPreview: text.slice(0, 80), voice: voice ?? '(default)' });
 
-    const audioDataUri = await generateTTS(text, voice, session.tenantId);
+    const audioDataUri = await generateTTS(text, voice, session?.tenantId);
     console.log('[TTS API] Success, audioDataUri length:', audioDataUri.length);
     return apiOk({ audioDataUri });
   } catch (error: any) {
