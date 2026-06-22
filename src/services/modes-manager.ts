@@ -20,6 +20,15 @@ const DEFAULT_MODES: StreamWeaverModes = {
   chatmode: 'single',
 };
 
+const MODE_OPTIONS: Record<keyof StreamWeaverModes, string[]> = {
+  gamblemode: ['overlay', 'chat'],
+  welcomemode: ['chat', 'overlay', 'off'],
+  greetingmode: ['full', 'overlay', 'chat'],
+  clipmode: ['viewer', 'broadcaster', 'off'],
+  pokemode: ['overlay', 'chat', 'off'],
+  chatmode: ['single', 'shared', 'master-overlay', 'master-chat'],
+};
+
 function modesFilePath(tenantId?: string): string {
   if (tenantId) {
     return tenantPath(tenantId, 'data/modes.json');
@@ -72,16 +81,7 @@ export async function toggleMode(
   const current = modes[modeName] as string;
   
   let next: string;
-  const toggles: Record<string, string[]> = {
-    gamblemode: ['overlay', 'chat'],
-    welcomemode: ['overlay', 'chat', 'off'],
-    greetingmode: ['full', 'overlay', 'chat'],
-    clipmode: ['viewer', 'broadcaster', 'off'],
-    pokemode: ['overlay', 'chat', 'off'],
-    chatmode: ['single', 'shared', 'master-overlay', 'master-chat'],
-  };
-  
-  const options = toggles[modeName] || [];
+  const options = MODE_OPTIONS[modeName] || [];
   const currentIndex = options.indexOf(current);
   next = options[(currentIndex + 1) % options.length];
   
@@ -97,6 +97,31 @@ export async function toggleMode(
   }
   
   return { previous: current, current: next };
+}
+
+export async function setMode(
+  modeName: keyof StreamWeaverModes,
+  value: string,
+  tenantId?: string
+): Promise<{ previous: string; current: string }> {
+  const options = MODE_OPTIONS[modeName] || [];
+  if (!options.includes(value)) {
+    throw new Error(`Invalid ${modeName}: ${value}. Expected one of: ${options.join(', ')}`);
+  }
+
+  const modes = await loadModes(tenantId);
+  const previous = modes[modeName] as string;
+  (modes as Record<keyof StreamWeaverModes, string>)[modeName] = value;
+  await saveModes(modes, tenantId);
+
+  if (typeof (global as any).broadcast === 'function') {
+    (global as any).broadcast(
+      { type: 'mode-toggled', mode: modeName, value, tenantId },
+      tenantId
+    );
+  }
+
+  return { previous, current: value };
 }
 
 export async function toggleMasterChatmode(tenantId?: string): Promise<void> {

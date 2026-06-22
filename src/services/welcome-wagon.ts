@@ -12,8 +12,8 @@ type WelcomeRecord = {
   welcomedUsers: Set<string>;
 };
 
-type WelcomeMode = 'chat' | 'overlay';
-type GreetingMode = 'chat' | 'overlay';
+type WelcomeMode = 'chat' | 'overlay' | 'off';
+type GreetingMode = 'full' | 'chat' | 'overlay';
 type WelcomeEligibility =
   | { eligible: true }
   | { eligible: false; reason: 'already-welcomed-this-stream' | 'known-bot' };

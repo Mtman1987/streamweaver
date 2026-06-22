@@ -6,7 +6,7 @@ import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
 import { givePoints, stealPoints } from './points-transfer';
-import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
+import { markUserWelcomed, getWelcomeMode } from './welcome-wagon';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { matchShoutoutTarget } from './shoutout-matcher';
@@ -1098,6 +1098,26 @@ const ttsHandledMessages = new Set<string>();
 // Track auto welcome shoutouts already in flight so rapid first messages do not
 // launch duplicate walk-ons while we wait for Twitch/AI/TTS work to finish.
 const pendingWelcomeUsers = new Set<string>();
+
+async function recordAutoWelcomeSkip(params: {
+    username: string;
+    displayName?: string;
+    tenantId?: string;
+    reason: string;
+    metadata?: Record<string, unknown>;
+}) {
+    const metadata = params.metadata || {};
+    console.log(`[AutoWelcome] Skipping ${params.username} for tenant ${params.tenantId || 'global'}: ${params.reason}`, metadata);
+    await recordShoutoutAudit({
+        status: 'skipped',
+        username: params.username,
+        displayName: params.displayName,
+        tenantId: params.tenantId,
+        source: 'auto-welcome',
+        reason: params.reason,
+        metadata,
+    });
+}
 
 const LORE_BOT_USERNAME_CACHE_MS = 30_000;
 let loreBotUsernameCache: { expiresAt: number; usernames: Set<string> } | null = null;
@@ -2193,6 +2213,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
 
             const arg = actualMessage.substring('!shoutoutaudit'.length).trim().replace(/^@/, '');
+            await recordShoutoutAudit({
+                status: 'phase',
+                phase: 'audit-command',
+                username: actualUsername,
+                displayName,
+                tenantId,
+                source: 'unknown',
+                message: 'Shoutout audit command invoked',
+                metadata: {
+                    requestedUser: arg || 'latest',
+                    command: '!shoutoutaudit',
+                },
+            });
             const { getConfiguredAppUrl } = require('../lib/runtime-origin');
             const baseUrl = getConfiguredAppUrl();
             const tenantQuery = tenantId ? `tenantId=${encodeURIComponent(tenantId)}` : '';
@@ -2201,9 +2234,26 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 ? `${baseUrl}/api/shoutout-audit/download?${tenantQuery ? `${tenantQuery}&` : ''}username=${encodeURIComponent(arg)}`
                 : '';
             const liveFilesUrl = `${baseUrl}/debug/data-files${tenantQuery ? `?${tenantQuery}` : ''}`;
+            let latestSummary = 'No recent shoutout audit entries found.';
+            try {
+                const { readRecentShoutoutAudit } = require('./shoutout-audit');
+                const records = await readRecentShoutoutAudit(tenantId, 100);
+                const normalizedArg = arg.toLowerCase();
+                const latest = records.find((record: any) => {
+                    if (!normalizedArg || normalizedArg === 'all') return true;
+                    return String(record.username || '').toLowerCase() === normalizedArg;
+                });
+                if (latest) {
+                    const when = latest.timestamp ? new Date(latest.timestamp).toLocaleTimeString('en-US', { hour12: false }) : 'unknown time';
+                    const detail = latest.reason || latest.phase || latest.message || latest.error || 'no detail';
+                    latestSummary = `Latest ${latest.username || 'entry'}: ${latest.status || 'unknown'} (${detail}) at ${when}`;
+                }
+            } catch (error) {
+                latestSummary = 'Could not read local audit summary; use the download link.';
+            }
             const message = filteredUrl
-                ? `Shoutout audit for ${arg}: ${filteredUrl} | All: ${allUrl} | Live Files: ${liveFilesUrl}`
-                : `Shoutout audit downloads: ${allUrl} | Per streamer: !shoutoutaudit @username | Live Files: ${liveFilesUrl}`;
+                ? `${latestSummary} | Full audit for ${arg}: ${filteredUrl} | All: ${allUrl}`
+                : `${latestSummary} | All audit: ${allUrl} | Per streamer: !shoutoutaudit @username | Live Files: ${liveFilesUrl}`;
 
             await reply(message, 'bot').catch(() => {});
             return;
@@ -2484,25 +2534,50 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !greetingmode command
-        if (actualMessage.toLowerCase() === '!greetingmode') {
+        // Handle !greetingmode / !greeting mode command
+        const greetingModeMatch = actualMessage.trim().toLowerCase().match(/^!(greetingmode|greeting\s+mode)(?:\s+(\S+))?$/);
+        if (greetingModeMatch) {
             if (tags.mod || tags.badges?.broadcaster) {
-                const { toggleMode } = await import('./modes-manager');
-                const toggled = await toggleMode('greetingmode', tenantId);
                 const labels: Record<string, string> = { full: '🎬 FULL (clip + chat + TTS)', overlay: '📺 OVERLAY (clip + overlay + TTS)', chat: '💬 CHAT (message only, no clip/TTS)' };
-                await reply(`🤖 Greeting mode: ${labels[toggled.current] || toggled.current}`, 'bot').catch(() => {});
+                const { getMode, setMode } = await import('./modes-manager');
+                const requested = greetingModeMatch[2]?.toLowerCase();
+                const normalized = requested === 'on' ? 'full' : requested;
+                if (!normalized || normalized === 'status') {
+                    const current = await getMode('greetingmode', tenantId);
+                    await reply(`🤖 Greeting mode is ${labels[current] || current}. Use !greetingmode full, !greetingmode overlay, or !greetingmode chat.`, 'bot').catch(() => {});
+                } else if (['full', 'overlay', 'chat'].includes(normalized)) {
+                    const set = await setMode('greetingmode', normalized, tenantId);
+                    await reply(`🤖 Greeting mode set to ${labels[set.current] || set.current}.`, 'bot').catch(() => {});
+                } else {
+                    await reply(`@${actualUsername}, use !greetingmode full, !greetingmode overlay, or !greetingmode chat.`, 'bot').catch(() => {});
+                }
             } else {
                 await reply(`@${actualUsername}, only mods can change greeting mode!`, 'bot').catch(() => {});
             }
             return;
         }
         
-        // Handle !welcomemode command
-        if (actualMessage.toLowerCase() === '!welcomemode') {
+        // Handle !welcomemode / !welcome mode command
+        const welcomeModeMatch = actualMessage.trim().toLowerCase().match(/^!(welcomemode|welcome\s+mode)(?:\s+(\S+))?$/);
+        if (welcomeModeMatch) {
             if (tags.mod || tags.badges?.broadcaster) {
-                const { toggleMode } = await import('./modes-manager');
-                const toggled = await toggleMode('welcomemode', tenantId);
-                await reply(`🎉 Welcome mode: ${toggled.current.toUpperCase()}`, 'bot').catch(() => {});
+                const { getMode, setMode } = await import('./modes-manager');
+                const requested = welcomeModeMatch[2]?.toLowerCase();
+                const normalized = requested === 'on' ? 'chat' : requested;
+                const labels: Record<string, string> = {
+                    chat: 'CHAT (auto walk-ons ON)',
+                    overlay: 'OVERLAY (auto walk-ons ON)',
+                    off: 'OFF (auto walk-ons disabled)',
+                };
+                if (!normalized || normalized === 'status') {
+                    const current = await getMode('welcomemode', tenantId);
+                    await reply(`🎉 Welcome mode is ${labels[current] || current}. Use !welcomemode chat, !welcomemode overlay, or !welcomemode off.`, 'bot').catch(() => {});
+                } else if (['chat', 'overlay', 'off'].includes(normalized)) {
+                    const set = await setMode('welcomemode', normalized, tenantId);
+                    await reply(`🎉 Welcome mode set to ${labels[set.current] || set.current}.`, 'bot').catch(() => {});
+                } else {
+                    await reply(`@${actualUsername}, use !welcomemode chat, !welcomemode overlay, or !welcomemode off.`, 'bot').catch(() => {});
+                }
             } else {
                 await reply(`@${actualUsername}, only mods can change welcome mode!`, 'bot').catch(() => {});
             }
@@ -3606,107 +3681,117 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 awardChatPoints(actualUsername, tenantCtx).catch(() => {});
             
                 // Skip welcome wagon for broadcaster, bot, and messages from voice commands
-                const skipWelcome = consumedByRedemption || tags.badges?.broadcaster || 
-                                    actualUsername.toLowerCase() === (botUsername || '').toLowerCase() ||
-                                    actualUsername.toLowerCase() === (broadcasterUsername || '').toLowerCase() ||
-                                    message.includes('🌟');
+                const lowerActualUsername = actualUsername.toLowerCase();
+                const skipWelcomeReason = consumedByRedemption
+                    ? 'consumed-by-redemption'
+                    : tags.badges?.broadcaster
+                        ? 'broadcaster-badge'
+                        : lowerActualUsername === (botUsername || '').toLowerCase()
+                            ? 'bot-username'
+                            : lowerActualUsername === (broadcasterUsername || '').toLowerCase()
+                                ? 'broadcaster-username'
+                                : message.includes('🌟')
+                                    ? 'voice-message'
+                                    : null;
             
-                const welcomeKey = `${tenantId || '__global__'}:${actualUsername.toLowerCase()}`;
-                if (skipWelcome) {
-                    await recordShoutoutAudit({
-                        status: 'skipped',
+                const welcomeKey = `${tenantId || '__global__'}:${lowerActualUsername}`;
+                if (skipWelcomeReason) {
+                    await recordAutoWelcomeSkip({
                         username: actualUsername,
                         displayName,
                         tenantId,
-                        source: 'auto-welcome',
-                        reason: tags.badges?.broadcaster ? 'broadcaster-message' : message.includes('🌟') ? 'voice-message' : 'bot-or-system-message',
+                        reason: skipWelcomeReason,
+                        metadata: {
+                            gate: 'pre-welcome',
+                            botUsername: botUsername || null,
+                            broadcasterUsername: broadcasterUsername || null,
+                            isBroadcasterBadge: Boolean(tags.badges?.broadcaster),
+                        },
                     });
                 } else if (pendingWelcomeUsers.has(welcomeKey)) {
-                    await recordShoutoutAudit({
-                        status: 'skipped',
+                    await recordAutoWelcomeSkip({
                         username: actualUsername,
                         displayName,
                         tenantId,
-                        source: 'auto-welcome',
                         reason: 'already-pending',
+                        metadata: { gate: 'pending-welcome', welcomeKey },
                     });
                 } else {
-                    const welcomeEligibility = await getWelcomeEligibility(actualUsername, tenantId);
-                    if (!welcomeEligibility.eligible) {
+                    const welcomeMode = await getWelcomeMode(tenantId);
+
+                    if (String(welcomeMode).toLowerCase() === 'off') {
+                        // Welcome disabled explicitly for this tenant.
+                        await recordAutoWelcomeSkip({
+                            username: actualUsername,
+                            displayName,
+                            tenantId,
+                            reason: 'welcome-mode-off',
+                            metadata: { gate: 'welcome-mode', welcomeMode },
+                        });
+                    } else {
+                        // Automatic walk-ons should happen for every real human first message
+                        // unless the tenant explicitly turns welcome mode off. Bypass the
+                        // shoutout cooldown/session tracker so "already welcomed" cannot
+                        // suppress a real walk-on.
+                        const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
+                        pendingWelcomeUsers.add(welcomeKey);
                         await recordShoutoutAudit({
-                            status: 'skipped',
+                            status: 'triggered',
                             username: actualUsername,
                             displayName,
                             tenantId,
                             source: 'auto-welcome',
-                            reason: welcomeEligibility.reason,
+                            metadata: { welcomeMode, cooldownBypassed: true },
                         });
-                    } else {
-                        const welcomeMode = await getWelcomeMode(tenantId);
-
-                        if (String(welcomeMode).toLowerCase() === 'off') {
-                            // Welcome disabled — do nothing
-                            await recordShoutoutAudit({
-                                status: 'skipped',
-                                username: actualUsername,
-                                displayName,
-                                tenantId,
-                                source: 'auto-welcome',
-                                reason: 'welcome-mode-off',
-                            });
-                        } else {
-                            // Let handleWalkOnShoutout use greetingmode to decide behavior
-                            const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
-                            pendingWelcomeUsers.add(welcomeKey);
-                            await recordShoutoutAudit({
-                                status: 'triggered',
-                                username: actualUsername,
-                                displayName,
-                                tenantId,
-                                source: 'auto-welcome',
-                                metadata: { welcomeMode },
-                            });
-                            handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId, { source: 'auto-welcome' })
-                                .then((completed) => {
-                                    if (completed) {
-                                        return markUserWelcomed(actualUsername, tenantId);
-                                    }
-                                    return recordShoutoutAudit({
-                                        status: 'skipped',
-                                        username: actualUsername,
-                                        displayName,
-                                        tenantId,
-                                        source: 'auto-welcome',
-                                        reason: 'handler-returned-false',
-                                    });
-                                })
-                                .catch(err => {
-                                    console.error('[Dispatcher] Walk-on shoutout failed:', err);
-                                    recordShoutoutAudit({
-                                        status: 'failed',
-                                        username: actualUsername,
-                                        displayName,
-                                        tenantId,
-                                        source: 'auto-welcome',
-                                        error: auditError(err),
-                                    }).catch(() => {});
-                                    const { queueWalkOnRetry } = require('./walk-on-recovery');
-                                    return queueWalkOnRetry({
-                                        tenantId,
-                                        username: actualUsername,
-                                        displayName,
-                                        profileImage,
-                                        error: err,
-                                    }).catch((queueErr: any) => {
-                                        console.error('[Dispatcher] Failed to queue walk-on recovery:', queueErr);
-                                    });
-                                })
-                                .finally(() => {
-                                    pendingWelcomeUsers.delete(welcomeKey);
+                        handleWalkOnShoutout(actualUsername, displayName, profileImage, true, tenantId, { source: 'auto-welcome' })
+                            .then((completed) => {
+                                if (completed) {
+                                    return markUserWelcomed(actualUsername, tenantId);
+                                }
+                                return recordShoutoutAudit({
+                                    status: 'skipped',
+                                    username: actualUsername,
+                                    displayName,
+                                    tenantId,
+                                    source: 'auto-welcome',
+                                    reason: 'handler-returned-false',
+                                    metadata: { gate: 'walk-on-handler', welcomeMode, cooldownBypassed: true },
                                 });
-                        }
+                            })
+                            .catch(err => {
+                                console.error('[Dispatcher] Walk-on shoutout failed:', err);
+                                recordShoutoutAudit({
+                                    status: 'failed',
+                                    username: actualUsername,
+                                    displayName,
+                                    tenantId,
+                                    source: 'auto-welcome',
+                                    error: auditError(err),
+                                }).catch(() => {});
+                                const { queueWalkOnRetry } = require('./walk-on-recovery');
+                                return queueWalkOnRetry({
+                                    tenantId,
+                                    username: actualUsername,
+                                    displayName,
+                                    profileImage,
+                                    error: err,
+                                }).catch((queueErr: any) => {
+                                    console.error('[Dispatcher] Failed to queue walk-on recovery:', queueErr);
+                                });
+                            })
+                            .finally(() => {
+                                pendingWelcomeUsers.delete(welcomeKey);
+                            });
                     }
                 }
+            } else {
+                await recordAutoWelcomeSkip({
+                    username: actualUsername,
+                    displayName,
+                    tenantId,
+                    reason: 'known-bot',
+                    metadata: { gate: 'known-bot' },
+                });
             }
         }
         
