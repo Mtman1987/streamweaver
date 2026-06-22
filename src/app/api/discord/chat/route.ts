@@ -23,6 +23,7 @@ import { registerHandledDiscordMessage } from '@/services/discord-message-dedupe
 import { hasDiscordModAccess } from '@/services/discord-permissions';
 import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub';
 import { detectBotRelayRequest } from '@/services/bot-relay';
+import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import {
   beginPendingMtSupportRequest,
   consumePendingMtSupportRequest,
@@ -197,6 +198,18 @@ export async function POST(request: NextRequest) {
           return apiOk({ success: true, botResponded: false, duplicate: true });
         }
       }
+      recordDiscordLastSeen({
+        userId,
+        username: normalized.username,
+        displayName: userName,
+        guildId,
+        guildName: normalized.guildName,
+        channelId,
+        channelName: normalized.channelName,
+        messageId: normalized.messageId,
+        tenantId: normalized.tenantId,
+        createdAt: normalized.createdAt,
+      }).catch((error) => console.warn('[Discord Chat] Last-seen record failed:', error));
     }
 
     const permissionFieldsPresent =
@@ -630,12 +643,10 @@ export async function POST(request: NextRequest) {
             const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
             const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
             const sentAck = await sendWebhookMessage(channelId, ackReply, webhookIdentity.username, avatarUrl, [ackEmbed]).catch(() => null);
-            if (normalized.messageId) {
-              await deleteMessage(channelId, normalized.messageId).catch(() => {});
-            }
             await recordDiscordMessageCleanup({
               tenantId: botTenantId || tenantId || undefined,
               channelId,
+              triggerMessageId: normalized.messageId,
               replyMessageIds: [sentAck?.id || ''],
               replyMessages: [ackReply],
               sourceUser: userName,
@@ -736,9 +747,6 @@ export async function POST(request: NextRequest) {
         }
 
         if (!relayOnly) {
-          if (normalized.messageId) {
-            await deleteMessage(channelId, normalized.messageId).catch(() => {});
-          }
           const followUpDecision = botInteractionDecision?.shouldRespond
             ? botInteractionDecision
             : await decideReplyMentionInteraction({
@@ -759,6 +767,7 @@ export async function POST(request: NextRequest) {
           await recordDiscordMessageCleanup({
             tenantId: botTenantId || tenantId || undefined,
             channelId,
+            triggerMessageId: normalized.messageId,
             triggerMessage: message,
             replyMessageIds: [
               sentReply?.id || '',

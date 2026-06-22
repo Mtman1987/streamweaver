@@ -10,13 +10,7 @@ export function pickTwitchReplyChannel(input: {
   responseTenantChannel?: string;
 }): string {
   const sourceChannel = String(input.sourceChannel || '').trim().replace(/^#/, '').toLowerCase();
-  const responseTenantChannel = String(input.responseTenantChannel || '').trim().replace(/^#/, '').toLowerCase();
-
-  if (!input.responseTenantId || input.responseTenantId === input.sourceTenantId) {
-    return sourceChannel;
-  }
-
-  return responseTenantChannel || sourceChannel;
+  return sourceChannel;
 }
 
 export async function getTenantBroadcasterChannel(tenantId?: string): Promise<string> {

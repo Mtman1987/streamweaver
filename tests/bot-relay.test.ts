@@ -33,3 +33,15 @@ test('detects relay requests addressed to a streamer username', () => {
   assert.equal(result.targetName, 'mtman1987');
   assert.equal(result.relayMessage, 'to come play halo with me');
 });
+
+test('keeps quoted relay content available for exact delivery', () => {
+  const result = detectBotRelayRequest({
+    message: 'Athena tell mothermayrien that I said "heello"',
+    speakerName: 'Athena',
+    targets: [reaper],
+  });
+
+  assert.equal(result.matched, true);
+  assert.equal(result.targetName, 'mothermayrien');
+  assert.equal(result.relayMessage, 'I said "heello"');
+});

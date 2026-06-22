@@ -64,6 +64,7 @@ import {
     getMtSupportPrompt,
     submitMtSupportReport,
 } from './mt-support-report';
+import { findDiscordLastSeenForNames } from './discord-last-seen';
 
 type DiscordDispatchOptions = {
     skipPublicHistory?: boolean;
@@ -333,8 +334,14 @@ async function buildRelayDeliveryMessage(input: {
     target: WorldLoreCharacter;
     relayMessage: string;
     targetTenantId?: string;
-    deliveryMode: 'live' | 'dm';
+    deliveryMode: 'live' | 'discord' | 'dm';
 }): Promise<string> {
+    const exactQuotedMessage = extractQuotedRelayMessage(input.relayMessage);
+    const deliveryInstruction = input.deliveryMode === 'live'
+        ? 'Tell your streamer or chat about it in one short natural sentence.'
+        : input.deliveryMode === 'discord'
+            ? 'Tell your streamer in the Discord channel where they were last active in one short natural sentence.'
+            : 'Tell your streamer privately in one short natural sentence.';
     const targetPersonality = [
         `You are ${input.target.currentName}.`,
         input.target.archetype ? `Archetype: ${input.target.archetype}.` : '',
@@ -342,17 +349,20 @@ async function buildRelayDeliveryMessage(input: {
         input.target.personalityNotes?.length ? input.target.personalityNotes.join(' ') : '',
         input.deliveryMode === 'live'
             ? 'You are speaking in your streamer live chat.'
-            : 'You are privately DMing your streamer because they are offline.',
+            : input.deliveryMode === 'discord'
+                ? 'You are speaking in the Discord channel where your streamer was last active.'
+                : 'You are privately DMing your streamer because they are offline.',
     ].filter(Boolean).join('\n');
 
     const prompt = [
         'Cross-bot relay delivery.',
         `${input.sourceUserName} asked ${input.speaker.currentName} to pass along: "${input.relayMessage}"`,
-        input.deliveryMode === 'live'
-            ? 'Tell your streamer or chat about it in one short natural sentence.'
-            : 'Tell your streamer privately in one short natural sentence.',
+        exactQuotedMessage
+            ? `You must include this exact quoted message without changing spelling, punctuation, or casing: "${exactQuotedMessage}"`
+            : '',
+        deliveryInstruction,
         'Do not mention internal systems or say this is automated.',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     const aiRes = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
         method: 'POST',
@@ -374,7 +384,19 @@ async function buildRelayDeliveryMessage(input: {
     const data = await aiRes.json();
     const reply = String(data.response || data.data?.response || '').trim();
     if (!reply) throw new Error('Relay AI returned an empty response');
-    return reply;
+    return ensureRelayQuoteIncluded(reply, input.relayMessage);
+}
+
+function extractQuotedRelayMessage(message: string): string | null {
+    const match = String(message || '').match(/"([^"]+)"|'([^']+)'|“([^”]+)”|‘([^’]+)’/);
+    const quoted = String(match?.[1] || match?.[2] || match?.[3] || match?.[4] || '').trim();
+    return quoted || null;
+}
+
+function ensureRelayQuoteIncluded(reply: string, relayMessage: string): string {
+    const exactQuotedMessage = extractQuotedRelayMessage(relayMessage);
+    if (!exactQuotedMessage || reply.includes(exactQuotedMessage)) return reply;
+    return `${reply} "${exactQuotedMessage}"`;
 }
 
 export async function deliverBotRelay(input: {
@@ -386,7 +408,7 @@ export async function deliverBotRelay(input: {
     target: WorldLoreCharacter;
     targetTenantId?: string;
     relayMessage: string;
-}): Promise<{ delivered: boolean; mode?: 'live' | 'dm'; error?: string }> {
+}): Promise<{ delivered: boolean; mode?: 'live' | 'discord' | 'dm'; error?: string }> {
     const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, input.speakerTenantId);
     if (!targetTenantId) {
         return { delivered: false, error: `could not resolve ${input.target.currentName}` };
@@ -450,9 +472,40 @@ export async function deliverBotRelay(input: {
             return { delivered: false, error: chatError || `could not send to ${broadcasterChannel}'s Twitch chat` };
         }
 
+        let discordDelivered = false;
+        let discordError = '';
+        try {
+            const discordLastSeen = await findDiscordLastSeenForNames([
+                broadcasterChannel,
+                input.target.currentName,
+                ...(input.target.aliases || []),
+                ...(input.target.previousNames || []),
+            ]);
+            if (!discordLastSeen?.channelId) {
+                throw new Error(`${input.target.currentName} has no Discord last-seen channel`);
+            }
+            const discordText = await buildRelayDeliveryMessage({
+                sourceUserName: input.sourceUserName,
+                speaker: input.speaker,
+                target: input.target,
+                relayMessage: input.relayMessage,
+                targetTenantId,
+                deliveryMode: 'discord',
+            });
+            await sendDiscordMessage(discordLastSeen.channelId, discordText, input.target.currentName);
+            discordDelivered = true;
+        } catch (error: any) {
+            discordError = error?.message || 'unknown Discord last-seen error';
+            console.warn('[Dispatcher] Bot relay Discord last-seen backup failed:', {
+                targetTenantId,
+                targetBot: input.target.currentName,
+                error: discordError,
+            });
+        }
+
         let dmDelivered = false;
         let dmError = '';
-        try {
+        if (!discordDelivered) try {
             const dmChannelId = await getTenantDiscordDmChannelId(targetTenantId);
             if (!dmChannelId) {
                 throw new Error(`${input.target.currentName} does not have a DM channel configured`);
@@ -478,7 +531,7 @@ export async function deliverBotRelay(input: {
             });
         }
 
-        if (chatDelivered || dmDelivered) {
+        if (chatDelivered || discordDelivered || dmDelivered) {
             await appendPublicChatMessages([{
                 type: 'ai',
                 username: input.target.currentName,
@@ -489,15 +542,15 @@ export async function deliverBotRelay(input: {
             recordDashboardActivity({
                 id: `relay-${Date.now()}`,
                 tenantId: targetTenantId,
-                platform: chatDelivered ? 'Twitch' : 'Discord',
+                platform: chatDelivered && !discordDelivered ? 'Twitch' : 'Discord',
                 user: input.target.currentName,
                 message: `${input.speaker.currentName} relayed: ${input.relayMessage}`,
             });
 
-            return { delivered: true, mode: chatDelivered ? 'live' : 'dm' };
+            return { delivered: true, mode: discordDelivered ? 'discord' : chatDelivered ? 'live' : 'dm' };
         }
 
-        return { delivered: false, error: chatError || dmError || `could not deliver to ${input.target.currentName}` };
+        return { delivered: false, error: chatError || discordError || dmError || `could not deliver to ${input.target.currentName}` };
     } catch (error: any) {
         console.error('[Dispatcher] Bot relay delivery failed:', error);
         return { delivered: false, error: error?.message || 'unknown error' };
@@ -1292,6 +1345,7 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
 }
 
 const ATHENA_STABLE_ID = `${ATHENA_WHITELIST_TENANT_ID}:athena`;
+const ATHENA_ALIAS_OVERRIDE_USERS = new Set(['mtman1987', 'mtman']);
 
 async function getAthenaEverywhereMode(): Promise<'on' | 'off'> {
     if (process.env.ATHENA_EVERYWHERE_MODE === 'false') return 'off';
@@ -1329,9 +1383,13 @@ async function canRouteAthenaForUser(input: {
     }
 }
 
+function canUseAthenaAliasOverride(username: string): boolean {
+    return ATHENA_ALIAS_OVERRIDE_USERS.has(String(username || '').trim().replace(/^@/, '').toLowerCase());
+}
+
 async function getFirstMentionedLoreBot(message: string) {
     const lower = message.toLowerCase();
-    const athenaIndex = firstNameIndex(lower, ['athena', 'athenabot87']);
+    const athenaIndex = firstNameIndex(lower, ['athena', 'annie', 'athenabot87']);
     try {
         const { readWorldLore } = await import('../lib/world-lore-store');
         const { firstMentionedCharacter } = await import('../lib/bot-interactions-store');
@@ -1348,7 +1406,7 @@ async function getFirstMentionedLoreBot(message: string) {
                 return {
                     stableId: ATHENA_STABLE_ID,
                     currentName: 'Athena',
-                    aliases: ['Athena', 'Athenabot87'],
+                    aliases: ['Athena', 'Annie', 'Athenabot87'],
                 };
             }
         }
@@ -1358,7 +1416,7 @@ async function getFirstMentionedLoreBot(message: string) {
             return {
                 stableId: ATHENA_STABLE_ID,
                 currentName: 'Athena',
-                aliases: ['Athena', 'Athenabot87'],
+                aliases: ['Athena', 'Annie', 'Athenabot87'],
             };
         }
         return null;
@@ -3717,10 +3775,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const firstExplicitTwitchBot = explicitTwitchBotMentions[0];
             const firstLoreTenantId = firstLoreBot ? await resolveTenantForLoreBot(firstLoreBot, undefined) : undefined;
             const firstLoreIndex = getLoreCharacterFirstIndex(actualMessage, firstLoreBot);
+            const isHumanSpeaker = !userIsKnownBot;
+            const canUseAthenaAliasAnywhere = isHumanSpeaker
+                && canUseAthenaAliasOverride(actualUsername)
+                && firstLoreBot?.stableId === ATHENA_STABLE_ID;
             const shouldPreferExplicitTwitchBot = !!firstExplicitTwitchBot
                 && (firstLoreIndex < 0 || firstExplicitTwitchBot.index <= firstLoreIndex);
-            const routedExternalBot = shouldPreferExplicitTwitchBot ? firstExplicitTwitchBot?.character : firstLoreBot;
-            const routedExternalTenantId = shouldPreferExplicitTwitchBot ? firstExplicitTwitchBot?.tenantId : firstLoreTenantId;
+            const routedExternalBot = isHumanSpeaker && (shouldPreferExplicitTwitchBot || canUseAthenaAliasAnywhere)
+                ? (shouldPreferExplicitTwitchBot ? firstExplicitTwitchBot?.character : firstLoreBot)
+                : undefined;
+            const routedExternalTenantId = isHumanSpeaker && (shouldPreferExplicitTwitchBot || canUseAthenaAliasAnywhere)
+                ? (shouldPreferExplicitTwitchBot ? firstExplicitTwitchBot?.tenantId : firstLoreTenantId)
+                : undefined;
 
             if (routedExternalBot && routedExternalTenantId && routedExternalTenantId !== tenantId) {
                 const isAthenaEverywhere = routedExternalBot.stableId === ATHENA_STABLE_ID;

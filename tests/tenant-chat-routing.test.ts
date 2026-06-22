@@ -15,7 +15,7 @@ test('keeps replies in the source channel when the responding tenant matches the
   );
 });
 
-test('routes cross-tenant replies back to the responding tenant home channel', () => {
+test('keeps cross-tenant replies in the source channel', () => {
   assert.equal(
     pickTwitchReplyChannel({
       sourceChannel: 'jaskuthebeardedgamer',
@@ -23,11 +23,11 @@ test('routes cross-tenant replies back to the responding tenant home channel', (
       responseTenantId: 'tenant-athena',
       responseTenantChannel: 'mtman1987',
     }),
-    'mtman1987',
+    'jaskuthebeardedgamer',
   );
 });
 
-test('falls back to the source channel if the target tenant channel is unavailable', () => {
+test('normalizes source channel even when target tenant channel is unavailable', () => {
   assert.equal(
     pickTwitchReplyChannel({
       sourceChannel: '#jaskuthebeardedgamer',
