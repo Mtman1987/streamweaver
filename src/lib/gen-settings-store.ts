@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
 
 export type GenerationSettings = {
-  mode: 'eden' | 'seaart' | 'perchance';
+  mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
   model: string;
   lora: string;
   loraStrength: number;
@@ -12,7 +12,18 @@ export type GenerationSettings = {
   steps: number;
   cfg: number;
   seed: number;
+  optimizeImagePrompts: boolean;
+  showOptimizedPrompt: boolean;
+  imagePromptTemplate: string;
 };
+
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = [
+  'Rewrite the user idea into one concise image-generation prompt.',
+  'Preserve the user intent and do not add unrelated subjects.',
+  'Add useful visual detail: subject, medium/style, composition, lighting, background, mood, color, and quality cues.',
+  'If the user asks for an avatar, include clean character framing and background details suitable for avatar art.',
+  'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+].join('\n');
 
 const defaults: GenerationSettings = {
   mode: 'eden',
@@ -24,6 +35,9 @@ const defaults: GenerationSettings = {
   steps: 30,
   cfg: 7,
   seed: 0,
+  optimizeImagePrompts: true,
+  showOptimizedPrompt: false,
+  imagePromptTemplate: DEFAULT_IMAGE_PROMPT_TEMPLATE,
 };
 
 function filePath(tenantId?: string): string {
@@ -36,7 +50,7 @@ export function getDefaultGenerationSettings(): GenerationSettings {
 }
 
 function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
-  const mode = input.mode === 'seaart' || input.mode === 'perchance' ? input.mode : 'eden';
+  const mode = input.mode === 'seaart' || input.mode === 'perchance' || input.mode === 'pollinations' ? input.mode : 'eden';
   const imageCount = Math.max(1, Math.min(4, Number(input.imageCount || defaults.imageCount) || defaults.imageCount));
   const loraStrength = Math.max(0, Math.min(2, Number(input.loraStrength ?? defaults.loraStrength) || 0));
   const steps = Math.max(1, Math.min(150, Number(input.steps || defaults.steps) || defaults.steps));
@@ -53,6 +67,9 @@ function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
     steps,
     cfg,
     seed,
+    optimizeImagePrompts: input.optimizeImagePrompts !== false,
+    showOptimizedPrompt: input.showOptimizedPrompt === true,
+    imagePromptTemplate: String(input.imagePromptTemplate || defaults.imagePromptTemplate).trim() || defaults.imagePromptTemplate,
   };
 }
 

@@ -6,7 +6,7 @@ import { setGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
 const schema = z.object({
-  mode: z.enum(['eden', 'seaart', 'perchance']).optional(),
+  mode: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
   model: z.string().trim().max(200).optional(),
   lora: z.string().trim().max(200).optional(),
   loraStrength: z.coerce.number().min(0).max(2).optional(),
@@ -15,6 +15,9 @@ const schema = z.object({
   steps: z.coerce.number().int().min(1).max(150).optional(),
   cfg: z.coerce.number().min(1).max(30).optional(),
   seed: z.coerce.number().int().min(0).optional(),
+  optimizeImagePrompts: z.coerce.boolean().optional(),
+  showOptimizedPrompt: z.coerce.boolean().optional(),
+  imagePromptTemplate: z.string().trim().max(3000).optional(),
 });
 
 export async function GET(request: NextRequest) {

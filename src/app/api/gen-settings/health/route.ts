@@ -37,6 +37,12 @@ export async function GET(request: NextRequest) {
     {
       name: 'perchance',
       configured: true,
+      ...(!process.env.PERCHANCE_ENDPOINT_TEMPLATE ? { reason: 'perchance.org blocks server-side requests; using no-key image fallback' } : {}),
+    },
+    {
+      name: 'pollinations',
+      configured: true,
+      reason: 'no-key static image fallback',
     },
   ];
 

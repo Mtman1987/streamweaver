@@ -30,6 +30,7 @@ import {
   getMtSupportPrompt,
   submitMtSupportReport,
 } from '@/services/mt-support-report';
+import { runImageCommand } from '@/services/image-command';
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -413,14 +414,14 @@ export async function POST(request: NextRequest) {
       const markHandled = () => markDmMessageHandled(tenantId!, normalized.messageId);
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
-      const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|status))?$/i);
+      const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|pollinations|status))?$/i);
       if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (imgMatch || genModeMatch)) {
         await markHandled();
         return apiOk({ success: true, botResponded: false, tenantId, context: 'private-image-dev-mode' });
       }
       if (genModeMatch) {
         const action = (genModeMatch[1] || '').toLowerCase();
-        const mode = action === 'eden' || action === 'seaart' || action === 'perchance'
+        const mode = action === 'eden' || action === 'seaart' || action === 'perchance' || action === 'pollinations'
           ? await setGenMode(action, tenantId)
           : action === 'status'
             ? await getGenMode(tenantId)
@@ -440,39 +441,22 @@ export async function POST(request: NextRequest) {
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
         }
 
-        const genDefaults = await readGenerationSettings(tenantId);
         if (channelId) {
           await sendDiscordBotMessage(channelId, "I'm processing your image now, Commander.");
         }
-        const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt,
-            tenantId,
-            model: genDefaults.model || undefined,
-            resolution: genDefaults.resolution || undefined,
-            numImages: genDefaults.imageCount || 1,
-            providerParams: {
-              lora: genDefaults.lora || undefined,
-              loraStrength: genDefaults.loraStrength,
-              steps: genDefaults.steps,
-              cfg: genDefaults.cfg,
-              seed: genDefaults.seed,
-            },
-          }),
-        });
 
-        if (!imageRes.ok) {
+        let result;
+        try {
+          result = await runImageCommand(message, tenantId);
+        } catch (error) {
+          console.warn(`[Discord Chat:${tenantId}] !img failed:`, error);
           if (channelId) {
             await sendDiscordBotMessage(channelId, 'Image generation failed. Try again in a moment.');
           }
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'image-failed' });
         }
 
-        const imageData = await imageRes.json();
-        const imageUrl = await maybeShortenUrl(imageData?.image || imageData?.imageResourceUrl || imageData?.data?.image || '');
-        if (!imageUrl) {
+        if (!result.images.length) {
           if (channelId) {
             await sendDiscordBotMessage(channelId, 'Image generation returned no image URL.');
           }
@@ -480,10 +464,18 @@ export async function POST(request: NextRequest) {
         }
 
         if (channelId) {
-          await sendDiscordBotMessage(channelId, imageUrl);
+          if (result.optimizedPrompt) {
+            const settings = await readGenerationSettings(tenantId);
+            if (settings.showOptimizedPrompt) {
+              await sendDiscordBotMessage(channelId, `Optimized prompt: ${result.optimizedPrompt.slice(0, 1500)}`);
+            }
+          }
+          for (const image of result.images) {
+            await sendDiscordBotMessage(channelId, await maybeShortenUrl(image));
+          }
         }
         await markHandled();
-        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', image: imageUrl });
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', images: result.images });
       }
 
       const privateRes = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {

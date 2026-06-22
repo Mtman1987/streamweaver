@@ -3,6 +3,8 @@ import { readUserConfigSync } from '@/lib/user-config';
 export type ImageGenerationResult = {
   image?: string;
   imageResourceUrl?: string;
+  images?: string[];
+  imageResourceUrls?: string[];
   raw: unknown;
 };
 
@@ -14,6 +16,94 @@ export type ImageGenerationOptions = {
   numImages?: number;
   providerParams?: Record<string, unknown>;
 };
+
+function readResponseBody(response: Response): Promise<unknown> {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) {
+    return response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+  }
+  return response.text().catch(() => '');
+}
+
+function summarizeResponseBody(data: unknown): string {
+  return (typeof data === 'string' ? data : JSON.stringify(data)).slice(0, 500);
+}
+
+function looksLikeCloudflareChallenge(response: Response, data: unknown): boolean {
+  const text = typeof data === 'string' ? data : JSON.stringify(data);
+  return response.status === 403
+    && /just a moment|cloudflare|challenges\.cloudflare\.com/i.test(text);
+}
+
+function parseResolution(resolution?: string): { width: number; height: number } {
+  const value = String(resolution || '').trim().toLowerCase();
+  const explicit = value.match(/^(\d{3,4})\s*x\s*(\d{3,4})$/);
+  if (explicit) {
+    return {
+      width: Math.max(256, Math.min(1536, Number(explicit[1]))),
+      height: Math.max(256, Math.min(1536, Number(explicit[2]))),
+    };
+  }
+  if (value === 'landscape') return { width: 1024, height: 768 };
+  if (value === 'portrait') return { width: 768, height: 1024 };
+  return { width: 1024, height: 1024 };
+}
+
+function makePollinationsUrls(options: ImageGenerationOptions): string[] {
+  const { width, height } = parseResolution(options.resolution);
+  const count = Math.max(1, Math.min(4, Number(options.numImages || options.providerParams?.count || 1) || 1));
+  const seed = Math.floor(Number(options.providerParams?.seed || 0) || 0);
+  return Array.from({ length: count }, (_, index) => {
+    const url = new URL(`https://image.pollinations.ai/prompt/${encodeURIComponent(options.prompt)}`);
+    url.searchParams.set('width', String(width));
+    url.searchParams.set('height', String(height));
+    url.searchParams.set('nologo', 'true');
+    if (options.providerParams?.safe !== false) url.searchParams.set('safe', 'true');
+    if (seed > 0) url.searchParams.set('seed', String(seed + index));
+    return url.toString();
+  });
+}
+
+const seaArtModels: Record<string, { modelNo: string; modelVerNo: string; hd: boolean }> = {
+  'seaart-infinity': {
+    modelNo: 'f8172af6747ec762bcf847bd60fdf7cd',
+    modelVerNo: '2c39fe1f-f5d6-4b50-a273-499677f2f7a9',
+    hd: true,
+  },
+  'seaart-film': {
+    modelNo: '26058e019e3a0c026e1ad2bfa69e2b75',
+    modelVerNo: '91b19145-a436-4bbc-ace4-62399e71336b',
+    hd: true,
+  },
+  'seaart-film-edit-3': {
+    modelNo: 'd6eqg15e878c73dilcv0',
+    modelVerNo: 'a8b3e33e-02b5-4a27-bca8-c331c87b267f',
+    hd: true,
+  },
+  'wai-ani-ponyxl': {
+    modelNo: '24231feb2db47b663ff5b3123f01fab6',
+    modelVerNo: '6e2e976db9a8e83312a0c91b852f876c',
+    hd: false,
+  },
+};
+
+function getSeaArtModel(options: ImageGenerationOptions): { modelNo: string; modelVerNo: string; hd: boolean } {
+  const key = String(options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'wai-ani-ponyxl').trim();
+  const preset = seaArtModels[key] || seaArtModels['wai-ani-ponyxl'];
+  const modelNo = String(options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || preset.modelNo).trim();
+  const modelVerNo = String(options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || preset.modelVerNo).trim();
+  return { modelNo, modelVerNo, hd: preset.hd };
+}
+
+function normalizeSeaArtDimensions(resolution: string | undefined, hd: boolean): { width: number; height: number } {
+  let { width, height } = parseResolution(resolution);
+  if (hd && width * height < 3686400) {
+    const scale = Math.sqrt(3686400 / (width * height));
+    width = Math.ceil((width * scale) / 64) * 64;
+    height = Math.ceil((height * scale) / 64) * 64;
+  }
+  return { width, height };
+}
 
 function getEdenAIKey(tenantId?: string): string {
   const config = readUserConfigSync(tenantId);
@@ -31,9 +121,14 @@ function getDefaultImageModel(tenantId?: string): string {
 
 function extractImageResult(data: any): ImageGenerationResult {
   const item = data?.output?.items?.[0] || data?.items?.[0] || data?.output?.[0] || data?.[0];
+  const items = data?.output?.items || data?.items || data?.output || data;
+  const list = Array.isArray(items) ? items : [];
+  const images = list.map((entry: any) => entry?.image || entry?.image_resource_url || entry?.imageResourceUrl || entry).filter(Boolean);
   return {
     image: item?.image || data?.output?.image || data?.image,
     imageResourceUrl: item?.image_resource_url || item?.imageResourceUrl || data?.output?.image_resource_url || data?.image_resource_url,
+    images,
+    imageResourceUrls: images,
     raw: data,
   };
 }
@@ -80,107 +175,174 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
   if (!token) throw new Error('SEAART_TOKEN not configured');
 
-  const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai/api';
-  const createEndpoints = (
-    process.env.SEAART_TEXT2IMG_ENDPOINTS
-      || process.env.SEAART_TEXT2IMG_ENDPOINT
-      || '/task/text2img,/v1/task/text2img,/task/create/text2img,/task/create'
-  )
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai';
+  const createEndpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/api/v1/task/v2/text-to-img';
+  const progressEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/api/v1/task/batch-progress';
+  const { modelNo, modelVerNo, hd } = getSeaArtModel(options);
+  const { width, height } = normalizeSeaArtDimensions(options.resolution, hd);
+  const nIter = Math.max(1, Math.min(8, Number(options.numImages || options.providerParams?.n_iter || 1) || 1));
+  const steps = Number(options.providerParams?.steps || 0);
+  const cfg = Number(options.providerParams?.cfg || 7);
+  const negativePrompt = String(options.providerParams?.negativePrompt || options.providerParams?.negative_prompt || '');
 
-  const taskResultEndpoints = (
-    process.env.SEAART_TASK_RESULT_ENDPOINTS
-      || process.env.SEAART_TASK_RESULT_ENDPOINT
-      || '/task/result,/v1/task/result,/task/status'
-  )
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const headers = {
+  const headers: Record<string, string> = {
     Cookie: `T=${token}`,
+    Accept: 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
     Origin: 'https://www.seaart.ai',
-    Referer: 'https://www.seaart.ai/',
+    Referer: 'https://www.seaart.ai/create/image',
+    'User-Agent': 'Mozilla/5.0 StreamWeaver SeaArt image-provider',
+    'x-app-id': 'web_global_seaart',
+    'x-platform': 'web',
+    'x-project-id': 'seaart',
   };
 
-  let taskId = '';
-  let createErrorSummary = '';
-  let createEndpointUsed = '';
-  for (const endpoint of createEndpoints) {
-    const create = await fetch(`${base}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ prompt: options.prompt }),
-    });
-    const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
-    if (!create.ok) {
-      createErrorSummary = `${endpoint} -> ${create.status} ${JSON.stringify(createData).slice(0, 180)}`;
-      continue;
-    }
-    taskId = createData?.taskId || createData?.data?.taskId || createData?.result?.taskId || '';
-    if (taskId) {
-      createEndpointUsed = endpoint;
-      break;
-    }
-    createErrorSummary = `${endpoint} -> ok but no taskId (${JSON.stringify(createData).slice(0, 180)})`;
+  const meta: Record<string, unknown> = {
+    prompt: options.prompt,
+    network_remix_local_prompt: options.prompt,
+    cfa_scale: cfg,
+    clip_skip: 2,
+    embeddings: [],
+    generate: {
+      anime_enhance: 0,
+      mode: 0,
+      gen_mode: 1,
+      prompt_magic_mode: 2,
+    },
+    height,
+    width,
+    lab_base: { conds: [] },
+    lora_models: [],
+    n_iter: nIter,
+    negative_prompt: negativePrompt,
+    restore_faces: false,
+    sampler_name: 'DPM++ 2M Karras',
+    vae: 'None',
+  };
+  if (steps > 0) meta.steps = steps;
+
+  const create = await fetch(`${base}${createEndpoint}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model_no: modelNo,
+      model_ver_no: modelVerNo,
+      meta,
+      speed_type: 2,
+    }),
+  });
+  const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
+  if (!create.ok) {
+    throw new Error(`SeaArt create failed: ${create.status} ${JSON.stringify(createData).slice(0, 500)}`);
+  }
+  const createStatus = createData?.status?.code || createData?.code;
+  if (createStatus !== 10000) {
+    throw new Error(`SeaArt create failed: ${createStatus || 'unknown'} ${createData?.status?.msg || JSON.stringify(createData).slice(0, 500)}`);
   }
 
+  const taskId = createData?.data?.id || createData?.taskId || createData?.data?.taskId || '';
   if (!taskId) {
-    throw new Error(`SeaArt create failed across endpoints. Last error: ${createErrorSummary || 'unknown'}`);
+    throw new Error(`SeaArt create returned no task id: ${JSON.stringify(createData).slice(0, 500)}`);
   }
 
-  console.info(`[SeaArt] create endpoint succeeded: ${createEndpointUsed}`);
+  console.info(`[SeaArt] create endpoint succeeded: ${createEndpoint}`);
 
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
-    let lastStatusError = '';
-    for (const statusEndpoint of taskResultEndpoints) {
-      const statusRes = await fetch(`${base}${statusEndpoint}?taskId=${encodeURIComponent(taskId)}`, {
-        headers: { Cookie: `T=${token}` },
-      });
-      const statusData = await statusRes.json().catch(async () => ({ error: await statusRes.text().catch(() => '') }));
-      if (!statusRes.ok) {
-        lastStatusError = `${statusEndpoint} -> ${statusRes.status} ${JSON.stringify(statusData).slice(0, 180)}`;
-        continue;
-      }
-      const status = statusData?.status || statusData?.data?.status || statusData?.result?.status;
-      if (status === 'success') {
-        const result = extractImageResult(statusData);
-        if (!result.image && !result.imageResourceUrl) {
-          throw new Error(`SeaArt task succeeded but returned no image: ${JSON.stringify(statusData).slice(0, 500)}`);
-        }
-        return result;
-      }
-      if (status === 'failed') throw new Error('SeaArt task failed');
+    const statusRes = await fetch(`${base}${progressEndpoint}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ task_ids: [taskId] }),
+    });
+    const statusData = await statusRes.json().catch(async () => ({ error: await statusRes.text().catch(() => '') }));
+    if (!statusRes.ok) {
+      console.info(`[SeaArt] status probe: ${statusRes.status} ${JSON.stringify(statusData).slice(0, 180)}`);
+      await new Promise((r) => setTimeout(r, 5000));
+      continue;
     }
-    if (lastStatusError) {
-      console.info(`[SeaArt] status probe (pending/fallback): ${lastStatusError}`);
+    const task = (statusData?.data?.items || []).find((item: any) => item?.task_id === taskId) || statusData?.data?.items?.[0];
+    if (task?.status === 3) {
+      const imgUris = Array.isArray(task?.img_uris) ? task.img_uris : [];
+      const urls = imgUris
+        .map((item: any) => typeof item === 'string' ? item : item?.url)
+        .filter(Boolean)
+        .map((value: string) => /^https?:\/\//i.test(value) ? value : `https://image.cdn2.seaart.me/${value}`);
+      const first = urls[0];
+      if (!first) {
+        throw new Error(`SeaArt task succeeded but returned no image: ${JSON.stringify(task).slice(0, 500)}`);
+      }
+      return { imageResourceUrl: first, imageResourceUrls: urls, raw: statusData };
     }
-    await new Promise((r) => setTimeout(r, 2500));
+    if (task?.status === 4 || task?.status === 5) {
+      throw new Error(`SeaArt task failed: ${task?.fail_reason || JSON.stringify(task).slice(0, 300)}`);
+    }
+    await new Promise((r) => setTimeout(r, 5000));
   }
   throw new Error('SeaArt task timed out');
+}
+
+export async function generateImageWithPollinations(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  const imageResourceUrls = makePollinationsUrls(options);
+  return {
+    imageResourceUrl: imageResourceUrls[0],
+    imageResourceUrls,
+    raw: {
+      provider: 'pollinations',
+      count: imageResourceUrls.length,
+    },
+  };
 }
 
 export async function generateImageWithPerchance(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
   const generator = String(options.providerParams?.generator || process.env.PERCHANCE_GENERATOR || 'ai-text-to-image').trim();
   const count = Number(options.numImages || options.providerParams?.count || 1);
-  const endpoint = `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${Math.max(1, Math.min(4, count))}&prompt=${encodeURIComponent(options.prompt)}`;
+  const cappedCount = Math.max(1, Math.min(4, count));
+  const endpointTemplate = String(process.env.PERCHANCE_ENDPOINT_TEMPLATE || '').trim();
+  const endpoint = endpointTemplate
+    ? endpointTemplate
+        .replaceAll('{generator}', encodeURIComponent(generator))
+        .replaceAll('{count}', encodeURIComponent(String(cappedCount)))
+        .replaceAll('{prompt}', encodeURIComponent(options.prompt))
+    : `https://perchance.org/api/generateList.php?generator=${encodeURIComponent(generator)}&count=${cappedCount}&prompt=${encodeURIComponent(options.prompt)}`;
 
-  const response = await fetch(endpoint, { method: 'GET' });
-  const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
-  if (!response.ok) {
-    throw new Error(`Perchance generation failed: ${response.status} ${JSON.stringify(data).slice(0, 500)}`);
-  }
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json,text/plain;q=0.9,*/*;q=0.8',
+      'User-Agent': 'StreamWeaver/0.2 image-provider',
+    },
+  });
+  const data = await readResponseBody(response);
+  if (response.ok) {
+    const first = Array.isArray(data) ? String(data[0] || '').trim() : '';
+    const urlMatch = first.match(/https?:\/\/\S+/i);
+    const image = urlMatch ? urlMatch[0] : first;
+    if (image) {
+      return { image, raw: data };
+    }
 
-  const first = Array.isArray(data) ? String(data[0] || '').trim() : '';
-  const urlMatch = first.match(/https?:\/\/\S+/i);
-  const image = urlMatch ? urlMatch[0] : first;
-  if (!image) {
     throw new Error(`Perchance returned no usable image output: ${JSON.stringify(data).slice(0, 500)}`);
   }
 
-  return { image, raw: data };
+  if (!looksLikeCloudflareChallenge(response, data) && process.env.PERCHANCE_FALLBACK_DISABLED === 'true') {
+    throw new Error(`Perchance generation failed: ${response.status} ${summarizeResponseBody(data)}`);
+  }
+
+  if (!looksLikeCloudflareChallenge(response, data) && endpointTemplate) {
+    throw new Error(`Perchance generation failed: ${response.status} ${summarizeResponseBody(data)}`);
+  }
+
+  const fallbackUrls = makePollinationsUrls(options);
+
+  console.warn(`[Perchance] ${response.status} from perchance.org; using Pollinations fallback for image generation.`);
+  return {
+    imageResourceUrl: fallbackUrls[0],
+    imageResourceUrls: fallbackUrls,
+    raw: {
+      provider: 'perchance',
+      fallbackProvider: 'pollinations',
+      reason: looksLikeCloudflareChallenge(response, data) ? 'PERCHANCE_CLOUDFLARE_CHALLENGE' : 'PERCHANCE_HTTP_ERROR',
+      status: response.status,
+    },
+  };
 }

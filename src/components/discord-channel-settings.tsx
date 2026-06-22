@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Save, SlidersHorizontal } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import Link from 'next/link';
 import { getClientTenantId } from '@/lib/client-tenant';
 
@@ -20,7 +21,7 @@ interface ChannelSettings {
 }
 
 interface GenerationSettings {
-  mode: 'eden' | 'seaart' | 'perchance';
+  mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
   model: string;
   lora: string;
   loraStrength: number;
@@ -29,6 +30,9 @@ interface GenerationSettings {
   steps: number;
   cfg: number;
   seed: number;
+  optimizeImagePrompts: boolean;
+  showOptimizedPrompt: boolean;
+  imagePromptTemplate: string;
 }
 
 const defaultGenSettings: GenerationSettings = {
@@ -41,6 +45,14 @@ const defaultGenSettings: GenerationSettings = {
   steps: 30,
   cfg: 7,
   seed: 0,
+  optimizeImagePrompts: true,
+  showOptimizedPrompt: false,
+  imagePromptTemplate: [
+    'Rewrite the user idea into one concise image-generation prompt.',
+    'Preserve the user intent and do not add unrelated subjects.',
+    'Add useful visual detail: subject, medium/style, composition, lighting, background, mood, color, and quality cues.',
+    'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+  ].join('\n'),
 };
 
 function discordChannelsUrl() {
@@ -175,6 +187,7 @@ export function DiscordChannelSettings() {
                   <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={genSettings.mode} onChange={(e) => setGenSettings(prev => ({ ...prev, mode: e.target.value as GenerationSettings['mode'] }))}>
                     <option value="eden">eden</option>
                     <option value="seaart">seaart</option>
+                    <option value="pollinations">pollinations/free</option>
                     <option value="perchance">perchance</option>
                   </select>
                   <p className="text-xs text-muted-foreground mt-1">Active generator backend default.</p>
@@ -224,6 +237,24 @@ export function DiscordChannelSettings() {
                 <div className="col-span-2">
                   <Label>Seed</Label>
                   <Input type="number" value={genSettings.seed} onChange={(e) => setGenSettings(prev => ({ ...prev, seed: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="col-span-2 flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <Label>Optimize !img prompts</Label>
+                    <p className="text-xs text-muted-foreground">Short user ideas are polished before image generation.</p>
+                  </div>
+                  <Switch checked={genSettings.optimizeImagePrompts} onCheckedChange={(checked) => setGenSettings(prev => ({ ...prev, optimizeImagePrompts: checked }))} />
+                </div>
+                <div className="col-span-2 flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <Label>Show optimized prompt</Label>
+                    <p className="text-xs text-muted-foreground">Send the rewritten prompt before image links.</p>
+                  </div>
+                  <Switch checked={genSettings.showOptimizedPrompt} onCheckedChange={(checked) => setGenSettings(prev => ({ ...prev, showOptimizedPrompt: checked }))} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Prompt optimizer instruction</Label>
+                  <Textarea rows={6} value={genSettings.imagePromptTemplate} onChange={(e) => setGenSettings(prev => ({ ...prev, imagePromptTemplate: e.target.value }))} />
                 </div>
               </div>
               <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-1">

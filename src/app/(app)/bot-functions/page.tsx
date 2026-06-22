@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Languages, Bot, Upload, Waves, Music, ArrowRight, LoaderCircle } from "lucide-react";
+import { Languages, Bot, Upload, Waves, Music, ArrowRight, LoaderCircle, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import Lottie from "lottie-react";
 import botAnimation from "@/lib/bot-animation.json";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsProvider, normalizeTtsVoice } from "@/lib/tts-voices";
+import { getClientTenantId } from "@/lib/client-tenant";
 
 
 function isValidLottie(data: unknown): data is Record<string, unknown> {
@@ -23,6 +24,51 @@ function isValidLottie(data: unknown): data is Record<string, unknown> {
 }
 
 const availableVoices = TTS_VOICE_OPTIONS;
+
+interface GenerationSettings {
+    mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
+    model: string;
+    lora: string;
+    loraStrength: number;
+    imageCount: number;
+    resolution: string;
+    steps: number;
+    cfg: number;
+    seed: number;
+    optimizeImagePrompts: boolean;
+    showOptimizedPrompt: boolean;
+    imagePromptTemplate: string;
+}
+
+const defaultImagePromptTemplate = [
+    'Rewrite the user idea into one concise image-generation prompt.',
+    'Preserve the user intent and do not add unrelated subjects.',
+    'Add useful visual detail: subject, medium/style, composition, lighting, background, mood, color, and quality cues.',
+    'If the user asks for an avatar, include clean character framing and background details suitable for avatar art.',
+    'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+].join('\n');
+
+const defaultGenSettings: GenerationSettings = {
+    mode: 'eden',
+    model: '',
+    lora: '',
+    loraStrength: 0.7,
+    imageCount: 1,
+    resolution: '1024x1024',
+    steps: 30,
+    cfg: 7,
+    seed: 0,
+    optimizeImagePrompts: true,
+    showOptimizedPrompt: false,
+    imagePromptTemplate: defaultImagePromptTemplate,
+};
+
+const avatarPromptPresets = [
+    'avatar character, transparent background, facing forward, clean silhouette, centered composition',
+    'avatar character, chroma key green screen background, full body, facing forward, even studio lighting',
+    'avatar character, 3/4 view, bust portrait, expressive face, clean background, streamer mascot style',
+    'animated talking avatar design, front-facing head and shoulders, simple shapes, readable at small size',
+];
 
 
 export default function BotFunctionsPage() {
@@ -72,6 +118,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
     const [privateDmGifUrl, setPrivateDmGifUrl] = useState("");
     const [publicDiscordGifUrl, setPublicDiscordGifUrl] = useState("");
     const [isSavingMediaSlots, setIsSavingMediaSlots] = useState(false);
+    const [genSettings, setGenSettings] = useState<GenerationSettings>(defaultGenSettings);
+    const [isSavingGenSettings, setIsSavingGenSettings] = useState(false);
     
     const idleFileInputRef = useRef<HTMLInputElement>(null);
     const talkingFileInputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +182,16 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 }
             } catch (error) {
                 console.warn('Failed to load bot config from server:', error);
+            }
+
+            try {
+                const genRes = await fetch('/api/gen-settings');
+                if (genRes.ok) {
+                    const data = await genRes.json();
+                    setGenSettings({ ...defaultGenSettings, ...data });
+                }
+            } catch (error) {
+                console.warn('Failed to load image generation settings:', error);
             }
 
             // Try to load avatar settings from server
@@ -384,6 +442,33 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         }
     };
 
+    const handleSaveImageGeneration = async () => {
+        setIsSavingGenSettings(true);
+        try {
+            const response = await fetch('/api/gen-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(genSettings),
+            });
+            if (!response.ok) {
+                const body = await response.json().catch(() => ({}));
+                throw new Error(body?.error || 'Failed to save image generation settings.');
+            }
+            const saved = await response.json();
+            setGenSettings({ ...defaultGenSettings, ...saved });
+            toast({ title: "Image generation saved" });
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Save failed", description: error.message || "Could not save image generation settings." });
+        } finally {
+            setIsSavingGenSettings(false);
+        }
+    };
+
+    const imageLibraryHref = (() => {
+        const tenantId = getClientTenantId();
+        return tenantId ? `/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}` : '/api/ai/image/library';
+    })();
+
   return (
     <div className="grid gap-6">
       <input 
@@ -490,6 +575,108 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     >
                         {isOptimizing ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
                         Optimize Personality
+                    </Button>
+                </CardFooter>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Image Generation</CardTitle>
+                    <CardDescription>Configure the DM image workflow used by !img.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="image-provider">Provider</Label>
+                            <Select value={genSettings.mode} onValueChange={(value) => setGenSettings((prev) => ({ ...prev, mode: value as GenerationSettings['mode'] }))}>
+                                <SelectTrigger id="image-provider">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="seaart">SeaArt</SelectItem>
+                                    <SelectItem value="pollinations">Pollinations/free</SelectItem>
+                                    <SelectItem value="eden">EdenAI</SelectItem>
+                                    <SelectItem value="perchance">Perchance fallback</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="image-count">Default count</Label>
+                            <Select value={String(genSettings.imageCount)} onValueChange={(value) => setGenSettings((prev) => ({ ...prev, imageCount: Number(value) || 1 }))}>
+                                <SelectTrigger id="image-count">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="1">1</SelectItem>
+                                    <SelectItem value="2">2</SelectItem>
+                                    <SelectItem value="3">3</SelectItem>
+                                    <SelectItem value="4">4</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="image-resolution">Resolution</Label>
+                            <Input id="image-resolution" value={genSettings.resolution} onChange={(event) => setGenSettings((prev) => ({ ...prev, resolution: event.target.value }))} />
+                        </div>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="image-model">Model</Label>
+                            <Input id="image-model" value={genSettings.model} onChange={(event) => setGenSettings((prev) => ({ ...prev, model: event.target.value }))} placeholder="wai-ani-ponyxl" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="image-seed">Seed</Label>
+                            <Input id="image-seed" type="number" value={genSettings.seed} onChange={(event) => setGenSettings((prev) => ({ ...prev, seed: Number(event.target.value) || 0 }))} />
+                        </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                        <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                            <div className="space-y-0.5">
+                                <div className="text-sm font-medium">Optimize prompts</div>
+                                <div className="text-xs text-muted-foreground">Rewrite short ideas before sending them to the image provider.</div>
+                            </div>
+                            <Switch checked={genSettings.optimizeImagePrompts} onCheckedChange={(checked) => setGenSettings((prev) => ({ ...prev, optimizeImagePrompts: checked }))} />
+                        </div>
+                        <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                            <div className="space-y-0.5">
+                                <div className="text-sm font-medium">Show optimized prompt</div>
+                                <div className="text-xs text-muted-foreground">Send the polished prompt before image results.</div>
+                            </div>
+                            <Switch checked={genSettings.showOptimizedPrompt} onCheckedChange={(checked) => setGenSettings((prev) => ({ ...prev, showOptimizedPrompt: checked }))} />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="image-prompt-template">Prompt optimizer instruction</Label>
+                        <Textarea
+                            id="image-prompt-template"
+                            rows={7}
+                            value={genSettings.imagePromptTemplate}
+                            onChange={(event) => setGenSettings((prev) => ({ ...prev, imagePromptTemplate: event.target.value }))}
+                        />
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                        {avatarPromptPresets.map((preset) => (
+                            <Button
+                                key={preset}
+                                variant="outline"
+                                className="h-auto justify-start whitespace-normal text-left"
+                                onClick={() => setGenSettings((prev) => ({
+                                    ...prev,
+                                    imagePromptTemplate: `${prev.imagePromptTemplate.trim()}\n\nAvatar preset guidance: ${preset}`,
+                                }))}
+                            >
+                                <Sparkles className="mr-2 h-4 w-4 shrink-0" />
+                                {preset}
+                            </Button>
+                        ))}
+                    </div>
+                </CardContent>
+                <CardFooter className="flex flex-wrap gap-2">
+                    <Button onClick={handleSaveImageGeneration} disabled={isSavingGenSettings}>
+                        {isSavingGenSettings ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
+                        Save image generation
+                    </Button>
+                    <Button asChild variant="outline">
+                        <a href={imageLibraryHref} target="_blank" rel="noreferrer">Open image library</a>
                     </Button>
                 </CardFooter>
             </Card>

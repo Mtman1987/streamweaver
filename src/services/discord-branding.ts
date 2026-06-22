@@ -57,6 +57,11 @@ export function buildStreamWeaverLogoUrl(): string {
     return `${getConfiguredAppUrl()}/StreamWeaver.png`;
 }
 
+export function buildTtsOverlayUrl(tenantId?: string): string {
+    const tenantParam = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+    return `${getConfiguredAppUrl()}/tts-player${tenantParam}`;
+}
+
 function splitAliases(value: unknown): string[] {
     return String(value || '')
         .toLowerCase()
@@ -198,7 +203,7 @@ export async function buildDiscordBotEmbed(input: {
         author: {
             name: authorName,
             ...(authorIconUrl ? { icon_url: authorIconUrl } : {}),
-            ...(input.authorUrl ? { url: input.authorUrl } : {}),
+            url: input.authorUrl || buildTtsOverlayUrl(resolvedTenantId),
         },
         footer: {
             text: input.footerText || footerParts.join(' • '),

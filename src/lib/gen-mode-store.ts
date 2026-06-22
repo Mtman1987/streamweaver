@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
 import { writeGenerationSettings } from '@/lib/gen-settings-store';
 
-export type GenMode = 'eden' | 'seaart' | 'perchance';
+export type GenMode = 'eden' | 'seaart' | 'perchance' | 'pollinations';
 
 function filePath(tenantId?: string): string {
   if (tenantId) return tenantPath(tenantId, 'data/gen-mode.json');
@@ -16,6 +16,7 @@ export async function getGenMode(tenantId?: string): Promise<GenMode> {
     const parsed = JSON.parse(raw);
     if (parsed?.mode === 'seaart') return 'seaart';
     if (parsed?.mode === 'perchance') return 'perchance';
+    if (parsed?.mode === 'pollinations') return 'pollinations';
     return 'eden';
   } catch {
     return 'eden';
@@ -33,6 +34,7 @@ export async function setGenMode(mode: GenMode, tenantId?: string): Promise<GenM
 export async function toggleGenMode(tenantId?: string): Promise<GenMode> {
   const current = await getGenMode(tenantId);
   if (current === 'eden') return setGenMode('seaart', tenantId);
-  if (current === 'seaart') return setGenMode('perchance', tenantId);
+  if (current === 'seaart') return setGenMode('pollinations', tenantId);
+  if (current === 'pollinations') return setGenMode('perchance', tenantId);
   return setGenMode('eden', tenantId);
 }

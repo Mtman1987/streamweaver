@@ -7,6 +7,7 @@ import { getTenantFromRequest } from '@/lib/tenant-context';
 import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
 import { generateImageWithPerchance } from '@/services/image-provider';
+import { generateImageWithPollinations } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
@@ -18,6 +19,7 @@ const imageSchema = z.object({
   resolution: z.string().trim().min(3).max(32).optional(),
   numImages: z.coerce.number().int().min(1).max(4).optional().default(1),
   providerParams: z.record(z.unknown()).optional(),
+  providerOverride: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
   tenantId: z.string().trim().max(128).optional(),
 });
 
@@ -83,8 +85,14 @@ export async function POST(request: NextRequest) {
       readGenerationSettings(tenantId).then((s) => s.mode).catch(() => undefined),
       getGenMode(tenantId).catch(() => 'eden' as const),
     ]);
-    const genMode = settingsMode || legacyMode;
-    const generator = genMode === 'seaart' ? generateImageWithSeaArt : genMode === 'perchance' ? generateImageWithPerchance : generateImageWithEdenAI;
+    const genMode = parsed.data.providerOverride || settingsMode || legacyMode;
+    const generator = genMode === 'seaart'
+      ? generateImageWithSeaArt
+      : genMode === 'perchance'
+        ? generateImageWithPerchance
+        : genMode === 'pollinations'
+          ? generateImageWithPollinations
+          : generateImageWithEdenAI;
     const result = await generator({
       prompt: parsed.data.prompt,
       tenantId,
@@ -94,17 +102,34 @@ export async function POST(request: NextRequest) {
       providerParams: parsed.data.providerParams,
     });
 
-    // Prefer provider-hosted URL first; some providers return gigantic base64 data URIs in `image`.
-    const sourceValue = result.imageResourceUrl || result.image || '';
-    const source = String(sourceValue);
-    const persistedUrl = source.startsWith('data:image/')
-      ? await persistImageFromDataUri(source, tenantId, request)
-      : await persistImageFromUrl(source, tenantId, request);
+    const sources = [
+      ...(Array.isArray(result.imageResourceUrls) ? result.imageResourceUrls : []),
+      ...(Array.isArray(result.images) ? result.images : []),
+      result.imageResourceUrl,
+      result.image,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .filter((value, index, all) => all.indexOf(value) === index);
+
+    const persistedImageUrls: string[] = [];
+    for (const source of sources) {
+      const persisted = source.startsWith('data:image/')
+        ? await persistImageFromDataUri(source, tenantId, request)
+        : await persistImageFromUrl(source, tenantId, request);
+      if (persisted) persistedImageUrls.push(persisted);
+    }
+
+    const imageUrls = persistedImageUrls.length ? persistedImageUrls : sources;
+    const firstImage = imageUrls[0] || result.imageResourceUrl || result.image || '';
 
     return apiOk({
-      image: persistedUrl || result.imageResourceUrl || result.image,
+      image: firstImage,
+      images: imageUrls,
       imageResourceUrl: result.imageResourceUrl,
-      persistedImageUrl: persistedUrl || null,
+      imageResourceUrls: result.imageResourceUrls,
+      persistedImageUrl: persistedImageUrls[0] || null,
+      persistedImageUrls,
       provider: genMode,
     });
   } catch (error: any) {
