@@ -7,6 +7,7 @@ import { getTenantFromRequest } from '@/lib/tenant-context';
 const ttsSchema = z.object({
   text: z.string().trim().min(1, 'Text is required').max(2000, 'Text too long'),
   voice: z.string().trim().min(1).max(128).optional(),
+  tenantId: z.string().trim().max(128).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -24,9 +25,10 @@ export async function POST(request: NextRequest) {
     }
 
     const { text, voice } = parsed.data;
-    console.log('[TTS API] Request:', { textLength: text.length, textPreview: text.slice(0, 80), voice: voice ?? '(default)' });
+    const tenantId = session?.tenantId || (isMountainViewBridge ? parsed.data.tenantId : undefined);
+    console.log('[TTS API] Request:', { textLength: text.length, textPreview: text.slice(0, 80), voice: voice ?? '(default)', tenantId: tenantId ?? 'global' });
 
-    const audioDataUri = await generateTTS(text, voice, session?.tenantId);
+    const audioDataUri = await generateTTS(text, voice, tenantId);
     console.log('[TTS API] Success, audioDataUri length:', audioDataUri.length);
     return apiOk({ audioDataUri });
   } catch (error: any) {

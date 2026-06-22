@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
     let tts: { queued: boolean; status?: number; error?: string } = { queued: false };
 
     if (reply) {
-      const ttsResult = await postJson(`${baseUrl}/api/tts`, { text: reply });
+      const ttsResult = await postJson(`${baseUrl}/api/tts`, { text: reply, tenantId });
       if (ttsResult.ok && ttsResult.data?.audioDataUri) {
         const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
         const current = await postJson(`${baseUrl}/api/tts/current${query}`, {
