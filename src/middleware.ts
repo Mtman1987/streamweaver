@@ -81,6 +81,15 @@ function hasSharedBotAccess(request: NextRequest): boolean {
   return Boolean(sharedSecret && token && token === sharedSecret);
 }
 
+function hasMountainViewBridgeAccess(request: NextRequest): boolean {
+  if (request.headers.get('x-mountainview-bridge') !== '1') return false;
+  return [
+    '/api/ai/chat-with-memory',
+    '/api/tts',
+    '/api/tts/current',
+  ].includes(request.nextUrl.pathname);
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -95,6 +104,10 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith('/api/mountainview/')) {
+    return NextResponse.next();
+  }
+
+  if (hasMountainViewBridgeAccess(request)) {
     return NextResponse.next();
   }
 

@@ -23,7 +23,7 @@ function getBaseUrl(request: NextRequest): string {
 async function postJson(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: any; text: string }> {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-mountainview-bridge': '1' },
     body: JSON.stringify(body),
   });
   const text = await response.text();
