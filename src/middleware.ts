@@ -94,6 +94,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname.startsWith('/api/mountainview/')) {
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith('/api/') && isPublicApiRequest(request)) {
     return NextResponse.next();
   }
