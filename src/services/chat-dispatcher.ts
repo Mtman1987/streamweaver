@@ -44,7 +44,7 @@ import {
 } from './discord-command-catalog';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { hasDiscordModAccess } from './discord-permissions';
-import { detectBotRelayRequest } from './bot-relay';
+import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
     addDiscordStreamHubPointsToAll,
     checkDiscordStreamHubAdminAccess,
@@ -1509,6 +1509,19 @@ async function getLoreCharacterForTenant(tenantId?: string): Promise<WorldLoreCh
     } catch {
         return null;
     }
+}
+
+function buildFallbackLoreCharacter(input: {
+    tenantId?: string;
+    name: string;
+    aliases?: string[];
+}): WorldLoreCharacter {
+    const normalizedName = normalizeBotHandle(input.name) || 'bot';
+    return {
+        stableId: input.tenantId ? `${input.tenantId}:${normalizedName}` : `unknown:${normalizedName}`,
+        currentName: input.name || 'Bot',
+        aliases: Array.from(new Set((input.aliases || []).filter(Boolean))),
+    };
 }
 
 async function getExplicitTwitchBotMentions(message: string): Promise<Array<{
@@ -3921,7 +3934,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             console.log(`[Dispatcher] mentionTriggers for tenant ${tenantId}:`, mentionTriggers.join(', '));
 
             try {
-                const { decideBotInteraction, appendBotInteraction } = await import('../lib/bot-interactions-store');
+                const { decideBotInteraction, appendBotInteraction, getBotShareMode } = await import('../lib/bot-interactions-store');
                 const canUseAthenaInThisChat = await getAthenaEverywhereMode() === 'on'
                     && await canRouteAthenaForUser({
                         username: actualUsername,
@@ -3930,6 +3943,80 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const allowedTwitchParticipants = new Set<string>(explicitTwitchBotMentions.map((entry) => entry.character.stableId));
                 if (localLoreBot?.stableId) allowedTwitchParticipants.add(localLoreBot.stableId);
                 if (canUseAthenaInThisChat) allowedTwitchParticipants.add(ATHENA_STABLE_ID);
+                const addressedToResponseBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
+                const relayMode = await getBotShareMode(responseTenantId);
+                if (addressedToResponseBot && relayMode === 'on' && !athenaDenied) {
+                    const lore = await readWorldLore();
+                    const relayTargets = Object.values(lore?.characters || {});
+                    const relaySpeaker = routedExternalBot
+                        || await getLoreCharacterForTenant(responseTenantId)
+                        || localLoreBot
+                        || buildFallbackLoreCharacter({
+                            tenantId: responseTenantId,
+                            name: responseBotName,
+                            aliases: [botUsername, ...petNames],
+                        });
+                    const relayRequest = await detectBotRelayRequestWithAi({
+                        message: actualMessage,
+                        speakerName: relaySpeaker.currentName,
+                        targets: relayTargets.filter((target) => target.stableId !== relaySpeaker.stableId),
+                        tenantId: responseTenantId,
+                        platform: 'twitch',
+                    });
+                    if (relayRequest.matched && relayRequest.relayMessage) {
+                        console.log('[Dispatcher] Bot relay intent detected:', {
+                            source: relayRequest.source || 'unknown',
+                            speaker: relaySpeaker.currentName,
+                            targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
+                            messagePreview: relayRequest.relayMessage.slice(0, 120),
+                        });
+                        const resolvedRelayTarget = await resolveRelayTarget({
+                            namedTarget: relayRequest.targetName,
+                            structuredTarget: relayRequest.target,
+                            fallbackTenantId: responseTenantId,
+                        });
+                        if (!resolvedRelayTarget) {
+                            console.warn('[Dispatcher] Bot relay target unresolved:', {
+                                targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
+                                triggerMessage: actualMessage,
+                            });
+                            await sendChatMessage(
+                                `I couldn't figure out which bot or streamer to pass that to.`,
+                                'bot',
+                                replyChannel,
+                                responseTenantId
+                            ).catch(() => {});
+                            return;
+                        }
+
+                        await sendChatMessage(
+                            `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`,
+                            'bot',
+                            replyChannel,
+                            responseTenantId
+                        ).catch(() => {});
+                        const relayResult = await deliverBotRelay({
+                            sourcePlatform: 'twitch',
+                            sourceUserName: actualUsername,
+                            triggerMessage: actualMessage,
+                            speaker: relaySpeaker,
+                            speakerTenantId: responseTenantId,
+                            target: resolvedRelayTarget.character,
+                            targetTenantId: resolvedRelayTarget.tenantId,
+                            relayMessage: relayRequest.relayMessage,
+                        });
+                        if (!relayResult.delivered && relayResult.error) {
+                            await sendChatMessage(
+                                `I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`,
+                                'bot',
+                                replyChannel,
+                                responseTenantId
+                            ).catch(() => {});
+                        }
+                        return;
+                    }
+                }
+
                 const decision = await decideBotInteraction({
                     message: actualMessage,
                     currentBotName: responseBotName,

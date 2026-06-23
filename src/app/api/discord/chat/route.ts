@@ -22,7 +22,7 @@ import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
 import { registerHandledDiscordMessage } from '@/services/discord-message-dedupe';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
 import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub';
-import { detectBotRelayRequest } from '@/services/bot-relay';
+import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/bot-relay';
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import {
   beginPendingMtSupportRequest,
@@ -607,6 +607,93 @@ export async function POST(request: NextRequest) {
     }
     console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
 
+    if (await getBotShareMode(botTenantId || tenantId || undefined) === 'on') {
+      const lore = await readWorldLore();
+      const characters = Object.values(lore?.characters || {});
+      const relaySpeaker = resolveDiscordRelaySpeaker({
+        characters,
+        botName,
+        tenantId: botTenantId || tenantId || undefined,
+        trigger: botMatch?.trigger,
+      });
+      const relayRequest = await detectBotRelayRequestWithAi({
+        message,
+        speakerName: relaySpeaker.currentName,
+        targets: characters.filter((character) => character.stableId !== relaySpeaker.stableId),
+        tenantId: botTenantId || tenantId || undefined,
+        platform: 'discord',
+      });
+
+      if (relayRequest.matched && relayRequest.relayMessage) {
+        console.log('[Discord Chat] Bot relay intent detected:', {
+          source: relayRequest.source || 'unknown',
+          speaker: relaySpeaker.currentName,
+          targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
+          messagePreview: relayRequest.relayMessage.slice(0, 120),
+        });
+        const resolvedRelayTarget = await resolveRelayTarget({
+          namedTarget: relayRequest.targetName,
+          structuredTarget: relayRequest.target,
+          fallbackTenantId: botTenantId || tenantId || undefined,
+        });
+        if (!resolvedRelayTarget) {
+          console.warn('[Discord Chat] Bot relay target unresolved:', {
+            targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
+            triggerMessage: message,
+          });
+          if (channelId) {
+            await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't figure out which bot or streamer to pass that to.`);
+          }
+          return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: false, relayError: 'target-unresolved', replies: relayOnly ? collectedReplies : undefined });
+        }
+
+        const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
+        if (channelId) {
+          const deleteAt = getDiscordMessageCleanupDeleteAt();
+          const ackEmbed = await buildDiscordBotEmbed({
+            description: ackReply,
+            tenantId: botTenantId || tenantId || undefined,
+            botName,
+            deleteAt,
+          });
+          if (relayOnly) {
+            collectReply({ content: ackReply, embeds: [ackEmbed] });
+          } else {
+            const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
+            const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
+            const sentAck = await sendWebhookMessage(channelId, ackReply, webhookIdentity.username, avatarUrl, [ackEmbed]).catch(() => null);
+            await recordDiscordMessageCleanup({
+              tenantId: botTenantId || tenantId || undefined,
+              channelId,
+              triggerMessageId: normalized.messageId,
+              replyMessageIds: [sentAck?.id || ''],
+              replyMessages: [ackReply],
+              sourceUser: userName,
+              botName,
+              triggerMessage: message,
+            }).catch(() => {});
+          }
+        }
+
+        const relayResult = await deliverBotRelay({
+          sourcePlatform: 'discord',
+          sourceUserName: userName,
+          triggerMessage: message,
+          speaker: relaySpeaker,
+          speakerTenantId: botTenantId || tenantId || undefined,
+          target: resolvedRelayTarget.character,
+          targetTenantId: resolvedRelayTarget.tenantId,
+          relayMessage: relayRequest.relayMessage,
+        });
+
+        if (!relayResult.delivered && relayResult.error && channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`);
+        }
+
+        return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });
+      }
+    }
+
     const botInteractionDecision = await decideBotInteraction({
       message,
       currentBotName: botName,
@@ -1172,6 +1259,26 @@ function findLoreCharacterByName(characters: WorldLoreCharacter[], name: string)
   return characters.find((character) =>
     characterTriggers(character).some((trigger) => trigger.toLowerCase() === normalized)
   );
+}
+
+function resolveDiscordRelaySpeaker(input: {
+  characters: WorldLoreCharacter[];
+  botName: string;
+  tenantId?: string;
+  trigger?: string;
+}): WorldLoreCharacter {
+  const trigger = String(input.trigger || '').replace(/^hey\s+/i, '').trim();
+  const direct = findLoreCharacterByName(input.characters, input.botName)
+    || (trigger ? findLoreCharacterByName(input.characters, trigger) : undefined)
+    || (input.tenantId ? input.characters.find((character) => character.stableId.startsWith(`${input.tenantId}:`)) : undefined);
+  if (direct) return direct;
+
+  const normalizedName = input.botName.toLowerCase().replace(/^@/, '').trim() || 'bot';
+  return {
+    stableId: input.tenantId ? `${input.tenantId}:${normalizedName}` : `unknown:${normalizedName}`,
+    currentName: input.botName || 'Bot',
+    aliases: trigger && trigger.toLowerCase() !== normalizedName ? [trigger] : [],
+  };
 }
 
 function uniqueDiscordCharacters(characters: WorldLoreCharacter[]): WorldLoreCharacter[] {
