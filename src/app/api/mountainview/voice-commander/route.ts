@@ -8,6 +8,7 @@ import { startBRB, stopBRB } from '@/services/brb-clips';
 import { translateToLanguage, type TargetLanguage } from '@/services/translation';
 import { getStoredTokens } from '@/lib/token-utils.server';
 import { sendDiscordMessage } from '@/services/discord-local';
+import { runImageCommand } from '@/services/image-command';
 import { tenantPath, globalPath } from '@/lib/tenant';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
@@ -84,6 +85,22 @@ function targetLanguageFromName(language: string | undefined): TargetLanguage {
   if (['german', 'de', 'deutsch'].includes(normalized)) return 'de';
   if (['japanese', 'ja', 'jp'].includes(normalized)) return 'ja';
   return 'es';
+}
+
+function extractSpokenMessage(transcript: string): string {
+  const value = transcript.trim();
+  const quoted = value.match(/\b(?:send|post|type|say)\s+(?:a\s+)?message(?:\s+to\s+\w+)?\s+["“](.+?)["”]\s*$/i);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+  const plain = value.match(/\b(?:send|post|type|say)\s+(?:a\s+)?message(?:\s+to\s+\w+)?\s+(.+)$/i);
+  return plain?.[1]?.trim() || value;
+}
+
+function extractImageCommandTranscript(transcript: string): string {
+  const value = transcript.trim();
+  if (/^!img\b/i.test(value)) return value;
+  const match = value.match(/^(?:athena\s+)?(?:generate|make|create)\s+(?:an?\s+)?(?:image|picture|photo)\s+(?:of|showing|for)?\s*(.+)$/i);
+  if (match?.[1]?.trim()) return `!img ${match[1].trim()}`;
+  return '';
 }
 
 async function getBroadcasterUsername(tenantId?: string, fallback = 'mtman1987'): Promise<string> {
@@ -261,13 +278,35 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const imageCommand = extractImageCommandTranscript(transcript);
+    if (imageCommand) {
+      const image = await runImageCommand(imageCommand, tenantId || username);
+      const response = image.images.length
+        ? `Generated ${image.images.length} image${image.images.length === 1 ? '' : 's'} through StreamWeaver.`
+        : 'StreamWeaver accepted the image command, but no image URL was returned.';
+      const tts = await queueTts(baseUrl, response, tenantId);
+      return apiOk({
+        routed: true,
+        handled: true,
+        source: 'mountainview-ai',
+        destination: command.destination,
+        voiceMode,
+        transcript,
+        response,
+        command: 'streamweaver-image',
+        image,
+        tts,
+        memory: { saved: true, id: transcriptRecord.id },
+      });
+    }
+
     if ((command.destination === 'twitch' || command.destination === 'discord') && (voiceMode === 'dictation' || translationEnabled)) {
-      let outgoing = transcript;
+      let outgoing = extractSpokenMessage(transcript);
       let translation: unknown;
       if (translationEnabled) {
         const targetLanguage = targetLanguageFromName(firstString(translationInput.language, nestedPayload.translationLanguage));
-        const result = await translateToLanguage(transcript, targetLanguage);
-        outgoing = result.translatedText || transcript;
+        const result = await translateToLanguage(outgoing, targetLanguage);
+        outgoing = result.translatedText || outgoing;
         translation = result;
       }
       const dispatchResult = await sendDictation({
