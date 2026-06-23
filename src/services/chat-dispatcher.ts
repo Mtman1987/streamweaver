@@ -376,15 +376,17 @@ async function buildRelayDeliveryMessage(input: {
     speaker: WorldLoreCharacter;
     target: WorldLoreCharacter;
     relayMessage: string;
+    targetAudienceName?: string;
     targetTenantId?: string;
     deliveryMode: 'live' | 'discord' | 'dm';
 }): Promise<string> {
-    const exactQuotedMessage = extractQuotedRelayMessage(input.relayMessage);
+    const exactRelayMessage = getExactRelayMessage(input.relayMessage);
+    const targetAudienceName = String(input.targetAudienceName || input.target.currentName || 'this chat').trim();
     const deliveryInstruction = input.deliveryMode === 'live'
-        ? 'Tell your streamer or chat about it in one short natural sentence.'
+        ? `You are speaking in ${targetAudienceName}'s Twitch chat. Deliver the message to that chat in one short natural sentence.`
         : input.deliveryMode === 'discord'
-            ? 'Tell your streamer in the Discord channel where they were last active in one short natural sentence.'
-            : 'Tell your streamer privately in one short natural sentence.';
+            ? `Tell ${targetAudienceName} in the Discord channel where they were last active in one short natural sentence.`
+            : `Tell ${targetAudienceName} privately in one short natural sentence.`;
     const targetPersonality = [
         `You are ${input.target.currentName}.`,
         input.target.archetype ? `Archetype: ${input.target.archetype}.` : '',
@@ -399,11 +401,12 @@ async function buildRelayDeliveryMessage(input: {
 
     const prompt = [
         'Cross-bot relay delivery.',
-        `${input.sourceUserName} asked ${input.speaker.currentName} to pass along: "${input.relayMessage}"`,
-        exactQuotedMessage
-            ? `You must include this exact quoted message without changing spelling, punctuation, or casing: "${exactQuotedMessage}"`
-            : '',
+        `Message sender: ${input.sourceUserName}.`,
+        `Receiving chat or streamer: ${targetAudienceName}.`,
+        `${input.sourceUserName} asked ${input.speaker.currentName} to pass along this message: "${exactRelayMessage}"`,
+        `Include this exact message once, without changing spelling, punctuation, or casing: "${exactRelayMessage}"`,
         deliveryInstruction,
+        `Do not address ${input.sourceUserName} as "you". Do not say the message is "from you"; say it is from ${input.sourceUserName} or from ${input.speaker.currentName}.`,
         'Do not mention internal systems or say this is automated.',
     ].filter(Boolean).join('\n');
 
@@ -411,7 +414,8 @@ async function buildRelayDeliveryMessage(input: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            username: input.sourceUserName,
+            username: targetAudienceName,
+            displayName: targetAudienceName,
             message: prompt,
             personality: targetPersonality,
             responseName: input.target.currentName,
@@ -427,7 +431,7 @@ async function buildRelayDeliveryMessage(input: {
     const data = await aiRes.json();
     const reply = String(data.response || data.data?.response || '').trim();
     if (!reply) throw new Error('Relay AI returned an empty response');
-    return ensureRelayQuoteIncluded(reply, input.relayMessage);
+    return ensureRelayMessageIncludedOnce(reply, input.relayMessage);
 }
 
 function extractQuotedRelayMessage(message: string): string | null {
@@ -436,10 +440,48 @@ function extractQuotedRelayMessage(message: string): string | null {
     return quoted || null;
 }
 
-function ensureRelayQuoteIncluded(reply: string, relayMessage: string): string {
-    const exactQuotedMessage = extractQuotedRelayMessage(relayMessage);
-    if (!exactQuotedMessage || reply.includes(exactQuotedMessage)) return reply;
-    return `${reply} "${exactQuotedMessage}"`;
+function getExactRelayMessage(relayMessage: string): string {
+    return extractQuotedRelayMessage(relayMessage) || String(relayMessage || '').trim();
+}
+
+function normalizeRelayMessageForCompare(value: string): string {
+    return String(value || '')
+        .replace(/[\u201c\u201d]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function removeRepeatedExactRelayMessage(reply: string, exactRelayMessage: string): string {
+    const exact = exactRelayMessage.trim();
+    if (!exact) return reply.trim();
+
+    const escaped = exact.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(?:"${escaped}"|'${escaped}'|\u201c${escaped}\u201d|\u2018${escaped}\u2019|${escaped})`, 'gi');
+    let seen = false;
+    return reply
+        .replace(pattern, (match) => {
+            if (!seen) {
+                seen = true;
+                return match;
+            }
+            return '';
+        })
+        .replace(/\s+([,.!?;:])/g, '$1')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function ensureRelayMessageIncludedOnce(reply: string, relayMessage: string): string {
+    const exactRelayMessage = getExactRelayMessage(relayMessage);
+    if (!exactRelayMessage) return reply.trim();
+
+    const cleanedReply = removeRepeatedExactRelayMessage(reply, exactRelayMessage);
+    if (normalizeRelayMessageForCompare(cleanedReply).includes(normalizeRelayMessageForCompare(exactRelayMessage))) {
+        return cleanedReply;
+    }
+    return `${cleanedReply} "${exactRelayMessage}"`.trim();
 }
 
 export async function deliverBotRelay(input: {
@@ -474,6 +516,7 @@ export async function deliverBotRelay(input: {
             speaker: input.speaker,
             target: input.target,
             relayMessage: input.relayMessage,
+            targetAudienceName: broadcasterChannel,
             targetTenantId,
             deliveryMode: 'live',
         });
@@ -532,6 +575,7 @@ export async function deliverBotRelay(input: {
                 speaker: input.speaker,
                 target: input.target,
                 relayMessage: input.relayMessage,
+                targetAudienceName: broadcasterChannel,
                 targetTenantId,
                 deliveryMode: 'discord',
             });
@@ -559,6 +603,7 @@ export async function deliverBotRelay(input: {
                     speaker: input.speaker,
                     target: input.target,
                     relayMessage: input.relayMessage,
+                    targetAudienceName: broadcasterChannel,
                     targetTenantId,
                     deliveryMode: 'dm',
                 })
@@ -2793,9 +2838,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
-        // Handle !sr command - Re-send as plain !sr so HearMeOut's Twitch bot picks it up
+        // HearMeOut's Twitch bot listens directly for !sr. Re-posting it from
+        // Athena creates duplicate queue entries and wakes AI mention handling.
         if (actualMessage.toLowerCase().startsWith('!sr ')) {
-            await reply(actualMessage, 'bot').catch(() => {});
             return;
         }
 
