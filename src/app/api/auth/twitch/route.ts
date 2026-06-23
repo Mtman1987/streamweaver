@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     'moderator:read:chatters',
     'moderation:read',
     'channel:manage:broadcast',
+    'clips:edit',
     'moderator:manage:announcements',
     'channel:read:redemptions',
     'user:write:chat',
