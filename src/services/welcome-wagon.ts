@@ -9,6 +9,7 @@ const GREETING_MODE_FILE = 'greeting-mode.json';
 
 type WelcomeRecord = {
   streamStartTime: string;
+  welcomeDay: string;
   welcomedUsers: Set<string>;
 };
 
@@ -16,7 +17,7 @@ type WelcomeMode = 'chat' | 'overlay' | 'off';
 type GreetingMode = 'full' | 'chat' | 'overlay';
 type WelcomeEligibility =
   | { eligible: true }
-  | { eligible: false; reason: 'already-welcomed-this-stream' | 'known-bot' };
+  | { eligible: false; reason: 'already-welcomed-today' | 'known-bot' };
 
 // Per-tenant state
 const tenantSessions = new Map<string, WelcomeRecord>();
@@ -25,12 +26,33 @@ const tenantGreetingMode = new Map<string, GreetingMode>();
 
 function tKey(tenantId?: string): string { return tenantId || '__global__'; }
 
+function getWelcomeDay(date = new Date()): string {
+  const timeZone = process.env.WELCOME_WAGON_TIME_ZONE || process.env.TZ || 'America/Winnipeg';
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
 function getSession(tenantId?: string): WelcomeRecord {
   const key = tKey(tenantId);
   if (!tenantSessions.has(key)) {
-    tenantSessions.set(key, { streamStartTime: new Date().toISOString(), welcomedUsers: new Set() });
+    tenantSessions.set(key, { streamStartTime: new Date().toISOString(), welcomeDay: getWelcomeDay(), welcomedUsers: new Set() });
   }
-  return tenantSessions.get(key)!;
+  const session = tenantSessions.get(key)!;
+  const today = getWelcomeDay();
+  if (session.welcomeDay !== today) {
+    session.streamStartTime = new Date().toISOString();
+    session.welcomeDay = today;
+    session.welcomedUsers.clear();
+  }
+  return session;
 }
 
 function toCtx(tenantId?: string): StorageContext | undefined {
@@ -41,15 +63,19 @@ function toCtx(tenantId?: string): StorageContext | undefined {
 export async function loadWelcomeSession(tenantId?: string): Promise<void> {
   try {
     const ctx = toCtx(tenantId);
-    const data = await readJsonFile<{ streamStartTime: string; welcomedUsers: string[] }>(WELCOME_FILE, {
+    const today = getWelcomeDay();
+    const data = await readJsonFile<{ streamStartTime: string; welcomeDay?: string; welcomedUsers: string[] }>(WELCOME_FILE, {
       streamStartTime: new Date().toISOString(),
+      welcomeDay: today,
       welcomedUsers: []
     }, ctx);
+    const welcomeDay = data.welcomeDay || getWelcomeDay(new Date(data.streamStartTime || Date.now()));
 
     const key = tKey(tenantId);
     tenantSessions.set(key, {
-      streamStartTime: data.streamStartTime,
-      welcomedUsers: new Set(data.welcomedUsers)
+      streamStartTime: welcomeDay === today ? data.streamStartTime : new Date().toISOString(),
+      welcomeDay: today,
+      welcomedUsers: welcomeDay === today ? new Set(data.welcomedUsers) : new Set()
     });
 
     const modeData = await readJsonFile<{ mode: WelcomeMode }>(WELCOME_MODE_FILE, { mode: 'chat' }, ctx);
@@ -87,6 +113,7 @@ export async function saveWelcomeSession(tenantId?: string): Promise<void> {
     const session = getSession(tenantId);
     await writeJsonFile(WELCOME_FILE, {
       streamStartTime: session.streamStartTime,
+      welcomeDay: session.welcomeDay,
       welcomedUsers: Array.from(session.welcomedUsers)
     }, toCtx(tenantId));
   } catch (error) {
@@ -97,6 +124,7 @@ export async function saveWelcomeSession(tenantId?: string): Promise<void> {
 export async function resetWelcomeSession(tenantId?: string): Promise<void> {
   tenantSessions.set(tKey(tenantId), {
     streamStartTime: new Date().toISOString(),
+    welcomeDay: getWelcomeDay(),
     welcomedUsers: new Set()
   });
   await saveWelcomeSession(tenantId);
@@ -106,7 +134,7 @@ export async function getWelcomeEligibility(username: string, tenantId?: string)
   const key = username.toLowerCase();
   const session = getSession(tenantId);
 
-  if (session.welcomedUsers.has(key)) return { eligible: false, reason: 'already-welcomed-this-stream' };
+  if (session.welcomedUsers.has(key)) return { eligible: false, reason: 'already-welcomed-today' };
 
   // Skip known bots
   if (await isKnownBot(key, tenantId)) return { eligible: false, reason: 'known-bot' };
