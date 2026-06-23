@@ -33,6 +33,49 @@ function normalizeRelayText(message: string, speakerName?: string): string {
   return normalized;
 }
 
+function extractQuotedRelayMessage(message: string): string {
+  const match = String(message || '').match(/"([^"]+)"|'([^']+)'|\u201c([^\u201d]+)\u201d|\u2018([^\u2019]+)\u2019/);
+  return String(match?.[1] || match?.[2] || match?.[3] || match?.[4] || '').trim();
+}
+
+function relationshipTarget(normalized: string, speakerName: string | undefined, targets: WorldLoreCharacter[]): WorldLoreCharacter | null {
+  const speaker = String(speakerName || '').trim().toLowerCase();
+  if (!speaker || !/\byour\s+sister\b|\bsister\b/i.test(normalized)) return null;
+  if (!['athena', 'annie', 'athenabot87'].includes(speaker)) return null;
+  return targets.find((target) =>
+    (target.relationshipIds || []).some((id) => String(id).toLowerCase().includes('sister'))
+    || characterNames(target).some((name) => name.toLowerCase() === 'scarlett')
+  ) || null;
+}
+
+function nestedRelayToHandle(normalized: string): BotRelayRequest | null {
+  const quoted = extractQuotedRelayMessage(normalized);
+  const match = normalized.match(/\b(?:pass|send|relay)\s+(?:a\s+)?message\s+to\s+@?([a-z0-9_][a-z0-9_-]{1,49})\b(?:\s+that)?[\s,:-]*(.+)?$/i);
+  const targetName = String(match?.[1] || '').trim();
+  const relayMessage = (quoted || String(match?.[2] || '').trim().replace(/^that\s+/i, '')).trim();
+  if (!targetName || !relayMessage) return null;
+  return {
+    matched: true,
+    targetName,
+    relayMessage,
+    source: 'parser',
+  };
+}
+
+const GENERIC_TARGET_STOP_WORDS = new Set([
+  'your',
+  'my',
+  'his',
+  'her',
+  'their',
+  'our',
+  'the',
+  'a',
+  'an',
+  'this',
+  'that',
+]);
+
 export function detectBotRelayRequest(input: {
   message: string;
   speakerName?: string;
@@ -42,6 +85,25 @@ export function detectBotRelayRequest(input: {
   if (!normalized) return { matched: false };
 
   const relayVerbs = '(?:tell|ask|message|dm|relay|notify|let\\s+[^\\s]+\\s+know|send\\s+(?:a\\s+)?message\\s+to)';
+
+  const nested = nestedRelayToHandle(normalized);
+  if (nested) return nested;
+
+  const relatedTarget = relationshipTarget(normalized, input.speakerName, input.targets);
+  if (relatedTarget) {
+    const relationshipPattern = new RegExp(`\\b(?:can you|could you|would you|please)?\\s*${relayVerbs}\\s+(?:your\\s+)?sister\\b(?:\\s+that)?[\\s,:-]*(.+)$`, 'i');
+    const match = normalized.match(relationshipPattern);
+    const relayMessage = String(match?.[1] || '').trim().replace(/^that\s+/i, '');
+    if (relayMessage) {
+      return {
+        matched: true,
+        target: relatedTarget,
+        targetName: relatedTarget.currentName,
+        relayMessage,
+        source: 'parser',
+      };
+    }
+  }
 
   for (const target of input.targets) {
     for (const name of characterNames(target)) {
@@ -73,6 +135,9 @@ export function detectBotRelayRequest(input: {
   const genericTarget = String(genericMatch?.[1] || '').trim();
   const genericRelayMessage = String(genericMatch?.[2] || '').trim().replace(/^that\s+/i, '');
   if (genericTarget && genericRelayMessage) {
+    if (GENERIC_TARGET_STOP_WORDS.has(genericTarget.toLowerCase())) {
+      return { matched: false };
+    }
     return {
       matched: true,
       targetName: genericTarget,

@@ -17,7 +17,7 @@ import { sendStructuredDiscordReply } from '@/services/discord-structured-replie
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { getDiscordMessageCleanupDeleteAt, processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
-import { deliverBotRelay, handleDiscordMessage, resolveRelayTarget } from '@/services/chat-dispatcher';
+import { buildDirectHumanRelayMessage, deliverBotRelay, handleDiscordMessage, isDirectHumanRelayTarget, resolveRelayTarget } from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
 import { registerHandledDiscordMessage } from '@/services/discord-message-dedupe';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
@@ -637,6 +637,22 @@ export async function POST(request: NextRequest) {
           fallbackTenantId: botTenantId || tenantId || undefined,
         });
         if (!resolvedRelayTarget) {
+          if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
+            const directMessage = buildDirectHumanRelayMessage({
+              targetName: relayRequest.targetName,
+              sourceUserName: userName,
+              relayMessage: relayRequest.relayMessage,
+            });
+            console.log('[Discord Chat] Bot relay delivered directly to human target in current Discord channel:', {
+              targetName: relayRequest.targetName,
+              channelId,
+              source: relayRequest.source || 'unknown',
+            });
+            if (channelId) {
+              await sendDiscordRouteReplyOrCollect(channelId, directMessage);
+            }
+            return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: true, relayMode: 'direct-human', replies: relayOnly ? collectedReplies : undefined });
+          }
           console.warn('[Discord Chat] Bot relay target unresolved:', {
             targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
             triggerMessage: message,

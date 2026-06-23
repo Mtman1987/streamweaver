@@ -328,6 +328,49 @@ export async function resolveRelayTarget(input: {
     return null;
 }
 
+const DIRECT_HUMAN_RELAY_STOP_TARGETS = new Set([
+    'your',
+    'my',
+    'his',
+    'her',
+    'their',
+    'our',
+    'the',
+    'a',
+    'an',
+    'this',
+    'that',
+    'streamweaverbot',
+    'athena',
+    'athenabot87',
+]);
+
+function normalizeRelayHandle(value: unknown): string {
+    return String(value || '')
+        .trim()
+        .replace(/^@/, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '')
+        .slice(0, 64);
+}
+
+export function isDirectHumanRelayTarget(value: unknown): boolean {
+    const handle = normalizeRelayHandle(value);
+    if (handle.length < 2) return false;
+    if (DIRECT_HUMAN_RELAY_STOP_TARGETS.has(handle.toLowerCase())) return false;
+    return /^[a-zA-Z0-9_][a-zA-Z0-9_-]{1,63}$/.test(handle);
+}
+
+export function buildDirectHumanRelayMessage(input: {
+    targetName: string;
+    sourceUserName: string;
+    relayMessage: string;
+}): string {
+    const handle = normalizeRelayHandle(input.targetName);
+    const exactQuoted = extractQuotedRelayMessage(input.relayMessage);
+    const body = exactQuoted || String(input.relayMessage || '').trim();
+    return `@${handle}, ${input.sourceUserName} says: "${body}"`;
+}
+
 async function buildRelayDeliveryMessage(input: {
     sourceUserName: string;
     speaker: WorldLoreCharacter;
@@ -388,7 +431,7 @@ async function buildRelayDeliveryMessage(input: {
 }
 
 function extractQuotedRelayMessage(message: string): string | null {
-    const match = String(message || '').match(/"([^"]+)"|'([^']+)'|“([^”]+)”|‘([^’]+)’/);
+    const match = String(message || '').match(/"([^"]+)"|'([^']+)'|\u201c([^\u201d]+)\u201d|\u2018([^\u2019]+)\u2019/);
     const quoted = String(match?.[1] || match?.[2] || match?.[3] || match?.[4] || '').trim();
     return quoted || null;
 }
@@ -3976,6 +4019,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             fallbackTenantId: responseTenantId,
                         });
                         if (!resolvedRelayTarget) {
+                            if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
+                                const directMessage = buildDirectHumanRelayMessage({
+                                    targetName: relayRequest.targetName,
+                                    sourceUserName: actualUsername,
+                                    relayMessage: relayRequest.relayMessage,
+                                });
+                                console.log('[Dispatcher] Bot relay delivered directly to human target in current Twitch chat:', {
+                                    targetName: relayRequest.targetName,
+                                    replyChannel,
+                                    source: relayRequest.source || 'unknown',
+                                });
+                                await sendChatMessage(
+                                    directMessage,
+                                    'bot',
+                                    replyChannel,
+                                    responseTenantId
+                                ).catch(() => {});
+                                return;
+                            }
                             console.warn('[Dispatcher] Bot relay target unresolved:', {
                                 targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
                                 triggerMessage: actualMessage,
