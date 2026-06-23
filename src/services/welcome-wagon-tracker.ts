@@ -39,6 +39,17 @@ async function loadWelcomeWagonData(tenantId?: string): Promise<WelcomeWagonData
   }
 }
 
+async function loadMergedWelcomeWagonData(tenantId?: string): Promise<WelcomeWagonData> {
+  const tenantData = await loadWelcomeWagonData(tenantId);
+  if (!tenantId) return tenantData;
+
+  const globalData = await loadWelcomeWagonData();
+  return {
+    shoutouts: tenantData.shoutouts,
+    excludedUsers: [...new Set([...globalData.excludedUsers, ...tenantData.excludedUsers])],
+  };
+}
+
 async function saveWelcomeWagonData(data: WelcomeWagonData, tenantId?: string): Promise<void> {
   const filePath = trackerPath(tenantId);
   await fs.mkdir(dirname(filePath), { recursive: true });
@@ -46,7 +57,7 @@ async function saveWelcomeWagonData(data: WelcomeWagonData, tenantId?: string): 
 }
 
 export async function getShoutoutEligibility(username: string, tenantId?: string): Promise<ShoutoutEligibility> {
-  const data = await loadWelcomeWagonData(tenantId);
+  const data = await loadMergedWelcomeWagonData(tenantId);
   const lower = username.toLowerCase();
   if (BLACKLISTED_BOTS.includes(lower)) return { eligible: false, reason: 'known-bot' };
   if (data.excludedUsers.includes(lower)) return { eligible: false, reason: 'excluded-user' };
@@ -91,6 +102,6 @@ export async function removeExcludedUser(username: string, tenantId?: string): P
 }
 
 export async function getExcludedUsers(tenantId?: string): Promise<string[]> {
-  const data = await loadWelcomeWagonData(tenantId);
+  const data = await loadMergedWelcomeWagonData(tenantId);
   return data.excludedUsers;
 }

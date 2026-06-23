@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 import { addExcludedUser, removeExcludedUser, getExcludedUsers } from '@/services/welcome-wagon-tracker';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
@@ -10,7 +11,9 @@ const welcomeActionSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const excludedUsers = await getExcludedUsers();
+    const session = getTenantFromRequest(request);
+    const tenantId = request.nextUrl.searchParams.get('tenantId') || session?.tenantId || undefined;
+    const excludedUsers = await getExcludedUsers(tenantId);
     return apiOk({ excludedUsers });
   } catch (error) {
     return apiError('Failed to get excluded users', { status: 500, code: 'INTERNAL_ERROR' });
@@ -25,14 +28,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { username, action } = parsed.data;
+    const session = getTenantFromRequest(request);
+    const tenantId = request.nextUrl.searchParams.get('tenantId') || session?.tenantId || undefined;
     
     if (action === 'add') {
-      await addExcludedUser(username);
+      await addExcludedUser(username, tenantId);
       return apiOk({ message: `Added ${username} to excluded list` });
     }
 
     if (action === 'remove') {
-      await removeExcludedUser(username);
+      await removeExcludedUser(username, tenantId);
       return apiOk({ message: `Removed ${username} from excluded list` });
     }
 

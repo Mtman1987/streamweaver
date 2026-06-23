@@ -7,6 +7,7 @@ import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
 import { givePoints, stealPoints } from './points-transfer';
 import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
+import { recordShoutout } from './welcome-wagon-tracker';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { matchShoutoutTarget } from './shoutout-matcher';
@@ -3850,6 +3851,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
                             pendingWelcomeUsers.add(welcomeKey);
                             await markUserWelcomed(actualUsername, tenantId);
+                            await recordShoutout(actualUsername, tenantId);
                             await recordShoutoutAudit({
                                 status: 'triggered',
                                 username: actualUsername,

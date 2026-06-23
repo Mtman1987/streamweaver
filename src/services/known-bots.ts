@@ -66,8 +66,18 @@ async function loadCustomBots(tenantId?: string): Promise<Set<string>> {
 
   const data = await readJsonFile<{ bots: string[] }>(CUSTOM_BOTS_FILE, { bots: [] }, toCtx(tenantId));
   const set = new Set(data.bots.map(b => b.toLowerCase()));
+  if (tenantId) {
+    const globalData = await readJsonFile<{ bots: string[] }>(CUSTOM_BOTS_FILE, { bots: [] });
+    for (const bot of globalData.bots) {
+      if (typeof bot === 'string') set.add(bot.toLowerCase());
+    }
+  }
   tenantCustomBots.set(key, set);
   return set;
+}
+
+async function saveCustomBots(bots: Set<string>, tenantId?: string): Promise<void> {
+  await writeJsonFile(CUSTOM_BOTS_FILE, { bots: Array.from(bots).sort() }, toCtx(tenantId));
 }
 
 /**
@@ -93,16 +103,25 @@ export function isKnownBotSync(username: string): boolean {
 export async function addCustomBot(username: string, tenantId?: string): Promise<void> {
   const custom = await loadCustomBots(tenantId);
   custom.add(username.toLowerCase());
-  await writeJsonFile(CUSTOM_BOTS_FILE, { bots: Array.from(custom) }, toCtx(tenantId));
+  await saveCustomBots(custom, tenantId);
 }
 
 /**
  * Remove a bot from the tenant's custom list.
  */
 export async function removeCustomBot(username: string, tenantId?: string): Promise<void> {
+  const lower = username.toLowerCase();
   const custom = await loadCustomBots(tenantId);
-  custom.delete(username.toLowerCase());
-  await writeJsonFile(CUSTOM_BOTS_FILE, { bots: Array.from(custom) }, toCtx(tenantId));
+  custom.delete(lower);
+  await saveCustomBots(custom, tenantId);
+
+  if (tenantId) {
+    const globalCustom = await loadCustomBots();
+    if (globalCustom.delete(lower)) {
+      await saveCustomBots(globalCustom);
+      tenantCustomBots.delete('__global');
+    }
+  }
 }
 
 /**
