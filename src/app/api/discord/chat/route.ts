@@ -528,6 +528,48 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Handle !img in guild channels (not just DMs)
+    if (!isDirectMessage && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
+      const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
+      const prompt = (imgMatch?.[1] || '').trim();
+      if (!prompt) {
+        if (channelId) {
+          const baseUrl = getConfiguredAppUrl();
+          await sendDiscordRouteReplyOrCollect(channelId, `Usage: !img <description>`);
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image' });
+      }
+
+      if (channelId) {
+        await sendDiscordRouteReplyOrCollect(channelId, "I'm processing your image now, Commander.");
+      }
+
+      let result;
+      try {
+        result = await runImageCommand(message, tenantId || '');
+      } catch (error) {
+        console.warn(`[Discord Chat:${tenantId}] !img guild failed:`, error);
+        if (channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, 'Image generation failed. Try again in a moment.');
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', error: 'image-failed' });
+      }
+
+      if (!result.images.length) {
+        if (channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, 'Image generation returned no image URL.');
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', error: 'empty-image' });
+      }
+
+      if (channelId) {
+        for (const image of result.images) {
+          await sendDiscordRouteReplyOrCollect(channelId, await maybeShortenUrl(image));
+        }
+      }
+      return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', images: result.images });
+    }
+
     // Bridge to Twitch if enabled, dispatch is true, message is from the configured bridge channel,
     // and the bot is NOT mentioned (bot conversations stay in Discord)
     if (!isDirectMessage && message.trim().startsWith('!')) {
