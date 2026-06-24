@@ -532,8 +532,15 @@ export async function POST(request: NextRequest) {
     if (!isDirectMessage && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
       // Only the guild's own tenant should handle !img to prevent multi-bot duplication
       const guildTenant = await resolveGuildTenant(guildId);
-      if (tenantId && guildTenant && tenantId !== guildTenant) {
+      if (guildTenant && tenantId !== guildTenant) {
         return apiOk({ success: true, botResponded: false, skipped: 'img-not-owner-tenant' });
+      }
+      // If no guild tenant resolved, only let the first tenant (alphabetically) handle it
+      if (!guildTenant) {
+        const allTenants = await listTenants();
+        if (allTenants.length > 1 && tenantId !== allTenants.sort()[0]) {
+          return apiOk({ success: true, botResponded: false, skipped: 'img-not-primary-tenant' });
+        }
       }
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
