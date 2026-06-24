@@ -559,7 +559,8 @@ export async function POST(request: NextRequest) {
 
       let result;
       try {
-        result = await runImageCommand(message, tenantId || '');
+        const imgTenantId = tenantId || (await listTenants())[0] || '';
+        result = await runImageCommand(message, imgTenantId);
       } catch (error) {
         console.warn(`[Discord Chat:${tenantId}] !img guild failed:`, error);
         if (channelId) {

@@ -105,7 +105,7 @@ export async function runImageCommand(input: string, tenantId: string): Promise<
       numImages: parsed.count || settings.imageCount || 1,
       providerParams: {
         lora: settings.lora || undefined,
-        loraStrength: settings.loraStrength,
+        loraStrength: settings.lora ? settings.loraStrength : undefined,
         steps: settings.steps,
         cfg: settings.cfg,
         seed: settings.seed,
