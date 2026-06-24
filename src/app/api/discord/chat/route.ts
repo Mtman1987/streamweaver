@@ -530,6 +530,12 @@ export async function POST(request: NextRequest) {
 
     // Handle !img in guild channels (not just DMs)
     if (!isDirectMessage && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
+      // Only the guild's own tenant should handle !img to prevent multi-bot duplication
+      const guildTenant = await resolveGuildTenant(guildId);
+      if (tenantId && guildTenant && tenantId !== guildTenant) {
+        return apiOk({ success: true, botResponded: false, skipped: 'img-not-owner-tenant' });
+      }
+
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
       const prompt = (imgMatch?.[1] || '').trim();
       if (!prompt) {

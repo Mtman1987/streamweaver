@@ -21,7 +21,7 @@ export interface AIResponseOptions {
 export function getAIConfig(tenantId?: string): AIConfig {
   const config = readUserConfigSync(tenantId);
   
-  const provider = (config.AI_PROVIDER as AIProvider) || 'gemini';
+  const provider = (config.AI_PROVIDER as AIProvider) || 'edenai';
   const personalityName = config.AI_PERSONALITY_NAME || 'Captain';
   const botName = config.AI_BOT_NAME || 'StreamWeaver87';
   
