@@ -189,6 +189,8 @@ export async function checkChatActivity() {
 
 
 export async function checkDmChannelActivity(): Promise<void> {
+    // !img is now handled by /api/discord/chat route directly.
+    // DM sweep only handles conversational AI responses, not commands.
     if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
     const { listTenants } = await import('../lib/tenant');
     const { getChannelMessages } = require('./discord');
@@ -215,42 +217,6 @@ export async function checkDmChannelActivity(): Promise<void> {
 
         const lastId = lastDiscordMessageId.get(stateKey);
         if (!lastId) {
-            // First-run bootstrap: don't silently drop a fresh command message.
-            // If the newest message is user-authored and looks like a DM command,
-            // process it once before establishing baseline.
-            const newest = messages[0];
-            if (newest?.content && !newest?.author?.bot) {
-                const newestText = String(newest.content).trim();
-                if (newestText.toLowerCase() === '!img' || newestText.toLowerCase().startsWith('!img ')) {
-                    console.log(`[DM Sweep:${tenantId}] First-run processing newest !img command:`, newestText.slice(0, 120));
-                    const prompt = newestText.replace(/^!img\s*/i, '').trim();
-                    if (!prompt) {
-                        const baseUrl = getConfiguredAppUrl();
-                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
-                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
-                    } else {
-                        try {
-                            await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
-                            const result = await runImageCommand(newestText, tenantId);
-                            if (result.optimizedPrompt) {
-                                const settings = await readGenerationSettings(tenantId);
-                                if (settings.showOptimizedPrompt) {
-                                    await sendDiscordMessage(dmChannelId, `Optimized prompt: ${result.optimizedPrompt.slice(0, 1500)}`);
-                                }
-                            }
-                            if (result.images.length) {
-                                for (const imageUrl of result.images) await sendDiscordMessage(dmChannelId, imageUrl);
-                            } else {
-                                await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
-                            }
-                        } catch (error) {
-                            console.warn(`[DM Sweep:${tenantId}] !img exception:`, error);
-                            await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
-                        }
-                    }
-                }
-            }
-
             lastDiscordMessageId.set(stateKey, messages[0].id);
             await saveDmLastMessageId(tenantId, messages[0].id);
             continue;
@@ -266,71 +232,8 @@ export async function checkDmChannelActivity(): Promise<void> {
             if (!msg?.content || msg?.author?.bot) continue;
             const messageText = String(msg.content || '').trim();
             try {
-                if (messageText.toLowerCase() === '!img' || messageText.toLowerCase().startsWith('!img ')) {
-                    const prompt = messageText.replace(/^!img\s*/i, '').trim();
-                    if (!prompt) {
-                        const baseUrl = getConfiguredAppUrl();
-                        const libraryUrl = `${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`;
-                        await sendDiscordMessage(dmChannelId, `Usage: !img <description>\nImage library: ${libraryUrl}`);
-                        continue;
-                    }
-                    await sendDiscordMessage(dmChannelId, "I'm processing your image now, Commander.");
-                    let result;
-                    try {
-                        result = await runImageCommand(messageText, tenantId);
-                    } catch (error) {
-                        console.warn(`[DM Sweep:${tenantId}] !img failed:`, error);
-                        await sendDiscordMessage(dmChannelId, 'Image generation failed. Try again in a moment.');
-                        continue;
-                    }
-                    if (!result.images.length) {
-                        console.warn(`[DM Sweep:${tenantId}] !img returned empty image payload`);
-                        await sendDiscordMessage(dmChannelId, 'Image generation returned no image URL.');
-                        continue;
-                    }
-                    if (result.optimizedPrompt) {
-                        const settings = await readGenerationSettings(tenantId);
-                        if (settings.showOptimizedPrompt) {
-                            await sendDiscordMessage(dmChannelId, `Optimized prompt: ${result.optimizedPrompt.slice(0, 1500)}`);
-                        }
-                    }
-                    const ttsUrl = buildTtsOverlayUrl(tenantId);
-                    await queueTtsOverlay(result.prompt, tenantId).then((result) => {
-                        if (!result.ok) console.warn(`[DM Sweep:${tenantId || 'global'}] TTS overlay queue failed:`, result.error);
-                    });
-                    for (const rawImageUrl of result.images) {
-                        const imageUrl = await maybeShortenUrl(String(rawImageUrl).trim());
-                        const embeddableImageUrl = isDiscordEmbeddableImageUrl(imageUrl) ? imageUrl : null;
-                        if (embeddableImageUrl) {
-                            const embed = await buildDiscordBotEmbed({
-                                description: result.originalPrompt,
-                                tenantId,
-                                authorUrl: ttsUrl,
-                                authorName: getBotName(tenantId),
-                            });
-                            await sendDiscordEmbed(dmChannelId, {
-                                embeds: [{
-                                    ...embed,
-                                    title: 'Image Generated',
-                                    image: { url: embeddableImageUrl },
-                                }],
-                            });
-                        } else {
-                            console.warn(`[DM Sweep:${tenantId}] !img returned non-embeddable URL (len=${imageUrl.length}); sending link only.`);
-                            await sendDiscordMessage(dmChannelId, imageUrl).catch(() => {});
-                        }
-                    }
-                    continue;
-                }
-                const genModeMatch = messageText.match(/^!genmode(?:\s+(eden|seaart|perchance|pollinations|status))?$/i);
-                if (genModeMatch) {
-                    const action = (genModeMatch[1] || '').toLowerCase();
-                    const mode = action === 'eden' || action === 'seaart' || action === 'perchance' || action === 'pollinations'
-                        ? await setGenMode(action, tenantId)
-                        : action === 'status'
-                            ? await getGenMode(tenantId)
-                            : await toggleGenMode(tenantId);
-                    await sendDiscordMessage(dmChannelId, `Generation mode: ${String(mode).toUpperCase()}`);
+                // Skip !img and !genmode - handled by the chat route now
+                if (messageText.toLowerCase().startsWith('!img') || messageText.toLowerCase().startsWith('!genmode')) {
                     continue;
                 }
 
