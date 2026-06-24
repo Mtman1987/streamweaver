@@ -632,9 +632,12 @@ export async function POST(request: NextRequest) {
         } catch {}
 
         if (bridgeEnabled) {
-          const { sendChatMessage } = require('@/services/twitch');
-          const twitchMsg = `[Discord] ${userName}: ${message}`;
-          await sendChatMessage(twitchMsg, 'bot', undefined, tenantId);
+          // Don't bridge bot commands to Twitch
+          if (!message.trim().match(/^!img/i)) {
+            const { sendChatMessage } = require('@/services/twitch');
+            const twitchMsg = `[Discord] ${userName}: ${message}`;
+            await sendChatMessage(twitchMsg, 'bot', undefined, tenantId);
+          }
         }
       } catch (e) {
         console.warn('[Discord Chat] Twitch bridge failed:', e);
