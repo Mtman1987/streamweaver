@@ -109,8 +109,8 @@ function seedTenantDiscordConfig() {
       AI_PROVIDER: 'edenai',
       AI_BOT_NAME: 'Athena',
       AI_BOT_ALIASES: 'athena,hey athena,annie,athenabot87',
-      TTS_PROVIDER: 'openai',
-      TTS_VOICE: 'openai:nova'
+      TTS_PROVIDER: 'edenai',
+      TTS_VOICE: 'edenai:openai:FEMALE'
     }, null, 2))
     console.log('[entrypoint] Seeded user-config.json for tenant', tenantId)
   }

@@ -531,25 +531,25 @@ export async function POST(request: NextRequest) {
     // Handle !say - global TTS toggle
     if (!isDirectMessage && message.trim().match(/^!say$/i)) {
       const { readFile, writeFile, mkdir } = await import("fs/promises");
-      const sayFilePath = "/data/say-users.json";
+      const sayFilePath = "data/runtime/say-users.json";
       let sayUsers: string[] = [];
       try { sayUsers = JSON.parse(await readFile(sayFilePath, "utf-8")); } catch {}
       const userKey = `${userId}:${channelId}`;
       if (sayUsers.includes(userKey)) {
         sayUsers = sayUsers.filter(k => k !== userKey);
-        if (channelId) await sendDiscordBotMessage(channelId, `@${userName}, TTS disabled.`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS disabled.`);
       } else {
         sayUsers.push(userKey);
-        if (channelId) await sendDiscordBotMessage(channelId, `@${userName}, TTS enabled! Listen: https://streamweaver-new.fly.dev/tts-player\nType !say again to disable.`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS enabled! Listen: https://streamweaver-new.fly.dev/say-player\nType !say again to disable.`);
       }
-      try { await mkdir("/data", { recursive: true }); } catch {}
+      try { await mkdir("data/runtime", { recursive: true }); } catch {}
       await writeFile(sayFilePath, JSON.stringify(sayUsers));
       return apiOk({ success: true, botResponded: Boolean(channelId), context: "say-toggle" });
     }
 
     // Handle !listen - global TTS link
     if (!isDirectMessage && message.trim().match(/^!listen$/i)) {
-      if (channelId) await sendDiscordBotMessage(channelId, `Listen to TTS: https://streamweaver-new.fly.dev/tts-player`);
+      if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Listen to TTS: https://streamweaver-new.fly.dev/say-player`);
       return apiOk({ success: true, botResponded: Boolean(channelId), context: "listen" });
     }
 
@@ -684,11 +684,20 @@ export async function POST(request: NextRequest) {
 
     // If bot not mentioned, just bridge and return
     if (!botMentioned) {
-      // Check if user has TTS enabled via !say
-      const globalState = global as typeof globalThis & { __ttsEnabledUsers?: Set<string> };
-      const userKey = `${userId}:${channelId}`;
-      if (globalState.__ttsEnabledUsers?.has(userKey) && message.trim() && !message.trim().startsWith('!')) {
-        queueTtsOverlay(`${userName} says: ${message}`, undefined).catch(() => {});
+      // Check if user has TTS enabled via !say — queue to standalone say system
+      if (message.trim() && !message.trim().startsWith('!')) {
+        const { readFile } = await import('fs/promises');
+        const userKey = `${userId}:${channelId}`;
+        try {
+          const sayUsers: string[] = JSON.parse(await readFile('data/runtime/say-users.json', 'utf-8'));
+          if (sayUsers.includes(userKey)) {
+            fetch(`${getInternalAppUrl()}/api/say/queue`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: `${userName} says: ${message}` }),
+            }).catch(() => {});
+          }
+        } catch { /* no say-users file = nobody enrolled */ }
       }
       return apiOk({ success: true, botResponded: false });
     }
