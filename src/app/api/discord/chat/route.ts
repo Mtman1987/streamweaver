@@ -684,7 +684,7 @@ export async function POST(request: NextRequest) {
       const globalState = global as typeof globalThis & { __ttsEnabledUsers?: Set<string> };
       const userKey = `${userId}:${channelId}`;
       if (globalState.__ttsEnabledUsers?.has(userKey) && message.trim() && !message.trim().startsWith('!')) {
-        queueTtsOverlay(`${userName} says: ${message}`, undefined).catch(() => {});
+        queueTtsOverlay(`${userName} says: ${message}`, tenantId || undefined).catch(() => {});
       }
       return apiOk({ success: true, botResponded: false });
     }
