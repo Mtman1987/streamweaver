@@ -88,8 +88,8 @@ const seaArtModels: Record<string, { modelNo: string; modelVerNo: string; hd: bo
 };
 
 function getSeaArtModel(options: ImageGenerationOptions): { modelNo: string; modelVerNo: string; hd: boolean } {
-  const key = String(options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'wai-ani-ponyxl').trim();
-  const preset = seaArtModels[key] || seaArtModels['wai-ani-ponyxl'];
+  const key = String(options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity').trim();
+  const preset = seaArtModels[key] || seaArtModels['seaart-infinity'];
   const modelNo = String(options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || preset.modelNo).trim();
   const modelVerNo = String(options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || preset.modelVerNo).trim();
   return { modelNo, modelVerNo, hd: preset.hd };

@@ -22,7 +22,8 @@ const schema = z.object({
 
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
-  const settings = await readGenerationSettings(session?.tenantId);
+  const tenantId = session?.tenantId || request.nextUrl.searchParams.get('tenantId') || undefined;
+  const settings = await readGenerationSettings(tenantId);
   return apiOk(settings);
 }
 
@@ -30,9 +31,10 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return apiError('Invalid body', { status: 400, code: 'INVALID_BODY', details: parsed.error.flatten() });
   const session = getTenantFromRequest(request);
-  const saved = await writeGenerationSettings(parsed.data, session?.tenantId);
+  const tenantId = session?.tenantId || (parsed.data as any).tenantId || undefined;
+  const saved = await writeGenerationSettings(parsed.data, tenantId);
   if (parsed.data.mode) {
-    await setGenMode(parsed.data.mode, session?.tenantId).catch((err) => console.warn('[gen-settings] setGenMode sync failed:', err));
+    await setGenMode(parsed.data.mode, tenantId).catch((err) => console.warn('[gen-settings] setGenMode sync failed:', err));
   }
   return apiOk(saved);
 }

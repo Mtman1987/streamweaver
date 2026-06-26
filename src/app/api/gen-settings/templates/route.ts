@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { apiOk, apiError } from '@/lib/api-response';
-import { getTenantFromRequest } from '@/lib/tenant-context';
 import { IMAGE_PROMPT_TEMPLATES, writeGenerationSettings } from '@/lib/gen-settings-store';
 
 export async function GET() {
@@ -13,7 +12,7 @@ export async function POST(request: NextRequest) {
   if (!name || !IMAGE_PROMPT_TEMPLATES[name]) {
     return apiError(`Unknown template. Available: ${Object.keys(IMAGE_PROMPT_TEMPLATES).join(', ')}`, { status: 400, code: 'INVALID_TEMPLATE' });
   }
-  const session = getTenantFromRequest(request);
-  const saved = await writeGenerationSettings({ imagePromptTemplate: IMAGE_PROMPT_TEMPLATES[name] }, session?.tenantId);
+  const tenantId = String(body?.tenantId || '').trim() || undefined;
+  const saved = await writeGenerationSettings({ imagePromptTemplate: IMAGE_PROMPT_TEMPLATES[name] }, tenantId);
   return apiOk({ template: name, saved });
 }
