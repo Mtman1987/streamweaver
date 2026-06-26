@@ -528,7 +528,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle !say - enable TTS for user's messages
+    // Handle !say - enable TTS for user's messages (uses StreamWeaverBot tenant)
     if (!isDirectMessage && message.trim().match(/^!say$/i)) {
       const globalState = global as typeof globalThis & { __ttsEnabledUsers?: Set<string> };
       if (!globalState.__ttsEnabledUsers) globalState.__ttsEnabledUsers = new Set();
@@ -538,14 +538,23 @@ export async function POST(request: NextRequest) {
         if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS disabled. Your messages will no longer be read aloud.`);
       } else {
         globalState.__ttsEnabledUsers.add(userKey);
-        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS enabled! Everything you type will be read aloud. Click my name to listen. Type !say again to disable.`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS enabled! Everything you type will be read aloud. Type !listen to get the link. Type !say again to disable.`);
       }
       return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle' });
     }
 
     // Handle !listen - bot appears so users can click its name for TTS overlay
     if (!isDirectMessage && message.trim().match(/^!listen$/i)) {
-      if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Click my name to hear everything said read aloud for you!`);
+      if (channelId) {
+        const { sendDiscordEmbed } = await import('@/services/discord-local');
+        await sendDiscordEmbed(channelId, {
+          embeds: [{
+            color: 0xf97316,
+            title: '\uD83D\uDD0A Community TTS',
+            description: 'Click below to hear messages read aloud!\n\n[\u25B6 Open TTS Player](https://streamweaver-new.fly.dev/tts-player?tenantId=1234)',
+          }],
+        });
+      }
       return apiOk({ success: true, botResponded: Boolean(channelId), context: 'listen' });
     }
 
@@ -684,7 +693,7 @@ export async function POST(request: NextRequest) {
       const globalState = global as typeof globalThis & { __ttsEnabledUsers?: Set<string> };
       const userKey = `${userId}:${channelId}`;
       if (globalState.__ttsEnabledUsers?.has(userKey) && message.trim() && !message.trim().startsWith('!')) {
-        queueTtsOverlay(`${userName} says: ${message}`, tenantId || undefined).catch(() => {});
+        queueTtsOverlay(`${userName} says: ${message}`, '1234').catch(() => {});
       }
       return apiOk({ success: true, botResponded: false });
     }
