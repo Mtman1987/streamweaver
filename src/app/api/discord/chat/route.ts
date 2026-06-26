@@ -528,6 +528,27 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Handle !say - enable TTS for user's messages
+    if (!isDirectMessage && message.trim().match(/^!say$/i)) {
+      const globalState = global as typeof globalThis & { __ttsEnabledUsers?: Set<string> };
+      if (!globalState.__ttsEnabledUsers) globalState.__ttsEnabledUsers = new Set();
+      const userKey = `${userId}:${channelId}`;
+      if (globalState.__ttsEnabledUsers.has(userKey)) {
+        globalState.__ttsEnabledUsers.delete(userKey);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS disabled. Your messages will no longer be read aloud.`);
+      } else {
+        globalState.__ttsEnabledUsers.add(userKey);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS enabled! Everything you type will be read aloud. Click my name to listen. Type !say again to disable.`);
+      }
+      return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle' });
+    }
+
+    // Handle !listen - bot appears so users can click its name for TTS overlay
+    if (!isDirectMessage && message.trim().match(/^!listen$/i)) {
+      if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Click my name to hear everything said read aloud for you!`);
+      return apiOk({ success: true, botResponded: Boolean(channelId), context: 'listen' });
+    }
+
     // Handle !img in guild channels (not just DMs)
     if (!isDirectMessage && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
       // Only the guild's own tenant should handle !img to prevent multi-bot duplication
@@ -659,6 +680,12 @@ export async function POST(request: NextRequest) {
 
     // If bot not mentioned, just bridge and return
     if (!botMentioned) {
+      // Check if user has TTS enabled via !say
+      const globalState = global as typeof globalThis & { __ttsEnabledUsers?: Set<string> };
+      const userKey = `${userId}:${channelId}`;
+      if (globalState.__ttsEnabledUsers?.has(userKey) && message.trim() && !message.trim().startsWith('!')) {
+        queueTtsOverlay(`${userName} says: ${message}`, tenantId).catch(() => {});
+      }
       return apiOk({ success: true, botResponded: false });
     }
 
