@@ -577,8 +577,21 @@ export async function POST(request: NextRequest) {
       }
 
       if (channelId) {
+        const { sendDiscordEmbed } = await import('@/services/discord-local');
         for (const image of result.images) {
-          await sendDiscordRouteReplyOrCollect(channelId, await maybeShortenUrl(image));
+          const imageUrl = await maybeShortenUrl(image);
+          const embed = await buildDiscordBotEmbed({
+            description: result.originalPrompt || prompt,
+            tenantId,
+            authorName: getBotName(tenantId),
+          });
+          await sendDiscordEmbed(channelId, {
+            embeds: [{
+              ...embed,
+              title: 'Image Generated',
+              image: { url: imageUrl },
+            }],
+          });
         }
       }
       return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', images: result.images });

@@ -131,11 +131,15 @@ export async function runImageCommand(input: string, tenantId: string): Promise<
     .filter(Boolean)
     .filter((value, index, all) => all.indexOf(value) === index);
 
+  // Only return the locally-stored URL if available (prefer /api/ai/image/file/ over CDN)
+  const localImage = images.find((url) => url.includes('/api/ai/image/file/'));
+  const finalImages = localImage ? [localImage] : images.slice(0, 1);
+
   return {
     prompt: finalPrompt,
     originalPrompt: parsed.prompt,
     optimizedPrompt: finalPrompt !== parsed.prompt ? finalPrompt : null,
     provider: imageData?.provider || parsed.provider || settings.mode,
-    images,
+    images: finalImages,
   };
 }
