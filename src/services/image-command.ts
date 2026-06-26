@@ -19,6 +19,10 @@ export type ImageCommandResult = {
   images: string[];
 };
 
+export type ImageCommandOptions = {
+  scope?: 'public' | 'private';
+};
+
 function clampCount(value: unknown, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -74,7 +78,7 @@ export async function optimizeImagePrompt(
   return cleaned.slice(0, 3000);
 }
 
-export async function runImageCommand(input: string, tenantId: string): Promise<ImageCommandResult> {
+export async function runImageCommand(input: string, tenantId: string, options: ImageCommandOptions = {}): Promise<ImageCommandResult> {
   const parsed = parseImageCommand(input);
   if (!parsed.prompt) {
     return {
@@ -103,6 +107,7 @@ export async function runImageCommand(input: string, tenantId: string): Promise<
       model: settings.model || undefined,
       resolution: settings.resolution || undefined,
       numImages: parsed.count || settings.imageCount || 1,
+      scope: options.scope || 'public',
       providerParams: {
         lora: settings.lora || undefined,
         loraStrength: settings.lora ? settings.loraStrength : undefined,

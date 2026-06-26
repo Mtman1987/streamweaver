@@ -503,7 +503,7 @@ export async function POST(request: NextRequest) {
 
         let result;
         try {
-          result = await runImageCommand(message, tenantId);
+          result = await runImageCommand(message, tenantId, { scope: 'private' });
         } catch (error) {
           console.warn(`[Discord Chat:${tenantId}] !img failed:`, error);
           if (channelId) {
@@ -653,7 +653,7 @@ export async function POST(request: NextRequest) {
       let result;
       try {
         const imgTenantId = tenantId || (await listTenants())[0] || '';
-        result = await runImageCommand(message, imgTenantId);
+        result = await runImageCommand(message, imgTenantId, { scope: 'public' });
       } catch (error) {
         console.warn(`[Discord Chat:${tenantId}] !img guild failed:`, error);
         if (channelId) {

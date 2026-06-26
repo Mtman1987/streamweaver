@@ -4,7 +4,9 @@ import { promises as fs } from 'fs';
 import { tenantPath } from '@/lib/tenant';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
-  const tenantId = (new URL(request.url).searchParams.get('tenantId') || '').trim();
+  const searchParams = new URL(request.url).searchParams;
+  const tenantId = (searchParams.get('tenantId') || '').trim();
+  const scope = searchParams.get('scope') === 'private' ? 'private' : 'public';
   if (tenantId && !/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
     return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
   }
@@ -13,7 +15,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
     return NextResponse.json({ error: 'invalid file' }, { status: 400 });
   }
-  const filePath = tenantId ? tenantPath(tenantId, `data/generated-images/${name}`) : `${process.cwd()}/data/generated-images/${name}`;
+  const storagePath = scope === 'private' ? 'data/private-generated-images' : 'data/generated-images';
+  const filePath = tenantId ? tenantPath(tenantId, `${storagePath}/${name}`) : `${process.cwd()}/${storagePath}/${name}`;
   try {
     const data = await fs.readFile(filePath);
     const ext = name.split('.').pop()?.toLowerCase();

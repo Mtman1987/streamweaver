@@ -20,11 +20,27 @@ const imageSchema = z.object({
   numImages: z.coerce.number().int().min(1).max(4).optional().default(1),
   providerParams: z.record(z.unknown()).optional(),
   providerOverride: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
+  scope: z.enum(['public', 'private']).optional().default('public'),
   tenantId: z.string().trim().max(128).optional(),
 });
 
+type ImageLibraryScope = z.infer<typeof imageSchema>['scope'];
 
-async function persistImageFromUrl(imageUrl: string, tenantId?: string, request?: NextRequest): Promise<string | null> {
+function getImageStoragePath(scope: ImageLibraryScope): string {
+  return scope === 'private' ? 'data/private-generated-images' : 'data/generated-images';
+}
+
+function buildImageFileUrl(filename: string, scope: ImageLibraryScope, tenantId?: string, request?: NextRequest): string {
+  const base = getConfiguredAppUrl(request?.nextUrl.origin);
+  const params = new URLSearchParams();
+  if (tenantId) params.set('tenantId', tenantId);
+  if (scope === 'private') params.set('scope', scope);
+  const query = params.toString();
+  const path = `/api/ai/image/file/${filename}${query ? `?${query}` : ''}`;
+  return base ? `${base}${path}` : path;
+}
+
+async function persistImageFromUrl(imageUrl: string, tenantId: string | undefined, scope: ImageLibraryScope, request?: NextRequest): Promise<string | null> {
   try {
     if (!/^https?:\/\//i.test(imageUrl)) return null;
     const res = await fetch(imageUrl);
@@ -33,19 +49,18 @@ async function persistImageFromUrl(imageUrl: string, tenantId?: string, request?
     const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : 'png';
     const bytes = Buffer.from(await res.arrayBuffer());
     const id = randomUUID();
-    const relDir = tenantId ? tenantPath(tenantId, 'data/generated-images') : `${process.cwd()}/data/generated-images`;
+    const storagePath = getImageStoragePath(scope);
+    const relDir = tenantId ? tenantPath(tenantId, storagePath) : `${process.cwd()}/${storagePath}`;
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = getConfiguredAppUrl(request?.nextUrl.origin);
-    const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return base ? `${base}${path}` : path;
+    return buildImageFileUrl(filename, scope, tenantId, request);
   } catch {
     return null;
   }
 }
 
-async function persistImageFromDataUri(dataUri: string, tenantId?: string, request?: NextRequest): Promise<string | null> {
+async function persistImageFromDataUri(dataUri: string, tenantId: string | undefined, scope: ImageLibraryScope, request?: NextRequest): Promise<string | null> {
   try {
     const match = String(dataUri).match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i);
     if (!match) return null;
@@ -53,13 +68,12 @@ async function persistImageFromDataUri(dataUri: string, tenantId?: string, reque
     const bytes = Buffer.from(match[2], 'base64');
     if (!bytes.length) return null;
     const id = randomUUID();
-    const relDir = tenantId ? tenantPath(tenantId, 'data/generated-images') : `${process.cwd()}/data/generated-images`;
+    const storagePath = getImageStoragePath(scope);
+    const relDir = tenantId ? tenantPath(tenantId, storagePath) : `${process.cwd()}/${storagePath}`;
     await fs.mkdir(relDir, { recursive: true });
     const filename = `${id}.${ext}`;
     await fs.writeFile(`${relDir}/${filename}`, bytes);
-    const base = getConfiguredAppUrl(request?.nextUrl.origin);
-    const path = `/api/ai/image/file/${filename}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`;
-    return base ? `${base}${path}` : path;
+    return buildImageFileUrl(filename, scope, tenantId, request);
   } catch {
     return null;
   }
@@ -78,6 +92,7 @@ export async function POST(request: NextRequest) {
 
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId || parsed.data.tenantId;
+    const scope = parsed.data.scope;
 
     // Resolve effective mode: prefer tenant gen-settings (UI source of truth),
     // fall back to legacy gen-mode.json toggled by !genmode.
@@ -115,8 +130,8 @@ export async function POST(request: NextRequest) {
     const persistedImageUrls: string[] = [];
     for (const source of sources) {
       const persisted = source.startsWith('data:image/')
-        ? await persistImageFromDataUri(source, tenantId, request)
-        : await persistImageFromUrl(source, tenantId, request);
+        ? await persistImageFromDataUri(source, tenantId, scope, request)
+        : await persistImageFromUrl(source, tenantId, scope, request);
       if (persisted) persistedImageUrls.push(persisted);
     }
 
@@ -131,6 +146,7 @@ export async function POST(request: NextRequest) {
       persistedImageUrl: persistedImageUrls[0] || null,
       persistedImageUrls,
       provider: genMode,
+      scope,
     });
   } catch (error: any) {
     console.error('[AI Image] Error:', error);

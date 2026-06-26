@@ -280,7 +280,9 @@ export async function POST(request: NextRequest) {
 
     const imageCommand = extractImageCommandTranscript(transcript);
     if (imageCommand) {
-      const image = await runImageCommand(imageCommand, tenantId || username);
+      const image = await runImageCommand(imageCommand, tenantId || username, {
+        scope: command.destination === 'private' ? 'private' : 'public',
+      });
       const response = image.images.length
         ? `Generated ${image.images.length} image${image.images.length === 1 ? '' : 's'} through StreamWeaver.`
         : 'StreamWeaver accepted the image command, but no image URL was returned.';
