@@ -16,16 +16,13 @@ export interface TTSConfig {
   discordBridge: boolean;
 }
 
-export const TTS_VOICES: Record<TTSProvider, string[]> = {
+export const TTS_VOICES: Record<string, string[]> = {
   edenai: TTS_VOICE_OPTIONS.filter((v) => v.provider === 'edenai').map((v) => v.id),
-  google: TTS_VOICE_OPTIONS.filter((v) => v.provider === 'google').map((v) => v.id),
 };
 
 function resolveTTSApiKey(provider: TTSProvider, tenantId?: string): string {
   const config = readUserConfigSync(tenantId);
-  if (provider === 'edenai') return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
-  if (provider === 'google') return config.GOOGLE_TTS_API_KEY || process.env.GOOGLE_TTS_API_KEY || '';
-  return '';
+  return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
 }
 
 export function getTTSConfig(tenantId?: string): TTSConfig {
@@ -90,18 +87,12 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
   let audioDataUri: string;
 
   try {
-    if (config.provider === 'google') {
-      audioDataUri = await generateGoogleCloudTTS(normalizedText, config.voice, config.apiKey);
-    } else {
-      if (!config.apiKey) throw new Error('No EdenAI API key configured');
-      audioDataUri = await generateEdenAITTS(normalizedText, config.voice, config.apiKey);
-    }
+    if (!config.apiKey) throw new Error('No EdenAI API key configured');
+    audioDataUri = await generateEdenAITTS(normalizedText, config.voice, config.apiKey);
   } catch (err) {
-    // Fallback: direct Google Cloud TTS
-    const googleKey = resolveTTSApiKey('google', tenantId);
-    if (!googleKey) throw err;
-    console.warn(`[TTS] EdenAI failed, falling back to Google Cloud TTS:`, (err as Error).message);
-    audioDataUri = await generateGoogleCloudTTS(normalizedText, config.voice, googleKey);
+    // Fallback: StreamElements TTS (free, no key needed)
+    console.warn(`[TTS] EdenAI failed, falling back to StreamElements:`, (err as Error).message);
+    audioDataUri = await generateFallbackTTS(normalizedText);
   }
 
   if (config.discordBridge) {
@@ -147,33 +138,13 @@ async function generateEdenAITTS(text: string, voice: string, apiKey: string): P
   return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
-async function generateGoogleCloudTTS(text: string, voice: string, apiKey: string): Promise<string> {
-  const voiceOption = getTtsVoiceOption(voice, 'google');
-  const googleVoice = voiceOption.googleVoice || 'en-US-Wavenet-F';
-
-  const response = await fetchWithRetry(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input: { text },
-        voice: { languageCode: 'en-US', name: googleVoice },
-        audioConfig: { audioEncoding: 'MP3' },
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    throw new Error(`Google Cloud TTS failed: ${response.status} ${errBody}`);
-  }
-
-  const result = await response.json();
-  const audioContent = result?.audioContent;
-  if (!audioContent) throw new Error('Google Cloud TTS returned no audio');
-
-  return `data:audio/mpeg;base64,${audioContent}`;
+async function generateFallbackTTS(text: string): Promise<string> {
+  // StreamElements TTS — free, no API key, natural sounding
+  const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(text.slice(0, 300))}`;
+  const response = await fetchWithRetry(url, {}, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
+  if (!response.ok) throw new Error(`Fallback TTS failed: ${response.status}`);
+  const audioBuffer = await response.arrayBuffer();
+  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
 async function sendToDiscordBridge(audioDataUri: string, text: string, voice: string): Promise<void> {

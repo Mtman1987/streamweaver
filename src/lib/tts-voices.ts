@@ -1,4 +1,4 @@
-export type TTSProvider = 'edenai' | 'google';
+export type TTSProvider = 'edenai';
 export type EdenAITTSProvider = 'google' | 'microsoft' | 'amazon';
 export type TTSVoiceGender = 'MALE' | 'FEMALE';
 
@@ -77,36 +77,14 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   },
 ];
 
-export const GOOGLE_VOICE_OPTIONS: TTSVoiceOption[] = [
-  {
-    id: 'google:en-US-Wavenet-F',
-    label: 'Google WaveNet Female',
-    provider: 'google',
-    providerLabel: 'Google Cloud',
-    gender: 'Female',
-    description: 'Direct Google Cloud WaveNet female (fallback)',
-    googleVoice: 'en-US-Wavenet-F',
-  },
-  {
-    id: 'google:en-US-Wavenet-D',
-    label: 'Google WaveNet Male',
-    provider: 'google',
-    providerLabel: 'Google Cloud',
-    gender: 'Male',
-    description: 'Direct Google Cloud WaveNet male (fallback)',
-    googleVoice: 'en-US-Wavenet-D',
-  },
-];
+export const GOOGLE_VOICE_OPTIONS: TTSVoiceOption[] = [];
 
-export const TTS_VOICE_OPTIONS: TTSVoiceOption[] = [...EDENAI_VOICE_OPTIONS, ...GOOGLE_VOICE_OPTIONS];
+export const TTS_VOICE_OPTIONS: TTSVoiceOption[] = [...EDENAI_VOICE_OPTIONS];
 
 export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
 export const DEFAULT_TTS_VOICE = 'edenai:google:FEMALE';
 
 export function normalizeTtsProvider(provider: unknown): TTSProvider {
-  if (typeof provider !== 'string') return DEFAULT_TTS_PROVIDER;
-  const normalized = provider.trim().toLowerCase();
-  if (normalized === 'google') return 'google';
   return 'edenai';
 }
 
@@ -117,8 +95,8 @@ export function normalizeTtsVoice(voice: string | undefined | null, provider: TT
   if (canonical) return canonical.id;
   // Legacy name mapping
   const lower = trimmed.toLowerCase();
-  if (lower.includes('female') || lower.includes('wavenet-f')) return provider === 'google' ? 'google:en-US-Wavenet-F' : 'edenai:google:FEMALE';
-  if (lower.includes('male') || lower.includes('wavenet-m') || lower.includes('wavenet-d')) return provider === 'google' ? 'google:en-US-Wavenet-D' : 'edenai:google:MALE';
+  if (lower.includes('female') || lower.includes('wavenet-f')) return 'edenai:google:FEMALE';
+  if (lower.includes('male') || lower.includes('wavenet-m') || lower.includes('wavenet-d')) return 'edenai:google:MALE';
   return DEFAULT_TTS_VOICE;
 }
 
@@ -133,7 +111,7 @@ export function getProviderForVoice(voice: string | undefined | null, fallback: 
 
 export function getFallbackVoiceForProvider(_provider: TTSProvider, selectedVoice?: string | null): string {
   const selected = getTtsVoiceOption(selectedVoice);
-  return selected.gender === 'Male' ? 'google:en-US-Wavenet-D' : 'google:en-US-Wavenet-F';
+  return selected.gender === 'Male' ? 'edenai:google:MALE' : 'edenai:google:FEMALE';
 }
 
 // Keep these exports for backward compat but they all resolve to edenai now
