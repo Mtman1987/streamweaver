@@ -66,6 +66,17 @@ import {
     submitMtSupportReport,
 } from './mt-support-report';
 import { findDiscordLastSeenForNames } from './discord-last-seen';
+import { getInternalAppUrl } from '../lib/runtime-origin';
+import {
+    applySayState,
+    isSayEnabled,
+    normalizeSayUser,
+    parseSayState,
+    readSayUsers,
+    sayAllKey,
+    sayUserKey,
+    writeSayUsers,
+} from './say-tts';
 
 type DiscordDispatchOptions = {
     skipPublicHistory?: boolean;
@@ -1979,6 +1990,41 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Skip self messages (broadcaster client echoes its own sends)
     if (self) return;
 
+    if (isCommand && /^!say(?:\s|$)/i.test(actualMessage)) {
+        const args = actualMessage.substring('!say'.length).trim().split(/\s+/).filter(Boolean);
+        const firstState = parseSayState(args[0]);
+        const targetToken = firstState ? '' : (args[0] || '');
+        const requestedState = firstState || parseSayState(args[1]);
+        const canManageSay = Boolean(tags.mod || tags.badges?.broadcaster);
+        const sayUsers = await readSayUsers();
+
+        if (targetToken.toLowerCase() === 'all') {
+            if (!canManageSay) {
+                await replyMaybeKick(`@${actualUsername}, only mods can change !say for everyone.`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const nextState = applySayState(sayUsers, sayAllKey(replyChannel), requestedState);
+            await writeSayUsers(sayUsers);
+            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: https://streamweaver-new.fly.dev/say-player`, 'broadcaster').catch(() => {});
+            return;
+        }
+
+        const targetUser = normalizeSayUser(targetToken || actualUsername);
+        const isSelfTarget = targetUser === normalizeSayUser(actualUsername);
+        if (!isSelfTarget && !canManageSay) {
+            await replyMaybeKick(`@${actualUsername}, only mods can change !say for another user.`, 'broadcaster').catch(() => {});
+            return;
+        }
+
+        const nextState = applySayState(sayUsers, sayUserKey(targetUser, replyChannel), requestedState);
+        await writeSayUsers(sayUsers);
+        const suffix = nextState === 'on'
+            ? ` Listen: https://streamweaver-new.fly.dev/say-player${isSelfTarget ? ' | Type !say again to disable.' : ''}`
+            : '';
+        await replyMaybeKick(`TTS for @${targetUser} is now ${nextState}.${suffix}`, 'broadcaster').catch(() => {});
+        return;
+    }
+
     recordDashboardActivity({
         id: String(tags.id || `twitch-${Date.now()}-${Math.random().toString(36).slice(2)}`),
         tenantId,
@@ -1987,6 +2033,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         message: actualMessage,
         color: tags.color,
     });
+
+    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && actualMessage.trim()) {
+        readSayUsers().then((sayUsers) => {
+            if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
+            return fetch(`${getInternalAppUrl()}/api/say/queue`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: `${displayName || actualUsername} says: ${actualMessage}` }),
+            });
+        }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
+    }
     
     // Handle AI memory clear command FIRST (before any other processing)
     const aiConfig = getAIConfig(tenantId);

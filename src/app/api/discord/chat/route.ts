@@ -33,6 +33,15 @@ import {
 } from '@/services/mt-support-report';
 import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
+import {
+  applySayState,
+  isSayEnabled,
+  parseSayState,
+  readSayUsers,
+  sayAllKey,
+  sayUserKey,
+  writeSayUsers,
+} from '@/services/say-tts';
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -109,6 +118,39 @@ function normalizeDiscordPayload(body: any): NormalizedDiscordPayload {
     isOwner: data.isOwner,
     memberPermissions: data.memberPermissions || data.member_permissions || member.permissions,
   };
+}
+
+function readDiscordMention(source: any, userId: string): any | null {
+  if (!source) return null;
+  if (typeof source.get === 'function') return source.get(userId) || null;
+  if (Array.isArray(source)) {
+    return source.find((entry: any) => String(entry?.id || entry?.user?.id) === userId) || null;
+  }
+  return source[userId] || null;
+}
+
+function resolveDiscordSayMention(rawTarget: string, data: any): { userId: string; displayName: string } | null {
+  const match = String(rawTarget || '').trim().match(/^<@!?(\d+)>$/);
+  if (!match) return null;
+
+  const targetUserId = match[1];
+  const mentions = data?.mentions || {};
+  const user = readDiscordMention(mentions.users || mentions, targetUserId);
+  const member = readDiscordMention(mentions.members, targetUserId);
+  const displayName =
+    user?.globalName ||
+    user?.global_name ||
+    member?.displayName ||
+    member?.display_name ||
+    member?.nick ||
+    member?.user?.globalName ||
+    member?.user?.global_name ||
+    member?.user?.username ||
+    user?.displayName ||
+    user?.username ||
+    targetUserId;
+
+  return { userId: targetUserId, displayName };
 }
 
 /**
@@ -528,23 +570,49 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle !say - global TTS toggle
-    if (!isDirectMessage && message.trim().match(/^!say$/i)) {
-      const { readFile, writeFile, mkdir } = await import("fs/promises");
-      const sayFilePath = "data/runtime/say-users.json";
-      let sayUsers: string[] = [];
-      try { sayUsers = JSON.parse(await readFile(sayFilePath, "utf-8")); } catch {}
-      const userKey = `${userId}:${channelId}`;
-      if (sayUsers.includes(userKey)) {
-        sayUsers = sayUsers.filter(k => k !== userKey);
-        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS disabled.`);
-      } else {
-        sayUsers.push(userKey);
-        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, TTS enabled! Listen: https://streamweaver-new.fly.dev/say-player\nType !say again to disable.`);
+    // Handle !say - standalone TTS toggle
+    const sayMatch = !isDirectMessage ? message.trim().match(/^!say(?:\s+(.+))?$/i) : null;
+    if (sayMatch) {
+      const args = String(sayMatch[1] || '').trim().split(/\s+/).filter(Boolean);
+      const firstState = parseSayState(args[0]);
+      const targetToken = firstState ? '' : (args[0] || '');
+      const requestedState = firstState || parseSayState(args[1]);
+      const sayUsers = await readSayUsers();
+
+      if (targetToken.toLowerCase() === 'all') {
+        if (!canManageBotShare) {
+          if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, only mods/admins can change !say for everyone.`);
+          return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-denied' });
+        }
+        const nextState = applySayState(sayUsers, sayAllKey(channelId), requestedState);
+        await writeSayUsers(sayUsers);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: https://streamweaver-new.fly.dev/say-player`);
+        return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle-all', mode: nextState });
       }
-      try { await mkdir("data/runtime", { recursive: true }); } catch {}
-      await writeFile(sayFilePath, JSON.stringify(sayUsers));
-      return apiOk({ success: true, botResponded: Boolean(channelId), context: "say-toggle" });
+
+      const mentionTarget = targetToken ? resolveDiscordSayMention(targetToken, data) : null;
+      if (targetToken && !mentionTarget) {
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, mention the Discord user you want to update.`);
+        return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-target-unresolved' });
+      }
+
+      const targetUserId = mentionTarget?.userId || userId;
+      const targetName = mentionTarget?.displayName || userName;
+      const isSelf = !targetToken || targetUserId === userId;
+      if (!isSelf && !canManageBotShare) {
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, only mods/admins can change !say for another user.`);
+        return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-denied' });
+      }
+
+      const nextState = applySayState(sayUsers, sayUserKey(targetUserId, channelId), requestedState);
+      await writeSayUsers(sayUsers);
+      if (channelId) {
+        const suffix = nextState === 'on'
+          ? ` Listen: https://streamweaver-new.fly.dev/say-player${isSelf ? '\nType !say again to disable.' : ''}`
+          : '';
+        await sendDiscordRouteReplyOrCollect(channelId, `@${targetName}, TTS ${nextState === 'on' ? 'enabled' : 'disabled'}.${suffix}`);
+      }
+      return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle', mode: nextState });
     }
 
     // Handle !listen - global TTS link
@@ -686,11 +754,9 @@ export async function POST(request: NextRequest) {
     if (!botMentioned) {
       // Check if user has TTS enabled via !say — queue to standalone say system
       if (message.trim() && !message.trim().startsWith('!')) {
-        const { readFile } = await import('fs/promises');
-        const userKey = `${userId}:${channelId}`;
         try {
-          const sayUsers: string[] = JSON.parse(await readFile('data/runtime/say-users.json', 'utf-8'));
-          if (sayUsers.includes(userKey)) {
+          const sayUsers = await readSayUsers();
+          if (isSayEnabled(sayUsers, userId, channelId)) {
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
