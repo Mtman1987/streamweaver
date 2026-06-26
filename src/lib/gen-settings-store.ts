@@ -17,13 +17,34 @@ export type GenerationSettings = {
   imagePromptTemplate: string;
 };
 
-export const DEFAULT_IMAGE_PROMPT_TEMPLATE = [
-  'Rewrite the user idea into one concise image-generation prompt.',
-  'Preserve the user intent and do not add unrelated subjects.',
-  'Add useful visual detail: subject, medium/style, composition, lighting, background, mood, color, and quality cues.',
-  'If the user asks for an avatar, include clean character framing and background details suitable for avatar art.',
-  'Return only the final prompt. No quotes, labels, markdown, or explanation.',
-].join('\n');
+export const IMAGE_PROMPT_TEMPLATES: Record<string, string> = {
+  general: [
+    'Rewrite the user idea into one concise image-generation prompt.',
+    'Preserve the user intent exactly. Do not add unrelated subjects.',
+    'Add visual detail: medium/style, composition, lighting, background, mood, color, quality cues.',
+    'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+  ].join('\n'),
+  anime: [
+    'Rewrite the user idea into a tag-based anime image prompt.',
+    'Preserve the user intent exactly. Do not add unrelated subjects.',
+    'Use danbooru-style tags: subject, hair, eyes, outfit, pose, background, lighting, quality tags like masterpiece, best quality.',
+    'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+  ].join('\n'),
+  photo: [
+    'Rewrite the user idea into a photorealistic image prompt.',
+    'Preserve the user intent exactly. Do not add unrelated subjects.',
+    'Add photography detail: camera type, lens, aperture, lighting setup, environment, color grading.',
+    'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+  ].join('\n'),
+  avatar: [
+    'Rewrite the user idea into a character avatar prompt.',
+    'Preserve the user intent exactly. Do not add unrelated subjects.',
+    'Focus on clean character framing, upper body or portrait composition, simple or stylized background.',
+    'Return only the final prompt. No quotes, labels, markdown, or explanation.',
+  ].join('\n'),
+};
+
+export const DEFAULT_IMAGE_PROMPT_TEMPLATE = IMAGE_PROMPT_TEMPLATES.general;
 
 const defaults: GenerationSettings = {
   mode: 'eden',
