@@ -55,6 +55,8 @@ function isPublicApiRequest(request: NextRequest): boolean {
 
   if (method !== 'GET') return false;
 
+  if (pathname.startsWith('/api/ai/image/file/')) return true;
+  if (pathname === '/api/ai/image/library' && searchParams.get('scope') !== 'private') return true;
   if (pathname.startsWith('/api/overlay/')) return true;
   if (pathname === '/api/gamble/overlay-data') return true;
   if (pathname === '/api/classic-gamble/overlay-data') return true;

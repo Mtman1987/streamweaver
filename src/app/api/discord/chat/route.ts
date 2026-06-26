@@ -491,7 +491,7 @@ export async function POST(request: NextRequest) {
         if (!prompt) {
           if (channelId) {
             const baseUrl = getConfiguredAppUrl();
-            await sendDiscordBotMessage(channelId, `Usage: !img <description>\nImage library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}`);
+            await sendDiscordBotMessage(channelId, `Usage: !img <description>\nPrivate image library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}&scope=private`);
           }
           await markHandled();
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
