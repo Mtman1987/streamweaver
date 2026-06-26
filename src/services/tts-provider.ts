@@ -44,7 +44,7 @@ function resolveTTSApiKey(provider: TTSProvider, tenantId?: string): string {
 export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
   
-  const configuredProvider = normalizeProvider(config.TTS_PROVIDER);
+  const configuredProvider = normalizeProvider(config.TTS_PROVIDER || process.env.TTS_PROVIDER);
   const provider = getProviderForVoice(config.TTS_VOICE, configuredProvider);
   const voice = normalizeTtsVoice(config.TTS_VOICE, provider);
   const discordBridge = config.DISCORD_TTS_BRIDGE === 'true';
