@@ -235,6 +235,10 @@ export async function checkDmChannelActivity(): Promise<void> {
                 // DMs may arrive only through this sweep, so command-like DMs
                 // must be forwarded into the canonical Discord route.
                 if (messageText.startsWith('!')) {
+                    if (msg.id) {
+                        lastDiscordMessageId.set(stateKey, msg.id);
+                        await saveDmLastMessageId(tenantId, msg.id);
+                    }
                     const routeRes = await fetch(`${getInternalAppUrl()}/api/discord/chat`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

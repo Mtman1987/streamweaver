@@ -510,6 +510,7 @@ export async function POST(request: NextRequest) {
           if (channelId) {
             await sendDiscordBotMessage(channelId, 'Image generation failed. Try again in a moment.');
           }
+          await markHandled();
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'image-failed' });
         }
 
@@ -517,6 +518,7 @@ export async function POST(request: NextRequest) {
           if (channelId) {
             await sendDiscordBotMessage(channelId, 'Image generation returned no image URL.');
           }
+          await markHandled();
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'empty-image' });
         }
 
