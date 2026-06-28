@@ -232,8 +232,38 @@ export async function checkDmChannelActivity(): Promise<void> {
             if (!msg?.content || msg?.author?.bot) continue;
             const messageText = String(msg.content || '').trim();
             try {
-                // Skip !img and !genmode - handled by the chat route now
-                if (messageText.toLowerCase().startsWith('!img') || messageText.toLowerCase().startsWith('!genmode')) {
+                // DMs may arrive only through this sweep, so command-like DMs
+                // must be forwarded into the canonical Discord route.
+                if (messageText.startsWith('!')) {
+                    const routeRes = await fetch(`${getInternalAppUrl()}/api/discord/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tenantId,
+                            isDM: true,
+                            isDirectMessage: true,
+                            channelId: dmChannelId,
+                            channel_id: dmChannelId,
+                            channelType: 'DM',
+                            messageId: msg.id,
+                            message_id: msg.id,
+                            createdAt: msg.timestamp || msg.createdAt,
+                            created_at: msg.timestamp || msg.createdAt,
+                            userId: msg.author?.id,
+                            user_id: msg.author?.id,
+                            username: msg.author?.username,
+                            userName: msg.author?.username,
+                            displayName: msg.author?.global_name || msg.author?.globalName || msg.author?.username,
+                            content: messageText,
+                            message: messageText,
+                            author: msg.author,
+                            mentions: msg.mentions,
+                            dispatch: false,
+                        }),
+                    });
+                    if (!routeRes.ok) {
+                        console.warn(`[DM Sweep:${tenantId}] Discord route command handoff failed:`, routeRes.status, await routeRes.text().catch(() => ''));
+                    }
                     continue;
                 }
 

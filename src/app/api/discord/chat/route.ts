@@ -296,8 +296,13 @@ export async function POST(request: NextRequest) {
 
     // Resolve which tenant this guild belongs to (or auto-assign on first message)
     let tenantId = normalized.tenantId || await resolveGuildTenant(guildId);
+    const isPrivateDiscordLane = isDirectMessage || Boolean(
+      tenantId &&
+      channelId &&
+      await isTenantDiscordDmChannel(tenantId, channelId)
+    );
 
-    if (!isDirectMessage) {
+    if (!isPrivateDiscordLane) {
       const mtFixItIntent = detectMtFixItIntent(message);
       if (mtFixItIntent.matched) {
         if (!mtFixItIntent.description) {
@@ -352,7 +357,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!isDirectMessage) {
+    if (!isPrivateDiscordLane) {
       appendPublicChatMessages([{
         type: 'user',
         username: userName,
@@ -463,7 +468,7 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: Boolean(replyChannelId), ignored: result.ignored, target: result.label, replies: relayOnly ? collectedReplies : undefined });
     }
 
-    if (isDirectMessage) {
+    if (isPrivateDiscordLane) {
       if (!tenantId) {
         return apiOk({ success: true, botResponded: false, error: 'tenant-not-found' });
       }
@@ -607,7 +612,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle !say - standalone TTS toggle
-    const sayMatch = !isDirectMessage ? message.trim().match(/^!say(?:\s+(.+))?$/i) : null;
+    const sayMatch = !isPrivateDiscordLane ? message.trim().match(/^!say(?:\s+(.+))?$/i) : null;
     if (sayMatch) {
       const args = String(sayMatch[1] || '').trim().split(/\s+/).filter(Boolean);
       const firstState = parseSayState(args[0]);
@@ -652,13 +657,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle !listen - global TTS link
-    if (!isDirectMessage && message.trim().match(/^!listen$/i)) {
+    if (!isPrivateDiscordLane && message.trim().match(/^!listen$/i)) {
       if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Listen to TTS: https://streamweaver-new.fly.dev/say-player`);
       return apiOk({ success: true, botResponded: Boolean(channelId), context: "listen" });
     }
 
     // Handle !img in guild channels (not just DMs)
-    if (!isDirectMessage && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
+    if (!isPrivateDiscordLane && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
       // Only the guild's own tenant should handle !img to prevent multi-bot duplication
       const guildTenant = await resolveGuildTenant(guildId);
       if (guildTenant && tenantId !== guildTenant) {
@@ -728,7 +733,7 @@ export async function POST(request: NextRequest) {
 
     // Bridge to Twitch if enabled, dispatch is true, message is from the configured bridge channel,
     // and the bot is NOT mentioned (bot conversations stay in Discord)
-    if (!isDirectMessage && message.trim().startsWith('!')) {
+    if (!isPrivateDiscordLane && message.trim().startsWith('!')) {
       const dispatchResult = await handleDiscordMessage({
         content: message,
         channelId,
@@ -1216,6 +1221,17 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
     return config.logChannelId || null;
   } catch {
     return null;
+  }
+}
+
+async function isTenantDiscordDmChannel(tenantId: string, channelId: string): Promise<boolean> {
+  if (!tenantId || !channelId) return false;
+  try {
+    const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
+    const config = JSON.parse(raw);
+    return String(config?.dmChannelId || '').trim() === String(channelId || '').trim();
+  } catch {
+    return false;
   }
 }
 
