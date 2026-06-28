@@ -82,6 +82,7 @@ type DiscordDispatchOptions = {
     skipPublicHistory?: boolean;
     skipAiMentions?: boolean;
     skipTwitchBridge?: boolean;
+    replyMode?: 'structured' | 'bot';
 };
 
 function parseTimeoutDuration(input: string | undefined): { seconds: number; consumed: boolean } {
@@ -657,7 +658,7 @@ export async function deliverBotRelay(input: {
     }
 }
 
-async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promise<boolean> {
+async function executeDiscordCommandMessage(msg: any, tenantId?: string, options: DiscordDispatchOptions = {}): Promise<boolean> {
     const content = String(msg.content || '').trim();
     if (!content.startsWith('!')) return false;
 
@@ -671,17 +672,24 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string): Promis
     if (!cmdName) return false;
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
-    const reply = (message: string) => sendStructuredDiscordReply({
-        channelId: sourceChannelId,
-        message,
-        tenantId,
-        rotateSpeaker: true,
-        sourceMessageId: msg.messageId || msg.message_id,
-        sourceMessage: actualMessage,
-        sourceUser: actualUsername,
-    }).catch((error) => {
-        console.error('[Discord Dispatcher] Failed to send command reply:', error);
-    });
+    const reply = (message: string) => {
+        if (options.replyMode === 'bot') {
+            return sendDiscordMessage(sourceChannelId, message).catch((error) => {
+                console.error('[Discord Dispatcher] Failed to send bot command reply:', error);
+            });
+        }
+        return sendStructuredDiscordReply({
+            channelId: sourceChannelId,
+            message,
+            tenantId,
+            rotateSpeaker: true,
+            sourceMessageId: msg.messageId || msg.message_id,
+            sourceMessage: actualMessage,
+            sourceUser: actualUsername,
+        }).catch((error) => {
+            console.error('[Discord Dispatcher] Failed to send command reply:', error);
+        });
+    };
     const isMod = await hasEffectiveDiscordModAccess(msg);
     const discordServerId = msg.guildId || msg.guild_id;
 
@@ -4499,7 +4507,7 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         const commandHandled = await executeDiscordCommandMessage({
             ...msg,
             channelId: sourceChannelId,
-        }, tenantId);
+        }, tenantId, options);
         if (commandHandled) {
             return { commandHandled: true };
         }

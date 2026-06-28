@@ -43,7 +43,7 @@ import {
   writeSayUsers,
 } from '@/services/say-tts';
 
-const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
+const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED !== 'false';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 type NormalizedDiscordPayload = {
@@ -532,6 +532,42 @@ export async function POST(request: NextRequest) {
         }
         await markHandled();
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', images: result.images });
+      }
+
+      if (message.trim().startsWith('!')) {
+        const dispatchResult = await handleDiscordMessage({
+          content: message,
+          channelId,
+          channel_id: channelId,
+          messageId: normalized.messageId,
+          message_id: normalized.messageId,
+          createdAt: normalized.createdAt,
+          created_at: normalized.createdAt,
+          isDM: true,
+          isDirectMessage: true,
+          author: {
+            id: userId,
+            username: normalized.username,
+            globalName: userName,
+            global_name: userName,
+            bot: false,
+          },
+          mentions: data?.mentions,
+          isAdmin: effectiveIsAdmin,
+          isMod: effectiveIsMod,
+          isOwner: effectiveIsOwner,
+          memberPermissions: normalized.memberPermissions,
+        }, tenantId, {
+          skipPublicHistory: true,
+          skipAiMentions: true,
+          skipTwitchBridge: true,
+          replyMode: 'bot',
+        });
+
+        if (dispatchResult.commandHandled) {
+          await markHandled();
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-command' });
+        }
       }
 
       const privateRes = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
