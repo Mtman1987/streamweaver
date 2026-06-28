@@ -75,6 +75,7 @@ import {
     readSayUsers,
     sayAllKey,
     sayUserKey,
+    buildSayPlayerUrl,
     writeSayUsers,
 } from './say-tts';
 
@@ -2013,7 +2014,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             const nextState = applySayState(sayUsers, sayAllKey(replyChannel), requestedState);
             await writeSayUsers(sayUsers);
-            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: https://streamweaver-new.fly.dev/say-player`, 'broadcaster').catch(() => {});
+            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId)}`, 'broadcaster').catch(() => {});
             return;
         }
 
@@ -2027,7 +2028,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const nextState = applySayState(sayUsers, sayUserKey(targetUser, replyChannel), requestedState);
         await writeSayUsers(sayUsers);
         const suffix = nextState === 'on'
-            ? ` Listen: https://streamweaver-new.fly.dev/say-player${isSelfTarget ? ' | Type !say again to disable.' : ''}`
+            ? ` Listen: ${buildSayPlayerUrl(tenantId)}${isSelfTarget ? ' | Type !say again to disable.' : ''}`
             : '';
         await replyMaybeKick(`TTS for @${targetUser} is now ${nextState}.${suffix}`, 'broadcaster').catch(() => {});
         return;
@@ -2048,7 +2049,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: `${displayName || actualUsername} says: ${actualMessage}` }),
+                body: JSON.stringify({ tenantId, text: `${displayName || actualUsername} says: ${actualMessage}` }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }

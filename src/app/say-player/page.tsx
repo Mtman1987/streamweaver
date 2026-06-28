@@ -5,6 +5,11 @@ import { useEffect, useRef, useState } from 'react';
 export default function SayPlayer() {
   const playing = useRef(false);
   const [active, setActive] = useState(false);
+  const [tenantId, setTenantId] = useState('');
+
+  useEffect(() => {
+    setTenantId(new URLSearchParams(window.location.search).get('tenantId') || '');
+  }, []);
 
   function start() {
     setActive(true);
@@ -15,7 +20,8 @@ export default function SayPlayer() {
     const poll = setInterval(async () => {
       if (playing.current) return;
       try {
-        const res = await fetch('/api/say/next');
+        const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+        const res = await fetch(`/api/say/next${query}`);
         const { text } = await res.json();
         if (!text) return;
         playing.current = true;
@@ -26,7 +32,7 @@ export default function SayPlayer() {
       } catch { /* ignore */ }
     }, 500);
     return () => clearInterval(poll);
-  }, [active]);
+  }, [active, tenantId]);
 
   if (!active) {
     return (

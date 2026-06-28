@@ -87,12 +87,36 @@ const seaArtModels: Record<string, { modelNo: string; modelVerNo: string; hd: bo
   },
 };
 
-function getSeaArtModel(options: ImageGenerationOptions): { modelNo: string; modelVerNo: string; hd: boolean } {
-  const key = String(options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity').trim();
+const seaArtModelAliases: Record<string, string> = {
+  infinity: 'seaart-infinity',
+  'seaart infinity': 'seaart-infinity',
+  'seaart_infinity': 'seaart-infinity',
+  film: 'seaart-film',
+  realistic: 'seaart-infinity',
+  'seaart-realistic': 'seaart-infinity',
+  anime: 'wai-ani-ponyxl',
+  'seaart-anime': 'wai-ani-ponyxl',
+  pony: 'wai-ani-ponyxl',
+  ponyxl: 'wai-ani-ponyxl',
+  'pony-xl': 'wai-ani-ponyxl',
+  'pony xl': 'wai-ani-ponyxl',
+  'wai ani ponyxl': 'wai-ani-ponyxl',
+  'wai-ani-pony': 'wai-ani-ponyxl',
+};
+
+function normalizeSeaArtModelKey(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return 'seaart-infinity';
+  const direct = raw.toLowerCase();
+  return seaArtModels[raw] ? raw : seaArtModelAliases[direct] || direct;
+}
+
+function getSeaArtModel(options: ImageGenerationOptions): { key: string; modelNo: string; modelVerNo: string; hd: boolean } {
+  const key = normalizeSeaArtModelKey(options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity');
   const preset = seaArtModels[key] || seaArtModels['seaart-infinity'];
   const modelNo = String(options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || preset.modelNo).trim();
   const modelVerNo = String(options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || preset.modelVerNo).trim();
-  return { modelNo, modelVerNo, hd: preset.hd };
+  return { key: seaArtModels[key] ? key : 'seaart-infinity', modelNo, modelVerNo, hd: preset.hd };
 }
 
 function normalizeSeaArtDimensions(resolution: string | undefined, hd: boolean): { width: number; height: number } {
@@ -178,7 +202,7 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai';
   const createEndpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/api/v1/task/v2/text-to-img';
   const progressEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/api/v1/task/batch-progress';
-  const { modelNo, modelVerNo, hd } = getSeaArtModel(options);
+  const { key: modelKey, modelNo, modelVerNo, hd } = getSeaArtModel(options);
   const { width, height } = normalizeSeaArtDimensions(options.resolution, hd);
   const nIter = Math.max(1, Math.min(8, Number(options.numImages || options.providerParams?.n_iter || 1) || 1));
   const steps = Number(options.providerParams?.steps || 0);
@@ -245,7 +269,7 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
     throw new Error(`SeaArt create returned no task id: ${JSON.stringify(createData).slice(0, 500)}`);
   }
 
-  console.info(`[SeaArt] create endpoint succeeded: ${createEndpoint}`);
+  console.info(`[SeaArt] create endpoint succeeded: ${createEndpoint} model=${modelKey}`);
 
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {

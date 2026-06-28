@@ -37,6 +37,12 @@ export function sayAllKey(channelId: unknown): string {
   return `all:${normalizeSayChannel(channelId)}`;
 }
 
+export function buildSayPlayerUrl(tenantId?: unknown): string {
+  const normalizedTenant = String(tenantId || '').trim();
+  const suffix = normalizedTenant ? `?tenantId=${encodeURIComponent(normalizedTenant)}` : '';
+  return `https://streamweaver-new.fly.dev/say-player${suffix}`;
+}
+
 export function parseSayState(value: unknown): SayState | null {
   const normalized = String(value || '').trim().toLowerCase();
   if (['on', 'yes', 'true', 'enable', 'enabled'].includes(normalized)) return 'on';

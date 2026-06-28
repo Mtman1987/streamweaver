@@ -14,9 +14,9 @@ export const generationModels: GenerationCatalogItem[] = [
     recommended: 'Default for consistent results',
   },
   {
-    id: 'seaart-anime',
-    name: 'SeaArt Anime Style',
-    description: 'Stylized anime outputs when SeaArt mode is active.',
+    id: 'wai-ani-ponyxl',
+    name: 'SeaArt WAI-ANI PonyXL',
+    description: 'SeaArt Pony model for stylized anime and PonyXL-compatible prompts.',
     recommended: 'Use with LoRA for character consistency',
   },
   {

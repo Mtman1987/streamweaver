@@ -40,6 +40,7 @@ import {
   readSayUsers,
   sayAllKey,
   sayUserKey,
+  buildSayPlayerUrl,
   writeSayUsers,
 } from '@/services/say-tts';
 
@@ -625,7 +626,7 @@ export async function POST(request: NextRequest) {
         }
         const nextState = applySayState(sayUsers, sayAllKey(channelId), requestedState);
         await writeSayUsers(sayUsers);
-        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: https://streamweaver-new.fly.dev/say-player`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId)}`);
         return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle-all', mode: nextState });
       }
 
@@ -647,7 +648,7 @@ export async function POST(request: NextRequest) {
       await writeSayUsers(sayUsers);
       if (channelId) {
         const suffix = nextState === 'on'
-          ? ` Listen: https://streamweaver-new.fly.dev/say-player${isSelf ? '\nType !say again to disable.' : ''}`
+          ? ` Listen: ${buildSayPlayerUrl(tenantId)}${isSelf ? '\nType !say again to disable.' : ''}`
           : '';
         await sendDiscordRouteReplyOrCollect(channelId, `@${targetName}, TTS ${nextState === 'on' ? 'enabled' : 'disabled'}.${suffix}`);
       }
@@ -656,7 +657,7 @@ export async function POST(request: NextRequest) {
 
     // Handle !listen - global TTS link
     if (!isPrivateDiscordLane && message.trim().match(/^!listen$/i)) {
-      if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Listen to TTS: https://streamweaver-new.fly.dev/say-player`);
+      if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Listen to TTS: ${buildSayPlayerUrl(tenantId)}`);
       return apiOk({ success: true, botResponded: Boolean(channelId), context: "listen" });
     }
 
@@ -799,7 +800,7 @@ export async function POST(request: NextRequest) {
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: `${userName} says: ${message}` }),
+              body: JSON.stringify({ tenantId, text: `${userName} says: ${message}` }),
             }).catch(() => {});
           }
         } catch { /* no say-users file = nobody enrolled */ }
