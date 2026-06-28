@@ -60,3 +60,13 @@ export function applySayState(users: Set<string>, key: string, requestedState: S
 export function isSayEnabled(users: Set<string>, user: unknown, channelId: unknown): boolean {
   return users.has(sayAllKey(channelId)) || users.has(sayUserKey(user, channelId));
 }
+
+export function hasSayEnabledInChannel(users: Set<string>, channelId: unknown): boolean {
+  const channel = normalizeSayChannel(channelId);
+  if (!channel) return false;
+  if (users.has(sayAllKey(channel))) return true;
+  for (const key of users) {
+    if (key.endsWith(`:${channel}`)) return true;
+  }
+  return false;
+}

@@ -41,6 +41,7 @@ import {
   sayAllKey,
   sayUserKey,
   buildSayPlayerUrl,
+  hasSayEnabledInChannel,
   writeSayUsers,
 } from '@/services/say-tts';
 
@@ -657,7 +658,12 @@ export async function POST(request: NextRequest) {
 
     // Handle !listen - global TTS link
     if (!isPrivateDiscordLane && message.trim().match(/^!listen$/i)) {
-      if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Listen to TTS: ${buildSayPlayerUrl(tenantId)}`);
+      if (channelId) {
+        const links = await buildDiscordListenLinks(channelId, tenantId);
+        await sendDiscordRouteReplyOrCollect(channelId, links.length === 1
+          ? `Listen to TTS: ${links[0].url}`
+          : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}`);
+      }
       return apiOk({ success: true, botResponded: Boolean(channelId), context: "listen" });
     }
 
@@ -1221,6 +1227,51 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
   } catch {
     return null;
   }
+}
+
+async function tenantUsesDiscordChannel(tenantId: string, channelId: string): Promise<boolean> {
+  try {
+    const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
+    const config = JSON.parse(raw);
+    return [
+      config.logChannelId,
+      config.aiChatChannelId,
+      config.shoutoutChannelId,
+      config.gameStateChannelId,
+      config.dmChannelId,
+    ].some((value) => String(value || '').trim() === channelId);
+  } catch {
+    return false;
+  }
+}
+
+async function buildDiscordListenLinks(channelId: string, currentTenantId?: string): Promise<Array<{ tenantId: string; label: string; url: string }>> {
+  const sayUsers = await readSayUsers();
+  const tenantIds = await listTenants().catch(() => []);
+  const links: Array<{ tenantId: string; label: string; url: string }> = [];
+  const seen = new Set<string>();
+
+  const addTenant = (id: string | undefined) => {
+    const tenantId = String(id || '').trim();
+    if (!tenantId || seen.has(tenantId)) return;
+    seen.add(tenantId);
+    links.push({
+      tenantId,
+      label: getBotName(tenantId) || tenantId,
+      url: buildSayPlayerUrl(tenantId),
+    });
+  };
+
+  if (hasSayEnabledInChannel(sayUsers, channelId)) {
+    for (const tenantId of tenantIds) {
+      if (await tenantUsesDiscordChannel(tenantId, channelId)) {
+        addTenant(tenantId);
+      }
+    }
+  }
+
+  addTenant(currentTenantId || tenantIds[0]);
+  return links.length ? links : [{ tenantId: 'global', label: 'StreamWeaver', url: buildSayPlayerUrl() }];
 }
 
 async function sendDiscordRouteReply(channelId: string, message: string, username = 'StreamWeaver') {
