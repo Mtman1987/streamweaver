@@ -296,11 +296,7 @@ export async function POST(request: NextRequest) {
 
     // Resolve which tenant this guild belongs to (or auto-assign on first message)
     let tenantId = normalized.tenantId || await resolveGuildTenant(guildId);
-    const isPrivateDiscordLane = isDirectMessage || Boolean(
-      tenantId &&
-      channelId &&
-      await isTenantDiscordDmChannel(tenantId, channelId)
-    );
+    const isPrivateDiscordLane = isDirectMessage;
 
     if (!isPrivateDiscordLane) {
       const mtFixItIntent = detectMtFixItIntent(message);
@@ -1221,17 +1217,6 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
     return config.logChannelId || null;
   } catch {
     return null;
-  }
-}
-
-async function isTenantDiscordDmChannel(tenantId: string, channelId: string): Promise<boolean> {
-  if (!tenantId || !channelId) return false;
-  try {
-    const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-    const config = JSON.parse(raw);
-    return String(config?.dmChannelId || '').trim() === String(channelId || '').trim();
-  } catch {
-    return false;
   }
 }
 

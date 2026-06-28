@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
       aiChatChannelId: tenantId ? (parsed.aiChatChannelId || '') : '',
       shoutoutChannelId: tenantId ? (parsed.shoutoutChannelId || '') : '',
       dmChannelId: parsed.dmChannelId || '',
+      discordUserId: parsed.discordUserId || '',
+      discordUsername: parsed.discordUsername || '',
       dmEnabled: parsed.dmEnabled === true,
       discordBridgeEnabled: parsed.discordBridgeEnabled !== false,
     });
@@ -45,6 +47,8 @@ export async function GET(request: NextRequest) {
       aiChatChannelId: '',
       shoutoutChannelId: '',
       dmChannelId: '',
+      discordUserId: '',
+      discordUsername: '',
       dmEnabled: false,
       discordBridgeEnabled: true,
     });

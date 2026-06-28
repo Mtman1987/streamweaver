@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { ElementType } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, CheckCircle2, Circle, CircleDot, LoaderCircle, MessageSquareText, RefreshCw, Save, Sparkles, Users, Workflow } from "lucide-react";
+import { ArrowRight, Bot, CheckCircle2, Circle, CircleDot, LoaderCircle, Mail, MessageSquareText, RefreshCw, Save, Sparkles, Users, Workflow } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,8 @@ type DiscordDashboardSettings = {
   aiChatChannelId: string;
   shoutoutChannelId: string;
   dmChannelId: string;
+  discordUserId: string;
+  discordUsername: string;
   discordBridgeEnabled: boolean;
   dmEnabled: boolean;
 };
@@ -198,6 +200,8 @@ export default function DashboardPage() {
     aiChatChannelId: "",
     shoutoutChannelId: "",
     dmChannelId: "",
+    discordUserId: "",
+    discordUsername: "",
     discordBridgeEnabled: true,
     dmEnabled: false,
   });
@@ -205,6 +209,7 @@ export default function DashboardPage() {
   const [discordChannels, setDiscordChannels] = useState<DiscordChannelOption[]>([]);
   const [isDiscordSettingsLoading, setIsDiscordSettingsLoading] = useState(false);
   const [isDiscordSettingsSaving, setIsDiscordSettingsSaving] = useState(false);
+  const [isDiscordDmRegistering, setIsDiscordDmRegistering] = useState(false);
   const [showCompletedSetupDetails, setShowCompletedSetupDetails] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -298,6 +303,8 @@ export default function DashboardPage() {
           aiChatChannelId: String(settingsBody?.aiChatChannelId || ""),
           shoutoutChannelId: String(settingsBody?.shoutoutChannelId || ""),
           dmChannelId: String(settingsBody?.dmChannelId || ""),
+          discordUserId: String(settingsBody?.discordUserId || ""),
+          discordUsername: String(settingsBody?.discordUsername || ""),
           discordBridgeEnabled: settingsBody?.discordBridgeEnabled !== false,
           dmEnabled: Boolean(settingsBody?.dmEnabled),
         });
@@ -410,6 +417,33 @@ export default function DashboardPage() {
       toast({ variant: "destructive", title: "Save failed", description: error?.message || "Could not save Discord settings." });
     } finally {
       setIsDiscordSettingsSaving(false);
+    }
+  };
+
+  const registerDiscordDmChannel = async () => {
+    setIsDiscordDmRegistering(true);
+    try {
+      const response = await fetch("/api/discord/dm-channel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || "Failed to create Discord DM channel.");
+      setDiscordSettings((prev) => ({
+        ...prev,
+        dmChannelId: String(body?.dmChannelId || ""),
+        dmEnabled: true,
+      }));
+      toast({ title: "Discord DM connected", description: "The bot sent you a setup DM and saved the DM channel ID." });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "DM setup failed",
+        description: error?.message || "Connect your Discord account first, then try again.",
+      });
+    } finally {
+      setIsDiscordDmRegistering(false);
     }
   };
 
@@ -550,16 +584,29 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="discord-dm-channel">Private DM channel ID</Label>
-              <input
-                id="discord-dm-channel"
-                value={discordSettings.dmChannelId}
-                onChange={(event) => setDiscordSettings((prev) => ({ ...prev, dmChannelId: event.target.value.trim() }))}
-                placeholder="Discord DM bridge channel ID"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-              <p className="text-xs text-muted-foreground">Use this for the real Discord DM thread Athena is watching if you want it pinned in Messaging.</p>
+            <div className="rounded-2xl border border-border/70 bg-background/40 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <Label>Private Discord DM</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {discordSettings.discordUsername
+                      ? `Linked Discord user: ${discordSettings.discordUsername}`
+                      : "Connect your Discord account in Integrations, then create the private DM channel here."}
+                  </p>
+                  {discordSettings.dmChannelId ? (
+                    <p className="text-xs text-muted-foreground">DM channel saved: {discordSettings.dmChannelId}</p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={registerDiscordDmChannel}
+                  disabled={isDiscordDmRegistering || isDiscordSettingsLoading || !discordSettings.discordUserId}
+                >
+                  {isDiscordDmRegistering ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                  Get DM channel ID
+                </Button>
+              </div>
             </div>
             <div className="grid gap-3 rounded-2xl border border-border/70 bg-background/40 p-4 sm:grid-cols-2">
               <div className="flex items-center justify-between gap-4">

@@ -126,6 +126,18 @@ export async function sendDiscordMessage(channelId: string, message: string): Pr
     });
 }
 
+export async function createDiscordDmChannel(recipientId: string): Promise<{ id: string; raw: unknown }> {
+    const data = await discordRequest('/users/@me/channels', {
+        method: 'POST',
+        body: JSON.stringify({ recipient_id: recipientId }),
+    }) as any;
+    const id = String(data?.id || '').trim();
+    if (!id) {
+        throw new Error('Discord did not return a DM channel id');
+    }
+    return { id, raw: data };
+}
+
 export async function sendDiscordEmbed(channelId: string, options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[] }): Promise<Record<string, unknown>> {
     return await discordRequest(`/channels/${channelId}/messages`, {
         method: 'POST',
