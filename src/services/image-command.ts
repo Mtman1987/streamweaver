@@ -100,7 +100,7 @@ export async function runImageCommand(input: string, tenantId: string, options: 
 
   const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-mountainview-bridge': '1' },
     body: JSON.stringify({
       prompt: finalPrompt,
       tenantId,

@@ -90,6 +90,7 @@ function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
   return [
     '/api/ai/chat-with-memory',
+    '/api/ai/image',
     '/api/private-chat/respond',
     '/api/tts',
     '/api/tts/current',
