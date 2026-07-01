@@ -37,9 +37,20 @@ export function sayAllKey(channelId: unknown): string {
   return `all:${normalizeSayChannel(channelId)}`;
 }
 
-export function buildSayPlayerUrl(tenantId?: unknown): string {
+export function resolveSayStreamKey(tenantId: unknown, platform?: 'discord' | 'twitch', channelId?: unknown): string {
   const normalizedTenant = String(tenantId || '').trim();
-  const suffix = normalizedTenant ? `?tenantId=${encodeURIComponent(normalizedTenant)}` : '';
+  if (normalizedTenant) return normalizedTenant;
+
+  const normalizedPlatform = String(platform || '').trim().toLowerCase();
+  const normalizedChannel = normalizeSayChannel(channelId);
+  if (normalizedPlatform && normalizedChannel) return `${normalizedPlatform}:${normalizedChannel}`;
+
+  return 'global';
+}
+
+export function buildSayPlayerUrl(tenantId?: unknown, platform?: 'discord' | 'twitch', channelId?: unknown): string {
+  const streamKey = resolveSayStreamKey(tenantId, platform, channelId);
+  const suffix = streamKey !== 'global' ? `?tenantId=${encodeURIComponent(streamKey)}` : '';
   return `https://streamweaver-new.fly.dev/say-player${suffix}`;
 }
 

@@ -30,7 +30,7 @@ import { SubActionType, TriggerType } from './automation/types';
 import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
-import { globalPath, tenantPath } from '../lib/tenant';
+import { globalPath, listTenants, tenantPath } from '../lib/tenant';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
@@ -73,6 +73,7 @@ import {
     normalizeSayUser,
     parseSayState,
     readSayUsers,
+    resolveSayStreamKey,
     sayAllKey,
     sayUserKey,
     buildSayPlayerUrl,
@@ -1291,6 +1292,37 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }
 
+async function buildTwitchListenLinks(channelName: string, currentTenantId?: string): Promise<Array<{ label: string; url: string }>> {
+    const normalizedChannel = String(channelName || '').trim().replace(/^#/, '').toLowerCase();
+    const links: Array<{ key: string; label: string; url: string }> = [{
+        key: resolveSayStreamKey(undefined, 'twitch', normalizedChannel),
+        label: 'This Twitch chat',
+        url: buildSayPlayerUrl(undefined, 'twitch', normalizedChannel),
+    }];
+    const seen = new Set(links.map((link) => link.key));
+
+    const addTenant = (tenantId: unknown) => {
+        const id = String(tenantId || '').trim();
+        if (!id) return;
+        const key = resolveSayStreamKey(id, 'twitch', normalizedChannel);
+        if (seen.has(key)) return;
+        const config = readUserConfigSync(id);
+        const broadcaster = String(config.TWITCH_BROADCASTER_USERNAME || id).trim();
+        const broadcasterChannel = broadcaster.replace(/^#/, '').toLowerCase();
+        if (normalizedChannel && broadcasterChannel && broadcasterChannel !== normalizedChannel && id !== currentTenantId) return;
+        seen.add(key);
+        links.push({
+            key,
+            label: `${broadcaster}'s TTS`,
+            url: buildSayPlayerUrl(id, 'twitch', normalizedChannel),
+        });
+    };
+
+    addTenant(currentTenantId);
+    for (const tenantId of await listTenants().catch(() => [])) addTenant(tenantId);
+    return links.map(({ label, url }) => ({ label, url }));
+}
+
 // Pagination state for card listings
 const cardListings = new Map<string, { cards: string[], page: number }>();
 
@@ -1999,6 +2031,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Skip self messages (broadcaster client echoes its own sends)
     if (self) return;
 
+    if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
+        const links = await buildTwitchListenLinks(replyChannel, tenantId);
+        const replyText = links.length === 1
+            ? `Listen to TTS: ${links[0].url}`
+            : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}`;
+        await replyMaybeKick(replyText, 'broadcaster').catch(() => {});
+        return;
+    }
+
     if (isCommand && /^!say(?:\s|$)/i.test(actualMessage)) {
         const args = actualMessage.substring('!say'.length).trim().split(/\s+/).filter(Boolean);
         const firstState = parseSayState(args[0]);
@@ -2008,13 +2049,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const sayUsers = await readSayUsers();
 
         if (targetToken.toLowerCase() === 'all') {
-            if (!canManageSay) {
-                await replyMaybeKick(`@${actualUsername}, only mods can change !say for everyone.`, 'broadcaster').catch(() => {});
-                return;
-            }
             const nextState = applySayState(sayUsers, sayAllKey(replyChannel), requestedState);
             await writeSayUsers(sayUsers);
-            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId)}`, 'broadcaster').catch(() => {});
+            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId, 'twitch', replyChannel)}`, 'broadcaster').catch(() => {});
             return;
         }
 
@@ -2028,7 +2065,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const nextState = applySayState(sayUsers, sayUserKey(targetUser, replyChannel), requestedState);
         await writeSayUsers(sayUsers);
         const suffix = nextState === 'on'
-            ? ` Listen: ${buildSayPlayerUrl(tenantId)}${isSelfTarget ? ' | Type !say again to disable.' : ''}`
+            ? ` Listen: ${buildSayPlayerUrl(tenantId, 'twitch', replyChannel)}${isSelfTarget ? ' | Type !say again to disable.' : ''}`
             : '';
         await replyMaybeKick(`TTS for @${targetUser} is now ${nextState}.${suffix}`, 'broadcaster').catch(() => {});
         return;
@@ -2046,10 +2083,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && actualMessage.trim()) {
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
+            const sayStreamKey = resolveSayStreamKey(tenantId, 'twitch', replyChannel);
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId, text: `${displayName || actualUsername} says: ${actualMessage}` }),
+                body: JSON.stringify({ tenantId: sayStreamKey, text: `${displayName || actualUsername} says: ${actualMessage}` }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }

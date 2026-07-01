@@ -4,11 +4,17 @@ import { useEffect, useRef, useState } from 'react';
 
 export default function SayPlayer() {
   const playing = useRef(false);
+  const queue = useRef<Array<{ id: number; audioUrl: string }>>([]);
+  const lastSeenId = useRef(0);
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
 
   useEffect(() => {
-    setTenantId(new URLSearchParams(window.location.search).get('tenantId') || '');
+    const nextTenantId = new URLSearchParams(window.location.search).get('tenantId') || '';
+    setTenantId(nextTenantId);
+    try {
+      lastSeenId.current = Number(localStorage.getItem(`streamweaver-say-last-${nextTenantId || 'global'}`) || 0);
+    } catch {}
   }, []);
 
   function start() {
@@ -18,14 +24,28 @@ export default function SayPlayer() {
   useEffect(() => {
     if (!active) return;
     const poll = setInterval(async () => {
-      if (playing.current) return;
       try {
-        const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+        const params = new URLSearchParams();
+        if (tenantId) params.set('tenantId', tenantId);
+        params.set('after', String(lastSeenId.current));
+        const query = `?${params.toString()}`;
         const res = await fetch(`/api/say/next${query}`);
-        const { text } = await res.json();
-        if (!text) return;
+        const { items } = await res.json();
+        if (Array.isArray(items)) {
+          const knownIds = new Set(queue.current.map((item) => item.id));
+          items.forEach((item) => {
+            if (item?.id && item?.audioUrl && !knownIds.has(item.id)) queue.current.push(item);
+          });
+        }
+        if (playing.current || !queue.current.length) return;
+        const next = queue.current.shift();
+        if (!next) return;
         playing.current = true;
-        const audio = new Audio(text);
+        lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
+        try {
+          localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current));
+        } catch {}
+        const audio = new Audio(next.audioUrl);
         audio.onended = () => { playing.current = false; };
         audio.onerror = () => { playing.current = false; };
         audio.play().catch(() => { playing.current = false; });

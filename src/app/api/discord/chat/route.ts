@@ -38,6 +38,7 @@ import {
   isSayEnabled,
   parseSayState,
   readSayUsers,
+  resolveSayStreamKey,
   sayAllKey,
   sayUserKey,
   buildSayPlayerUrl,
@@ -621,13 +622,9 @@ export async function POST(request: NextRequest) {
       const sayUsers = await readSayUsers();
 
       if (targetToken.toLowerCase() === 'all') {
-        if (!canManageBotShare) {
-          if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, only mods/admins can change !say for everyone.`);
-          return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-denied' });
-        }
         const nextState = applySayState(sayUsers, sayAllKey(channelId), requestedState);
         await writeSayUsers(sayUsers);
-        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId)}`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId, 'discord', channelId)}`);
         return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle-all', mode: nextState });
       }
 
@@ -649,7 +646,7 @@ export async function POST(request: NextRequest) {
       await writeSayUsers(sayUsers);
       if (channelId) {
         const suffix = nextState === 'on'
-          ? ` Listen: ${buildSayPlayerUrl(tenantId)}${isSelf ? '\nType !say again to disable.' : ''}`
+          ? ` Listen: ${buildSayPlayerUrl(tenantId, 'discord', channelId)}${isSelf ? '\nType !say again to disable.' : ''}`
           : '';
         await sendDiscordRouteReplyOrCollect(channelId, `@${targetName}, TTS ${nextState === 'on' ? 'enabled' : 'disabled'}.${suffix}`);
       }
@@ -803,10 +800,11 @@ export async function POST(request: NextRequest) {
         try {
           const sayUsers = await readSayUsers();
           if (isSayEnabled(sayUsers, userId, channelId)) {
+            const sayStreamKey = resolveSayStreamKey(tenantId, 'discord', channelId);
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId, text: `${userName} says: ${message}` }),
+              body: JSON.stringify({ tenantId: sayStreamKey, text: `${userName} says: ${message}` }),
             }).catch(() => {});
           }
         } catch { /* no say-users file = nobody enrolled */ }
@@ -1251,15 +1249,20 @@ async function buildDiscordListenLinks(channelId: string, currentTenantId?: stri
   const links: Array<{ tenantId: string; label: string; url: string }> = [];
   const seen = new Set<string>();
 
+  const addLink = (tenantId: string, label: string, url: string) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    links.push({ tenantId, label, url });
+  };
+
+  const channelKey = resolveSayStreamKey(undefined, 'discord', channelId);
+  addLink(channelKey, 'This Discord channel', buildSayPlayerUrl(undefined, 'discord', channelId));
+
   const addTenant = (id: string | undefined) => {
     const tenantId = String(id || '').trim();
-    if (!tenantId || seen.has(tenantId)) return;
-    seen.add(tenantId);
-    links.push({
-      tenantId,
-      label: getBotName(tenantId) || tenantId,
-      url: buildSayPlayerUrl(tenantId),
-    });
+    if (!tenantId) return;
+    const label = getBotName(tenantId) || tenantId;
+    addLink(tenantId, `${label}'s TTS`, buildSayPlayerUrl(tenantId, 'discord', channelId));
   };
 
   if (hasSayEnabledInChannel(sayUsers, channelId)) {
@@ -1271,7 +1274,7 @@ async function buildDiscordListenLinks(channelId: string, currentTenantId?: stri
   }
 
   addTenant(currentTenantId || tenantIds[0]);
-  return links.length ? links : [{ tenantId: 'global', label: 'StreamWeaver', url: buildSayPlayerUrl() }];
+  return links;
 }
 
 async function sendDiscordRouteReply(channelId: string, message: string, username = 'StreamWeaver') {

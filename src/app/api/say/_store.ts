@@ -1,13 +1,21 @@
-// Standalone in-memory queues for !say, keyed by tenant. These are open
-// listener queues; tenantId selects the stream group, not access control.
-const sayQueues = new Map<string, string[]>();
+// Standalone in-memory broadcast logs for !say, keyed by tenant.
+// tenantId selects the stream group, not access control.
+export type SayQueueItem = {
+  id: number;
+  audioUrl: string;
+  addedAt: string;
+};
+
+const sayQueues = new Map<string, SayQueueItem[]>();
+const saySequenceByTenant = new Map<string, number>();
+const MAX_SAY_ITEMS_PER_TENANT = 100;
 
 export function normalizeSayQueueTenant(tenantId: unknown): string {
   const normalized = String(tenantId || '').trim();
   return normalized || 'global';
 }
 
-export function getSayQueue(tenantId?: unknown): string[] {
+export function getSayQueue(tenantId?: unknown): SayQueueItem[] {
   const key = normalizeSayQueueTenant(tenantId);
   let queue = sayQueues.get(key);
   if (!queue) {
@@ -15,4 +23,22 @@ export function getSayQueue(tenantId?: unknown): string[] {
     sayQueues.set(key, queue);
   }
   return queue;
+}
+
+export function addSayQueueItem(tenantId: unknown, audioUrl: string): SayQueueItem {
+  const key = normalizeSayQueueTenant(tenantId);
+  const nextId = (saySequenceByTenant.get(key) || 0) + 1;
+  saySequenceByTenant.set(key, nextId);
+
+  const queue = getSayQueue(key);
+  const item = {
+    id: nextId,
+    audioUrl,
+    addedAt: new Date().toISOString(),
+  };
+  queue.push(item);
+  if (queue.length > MAX_SAY_ITEMS_PER_TENANT) {
+    queue.splice(0, queue.length - MAX_SAY_ITEMS_PER_TENANT);
+  }
+  return item;
 }
