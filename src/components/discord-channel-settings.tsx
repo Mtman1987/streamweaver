@@ -197,7 +197,7 @@ export function DiscordChannelSettings() {
                     <Label>Model</Label>
                     <Link href="/generation/models" className="text-xs text-indigo-400 hover:text-indigo-300">Browse models</Link>
                   </div>
-                  <Input value={genSettings.model} onChange={(e) => setGenSettings(prev => ({ ...prev, model: e.target.value }))} placeholder="Model id/name" />
+                  <Input value={genSettings.model} onChange={(e) => setGenSettings(prev => ({ ...prev, model: e.target.value }))} placeholder="Preset or modelNo:modelVerNo" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between">

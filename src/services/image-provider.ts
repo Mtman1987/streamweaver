@@ -142,18 +142,17 @@ function getSeaArtModel(options: ImageGenerationOptions): { key: string; modelNo
   const preset = seaArtModels[key];
   const custom = preset ? {} : parseSeaArtModelSpec(configuredModel);
   const fallback = preset || seaArtModels['seaart-infinity'];
+  const explicitModelNo = options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || custom.modelNo;
+  const explicitModelVerNo = options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || custom.modelVerNo;
+  if (!preset && explicitModelNo && !explicitModelVerNo) {
+    throw new Error('Custom SeaArt models require modelNo:modelVerNo. Paste both IDs from SeaArt, or use a saved preset such as seaart-infinity or wai-ani-ponyxl.');
+  }
   const modelNo = String(
-    options.providerParams?.modelNo ||
-    options.providerParams?.model_no ||
-    process.env.SEAART_MODEL_NO ||
-    custom.modelNo ||
+    explicitModelNo ||
     fallback.modelNo,
   ).trim();
   const modelVerNo = String(
-    options.providerParams?.modelVerNo ||
-    options.providerParams?.model_ver_no ||
-    process.env.SEAART_MODEL_VER ||
-    custom.modelVerNo ||
+    explicitModelVerNo ||
     fallback.modelVerNo,
   ).trim();
   return { key: preset ? key : String(configuredModel || 'custom-seaart-model').trim(), modelNo, modelVerNo, hd: fallback.hd };
@@ -284,6 +283,8 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
     vae: 'None',
   };
   if (steps > 0) meta.steps = steps;
+
+  console.info(`[SeaArt] create endpoint request: ${createEndpoint} model=${modelKey} model_no=${modelNo} model_ver_no=${modelVerNo}`);
 
   const create = await fetch(`${base}${createEndpoint}`, {
     method: 'POST',

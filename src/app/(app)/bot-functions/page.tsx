@@ -622,7 +622,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                         <div className="space-y-2">
                             <Label htmlFor="image-model">Model</Label>
                             <Input id="image-model" value={genSettings.model} onChange={(event) => setGenSettings((prev) => ({ ...prev, model: event.target.value }))} placeholder="wai-ani-ponyxl or modelNo:modelVerNo" />
-                            <p className="text-xs text-white/50">SeaArt accepts saved presets, aliases, raw model numbers, or modelNo:modelVerNo.</p>
+                            <p className="text-xs text-white/50">SeaArt accepts saved presets, aliases, or custom modelNo:modelVerNo pairs.</p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="image-seed">Seed</Label>

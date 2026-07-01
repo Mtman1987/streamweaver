@@ -17,7 +17,7 @@ const imageSchema = z.object({
   prompt: z.string().trim().min(1, 'prompt is required').max(3000),
   model: z.string().trim().min(1).max(200).optional(),
   resolution: z.string().trim().min(3).max(32).optional(),
-  numImages: z.coerce.number().int().min(1).max(4).optional().default(1),
+  numImages: z.coerce.number().int().min(1).max(4).optional(),
   providerParams: z.record(z.unknown()).optional(),
   providerOverride: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
   scope: z.enum(['public', 'private']).optional().default('public'),
@@ -96,11 +96,11 @@ export async function POST(request: NextRequest) {
 
     // Resolve effective mode: prefer tenant gen-settings (UI source of truth),
     // fall back to legacy gen-mode.json toggled by !genmode.
-    const [settingsMode, legacyMode] = await Promise.all([
-      readGenerationSettings(tenantId).then((s) => s.mode).catch(() => undefined),
+    const [settings, legacyMode] = await Promise.all([
+      readGenerationSettings(tenantId).catch(() => undefined),
       getGenMode(tenantId).catch(() => 'eden' as const),
     ]);
-    const genMode = parsed.data.providerOverride || settingsMode || legacyMode;
+    const genMode = parsed.data.providerOverride || settings?.mode || legacyMode;
     const generator = genMode === 'seaart'
       ? generateImageWithSeaArt
       : genMode === 'perchance'
@@ -111,10 +111,17 @@ export async function POST(request: NextRequest) {
     const result = await generator({
       prompt: parsed.data.prompt,
       tenantId,
-      model: parsed.data.model,
-      resolution: parsed.data.resolution,
-      numImages: parsed.data.numImages,
-      providerParams: parsed.data.providerParams,
+      model: parsed.data.model || settings?.model || undefined,
+      resolution: parsed.data.resolution || settings?.resolution || undefined,
+      numImages: parsed.data.numImages || settings?.imageCount || 1,
+      providerParams: {
+        lora: settings?.lora || undefined,
+        loraStrength: settings?.lora ? settings?.loraStrength : undefined,
+        steps: settings?.steps,
+        cfg: settings?.cfg,
+        seed: settings?.seed,
+        ...(parsed.data.providerParams || {}),
+      },
     });
 
     const sources = [
