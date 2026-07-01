@@ -111,12 +111,52 @@ function normalizeSeaArtModelKey(value: unknown): string {
   return seaArtModels[raw] ? raw : seaArtModelAliases[direct] || direct;
 }
 
+function parseSeaArtModelSpec(value: unknown): { modelNo?: string; modelVerNo?: string } {
+  const raw = String(value || '').trim();
+  if (!raw) return {};
+
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      return {
+        modelNo: String(parsed.modelNo || parsed.model_no || parsed.model || '').trim() || undefined,
+        modelVerNo: String(parsed.modelVerNo || parsed.model_ver_no || parsed.version || parsed.versionNo || '').trim() || undefined,
+      };
+    } catch {
+      // Fall through to separator parsing.
+    }
+  }
+
+  const separator = raw.includes('::') ? '::' : raw.includes('|') ? '|' : raw.includes(',') ? ',' : raw.includes('@') ? '@' : '';
+  if (separator) {
+    const [modelNo, modelVerNo] = raw.split(separator).map((part) => part.trim()).filter(Boolean);
+    return { modelNo, modelVerNo };
+  }
+
+  return { modelNo: raw };
+}
+
 function getSeaArtModel(options: ImageGenerationOptions): { key: string; modelNo: string; modelVerNo: string; hd: boolean } {
-  const key = normalizeSeaArtModelKey(options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity');
-  const preset = seaArtModels[key] || seaArtModels['seaart-infinity'];
-  const modelNo = String(options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || preset.modelNo).trim();
-  const modelVerNo = String(options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || preset.modelVerNo).trim();
-  return { key: seaArtModels[key] ? key : 'seaart-infinity', modelNo, modelVerNo, hd: preset.hd };
+  const configuredModel = options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity';
+  const key = normalizeSeaArtModelKey(configuredModel);
+  const preset = seaArtModels[key];
+  const custom = preset ? {} : parseSeaArtModelSpec(configuredModel);
+  const fallback = preset || seaArtModels['seaart-infinity'];
+  const modelNo = String(
+    options.providerParams?.modelNo ||
+    options.providerParams?.model_no ||
+    process.env.SEAART_MODEL_NO ||
+    custom.modelNo ||
+    fallback.modelNo,
+  ).trim();
+  const modelVerNo = String(
+    options.providerParams?.modelVerNo ||
+    options.providerParams?.model_ver_no ||
+    process.env.SEAART_MODEL_VER ||
+    custom.modelVerNo ||
+    fallback.modelVerNo,
+  ).trim();
+  return { key: preset ? key : String(configuredModel || 'custom-seaart-model').trim(), modelNo, modelVerNo, hd: fallback.hd };
 }
 
 function normalizeSeaArtDimensions(resolution: string | undefined, hd: boolean): { width: number; height: number } {
@@ -269,7 +309,7 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
     throw new Error(`SeaArt create returned no task id: ${JSON.stringify(createData).slice(0, 500)}`);
   }
 
-  console.info(`[SeaArt] create endpoint succeeded: ${createEndpoint} model=${modelKey}`);
+  console.info(`[SeaArt] create endpoint succeeded: ${createEndpoint} model=${modelKey} model_no=${modelNo} model_ver_no=${modelVerNo}`);
 
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
