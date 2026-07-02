@@ -90,7 +90,7 @@ async function getBroadcasterTokenScopes(auth: { accessToken: string }): Promise
     return Array.isArray(data?.scopes) ? data.scopes : [];
 }
 
-async function deleteExistingChannelPointSubscriptions(auth: { clientId: string; accessToken: string; broadcasterId: string }): Promise<void> {
+async function deleteExistingChannelPointSubscriptions(auth: { clientId: string; accessToken: string; broadcasterId: string }, keepId?: string): Promise<void> {
     try {
         const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions?first=100', {
             headers: {
@@ -113,6 +113,7 @@ async function deleteExistingChannelPointSubscriptions(auth: { clientId: string;
         for (const sub of matches) {
             const id = String(sub?.id || '');
             if (!id) continue;
+            if (keepId && id === keepId) continue;
             const del = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`, {
                 method: 'DELETE',
                 headers: {
@@ -132,7 +133,7 @@ async function deleteExistingChannelPointSubscriptions(auth: { clientId: string;
     }
 }
 
-async function createChannelPointSubscription(auth: { clientId: string; accessToken: string; broadcasterId: string }, sessionId: string): Promise<void> {
+async function createChannelPointSubscription(auth: { clientId: string; accessToken: string; broadcasterId: string }, sessionId: string, tenantId?: string): Promise<string | null> {
     const body = {
         type: 'channel.channel_points_custom_reward_redemption.add',
         version: '1',
@@ -161,8 +162,13 @@ async function createChannelPointSubscription(auth: { clientId: string; accessTo
 
     if (!res.ok) {
         const text = await res.text();
-        console.warn('[EventSub] Failed to create channel point subscription:', res.status, text);
-        return;
+        if (res.status === 400 && /websocket transport session does not exist|already disconnected/i.test(text)) {
+            console.warn('[EventSub] Channel point subscription deferred because Twitch closed the websocket session before subscription creation.');
+            scheduleEventSubReconnect('wss://eventsub.wss.twitch.tv/ws', 1000, tenantId);
+            return null;
+        }
+        console.warn('[EventSub] Channel point subscription create rejected:', res.status, text);
+        return null;
     }
 
     const data = await res.json().catch(() => null) as any;
@@ -171,6 +177,7 @@ async function createChannelPointSubscription(auth: { clientId: string; accessTo
     if (VERBOSE_LOGS) {
         console.log('[EventSub] Channel point subscription response:', JSON.stringify(data, null, 2));
     }
+    return typeof createdId === 'string' ? createdId : null;
 }
 
 export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void> {
@@ -242,9 +249,10 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 if (!sessionId) return;
                 console.log(`[EventSub:${tKey}] Session established:`, sessionId);
                 
-                // Clean up old subscriptions and create new one
-                await deleteExistingChannelPointSubscriptions(auth);
-                await createChannelPointSubscription(auth, sessionId);
+                const createdId = await createChannelPointSubscription(auth, sessionId, tenantId);
+                if (createdId) {
+                    await deleteExistingChannelPointSubscriptions(auth, createdId);
+                }
                 return;
             }
 

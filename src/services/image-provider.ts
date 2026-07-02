@@ -136,26 +136,40 @@ function parseSeaArtModelSpec(value: unknown): { modelNo?: string; modelVerNo?: 
   return { modelNo: raw };
 }
 
+function hasCompleteSeaArtModelSpec(value: unknown): boolean {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (raw.startsWith('{')) {
+    const parsed = parseSeaArtModelSpec(raw);
+    return Boolean(parsed.modelNo && parsed.modelVerNo);
+  }
+  return raw.includes('::') || raw.includes('|') || raw.includes(',') || raw.includes('@');
+}
+
 function getSeaArtModel(options: ImageGenerationOptions): { key: string; modelNo: string; modelVerNo: string; hd: boolean } {
   const configuredModel = options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity';
   const key = normalizeSeaArtModelKey(configuredModel);
   const preset = seaArtModels[key];
-  const custom = preset ? {} : parseSeaArtModelSpec(configuredModel);
+  const custom = !preset && hasCompleteSeaArtModelSpec(configuredModel) ? parseSeaArtModelSpec(configuredModel) : {};
   const fallback = preset || seaArtModels['seaart-infinity'];
-  const explicitModelNo = options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || custom.modelNo;
-  const explicitModelVerNo = options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || custom.modelVerNo;
-  if (!preset && explicitModelNo && !explicitModelVerNo) {
-    throw new Error('Custom SeaArt models require modelNo:modelVerNo. Paste both IDs from SeaArt, or use a saved preset such as seaart-infinity or wai-ani-ponyxl.');
+  const explicitPairNo = options.providerParams?.modelNo || options.providerParams?.model_no || process.env.SEAART_MODEL_NO || custom.modelNo;
+  const explicitPairVerNo = options.providerParams?.modelVerNo || options.providerParams?.model_ver_no || process.env.SEAART_MODEL_VER || custom.modelVerNo;
+  if (!preset && !custom.modelNo) {
+    console.warn(`[SeaArt] Unknown model "${String(configuredModel || '').trim()}"; using seaart-infinity preset. Use modelNo:modelVerNo for custom SeaArt models.`);
   }
+  if (explicitPairNo && !explicitPairVerNo) {
+    console.warn('[SeaArt] Ignoring incomplete custom model config; custom SeaArt models require both modelNo and modelVerNo.');
+  }
+  const hasCompleteExplicitPair = Boolean(explicitPairNo && explicitPairVerNo);
   const modelNo = String(
-    explicitModelNo ||
+    (hasCompleteExplicitPair ? explicitPairNo : '') ||
     fallback.modelNo,
   ).trim();
   const modelVerNo = String(
-    explicitModelVerNo ||
+    (hasCompleteExplicitPair ? explicitPairVerNo : '') ||
     fallback.modelVerNo,
   ).trim();
-  return { key: preset ? key : String(configuredModel || 'custom-seaart-model').trim(), modelNo, modelVerNo, hd: fallback.hd };
+  return { key: preset ? key : hasCompleteExplicitPair ? String(configuredModel || 'custom-seaart-model').trim() : 'seaart-infinity', modelNo, modelVerNo, hd: fallback.hd };
 }
 
 function normalizeSeaArtDimensions(resolution: string | undefined, hd: boolean): { width: number; height: number } {
@@ -284,23 +298,41 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   };
   if (steps > 0) meta.steps = steps;
 
-  console.info(`[SeaArt] create endpoint request: ${createEndpoint} model=${modelKey} model_no=${modelNo} model_ver_no=${modelVerNo}`);
-
-  const create = await fetch(`${base}${createEndpoint}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model_no: modelNo,
-      model_ver_no: modelVerNo,
-      meta,
-      speed_type: 2,
-    }),
-  });
-  const createData = await create.json().catch(async () => ({ error: await create.text().catch(() => '') }));
-  if (!create.ok) {
-    throw new Error(`SeaArt create failed: ${create.status} ${JSON.stringify(createData).slice(0, 500)}`);
+  async function createSeaArtTask(attempt: { key: string; modelNo: string; modelVerNo: string }) {
+    console.info(`[SeaArt] create endpoint request: ${createEndpoint} model=${attempt.key} model_no=${attempt.modelNo} model_ver_no=${attempt.modelVerNo}`);
+    const response = await fetch(`${base}${createEndpoint}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model_no: attempt.modelNo,
+        model_ver_no: attempt.modelVerNo,
+        meta,
+        speed_type: 2,
+      }),
+    });
+    const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+    return { response, data, status: data?.status?.code || data?.code };
   }
-  const createStatus = createData?.status?.code || createData?.code;
+
+  let createAttempt = await createSeaArtTask({ key: modelKey, modelNo, modelVerNo });
+  if (!createAttempt.response.ok) {
+    throw new Error(`SeaArt create failed: ${createAttempt.response.status} ${JSON.stringify(createAttempt.data).slice(0, 500)}`);
+  }
+  let createStatus = createAttempt.status;
+  if (createStatus !== 10000 && createStatus === 10100 && modelKey !== 'seaart-infinity') {
+    const fallback = seaArtModels['seaart-infinity'];
+    console.warn(`[SeaArt] model=${modelKey} returned params error; retrying with seaart-infinity preset.`);
+    createAttempt = await createSeaArtTask({
+      key: 'seaart-infinity',
+      modelNo: fallback.modelNo,
+      modelVerNo: fallback.modelVerNo,
+    });
+    if (!createAttempt.response.ok) {
+      throw new Error(`SeaArt create failed: ${createAttempt.response.status} ${JSON.stringify(createAttempt.data).slice(0, 500)}`);
+    }
+    createStatus = createAttempt.status;
+  }
+  const createData = createAttempt.data;
   if (createStatus !== 10000) {
     throw new Error(`SeaArt create failed: ${createStatus || 'unknown'} ${createData?.status?.msg || JSON.stringify(createData).slice(0, 500)}`);
   }
