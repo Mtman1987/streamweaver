@@ -17,6 +17,7 @@ let lastDiscordMessageId: Map<string, string | null> = new Map();
 let recentlySentMessages = new Set<string>();
 let isLoadingHistory: Map<string, boolean> = new Map();
 const lastMissingDiscordLogNotice = new Map<string, number>();
+let isCheckingDmChannelActivity = false;
 
 const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 const MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS = 10 * 60 * 1000;
@@ -192,14 +193,24 @@ export async function checkDmChannelActivity(): Promise<void> {
     // !img is now handled by /api/discord/chat route directly.
     // DM sweep only handles conversational AI responses, not commands.
     if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
+    if (isCheckingDmChannelActivity) return;
+    isCheckingDmChannelActivity = true;
     const { listTenants } = await import('../lib/tenant');
     const { getChannelMessages } = require('./discord');
     const { sendDiscordMessage, sendDiscordEmbed } = require('./discord-local');
     const { getGenMode, setGenMode, toggleGenMode } = await import('../lib/gen-mode-store');
 
-    for (const tenantId of await listTenants()) {
+    try {
+        const processedDmChannels = new Set<string>();
+        for (const tenantId of await listTenants()) {
         const dmChannelId = await getDiscordChannelId('dmChannelId', tenantId);
         if (!dmChannelId || !dmChannelId.trim()) continue;
+        const normalizedDmChannelId = dmChannelId.trim();
+        if (processedDmChannels.has(normalizedDmChannelId)) {
+            console.warn(`[DM Sweep:${tenantId}] Skipping duplicate DM channel ${normalizedDmChannelId}`);
+            continue;
+        }
+        processedDmChannels.add(normalizedDmChannelId);
 
         const stateKey = `dm:${tenantId}`;
         if (!lastDiscordMessageId.has(stateKey)) {
@@ -232,13 +243,13 @@ export async function checkDmChannelActivity(): Promise<void> {
             if (!msg?.content || msg?.author?.bot) continue;
             const messageText = String(msg.content || '').trim();
             try {
+                if (msg.id) {
+                    lastDiscordMessageId.set(stateKey, msg.id);
+                    await saveDmLastMessageId(tenantId, msg.id);
+                }
                 // DMs may arrive only through this sweep, so command-like DMs
                 // must be forwarded into the canonical Discord route.
                 if (messageText.startsWith('!')) {
-                    if (msg.id) {
-                        lastDiscordMessageId.set(stateKey, msg.id);
-                        await saveDmLastMessageId(tenantId, msg.id);
-                    }
                     const routeRes = await fetch(`${getInternalAppUrl()}/api/discord/chat`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -307,6 +318,9 @@ export async function checkDmChannelActivity(): Promise<void> {
             lastDiscordMessageId.set(stateKey, messages[0].id);
             await saveDmLastMessageId(tenantId, messages[0].id);
         }
+        }
+    } finally {
+        isCheckingDmChannelActivity = false;
     }
 }
 
