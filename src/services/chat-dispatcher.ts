@@ -2048,7 +2048,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const canManageSay = Boolean(tags.mod || tags.badges?.broadcaster);
         const sayUsers = await readSayUsers();
 
-        if (targetToken.toLowerCase() === 'all') {
+        if (!targetToken || targetToken.toLowerCase() === 'all') {
             const nextState = applySayState(sayUsers, sayAllKey(replyChannel), requestedState);
             await writeSayUsers(sayUsers);
             await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId, 'twitch', replyChannel)}`, 'broadcaster').catch(() => {});

@@ -621,7 +621,7 @@ export async function POST(request: NextRequest) {
       const requestedState = firstState || parseSayState(args[1]);
       const sayUsers = await readSayUsers();
 
-      if (targetToken.toLowerCase() === 'all') {
+      if (!targetToken || targetToken.toLowerCase() === 'all') {
         const nextState = applySayState(sayUsers, sayAllKey(channelId), requestedState);
         await writeSayUsers(sayUsers);
         if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId, 'discord', channelId)}`);
