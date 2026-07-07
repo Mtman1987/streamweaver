@@ -472,22 +472,22 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
         return;
       }
 
-      console.warn(`[SharedChat] API fallback to IRC for ${normalized} (${result.reason})`);
+      console.warn(`[SharedChat] Source-only send failed for ${normalized} (${result.reason}); skipping IRC fallback to avoid mirrored shared-chat bot output.`);
 
-        if (result.reason === 'permission') {
-          const lastWarn = sourceWarnedAt.get(normalized) || 0;
-          if (Date.now() - lastWarn > SOURCE_WARN_COOLDOWN) {
-            sourceWarnedAt.set(normalized, Date.now());
-            try {
-              await ensureJoinedAndSay(
-                client,
-                normalized,
-                `Shared chat tip: ask the streamer to /mod ${senderLogin} to reduce mirrored bot messages.`,
-              );
-            } catch {}
-          }
+      if (result.reason === 'permission') {
+        const lastWarn = sourceWarnedAt.get(normalized) || 0;
+        if (Date.now() - lastWarn > SOURCE_WARN_COOLDOWN) {
+          sourceWarnedAt.set(normalized, Date.now());
+          console.warn(
+            `[SharedChat] Source-only send needs Twitch bot permissions for #${normalized}. The bot response was not sent through IRC because IRC would mirror into every shared-chat participant.`,
+          );
         }
       }
+
+      throw new Error(`Shared chat source-only send failed for #${normalized} (${result.reason || 'unknown'})`);
+    }
+
+    throw new Error(`Shared chat source-only send skipped for #${normalized}: sender login unavailable`);
   }
 
   // Normal IRC send
