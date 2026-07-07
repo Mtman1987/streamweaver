@@ -2644,13 +2644,42 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !ignore command (mod/broadcaster only) - add/remove from known bots
+        // Handle !unignore command (mod/broadcaster only) - explicit removal from custom known bots
+        if (actualMessage.toLowerCase().startsWith('!unignore')) {
+            if (tags.mod || tags.badges?.broadcaster) {
+                const args = actualMessage.substring(9).trim();
+                const targetUser = args.replace('@', '').toLowerCase();
+                if (!targetUser) {
+                    await reply(`@${actualUsername}, usage: !unignore @username`, 'bot').catch(() => {});
+                    return;
+                }
+                const { isKnownBot: checkBot, getDefaultBots, removeCustomBot, clearBotCache } = require('./known-bots');
+                const defaultBots = getDefaultBots();
+                if (defaultBots.includes(targetUser)) {
+                    await reply(`@${actualUsername}, ${targetUser} is a default ignored bot and cannot be removed from the default list.`, 'bot').catch(() => {});
+                    return;
+                }
+                const alreadyIgnored = await checkBot(targetUser, tenantId);
+                if (!alreadyIgnored) {
+                    await reply(`@${actualUsername}, ${targetUser} is not on the ignore list.`, 'bot').catch(() => {});
+                    return;
+                }
+                await removeCustomBot(targetUser, tenantId);
+                clearBotCache(tenantId);
+                await reply(`@${actualUsername}, ${targetUser} removed from ignore list.`, 'bot').catch(() => {});
+            } else {
+                await reply(`@${actualUsername}, only mods can manage the ignore list!`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
+        // Handle !ignore command (mod/broadcaster only) - add to known bots
         if (actualMessage.toLowerCase().startsWith('!ignore')) {
             if (tags.mod || tags.badges?.broadcaster) {
                 const args = actualMessage.substring(7).trim();
                 const targetUser = args.replace('@', '').toLowerCase();
                 if (!targetUser) {
-                    await reply(`@${actualUsername}, usage: !ignore @username, !ignore all, or !ignore bot name`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, usage: !ignore @username, !ignore all, !ignore bot name, or !unignore @username`, 'bot').catch(() => {});
                     return;
                 }
                 if (targetUser === 'all') {
@@ -2682,12 +2711,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 } catch (error) {
                     console.warn('[Dispatcher] Bot trigger ignore lookup failed:', error);
                 }
-                const { isKnownBot: checkBot, addCustomBot, removeCustomBot, clearBotCache } = require('./known-bots');
+                const { isKnownBot: checkBot, addCustomBot, clearBotCache } = require('./known-bots');
                 const alreadyIgnored = await checkBot(targetUser, tenantId);
                 if (alreadyIgnored) {
-                    await removeCustomBot(targetUser, tenantId);
-                    clearBotCache(tenantId);
-                    await reply(`@${actualUsername}, ${targetUser} removed from ignore list.`, 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, ${targetUser} is already on the ignore list. Use !unignore @${targetUser} to remove a custom ignore.`, 'bot').catch(() => {});
                 } else {
                     await addCustomBot(targetUser, tenantId);
                     clearBotCache(tenantId);
