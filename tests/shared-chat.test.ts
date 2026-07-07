@@ -81,7 +81,7 @@ test('shared chat sends use Helix source-only even when no user token is availab
   }
 });
 
-test('shared chat source-only stays on app-token mode and falls back to IRC when app-token auth is insufficient', async () => {
+test('shared chat source-only does not fall back to IRC when source-only auth is insufficient', async () => {
   const originalFetch = global.fetch;
   const originalClientId = process.env.TWITCH_CLIENT_ID;
   const originalClientSecret = process.env.TWITCH_CLIENT_SECRET;
@@ -160,16 +160,19 @@ test('shared chat source-only stays on app-token mode and falls back to IRC when
   };
 
   try {
-    await sendWithSharedChatAwareness({
-      client,
-      channel: 'testchannel',
-      message: 'hello from community bot',
-      as: 'bot',
-      tenantId,
-    });
+    await assert.rejects(
+      sendWithSharedChatAwareness({
+        client,
+        channel: 'testchannel',
+        message: 'hello from community bot',
+        as: 'bot',
+        tenantId,
+      }),
+      /Shared chat source-only send failed/,
+    );
 
     assert.deepEqual(authHeaders, ['Bearer app-token']);
-    assert.equal(ircFallbackSent, true);
+    assert.equal(ircFallbackSent, false);
   } finally {
     global.fetch = originalFetch;
     if (tenantTokensBackup === null) {
