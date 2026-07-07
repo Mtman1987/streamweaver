@@ -624,7 +624,7 @@ export async function POST(request: NextRequest) {
       if (!targetToken || targetToken.toLowerCase() === 'all') {
         const nextState = applySayState(sayUsers, sayAllKey(channelId), requestedState);
         await writeSayUsers(sayUsers);
-        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId, 'discord', channelId)}`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(undefined, 'discord', channelId)}`);
         return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle-all', mode: nextState });
       }
 
@@ -646,7 +646,7 @@ export async function POST(request: NextRequest) {
       await writeSayUsers(sayUsers);
       if (channelId) {
         const suffix = nextState === 'on'
-          ? ` Listen: ${buildSayPlayerUrl(tenantId, 'discord', channelId)}${isSelf ? '\nType !say again to disable.' : ''}`
+          ? ` Listen: ${buildSayPlayerUrl(undefined, 'discord', channelId)}${isSelf ? '\nType !say again to disable.' : ''}`
           : '';
         await sendDiscordRouteReplyOrCollect(channelId, `@${targetName}, TTS ${nextState === 'on' ? 'enabled' : 'disabled'}.${suffix}`);
       }
@@ -656,8 +656,10 @@ export async function POST(request: NextRequest) {
     // Handle !listen - global TTS link
     if (!isPrivateDiscordLane && message.trim().match(/^!listen$/i)) {
       if (channelId) {
-        const links = await buildDiscordListenLinks(channelId, tenantId);
-        await sendDiscordRouteReplyOrCollect(channelId, links.length === 1
+        const links = await buildDiscordListenLinks(channelId);
+        await sendDiscordRouteReplyOrCollect(channelId, links.length === 0
+          ? 'No TTS listeners are on for this Discord channel. Type !say all to turn this Discord channel on.'
+          : links.length === 1
           ? `Listen to TTS: ${links[0].url}\nType !say all to turn this Discord channel on.`
           : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}\nType !say all to turn this Discord channel on.`);
       }
@@ -800,13 +802,11 @@ export async function POST(request: NextRequest) {
         try {
           const sayUsers = await readSayUsers();
           if (isSayEnabled(sayUsers, userId, channelId)) {
-            const sayStreamKey = resolveSayStreamKey(tenantId, 'discord', channelId);
             const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
-            const tenantIds = Array.from(new Set([sayStreamKey, sayChannelKey]));
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId: sayStreamKey, tenantIds, text: `${userName} says: ${message}` }),
+              body: JSON.stringify({ tenantId: sayChannelKey, text: `${userName} says: ${message}` }),
             }).catch(() => {});
           }
         } catch { /* no say-users file = nobody enrolled */ }
@@ -1229,25 +1229,10 @@ async function getDiscordLogChannelId(tenantId?: string): Promise<string | null>
   }
 }
 
-async function tenantUsesDiscordChannel(tenantId: string, channelId: string): Promise<boolean> {
-  try {
-    const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-    const config = JSON.parse(raw);
-    return [
-      config.logChannelId,
-      config.aiChatChannelId,
-      config.shoutoutChannelId,
-      config.gameStateChannelId,
-      config.dmChannelId,
-    ].some((value) => String(value || '').trim() === channelId);
-  } catch {
-    return false;
-  }
-}
-
-async function buildDiscordListenLinks(channelId: string, currentTenantId?: string): Promise<Array<{ tenantId: string; label: string; url: string }>> {
+async function buildDiscordListenLinks(channelId: string): Promise<Array<{ tenantId: string; label: string; url: string }>> {
   const sayUsers = await readSayUsers();
-  const tenantIds = await listTenants().catch(() => []);
+  if (!hasSayEnabledInChannel(sayUsers, channelId)) return [];
+
   const links: Array<{ tenantId: string; label: string; url: string }> = [];
   const seen = new Set<string>();
 
@@ -1259,23 +1244,6 @@ async function buildDiscordListenLinks(channelId: string, currentTenantId?: stri
 
   const channelKey = resolveSayStreamKey(undefined, 'discord', channelId);
   addLink(channelKey, 'This Discord channel', buildSayPlayerUrl(undefined, 'discord', channelId));
-
-  const addTenant = (id: string | undefined) => {
-    const tenantId = String(id || '').trim();
-    if (!tenantId) return;
-    const label = getBotName(tenantId) || tenantId;
-    addLink(tenantId, `${label}'s TTS`, buildSayPlayerUrl(tenantId, 'discord', channelId));
-  };
-
-  if (hasSayEnabledInChannel(sayUsers, channelId)) {
-    for (const tenantId of tenantIds) {
-      if (await tenantUsesDiscordChannel(tenantId, channelId)) {
-        addTenant(tenantId);
-      }
-    }
-  }
-
-  addTenant(currentTenantId || tenantIds[0]);
   return links;
 }
 

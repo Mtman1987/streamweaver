@@ -70,6 +70,7 @@ import { getInternalAppUrl } from '../lib/runtime-origin';
 import {
     applySayState,
     isSayEnabled,
+    hasSayEnabledInChannel,
     normalizeSayUser,
     parseSayState,
     readSayUsers,
@@ -1294,6 +1295,9 @@ function delay(ms: number): Promise<void> {
 
 async function buildTwitchListenLinks(channelName: string, currentTenantId?: string): Promise<Array<{ label: string; url: string }>> {
     const normalizedChannel = String(channelName || '').trim().replace(/^#/, '').toLowerCase();
+    const sayUsers = await readSayUsers();
+    if (!hasSayEnabledInChannel(sayUsers, normalizedChannel)) return [];
+
     const links: Array<{ key: string; label: string; url: string }> = [{
         key: resolveSayStreamKey(undefined, 'twitch', normalizedChannel),
         label: 'This Twitch chat',
@@ -2033,7 +2037,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
     if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
         const links = await buildTwitchListenLinks(replyChannel, tenantId);
-        const replyText = links.length === 1
+        const replyText = links.length === 0
+            ? 'No TTS listeners are on for this Twitch chat. Type !say all to turn this Twitch chat on.'
+            : links.length === 1
             ? `Listen to TTS: ${links[0].url}\nType !say all to turn this Twitch chat on.`
             : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}\nType !say all to turn this Twitch chat on.`;
         await replyMaybeKick(replyText, 'broadcaster').catch(() => {});
