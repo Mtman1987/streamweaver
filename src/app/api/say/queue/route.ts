@@ -3,15 +3,20 @@ import { addSayQueueItem, getSayQueue, normalizeSayQueueTenant } from '../_store
 import { generateTTS } from '@/services/tts-provider';
 
 export async function POST(request: NextRequest) {
-  const { text, tenantId } = await request.json().catch(() => ({ text: '' }));
+  const { text, tenantId, tenantIds } = await request.json().catch(() => ({ text: '' }));
   if (!text) return NextResponse.json({ ok: false, error: 'empty' });
   const cleanText = String(text).slice(0, 500);
-  const queueTenantId = normalizeSayQueueTenant(tenantId);
+  const requestedTenantIds = Array.isArray(tenantIds) ? tenantIds : [tenantId];
+  const queueTenantIds = Array.from(new Set(requestedTenantIds.map(normalizeSayQueueTenant)));
+  const queueTenantId = queueTenantIds[0] || 'global';
   try {
     const audioDataUri = await generateTTS(cleanText, undefined, queueTenantId === 'global' ? undefined : queueTenantId);
-    const item = addSayQueueItem(queueTenantId, audioDataUri);
-    const sayQueue = getSayQueue(queueTenantId);
-    return NextResponse.json({ ok: true, tenantId: queueTenantId, queued: sayQueue.length, id: item.id });
+    const queued = queueTenantIds.map((id) => {
+      const item = addSayQueueItem(id, audioDataUri);
+      const sayQueue = getSayQueue(id);
+      return { tenantId: id, queued: sayQueue.length, id: item.id };
+    });
+    return NextResponse.json({ ok: true, tenantId: queueTenantId, queued: queued[0]?.queued || 0, id: queued[0]?.id, queues: queued });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'tts-failed' });
   }

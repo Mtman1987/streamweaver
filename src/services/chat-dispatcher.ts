@@ -2034,8 +2034,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
         const links = await buildTwitchListenLinks(replyChannel, tenantId);
         const replyText = links.length === 1
-            ? `Listen to TTS: ${links[0].url}`
-            : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}`;
+            ? `Listen to TTS: ${links[0].url}\nType !say all to turn this Twitch chat on.`
+            : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}\nType !say all to turn this Twitch chat on.`;
         await replyMaybeKick(replyText, 'broadcaster').catch(() => {});
         return;
     }
@@ -2084,10 +2084,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayStreamKey = resolveSayStreamKey(tenantId, 'twitch', replyChannel);
+            const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
+            const tenantIds = Array.from(new Set([sayStreamKey, sayChannelKey]));
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId: sayStreamKey, text: `${displayName || actualUsername} says: ${actualMessage}` }),
+                body: JSON.stringify({ tenantId: sayStreamKey, tenantIds, text: `${displayName || actualUsername} says: ${actualMessage}` }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }

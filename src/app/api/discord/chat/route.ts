@@ -658,8 +658,8 @@ export async function POST(request: NextRequest) {
       if (channelId) {
         const links = await buildDiscordListenLinks(channelId, tenantId);
         await sendDiscordRouteReplyOrCollect(channelId, links.length === 1
-          ? `Listen to TTS: ${links[0].url}`
-          : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}`);
+          ? `Listen to TTS: ${links[0].url}\nType !say all to turn this Discord channel on.`
+          : `Listen to TTS:\n${links.map((link) => `- ${link.label}: ${link.url}`).join('\n')}\nType !say all to turn this Discord channel on.`);
       }
       return apiOk({ success: true, botResponded: Boolean(channelId), context: "listen" });
     }
@@ -801,10 +801,12 @@ export async function POST(request: NextRequest) {
           const sayUsers = await readSayUsers();
           if (isSayEnabled(sayUsers, userId, channelId)) {
             const sayStreamKey = resolveSayStreamKey(tenantId, 'discord', channelId);
+            const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
+            const tenantIds = Array.from(new Set([sayStreamKey, sayChannelKey]));
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId: sayStreamKey, text: `${userName} says: ${message}` }),
+              body: JSON.stringify({ tenantId: sayStreamKey, tenantIds, text: `${userName} says: ${message}` }),
             }).catch(() => {});
           }
         } catch { /* no say-users file = nobody enrolled */ }
