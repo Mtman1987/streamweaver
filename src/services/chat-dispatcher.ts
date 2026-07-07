@@ -7,7 +7,6 @@ import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
 import { givePoints, stealPoints } from './points-transfer';
 import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
-import { recordShoutout } from './welcome-wagon-tracker';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { matchShoutoutTarget } from './shoutout-matcher';
@@ -3972,16 +3971,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${actualUsername}-profile_image-300x300.png`;
                             pendingWelcomeUsers.add(welcomeKey);
                             await markUserWelcomed(actualUsername, tenantId);
-                            await recordShoutout(actualUsername, tenantId);
                             await recordShoutoutAudit({
                                 status: 'triggered',
                                 username: actualUsername,
                                 displayName,
                                 tenantId,
                                 source: 'auto-welcome',
-                                metadata: { welcomeMode, cooldownBypassed: true },
+                                metadata: { welcomeMode, cooldownBypassed: false },
                             });
-                            handleWalkOnShoutout(actualUsername, displayName, profileImage, true, tenantId, { source: 'auto-welcome' })
+                            handleWalkOnShoutout(actualUsername, displayName, profileImage, false, tenantId, { source: 'auto-welcome' })
                                 .then((completed) => {
                                     if (completed) return;
                                     return recordShoutoutAudit({
@@ -3991,7 +3989,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                         tenantId,
                                         source: 'auto-welcome',
                                         reason: 'handler-returned-false',
-                                        metadata: { gate: 'walk-on-handler', welcomeMode, cooldownBypassed: true },
+                                        metadata: { gate: 'walk-on-handler', welcomeMode, cooldownBypassed: false },
                                     });
                                 })
                                 .catch(err => {
