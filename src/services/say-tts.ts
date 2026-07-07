@@ -54,6 +54,23 @@ export function buildSayPlayerUrl(tenantId?: unknown, platform?: 'discord' | 'tw
   return `https://streamweaver-new.fly.dev/say-player${suffix}`;
 }
 
+export function cleanSayTextForSpeech(text: unknown): string {
+  return String(text || '')
+    .replace(/https?:\/\/\S+|www\.\S+/gi, ' ')
+    .replace(/\p{Extended_Pictographic}/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function isSayTextSpeakable(text: unknown): boolean {
+  const cleaned = cleanSayTextForSpeech(text);
+  if (!cleaned) return false;
+  if (!/[a-z0-9]/i.test(cleaned)) return false;
+  if (/^shout\s*out\s*:/i.test(cleaned)) return false;
+  if (/\bgo\s+check\s+out\b/i.test(cleaned)) return false;
+  return true;
+}
+
 export function parseSayState(value: unknown): SayState | null {
   const normalized = String(value || '').trim().toLowerCase();
   if (['on', 'yes', 'true', 'enable', 'enabled'].includes(normalized)) return 'on';

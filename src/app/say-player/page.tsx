@@ -9,6 +9,7 @@ export default function SayPlayer() {
   const lastSeenId = useRef(0);
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
+  const [volume, setVolume] = useState(0.6);
   const [status, setStatus] = useState('Click to unlock browser audio.');
 
   useEffect(() => {
@@ -17,7 +18,19 @@ export default function SayPlayer() {
     try {
       lastSeenId.current = Number(localStorage.getItem(`streamweaver-say-last-${nextTenantId || 'global'}`) || 0);
     } catch {}
+    try {
+      const savedVolume = Number(localStorage.getItem('streamweaver-say-volume') || '');
+      if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) setVolume(savedVolume);
+    } catch {}
   }, []);
+
+  function updateVolume(nextVolume: number) {
+    const clamped = Math.max(0, Math.min(1, nextVolume));
+    setVolume(clamped);
+    try {
+      localStorage.setItem('streamweaver-say-volume', String(clamped));
+    } catch {}
+  }
 
   function start() {
     setActive(true);
@@ -62,7 +75,7 @@ export default function SayPlayer() {
         if (!next) return;
         playing.current = true;
         const audio = new Audio(next.audioUrl);
-        audio.volume = 1;
+        audio.volume = volume;
         const markPlayed = () => {
           lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
           try {
@@ -91,7 +104,7 @@ export default function SayPlayer() {
       }
     }, 500);
     return () => clearInterval(poll);
-  }, [active, resetCursor, tenantId]);
+  }, [active, resetCursor, tenantId, volume]);
 
   if (!active) {
     return (
@@ -105,6 +118,18 @@ export default function SayPlayer() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#000', color: '#0f0', fontFamily: 'monospace', textAlign: 'center' }}>
       <p style={{ fontSize: '2rem' }}>Say Player Active - listening for messages</p>
       <p style={{ fontSize: '1rem', color: '#9f9' }}>{status}</p>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1rem', color: '#9f9' }}>
+        Volume
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={Math.round(volume * 100)}
+          onChange={(event) => updateVolume(Number(event.target.value) / 100)}
+          style={{ width: 'min(70vw, 320px)' }}
+        />
+        <span style={{ minWidth: '3ch', textAlign: 'right' }}>{Math.round(volume * 100)}%</span>
+      </label>
       <button
         onClick={resetCursor}
         style={{ border: '1px solid #0f0', background: '#020', color: '#0f0', padding: '0.75rem 1rem', fontFamily: 'monospace', cursor: 'pointer' }}

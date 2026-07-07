@@ -35,7 +35,9 @@ import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import {
   applySayState,
+  cleanSayTextForSpeech,
   isSayEnabled,
+  isSayTextSpeakable,
   parseSayState,
   readSayUsers,
   resolveSayStreamKey,
@@ -154,6 +156,16 @@ function resolveDiscordSayMention(rawTarget: string, data: any): { userId: strin
     targetUserId;
 
   return { userId: targetUserId, displayName };
+}
+
+function isDiscordBotAuthor(data: any): boolean {
+  return Boolean(
+    data?.bot ||
+    data?.isBot ||
+    data?.author?.bot ||
+    data?.member?.user?.bot ||
+    data?.user?.bot
+  );
 }
 
 /**
@@ -798,15 +810,16 @@ export async function POST(request: NextRequest) {
     // If bot not mentioned, just bridge and return
     if (!botMentioned) {
       // Check if user has TTS enabled via !say — queue to standalone say system
-      if (message.trim() && !message.trim().startsWith('!')) {
+      if (!isDiscordBotAuthor(data) && isSayTextSpeakable(message) && !message.trim().startsWith('!')) {
         try {
           const sayUsers = await readSayUsers();
           if (isSayEnabled(sayUsers, userId, channelId)) {
             const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
+            const spokenMessage = cleanSayTextForSpeech(message);
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId: sayChannelKey, text: `${userName} says: ${message}` }),
+              body: JSON.stringify({ tenantId: sayChannelKey, text: `${userName} says: ${spokenMessage}` }),
             }).catch(() => {});
           }
         } catch { /* no say-users file = nobody enrolled */ }

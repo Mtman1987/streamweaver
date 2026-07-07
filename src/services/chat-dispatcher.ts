@@ -69,8 +69,10 @@ import { findDiscordLastSeenForNames } from './discord-last-seen';
 import { getInternalAppUrl } from '../lib/runtime-origin';
 import {
     applySayState,
+    cleanSayTextForSpeech,
     isSayEnabled,
     hasSayEnabledInChannel,
+    isSayTextSpeakable,
     normalizeSayUser,
     parseSayState,
     readSayUsers,
@@ -1293,38 +1295,45 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 }
 
-async function buildTwitchListenLinks(channelName: string, currentTenantId?: string): Promise<Array<{ label: string; url: string }>> {
+const configuredTwitchBotCache = {
+    expiresAt: 0,
+    usernames: new Set<string>(),
+};
+
+async function isConfiguredTwitchBotUsername(username: string): Promise<boolean> {
+    const normalized = normalizeBotHandle(username);
+    if (!normalized) return false;
+
+    const now = Date.now();
+    if (now >= configuredTwitchBotCache.expiresAt) {
+        const usernames = new Set<string>();
+        try {
+            const { getActiveTenantIds } = await import('./twitch-client');
+            const { getStoredTokens } = await import('../lib/token-utils.server');
+            for (const tenantId of getActiveTenantIds()) {
+                const tokens: any = await getStoredTokens(tenantId).catch(() => null);
+                const botUsername = normalizeBotHandle(tokens?.botUsername || '');
+                if (botUsername) usernames.add(botUsername);
+                const communityBotUsername = normalizeBotHandle(tokens?.communityBotUsername || '');
+                if (communityBotUsername) usernames.add(communityBotUsername);
+            }
+        } catch {}
+        configuredTwitchBotCache.usernames = usernames;
+        configuredTwitchBotCache.expiresAt = now + 60_000;
+    }
+
+    return configuredTwitchBotCache.usernames.has(normalized);
+}
+
+async function buildTwitchListenLinks(channelName: string): Promise<Array<{ label: string; url: string }>> {
     const normalizedChannel = String(channelName || '').trim().replace(/^#/, '').toLowerCase();
     const sayUsers = await readSayUsers();
     if (!hasSayEnabledInChannel(sayUsers, normalizedChannel)) return [];
 
-    const links: Array<{ key: string; label: string; url: string }> = [{
-        key: resolveSayStreamKey(undefined, 'twitch', normalizedChannel),
+    return [{
         label: 'This Twitch chat',
         url: buildSayPlayerUrl(undefined, 'twitch', normalizedChannel),
     }];
-    const seen = new Set(links.map((link) => link.key));
-
-    const addTenant = (tenantId: unknown) => {
-        const id = String(tenantId || '').trim();
-        if (!id) return;
-        const key = resolveSayStreamKey(id, 'twitch', normalizedChannel);
-        if (seen.has(key)) return;
-        const config = readUserConfigSync(id);
-        const broadcaster = String(config.TWITCH_BROADCASTER_USERNAME || id).trim();
-        const broadcasterChannel = broadcaster.replace(/^#/, '').toLowerCase();
-        if (normalizedChannel && broadcasterChannel && broadcasterChannel !== normalizedChannel && id !== currentTenantId) return;
-        seen.add(key);
-        links.push({
-            key,
-            label: `${broadcaster}'s TTS`,
-            url: buildSayPlayerUrl(id, 'twitch', normalizedChannel),
-        });
-    };
-
-    addTenant(currentTenantId);
-    for (const tenantId of await listTenants().catch(() => [])) addTenant(tenantId);
-    return links.map(({ label, url }) => ({ label, url }));
 }
 
 // Pagination state for card listings
@@ -2016,6 +2025,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
     const isKnownAutomationBotMessage = !isBotMessage && (
         await isKnownBot(actualUsername, tenantId) ||
+        await isConfiguredTwitchBotUsername(actualUsername) ||
         await isLoreBotUsername(actualUsername)
     );
 
@@ -2036,7 +2046,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (self) return;
 
     if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
-        const links = await buildTwitchListenLinks(replyChannel, tenantId);
+        const links = await buildTwitchListenLinks(replyChannel);
         const replyText = links.length === 0
             ? 'No TTS listeners are on for this Twitch chat. Type !say all to turn this Twitch chat on.'
             : links.length === 1
@@ -2057,7 +2067,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (!targetToken || targetToken.toLowerCase() === 'all') {
             const nextState = applySayState(sayUsers, sayAllKey(replyChannel), requestedState);
             await writeSayUsers(sayUsers);
-            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: ${buildSayPlayerUrl(tenantId, 'twitch', replyChannel)}`, 'broadcaster').catch(() => {});
+            await replyMaybeKick(`TTS for everyone in this Twitch chat is now ${nextState}. Listen: ${buildSayPlayerUrl(undefined, 'twitch', replyChannel)}`, 'broadcaster').catch(() => {});
             return;
         }
 
@@ -2071,7 +2081,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const nextState = applySayState(sayUsers, sayUserKey(targetUser, replyChannel), requestedState);
         await writeSayUsers(sayUsers);
         const suffix = nextState === 'on'
-            ? ` Listen: ${buildSayPlayerUrl(tenantId, 'twitch', replyChannel)}${isSelfTarget ? ' | Type !say again to disable.' : ''}`
+            ? ` Listen: ${buildSayPlayerUrl(undefined, 'twitch', replyChannel)}${isSelfTarget ? ' | Type !say again to disable.' : ''}`
             : '';
         await replyMaybeKick(`TTS for @${targetUser} is now ${nextState}.${suffix}`, 'broadcaster').catch(() => {});
         return;
@@ -2086,16 +2096,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         color: tags.color,
     });
 
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && actualMessage.trim()) {
+    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(actualMessage)) {
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
-            const sayStreamKey = resolveSayStreamKey(tenantId, 'twitch', replyChannel);
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
-            const tenantIds = Array.from(new Set([sayStreamKey, sayChannelKey]));
+            const spokenMessage = cleanSayTextForSpeech(actualMessage);
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId: sayStreamKey, tenantIds, text: `${displayName || actualUsername} says: ${actualMessage}` }),
+                body: JSON.stringify({ tenantId: sayChannelKey, text: `${displayName || actualUsername} says: ${spokenMessage}` }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }
