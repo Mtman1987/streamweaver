@@ -24,6 +24,7 @@ import { hasDiscordModAccess } from '@/services/discord-permissions';
 import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/bot-relay';
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
+import { parseDiscordChatPayload } from '@/lib/discord-chat-payload';
 import {
   beginPendingMtSupportRequest,
   consumePendingMtSupportRequest,
@@ -180,10 +181,13 @@ export async function POST(request: NextRequest) {
     let body: any;
     try {
       const raw = await request.text();
-      body = JSON.parse(raw.replace(/[\x00-\x1F\x7F]/g, ''));
+      body = parseDiscordChatPayload(raw);
+      if (!body) {
+        return apiOk({ success: false, skipped: 'invalid-json' });
+      }
     } catch (error) {
       console.error('[Discord Chat] Invalid JSON payload:', error);
-      return apiOk({ success: false, error: 'invalid-json' });
+      return apiOk({ success: false, skipped: 'invalid-json' });
     }
 
     const normalized = normalizeDiscordPayload(body);

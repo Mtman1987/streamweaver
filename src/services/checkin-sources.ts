@@ -117,8 +117,14 @@ async function fetchCrewSource(tenantId?: string): Promise<CheckinSourceResult> 
       cache: 'no-store',
     });
     if (!response.ok) {
-      console.warn('[Crew Checkin] Failed to fetch crew source:', response.status, await response.text().catch(() => ''));
-      return { kind: 'crew', label: 'Crew Check-In', sourceLabel: 'Crew', selectionMode: 'pick', entries: [] };
+      return {
+        kind: 'crew',
+        label: 'Crew Check-In',
+        sourceLabel: 'Crew',
+        selectionMode: 'pick',
+        entries: [],
+        error: `Crew source returned ${response.status}. Check the Crew Check-In source URL in Redeems settings.`,
+      };
     }
 
     const payload = await response.json().catch(() => null);

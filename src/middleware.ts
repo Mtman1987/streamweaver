@@ -106,7 +106,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname === '/api/ai/shoutout' && hasSharedBotAccess(request)) {
+  if ((pathname === '/api/ai/shoutout' || pathname === '/api/kick/chat-tag-broadcast') && hasSharedBotAccess(request)) {
     return NextResponse.next();
   }
 
