@@ -8,6 +8,7 @@ import { getYouTubeService, YouTubeMessage } from './youtube';
 import { getKickService, KickMessage } from './kick';
 import { getTikTokService, TikTokMessage, TikTokGift, TikTokFollow } from './tiktok';
 import { handleKickMessage } from './chat-dispatcher';
+import { sendKickReauthNotice } from './kick-reauth-notice';
 
 export interface UnifiedMessage {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok' | 'discord';
@@ -196,6 +197,11 @@ export class MultiPlatformChatManager extends EventEmitter {
 
     } catch (error) {
       console.error('[MultiPlatform] Kick connection error:', error);
+      await sendKickReauthNotice({
+        tenantId,
+        channelName,
+        reason: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
