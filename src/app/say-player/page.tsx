@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function SayPlayer() {
   const playing = useRef(false);
   const queue = useRef<Array<{ id: number; audioUrl: string }>>([]);
+  const knownIds = useRef<Set<number>>(new Set());
   const lastSeenId = useRef(0);
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
+  const [status, setStatus] = useState('Click to unlock browser audio.');
 
   useEffect(() => {
     const nextTenantId = new URLSearchParams(window.location.search).get('tenantId') || '';
@@ -19,7 +21,18 @@ export default function SayPlayer() {
 
   function start() {
     setActive(true);
+    setStatus('Listening for messages...');
   }
+
+  const resetCursor = useCallback(() => {
+    lastSeenId.current = 0;
+    queue.current = [];
+    knownIds.current.clear();
+    try {
+      localStorage.removeItem(`streamweaver-say-last-${tenantId || 'global'}`);
+    } catch {}
+    setStatus('Queue cursor reset. Listening for messages...');
+  }, [tenantId]);
 
   useEffect(() => {
     if (!active) return;
@@ -30,29 +43,55 @@ export default function SayPlayer() {
         params.set('after', String(lastSeenId.current));
         const query = `?${params.toString()}`;
         const res = await fetch(`/api/say/next${query}`);
-        const { items } = await res.json();
+        const { items, latestId } = await res.json();
+        if (!items?.length && Number(latestId || 0) > 0 && Number(latestId || 0) < lastSeenId.current) {
+          resetCursor();
+          return;
+        }
         if (Array.isArray(items)) {
-          const knownIds = new Set(queue.current.map((item) => item.id));
           items.forEach((item) => {
-            if (item?.id && item?.audioUrl && !knownIds.has(item.id)) queue.current.push(item);
+            const id = Number(item?.id || 0);
+            if (id && item?.audioUrl && !knownIds.current.has(id)) {
+              knownIds.current.add(id);
+              queue.current.push(item);
+            }
           });
         }
         if (playing.current || !queue.current.length) return;
         const next = queue.current.shift();
         if (!next) return;
         playing.current = true;
-        lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
-        try {
-          localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current));
-        } catch {}
         const audio = new Audio(next.audioUrl);
-        audio.onended = () => { playing.current = false; };
-        audio.onerror = () => { playing.current = false; };
-        audio.play().catch(() => { playing.current = false; });
-      } catch { /* ignore */ }
+        audio.volume = 1;
+        const markPlayed = () => {
+          lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
+          try {
+            localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current));
+          } catch {}
+        };
+        audio.onended = () => {
+          markPlayed();
+          playing.current = false;
+          setStatus('Listening for messages...');
+        };
+        audio.onerror = () => {
+          markPlayed();
+          playing.current = false;
+          setStatus('Audio failed. Waiting for next message...');
+        };
+        setStatus('Playing message...');
+        audio.play().catch((error) => {
+          playing.current = false;
+          knownIds.current.delete(Number(next.id || 0));
+          queue.current.unshift(next);
+          setStatus(`Audio blocked: ${error?.message || 'click Reset and tap the page again'}`);
+        });
+      } catch {
+        setStatus('Polling failed. Retrying...');
+      }
     }, 500);
     return () => clearInterval(poll);
-  }, [active, tenantId]);
+  }, [active, resetCursor, tenantId]);
 
   if (!active) {
     return (
@@ -63,8 +102,15 @@ export default function SayPlayer() {
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#000', color: '#0f0', fontFamily: 'monospace' }}>
-      <p style={{ fontSize: '2rem' }}>🔊 Say Player Active — listening for messages</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#000', color: '#0f0', fontFamily: 'monospace', textAlign: 'center' }}>
+      <p style={{ fontSize: '2rem' }}>Say Player Active - listening for messages</p>
+      <p style={{ fontSize: '1rem', color: '#9f9' }}>{status}</p>
+      <button
+        onClick={resetCursor}
+        style={{ border: '1px solid #0f0', background: '#020', color: '#0f0', padding: '0.75rem 1rem', fontFamily: 'monospace', cursor: 'pointer' }}
+      >
+        Reset listener
+      </button>
     </div>
   );
 }
