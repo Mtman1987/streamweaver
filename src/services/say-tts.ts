@@ -4,6 +4,9 @@ export const SAY_USERS_FILE_PATH = 'data/runtime/say-users.json';
 
 export type SayState = 'on' | 'off';
 
+const saySpeakerState = new Map<string, { speaker: string; lastAt: number }>();
+const SAY_REPEAT_SPEAKER_WINDOW_MS = 2 * 60 * 1000;
+
 export async function readSayUsers(): Promise<Set<string>> {
   try {
     const parsed = JSON.parse(await readFile(SAY_USERS_FILE_PATH, 'utf-8'));
@@ -62,13 +65,41 @@ export function cleanSayTextForSpeech(text: unknown): string {
     .trim();
 }
 
+export function isSayControlText(text: unknown): boolean {
+  const cleaned = cleanSayTextForSpeech(text).toLowerCase();
+  if (!cleaned) return false;
+  return cleaned.startsWith('spmt') || cleaned.startsWith('@spmt');
+}
+
 export function isSayTextSpeakable(text: unknown): boolean {
   const cleaned = cleanSayTextForSpeech(text);
   if (!cleaned) return false;
+  if (isSayControlText(cleaned)) return false;
   if (!/[a-z0-9]/i.test(cleaned)) return false;
   if (/^shout\s*out\s*:/i.test(cleaned)) return false;
   if (/\bgo\s+check\s+out\b/i.test(cleaned)) return false;
   return true;
+}
+
+export function formatSaySpeechText(streamKey: unknown, speaker: unknown, message: unknown): string {
+  const cleanMessage = cleanSayTextForSpeech(message);
+  const cleanSpeaker = cleanSayTextForSpeech(speaker);
+  if (!cleanSpeaker) return cleanMessage;
+
+  const key = String(streamKey || '').trim() || 'global';
+  const now = Date.now();
+  const previous = saySpeakerState.get(key);
+  saySpeakerState.set(key, { speaker: cleanSpeaker.toLowerCase(), lastAt: now });
+
+  if (
+    previous &&
+    previous.speaker === cleanSpeaker.toLowerCase() &&
+    now - previous.lastAt < SAY_REPEAT_SPEAKER_WINDOW_MS
+  ) {
+    return cleanMessage;
+  }
+
+  return `${cleanSpeaker} says: ${cleanMessage}`;
 }
 
 export function parseSayState(value: unknown): SayState | null {

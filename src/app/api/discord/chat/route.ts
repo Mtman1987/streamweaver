@@ -36,7 +36,7 @@ import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import {
   applySayState,
-  cleanSayTextForSpeech,
+  formatSaySpeechText,
   isSayEnabled,
   isSayTextSpeakable,
   parseSayState,
@@ -819,11 +819,11 @@ export async function POST(request: NextRequest) {
           const sayUsers = await readSayUsers();
           if (isSayEnabled(sayUsers, userId, channelId)) {
             const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
-            const spokenMessage = cleanSayTextForSpeech(message);
+            const spokenMessage = formatSaySpeechText(sayChannelKey, userName, message);
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId: sayChannelKey, text: `${userName} says: ${spokenMessage}` }),
+              body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
             }).catch(() => {});
           }
         } catch { /* no say-users file = nobody enrolled */ }

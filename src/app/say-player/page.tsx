@@ -7,6 +7,8 @@ export default function SayPlayer() {
   const queue = useRef<Array<{ id: number; audioUrl: string }>>([]);
   const knownIds = useRef<Set<number>>(new Set());
   const lastSeenId = useRef(0);
+  const ready = useRef(false);
+  const needsLiveResync = useRef(false);
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [volume, setVolume] = useState(0.6);
@@ -34,23 +36,48 @@ export default function SayPlayer() {
 
   function start() {
     setActive(true);
-    setStatus('Listening for messages...');
+    setStatus('Joining live messages...');
   }
 
-  const resetCursor = useCallback(() => {
-    lastSeenId.current = 0;
+  const syncToLatest = useCallback(async (message = 'Listening for new messages...') => {
     queue.current = [];
     knownIds.current.clear();
+    ready.current = false;
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenantId', tenantId);
+    params.set('latest', '1');
+    const res = await fetch(`/api/say/next?${params.toString()}`);
+    const { latestId } = await res.json();
+    lastSeenId.current = Math.max(0, Number(latestId || 0));
     try {
-      localStorage.removeItem(`streamweaver-say-last-${tenantId || 'global'}`);
+      localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current));
     } catch {}
-    setStatus('Queue cursor reset. Listening for messages...');
+    ready.current = true;
+    needsLiveResync.current = false;
+    setStatus(message);
   }, [tenantId]);
+
+  const resetCursor = useCallback(() => {
+    syncToLatest('Skipped old messages. Listening live from now...');
+  }, [syncToLatest]);
+
+  useEffect(() => {
+    if (!active) return;
+    syncToLatest().catch(() => {
+      ready.current = true;
+      setStatus('Could not sync live position. Retrying...');
+    });
+  }, [active, syncToLatest]);
 
   useEffect(() => {
     if (!active) return;
     const poll = setInterval(async () => {
       try {
+        if (!ready.current) return;
+        if (needsLiveResync.current) {
+          await syncToLatest('Reconnected. Skipped missed messages and listening live...');
+          return;
+        }
         const params = new URLSearchParams();
         if (tenantId) params.set('tenantId', tenantId);
         params.set('after', String(lastSeenId.current));
@@ -100,11 +127,12 @@ export default function SayPlayer() {
           setStatus(`Audio blocked: ${error?.message || 'click Reset and tap the page again'}`);
         });
       } catch {
-        setStatus('Polling failed. Retrying...');
+        needsLiveResync.current = true;
+        setStatus('Connection interrupted. Will resume live messages...');
       }
     }, 500);
     return () => clearInterval(poll);
-  }, [active, resetCursor, tenantId, volume]);
+  }, [active, resetCursor, syncToLatest, tenantId, volume]);
 
   if (!active) {
     return (

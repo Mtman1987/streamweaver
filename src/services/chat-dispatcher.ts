@@ -68,7 +68,7 @@ import { findDiscordLastSeenForNames } from './discord-last-seen';
 import { getInternalAppUrl } from '../lib/runtime-origin';
 import {
     applySayState,
-    cleanSayTextForSpeech,
+    formatSaySpeechText,
     isSayEnabled,
     hasSayEnabledInChannel,
     isSayTextSpeakable,
@@ -2099,11 +2099,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
-            const spokenMessage = cleanSayTextForSpeech(actualMessage);
+            const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, actualMessage);
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId: sayChannelKey, text: `${displayName || actualUsername} says: ${spokenMessage}` }),
+                body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }
