@@ -123,6 +123,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
     
     const idleFileInputRef = useRef<HTMLInputElement>(null);
     const talkingFileInputRef = useRef<HTMLInputElement>(null);
+    const privateDmGifInputRef = useRef<HTMLInputElement>(null);
+    const publicDiscordGifInputRef = useRef<HTMLInputElement>(null);
     const [displayMode, setDisplayMode] = useState('auto');
     const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -442,6 +444,72 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         }
     };
 
+    const handleDiscordMediaUpload = async (
+        event: React.ChangeEvent<HTMLInputElement>,
+        slot: 'private-dm' | 'public-discord',
+    ) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+
+        const fileExt = file.name.split('.').pop()?.toLowerCase();
+        if (fileExt !== 'gif') {
+            toast({
+                variant: 'destructive',
+                title: 'Invalid file',
+                description: 'Pick a GIF file for this Discord media slot.',
+            });
+            return;
+        }
+
+        setIsSavingMediaSlots(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', slot);
+
+            const uploadResponse = await fetch('/api/avatars', {
+                method: 'POST',
+                body: formData,
+            });
+            if (!uploadResponse.ok) {
+                throw new Error(`Upload failed: ${uploadResponse.status}`);
+            }
+
+            const tenantId = getClientTenantId();
+            const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
+            const mediaUrl = `${window.location.origin}/api/avatars?type=${slot}&format=gif${tenantQuery}&v=${Date.now()}`;
+            const nextPrivateUrl = slot === 'private-dm' ? mediaUrl : privateDmGifUrl;
+            const nextPublicUrl = slot === 'public-discord' ? mediaUrl : publicDiscordGifUrl;
+
+            if (slot === 'private-dm') setPrivateDmGifUrl(mediaUrl);
+            else setPublicDiscordGifUrl(mediaUrl);
+
+            const saveResponse = await fetch('/api/user-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    PRIVATE_DM_GIF_URL: nextPrivateUrl,
+                    PUBLIC_DISCORD_GIF_URL: nextPublicUrl,
+                }),
+            });
+            if (!saveResponse.ok) {
+                const body = await saveResponse.json().catch(() => ({}));
+                throw new Error(body?.error || 'Failed to save Discord media slot.');
+            }
+
+            toast({ title: slot === 'private-dm' ? 'Private DM GIF saved' : 'Public Discord GIF saved' });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Upload failed',
+                description: error.message || 'Could not save Discord media slot.',
+            });
+        } finally {
+            setIsSavingMediaSlots(false);
+        }
+    };
+
     const handleSaveImageGeneration = async () => {
         setIsSavingGenSettings(true);
         try {
@@ -479,13 +547,29 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         onChange={(e) => handleFileChange(e, 'idle')}
         aria-label="Upload idle animation file"
       />
-       <input 
+      <input
         type="file" 
         ref={talkingFileInputRef} 
         className="hidden" 
         accept=".json,.mp4,.gif"
         onChange={(e) => handleFileChange(e, 'talking')}
         aria-label="Upload talking animation file"
+      />
+      <input
+        type="file"
+        ref={privateDmGifInputRef}
+        className="hidden"
+        accept=".gif"
+        onChange={(e) => handleDiscordMediaUpload(e, 'private-dm')}
+        aria-label="Upload private DM GIF"
+      />
+      <input
+        type="file"
+        ref={publicDiscordGifInputRef}
+        className="hidden"
+        accept=".gif"
+        onChange={(e) => handleDiscordMediaUpload(e, 'public-discord')}
+        aria-label="Upload public Discord GIF"
       />
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Bot Functions</h1>
@@ -718,21 +802,33 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 <CardContent className="grid gap-4">
                     <div className="space-y-2">
                         <Label htmlFor="private-dm-gif">Private DM / app private chat GIF URL</Label>
-                        <Input
-                            id="private-dm-gif"
-                            value={privateDmGifUrl}
-                            onChange={(event) => setPrivateDmGifUrl(event.target.value)}
-                            placeholder="https://..."
-                        />
+                        <div className="flex gap-2">
+                            <Input
+                                id="private-dm-gif"
+                                value={privateDmGifUrl}
+                                onChange={(event) => setPrivateDmGifUrl(event.target.value)}
+                                placeholder="https://..."
+                            />
+                            <Button type="button" variant="outline" onClick={() => privateDmGifInputRef.current?.click()} disabled={isSavingMediaSlots}>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Pick
+                            </Button>
+                        </div>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="public-discord-gif">Public Discord / embed GIF URL</Label>
-                        <Input
-                            id="public-discord-gif"
-                            value={publicDiscordGifUrl}
-                            onChange={(event) => setPublicDiscordGifUrl(event.target.value)}
-                            placeholder="https://..."
-                        />
+                        <div className="flex gap-2">
+                            <Input
+                                id="public-discord-gif"
+                                value={publicDiscordGifUrl}
+                                onChange={(event) => setPublicDiscordGifUrl(event.target.value)}
+                                placeholder="https://..."
+                            />
+                            <Button type="button" variant="outline" onClick={() => publicDiscordGifInputRef.current?.click()} disabled={isSavingMediaSlots}>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Pick
+                            </Button>
+                        </div>
                     </div>
                 </CardContent>
                 <CardFooter>

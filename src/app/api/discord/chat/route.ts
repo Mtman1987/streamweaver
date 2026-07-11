@@ -232,6 +232,7 @@ export async function POST(request: NextRequest) {
           sourceMessageId: normalized.messageId,
           sourceMessage: message,
           sourceUser: userName,
+          isPrivate: isDirectMessage,
         });
         return;
       }
@@ -738,6 +739,7 @@ export async function POST(request: NextRequest) {
             description: result.originalPrompt || prompt,
             tenantId,
             authorName: getBotName(tenantId),
+            mediaSlot: isDirectMessage ? 'private' : 'public',
           });
           await sendDiscordEmbed(channelId, {
             embeds: [{
@@ -912,6 +914,7 @@ export async function POST(request: NextRequest) {
             tenantId: botTenantId || tenantId || undefined,
             botName,
             deleteAt,
+            mediaSlot: isDirectMessage ? 'private' : 'public',
           });
           if (relayOnly) {
             collectReply({ content: ackReply, embeds: [ackEmbed] });
@@ -980,6 +983,7 @@ export async function POST(request: NextRequest) {
             tenantId: botTenantId || tenantId || undefined,
             botName,
             deleteAt,
+            mediaSlot: isDirectMessage ? 'private' : 'public',
           });
           if (relayOnly) {
             collectReply({ content: ackReply, embeds: [ackEmbed] });
@@ -1062,6 +1066,7 @@ export async function POST(request: NextRequest) {
           tenantId: botTenantId || tenantId || undefined,
           botName,
           deleteAt,
+          mediaSlot: isDirectMessage ? 'private' : 'public',
         });
         let sentReply: any = null;
         if (relayOnly) {

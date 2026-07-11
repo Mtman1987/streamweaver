@@ -5,6 +5,8 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { tenantPath } from '@/lib/tenant';
 
+const AVATAR_MEDIA_TYPES = ['idle', 'talking', 'gesture', 'private-dm', 'public-discord'];
+
 function avatarDir(tenantId?: string): string {
   if (tenantId) return tenantPath(tenantId, 'data/avatars');
   return resolve(process.cwd(), 'data', 'avatars');
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
             const formData = await request.formData();
             const file = formData.get('file') as File | null;
             type = (formData.get('type') as string) || '';
-            if (!file || !type || !['idle', 'talking', 'gesture'].includes(type)) {
+            if (!file || !type || !AVATAR_MEDIA_TYPES.includes(type)) {
                 return apiError('Missing file or type', { status: 400, code: 'INVALID_BODY' });
             }
             const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest) {
             fileBuffer = Buffer.from(await file.arrayBuffer());
         } else {
             const body = await request.json().catch(() => null);
-            if (!body?.type || !['idle', 'talking', 'gesture'].includes(body.type)) {
+            if (!body?.type || !AVATAR_MEDIA_TYPES.includes(body.type)) {
                 return apiError('Missing required fields', { status: 400, code: 'INVALID_BODY' });
             }
             type = body.type;
@@ -126,7 +128,7 @@ export async function GET(request: NextRequest) {
             }
         }
         
-        if (!type || !['idle', 'talking', 'gesture'].includes(type)) {
+        if (!type || !AVATAR_MEDIA_TYPES.includes(type)) {
             return apiError('Invalid type', { status: 400, code: 'INVALID_QUERY' });
         }
 

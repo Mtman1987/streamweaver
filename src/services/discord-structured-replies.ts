@@ -23,6 +23,7 @@ type StructuredDiscordReplyInput = {
   sourceMessageId?: string;
   sourceMessage?: string;
   sourceUser?: string;
+  isPrivate?: boolean;
 };
 
 let rotatingSpeakerIndex = 0;
@@ -105,6 +106,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
     tenantId: speaker.tenantId,
     botName: speaker.botName,
     deleteAt,
+    mediaSlot: input.isPrivate ? 'private' : 'public',
   });
   const sent = await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, [embed]);
 

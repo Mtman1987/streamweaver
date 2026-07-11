@@ -43,9 +43,15 @@ export function buildBotAvatarUrl(tenantId?: string): string {
     return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}&v=${cacheVersion}`;
 }
 
-function getConfiguredBotAvatarMediaUrl(tenantId?: string): string {
+type DiscordMediaSlot = 'public' | 'private';
+
+function getConfiguredBotAvatarMediaUrl(tenantId?: string, slot: DiscordMediaSlot = 'public'): string {
     const config = readUserConfigSync(tenantId);
+    const slotUrls = slot === 'private'
+        ? [config.PRIVATE_DM_GIF_URL, config.PUBLIC_DISCORD_GIF_URL]
+        : [config.PUBLIC_DISCORD_GIF_URL, config.PRIVATE_DM_GIF_URL];
     return firstUrl(
+        ...slotUrls,
         config.PUBLIC_AVATAR_URL,
         config.TWITCH_BOT_AVATAR_GIF_URL,
         config.TWITCH_BOT_AVATAR_URL,
@@ -181,6 +187,7 @@ export async function buildDiscordBotEmbed(input: {
     authorUrl?: string;
     authorName?: string;
     authorIconUrl?: string;
+    mediaSlot?: DiscordMediaSlot;
 }): Promise<DiscordBotEmbed> {
     const resolvedTenantId = input.tenantId || await resolveTenantByBotName(input.botName);
     const owner = await getTenantOwnerBranding(resolvedTenantId, input.botName);
@@ -188,7 +195,7 @@ export async function buildDiscordBotEmbed(input: {
     const authorName = input.authorName || defaultBotName || owner.name;
     const authorIconUrl = input.authorIconUrl
         || owner.iconUrl;
-    const avatarMediaUrl = getConfiguredBotAvatarMediaUrl(resolvedTenantId) || buildBotAvatarUrl(resolvedTenantId);
+    const avatarMediaUrl = getConfiguredBotAvatarMediaUrl(resolvedTenantId, input.mediaSlot) || buildBotAvatarUrl(resolvedTenantId);
     const footerParts = [STREAMWEAVER_BRAND_NAME];
     if (owner.name && owner.name !== STREAMWEAVER_BRAND_NAME) {
         footerParts.push(owner.name);

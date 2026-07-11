@@ -692,6 +692,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             sourceMessageId: msg.messageId || msg.message_id,
             sourceMessage: actualMessage,
             sourceUser: actualUsername,
+            isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
         }).catch((error) => {
             console.error('[Discord Dispatcher] Failed to send command reply:', error);
         });
@@ -1168,6 +1169,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 sourceMessageId: msg.messageId || msg.message_id,
                 sourceMessage: actualMessage,
                 sourceUser: actualUsername,
+                isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
             }).catch((error) => {
                 console.error('[Discord Dispatcher] Failed to send social command reply:', error);
             });

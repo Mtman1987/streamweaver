@@ -307,6 +307,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                         tenantId,
                         authorUrl: ttsUrl,
                         authorName: getBotName(tenantId),
+                        mediaSlot: 'private',
                     })],
                 });
             } catch (error) {
