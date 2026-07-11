@@ -39,6 +39,7 @@ export default function AvatarOverlayPage() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const visibilityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         const tenantId = getOverlayTenantId();
@@ -142,23 +143,30 @@ export default function AvatarOverlayPage() {
                 
                 if (data.type === 'play-tts') {
                     console.log('[Avatar Overlay] TTS started - showing avatar');
-                    setAvatarState(prev => ({ ...prev, isVisible: true, isTalking: true }));
+                    setAvatarState(prev => ({ ...prev, isVisible: true, isTalking: true, currentAnimation: 'talking' }));
                     
-                    // Clear any existing hide timer
+                    // Clear any existing hide or visibility timers
                     if (hideTimerRef.current) {
                         clearTimeout(hideTimerRef.current);
+                        hideTimerRef.current = null;
+                    }
+                    if (visibilityTimerRef.current) {
+                        clearTimeout(visibilityTimerRef.current);
+                        visibilityTimerRef.current = null;
                     }
                     
                     // Auto-hide after 5 seconds (adjust based on typical TTS length)
                     hideTimerRef.current = setTimeout(() => {
-                        setAvatarState(prev => ({ ...prev, isTalking: false }));
+                        setAvatarState(prev => ({ ...prev, isTalking: false, currentAnimation: 'idle' }));
                         
                         const displayMode = localStorage.getItem('avatar_display_mode') || 'auto';
                         if (displayMode === 'auto') {
-                            setTimeout(() => {
-                                setAvatarState(prev => ({ ...prev, isVisible: false }));
+                            visibilityTimerRef.current = setTimeout(() => {
+                                setAvatarState(prev => ({ ...prev, isVisible: false, currentAnimation: 'idle' }));
+                                visibilityTimerRef.current = null;
                             }, 60000);
                         }
+                        hideTimerRef.current = null;
                     }, 5000);
                 }
             };
@@ -178,6 +186,9 @@ export default function AvatarOverlayPage() {
         return () => {
             if (hideTimerRef.current) {
                 clearTimeout(hideTimerRef.current);
+            }
+            if (visibilityTimerRef.current) {
+                clearTimeout(visibilityTimerRef.current);
             }
         };
     }, []);

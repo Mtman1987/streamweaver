@@ -1285,6 +1285,7 @@ async function sendDiscordBotEmbedReply(channelId: string, message: string, tena
       description: message,
       tenantId,
       authorName: getBotName(tenantId),
+      mediaSlot: 'private',
     })],
   });
 }
