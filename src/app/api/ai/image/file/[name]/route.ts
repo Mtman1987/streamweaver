@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
   const { name: nameParam } = await params;
   const name = nameParam || '';
-  if (!/^[a-f0-9-]+\.(png|jpg|jpeg|webp)$/i.test(name)) {
+  if (!/^[a-f0-9-]+\.(gif|png|jpg|jpeg|webp)$/i.test(name)) {
     return NextResponse.json({ error: 'invalid file' }, { status: 400 });
   }
   const storagePath = scope === 'private' ? 'data/private-generated-images' : 'data/generated-images';
@@ -20,7 +20,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const data = await fs.readFile(filePath);
     const ext = name.split('.').pop()?.toLowerCase();
-    const ct = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
+    const ct = ext === 'gif'
+      ? 'image/gif'
+      : ext === 'jpg' || ext === 'jpeg'
+        ? 'image/jpeg'
+        : ext === 'webp'
+          ? 'image/webp'
+          : 'image/png';
     return new NextResponse(data, { headers: { 'Content-Type': ct, 'Cache-Control': 'public, max-age=31536000, immutable' } });
   } catch {
     return NextResponse.json({ error: 'not found' }, { status: 404 });

@@ -1,7 +1,7 @@
 import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
-import { deleteMessage, sendDiscordEmbed, sendDiscordMessage } from './discord';
+import { deleteMessage, sendDiscordEmbed, sendDiscordMessage, uploadBinaryFileToDiscord } from './discord';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
@@ -1373,17 +1373,38 @@ async function sendDiscordPokemonPackSummary(
         `${card.name} #${card.number} - ${card.rarity || 'Common'}`
     );
 
+    const embed: Record<string, unknown> = {
+        title: `${result.setName} Pack Opened`,
+        description: cardLines.join('\n').slice(0, 3900),
+        color: 0xf5c542,
+        footer: { text: `Total: ${totalCards} cards (${rareCount} rare)` },
+    };
+    const payload = {
+        content: `@${username} opened a ${result.setName} pack.`,
+        embeds: [embed],
+    };
+
     try {
-        await sendDiscordEmbed(channelId, {
-            content: `@${username} opened a ${result.setName} pack.`,
-            embeds: [{
-                title: `${result.setName} Pack Opened`,
-                description: cardLines.join('\n').slice(0, 3900),
-                color: 0xf5c542,
-                image: featureCard?.imageUrl ? { url: featureCard.imageUrl } : undefined,
-                footer: { text: `Total: ${totalCards} cards (${rareCount} rare)` },
-            }],
-        });
+        if (featureCard?.imageUrl) {
+            try {
+                const response = await fetch(featureCard.imageUrl);
+                if (response.ok) {
+                    const arrayBuffer = await response.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    const contentType = String(response.headers.get('content-type') || 'image/png').split(';')[0].trim();
+                    const extension = contentType.includes('jpeg') ? 'jpg' : contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'png';
+                    const fileName = `pokemon-card.${extension}`;
+                    embed.image = { url: `attachment://${fileName}` };
+                    await uploadBinaryFileToDiscord(channelId, buffer, fileName, contentType, payload);
+                    return;
+                }
+            } catch (error) {
+                console.warn('[Pokemon] failed to attach feature card image for Discord embed; falling back to remote URL', error);
+            }
+            embed.image = { url: featureCard.imageUrl };
+        }
+
+        await sendDiscordEmbed(channelId, payload);
     } catch (error) {
         console.warn('[Pokemon] Discord pack embed failed, falling back to text:', error);
         await sendDiscordMessage(channelId, fallbackMessage);

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const storagePath = scope === 'private' ? 'data/private-generated-images' : 'data/generated-images';
   const dir = tenantId ? tenantPath(tenantId, storagePath) : `${process.cwd()}/${storagePath}`;
   let files: string[] = [];
-  try { files = (await fs.readdir(dir)).filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f)).sort().reverse(); } catch {}
+  try { files = (await fs.readdir(dir)).filter(f => /\.(gif|png|jpg|jpeg|webp)$/i.test(f)).sort().reverse(); } catch {}
   const rows = files.map((f) => {
     const safeName = escapeHtml(f);
     const params = new URLSearchParams();

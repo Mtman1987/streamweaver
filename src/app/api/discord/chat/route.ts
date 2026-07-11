@@ -6,7 +6,7 @@ import { readUserConfigSync } from '@/lib/user-config';
 import { getAdminTwitchId, listTenants, tenantPath } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
-import { deleteMessage, sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
+import { deleteMessage, sendDiscordEmbed, sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve which tenant this guild belongs to (or auto-assign on first message)
-    let tenantId = normalized.tenantId || await resolveGuildTenant(guildId);
+    let tenantId = normalized.tenantId || await resolveGuildTenant(guildId, channelId);
     const isPrivateDiscordLane = isDirectMessage;
 
     if (!isPrivateDiscordLane) {
@@ -550,7 +550,10 @@ export async function POST(request: NextRequest) {
             }
           }
           for (const image of result.images) {
-            await sendDiscordBotMessage(channelId, await maybeShortenUrl(image));
+            await sendDiscordEmbed(channelId, {
+              content: 'Here is your image, Commander:',
+              embeds: [{ image: { url: await maybeShortenUrl(image) } }],
+            });
           }
         }
         await markHandled();
@@ -584,7 +587,7 @@ export async function POST(request: NextRequest) {
           skipPublicHistory: true,
           skipAiMentions: true,
           skipTwitchBridge: true,
-          replyMode: 'bot',
+          replyMode: 'structured',
         });
 
         if (dispatchResult.commandHandled) {
@@ -739,13 +742,13 @@ export async function POST(request: NextRequest) {
             description: result.originalPrompt || prompt,
             tenantId,
             authorName: getBotName(tenantId),
-            mediaSlot: isDirectMessage ? 'private' : 'public',
+            mediaSlot: 'public',
           });
           await sendDiscordEmbed(channelId, {
             embeds: [{
               ...embed,
               title: 'Image Generated',
-              image: { url: imageUrl },
+              thumbnail: { url: imageUrl },
             }],
           });
         }
@@ -1279,35 +1282,41 @@ async function sendDiscordRouteReply(channelId: string, message: string, usernam
 }
 
 async function sendDiscordBotEmbedReply(channelId: string, message: string, tenantId?: string) {
-  const { sendDiscordEmbed } = await import('@/services/discord-local');
-  await sendDiscordEmbed(channelId, {
-    embeds: [await buildDiscordBotEmbed({
-      description: message,
-      tenantId,
-      authorName: getBotName(tenantId),
-      mediaSlot: 'private',
-    })],
+  const botName = getBotName(tenantId);
+  await sendStructuredDiscordReply({
+    channelId,
+    message,
+    tenantId,
+    botName,
+    isPrivate: true,
   });
 }
 
 /**
  * Resolve which tenant a Discord guild belongs to by checking discord-channels.json files.
  */
-async function resolveGuildTenant(guildId: string): Promise<string | undefined> {
-  if (!guildId) {
-    try {
-      const tenants = await listTenants();
-      if (tenants.length === 0) return undefined;
-      if (tenants.length === 1) return tenants[0];
-
-      // DM payloads may not include guild context; route ambiguous traffic to the owner tenant.
-      const ownerTenantId = (process.env.DISCORD_DM_OWNER_TENANT_ID || getAdminTwitchId()).trim();
-      if (ownerTenantId) return ownerTenantId;
-    } catch {}
-    return undefined;
-  }
+async function resolveGuildTenant(guildId: string, channelId?: string): Promise<string | undefined> {
   try {
     const tenantIds = await listTenants();
+    if (!tenantIds.length) return undefined;
+
+    if (!guildId) {
+      if (channelId) {
+        for (const id of tenantIds) {
+          try {
+            const raw = await fs.readFile(tenantPath(id, 'tokens/discord-channels.json'), 'utf-8');
+            const config = JSON.parse(raw);
+            if (config.dmChannelId === channelId) return id;
+          } catch {}
+        }
+      }
+
+      const ownerTenantId = (process.env.DISCORD_DM_OWNER_TENANT_ID || getAdminTwitchId()).trim();
+      if (ownerTenantId && tenantIds.includes(ownerTenantId)) return ownerTenantId;
+      if (tenantIds.length === 1) return tenantIds[0];
+      return undefined;
+    }
+
     for (const id of tenantIds) {
       try {
         const raw = await fs.readFile(tenantPath(id, 'tokens/discord-channels.json'), 'utf-8');
@@ -1316,6 +1325,7 @@ async function resolveGuildTenant(guildId: string): Promise<string | undefined> 
       } catch {}
     }
   } catch {}
+
   // If the guild is unknown, only fall back automatically in strict single-tenant mode.
   try {
     const tenants = await listTenants();

@@ -46,7 +46,15 @@ async function persistImageFromUrl(imageUrl: string, tenantId: string | undefine
     const res = await fetch(imageUrl);
     if (!res.ok) return null;
     const contentType = String(res.headers.get('content-type') || '').toLowerCase();
-    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : 'png';
+    const ext = contentType.includes('gif')
+      ? 'gif'
+      : contentType.includes('png')
+        ? 'png'
+        : contentType.includes('webp')
+          ? 'webp'
+          : contentType.includes('jpeg') || contentType.includes('jpg')
+            ? 'jpg'
+            : 'png';
     const bytes = Buffer.from(await res.arrayBuffer());
     const id = randomUUID();
     const storagePath = getImageStoragePath(scope);
@@ -62,7 +70,7 @@ async function persistImageFromUrl(imageUrl: string, tenantId: string | undefine
 
 async function persistImageFromDataUri(dataUri: string, tenantId: string | undefined, scope: ImageLibraryScope, request?: NextRequest): Promise<string | null> {
   try {
-    const match = String(dataUri).match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i);
+    const match = String(dataUri).match(/^data:image\/(gif|png|jpeg|jpg|webp);base64,(.+)$/i);
     if (!match) return null;
     const ext = match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase();
     const bytes = Buffer.from(match[2], 'base64');
