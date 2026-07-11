@@ -3,9 +3,12 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 export const SAY_USERS_FILE_PATH = 'data/runtime/say-users.json';
 
 export type SayState = 'on' | 'off';
+type TwitchEmoteRanges = Record<string, Array<string | [number, number]> | null | undefined>;
 
 const saySpeakerState = new Map<string, { speaker: string; lastAt: number }>();
+const saySuppressionState = new Map<string, { until: number; reason: string }>();
 const SAY_REPEAT_SPEAKER_WINDOW_MS = 2 * 60 * 1000;
+export const SAY_SHOUTOUT_SUPPRESSION_MS = 90 * 1000;
 
 export async function readSayUsers(): Promise<Set<string>> {
   try {
@@ -63,6 +66,73 @@ export function cleanSayTextForSpeech(text: unknown): string {
     .replace(/\p{Extended_Pictographic}/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function parseTwitchEmoteRange(range: string | [number, number]): { start: number; end: number } | null {
+  if (Array.isArray(range)) {
+    const [start, end] = range;
+    return Number.isFinite(start) && Number.isFinite(end) && end >= start ? { start, end } : null;
+  }
+
+  const match = String(range || '').match(/^(\d+)-(\d+)$/);
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? { start, end } : null;
+}
+
+export function stripTwitchEmotesFromText(text: unknown, emotes: TwitchEmoteRanges | null | undefined): string {
+  const source = String(text || '');
+  if (!source) return '';
+  if (!emotes) return cleanSayTextForSpeech(source);
+
+  const ranges = Object.values(emotes)
+    .flatMap((entries) => entries || [])
+    .map(parseTwitchEmoteRange)
+    .filter((range): range is { start: number; end: number } => Boolean(range))
+    .sort((a, b) => b.start - a.start || b.end - a.end);
+
+  let cleaned = source;
+  for (const range of ranges) {
+    const start = Math.max(0, Math.min(range.start, cleaned.length));
+    const endExclusive = Math.max(start, Math.min(range.end + 1, cleaned.length));
+    cleaned = `${cleaned.slice(0, start)} ${cleaned.slice(endExclusive)}`;
+  }
+
+  return cleanSayTextForSpeech(cleaned);
+}
+
+function normalizeSaySuppressionKey(key: unknown): string {
+  return String(key || '').trim().toLowerCase();
+}
+
+export function suppressSayForTenant(key: unknown, durationMs = SAY_SHOUTOUT_SUPPRESSION_MS, reason = 'shoutout'): void {
+  const normalized = normalizeSaySuppressionKey(key);
+  if (!normalized) return;
+
+  const until = Date.now() + Math.max(0, durationMs);
+  const existing = saySuppressionState.get(normalized);
+  if (!existing || until > existing.until) {
+    saySuppressionState.set(normalized, { until, reason });
+  }
+}
+
+export function clearSaySuppressionForTenant(key: unknown): void {
+  const normalized = normalizeSaySuppressionKey(key);
+  if (normalized) saySuppressionState.delete(normalized);
+}
+
+export function isSaySuppressedForTenant(key: unknown): boolean {
+  const normalized = normalizeSaySuppressionKey(key);
+  if (!normalized) return false;
+
+  const suppression = saySuppressionState.get(normalized);
+  if (!suppression) return false;
+  if (suppression.until <= Date.now()) {
+    saySuppressionState.delete(normalized);
+    return false;
+  }
+  return true;
 }
 
 export function isSayControlText(text: unknown): boolean {

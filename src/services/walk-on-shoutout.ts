@@ -8,6 +8,7 @@ import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import { readUserConfigSync } from '../lib/user-config';
+import { resolveSayStreamKey, SAY_SHOUTOUT_SUPPRESSION_MS, suppressSayForTenant } from './say-tts';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -63,6 +64,24 @@ async function getTenantStorageUsername(tenantId?: string): Promise<string> {
     } catch {
         const cfg = readUserConfigSync(tenantId);
         return cfg.TWITCH_BROADCASTER_USERNAME || 'default';
+    }
+}
+
+async function suppressSayDuringShoutout(tenantId?: string): Promise<void> {
+    const keys = new Set<string>();
+    if (tenantId) keys.add(tenantId);
+
+    try {
+        const storageUsername = await getTenantStorageUsername(tenantId);
+        if (storageUsername && storageUsername !== 'default') {
+            keys.add(resolveSayStreamKey(undefined, 'twitch', storageUsername));
+        }
+    } catch {
+        // Tenant id suppression still protects the normal live path.
+    }
+
+    for (const key of keys) {
+        suppressSayForTenant(key, SAY_SHOUTOUT_SUPPRESSION_MS, 'shoutout');
     }
 }
 
@@ -513,6 +532,9 @@ export async function handleWalkOnShoutout(username: string, displayName: string
 
     const mode = await getShoutoutMode(realTenantId);
     console.log(`[WalkOn] Shoutout mode: ${mode}`);
+    if (mode === 'full' || mode === 'overlay') {
+        await suppressSayDuringShoutout(realTenantId);
+    }
     await recordShoutoutAudit({
         status: 'phase',
         phase: 'mode-resolved',
@@ -632,6 +654,7 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     }
 
     // Fire greeting after clip (full = chat + TTS, overlay = overlay + TTS)
+    await suppressSayDuringShoutout(realTenantId);
     await fireGreeting(aiGreeting, mode, tenantId, options, { username: user, displayName, source: auditSource });
 
     if (!skipCooldown) await recordShoutout(user, realTenantId);

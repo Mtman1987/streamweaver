@@ -71,6 +71,7 @@ import {
     formatSaySpeechText,
     isSayEnabled,
     hasSayEnabledInChannel,
+    isSaySuppressedForTenant,
     isSayTextSpeakable,
     normalizeSayUser,
     parseSayState,
@@ -79,6 +80,7 @@ import {
     sayAllKey,
     sayUserKey,
     buildSayPlayerUrl,
+    stripTwitchEmotesFromText,
     writeSayUsers,
 } from './say-tts';
 
@@ -2095,11 +2097,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         color: tags.color,
     });
 
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(actualMessage)) {
+    const sayMessage = stripTwitchEmotesFromText(actualMessage, tags.emotes);
+    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(sayMessage)) {
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
-            const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, actualMessage);
+            if (isSaySuppressedForTenant(tenantId) || isSaySuppressedForTenant(sayChannelKey)) return;
+            const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
