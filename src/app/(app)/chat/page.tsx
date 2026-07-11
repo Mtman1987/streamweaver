@@ -63,6 +63,7 @@ type DiscordMessage = {
 };
 
 type ChatTarget = "discord" | "twitch";
+
 type AppMemoryMessage = {
   type: "user" | "ai";
   username: string;
@@ -478,11 +479,13 @@ export default function ChatPage() {
 
   const twitchParent = typeof window === "undefined" ? "" : window.location.hostname;
   const twitchPlayerUrl = twitchChannel && twitchParent
+
     ? `https://player.twitch.tv/?channel=${encodeURIComponent(twitchChannel)}&parent=${encodeURIComponent(twitchParent)}&muted=${twitchMuted ? "true" : "false"}`
     : "";
   const twitchChatUrl = twitchChannel && twitchParent
     ? `https://www.twitch.tv/embed/${encodeURIComponent(twitchChannel)}/chat?parent=${encodeURIComponent(twitchParent)}&darkpopout`
     : "";
+
 
   return (
     <div className="flex h-[calc(100vh-9rem)] min-h-[42rem] flex-col gap-4 pb-6">

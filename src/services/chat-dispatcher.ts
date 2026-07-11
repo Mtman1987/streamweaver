@@ -1384,6 +1384,22 @@ async function sendDiscordPokemonPackSummary(
         embeds: [embed],
     };
 
+    const inferImageExtension = (url: string, contentType: string) => {
+        const normalizedContentType = String(contentType || '').split(';')[0].trim().toLowerCase();
+        if (normalizedContentType.includes('jpeg') || normalizedContentType.includes('jpg')) return 'jpg';
+        if (normalizedContentType.includes('png')) return 'png';
+        if (normalizedContentType.includes('gif')) return 'gif';
+
+        const match = url.match(/\.([a-z0-9]+)(?:\?|$)/i);
+        if (match) {
+            const ext = match[1].toLowerCase();
+            if (ext === 'jpeg') return 'jpg';
+            if (['jpg', 'png', 'gif', 'webp'].includes(ext)) return ext;
+        }
+
+        return 'png';
+    };
+
     try {
         if (featureCard?.imageUrl) {
             try {
@@ -1391,13 +1407,14 @@ async function sendDiscordPokemonPackSummary(
                 if (response.ok) {
                     const arrayBuffer = await response.arrayBuffer();
                     const buffer = Buffer.from(arrayBuffer);
-                    const contentType = String(response.headers.get('content-type') || 'image/png').split(';')[0].trim();
-                    const extension = contentType.includes('jpeg') ? 'jpg' : contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'png';
+                    const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim();
+                    const extension = inferImageExtension(featureCard.imageUrl, contentType);
                     const fileName = `pokemon-card.${extension}`;
                     embed.image = { url: `attachment://${fileName}` };
-                    await uploadBinaryFileToDiscord(channelId, buffer, fileName, contentType, payload);
+                    await uploadBinaryFileToDiscord(channelId, buffer, fileName, contentType || 'application/octet-stream', payload);
                     return;
                 }
+                console.warn('[Pokemon] feature card image fetch returned non-ok response', response.status, featureCard.imageUrl);
             } catch (error) {
                 console.warn('[Pokemon] failed to attach feature card image for Discord embed; falling back to remote URL', error);
             }
