@@ -10,6 +10,7 @@ import { getStoredTokens } from '@/lib/token-utils.server';
 import { sendDiscordMessage } from '@/services/discord-local';
 import { runImageCommand } from '@/services/image-command';
 import { tenantPath, globalPath } from '@/lib/tenant';
+import { publishSpmtEvent } from '@/lib/spmt-client';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
 import { z } from 'zod';
@@ -220,6 +221,32 @@ async function queueTts(baseUrl: string, reply: string, tenantId?: string) {
     : { queued: false, status: current.status, error: current.data?.error || current.text };
 }
 
+function publishMountainViewVoiceEvent(type: string, input: {
+  transcript: string;
+  tenantId?: string;
+  username: string;
+  destination?: string;
+  voiceMode?: string;
+  summary: string;
+  payload?: Record<string, unknown>;
+}) {
+  void publishSpmtEvent({
+    type,
+    sourceApp: 'mountainview',
+    visibility: input.destination === 'private' ? 'private' : 'creator',
+    actor: { userId: input.tenantId || input.username, username: input.username, displayName: input.username },
+    payload: {
+      summary: input.summary,
+      transcript: input.transcript,
+      tenantId: input.tenantId || 'global',
+      destination: input.destination || 'ai',
+      voiceMode: input.voiceMode || 'reply',
+      source: 'streamweaver-mountainview-voice',
+      ...(input.payload || {}),
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.json().catch(() => null);
@@ -265,6 +292,15 @@ export async function POST(request: NextRequest) {
 
     const builtIn = await handleBuiltInVoiceCommand({ transcript, tenantId, username });
     if (builtIn.handled) {
+      publishMountainViewVoiceEvent('voice.command.completed', {
+        transcript,
+        tenantId,
+        username,
+        destination: command.destination,
+        voiceMode,
+        summary: String(builtIn.response || builtIn.type || 'MountainView command completed.'),
+        payload: { command: builtIn.type },
+      });
       return apiOk({
         routed: true,
         handled: true,
@@ -287,6 +323,21 @@ export async function POST(request: NextRequest) {
         ? `Generated ${image.images.length} image${image.images.length === 1 ? '' : 's'} through StreamWeaver.`
         : 'StreamWeaver accepted the image command, but no image URL was returned.';
       const tts = await queueTts(baseUrl, response, tenantId);
+      publishMountainViewVoiceEvent('voice.image.completed', {
+        transcript,
+        tenantId,
+        username,
+        destination: command.destination,
+        voiceMode,
+        summary: response,
+        payload: {
+          command: 'streamweaver-image',
+          provider: image.provider || null,
+          imageCount: image.images.length,
+          originalPrompt: image.originalPrompt,
+          optimizedPrompt: image.optimizedPrompt,
+        },
+      });
       return apiOk({
         routed: true,
         handled: true,
@@ -318,6 +369,15 @@ export async function POST(request: NextRequest) {
         username,
         channel: command.channel || firstString(payload.channel, nestedPayload.channel),
       });
+      publishMountainViewVoiceEvent(translationEnabled ? 'voice.translation.sent' : 'voice.dictation.sent', {
+        transcript,
+        tenantId,
+        username,
+        destination: command.destination,
+        voiceMode,
+        summary: `${translationEnabled ? 'Translated and sent' : 'Sent'} MountainView dictation to ${command.destination}.`,
+        payload: { outgoing, translation, dispatch: dispatchResult },
+      });
 
       return apiOk({
         routed: true,
@@ -339,6 +399,15 @@ export async function POST(request: NextRequest) {
         tenantId,
         username,
         channel: command.channel || String(payload.channel || ''),
+      });
+      publishMountainViewVoiceEvent('voice.dispatch.sent', {
+        transcript,
+        tenantId,
+        username,
+        destination: command.destination,
+        voiceMode,
+        summary: 'MountainView transcript dispatched into StreamWeaver command handling.',
+        payload: { dispatch: dispatchResult },
       });
 
       return apiOk({
@@ -376,6 +445,15 @@ export async function POST(request: NextRequest) {
 
       const reply = String(privateChat.data?.response || privateChat.data?.data?.response || '').trim();
       const tts = await queueTts(baseUrl, reply, tenantId);
+      publishMountainViewVoiceEvent('voice.ai.replied', {
+        transcript,
+        tenantId,
+        username,
+        destination: command.destination,
+        voiceMode,
+        summary: reply || 'Private StreamWeaver AI route completed without a text reply.',
+        payload: { reply, tts },
+      });
 
       return apiOk({
         routed: true,
@@ -438,6 +516,15 @@ export async function POST(request: NextRequest) {
         timestamp: new Date().toISOString(),
       });
     }
+    publishMountainViewVoiceEvent('voice.ai.replied', {
+      transcript,
+      tenantId,
+      username,
+      destination: command.destination,
+      voiceMode,
+      summary: reply || 'StreamWeaver AI route completed without a text reply.',
+      payload: { reply, dispatch: chatDispatch, tts },
+    });
 
     return apiOk({
       routed: true,

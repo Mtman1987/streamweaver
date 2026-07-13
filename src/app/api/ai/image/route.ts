@@ -11,6 +11,7 @@ import { generateImageWithPollinations } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
+import { publishSpmtEvent } from '@/lib/spmt-client';
 import { z } from 'zod';
 
 const imageSchema = z.object({
@@ -152,6 +153,25 @@ export async function POST(request: NextRequest) {
 
     const imageUrls = persistedImageUrls.length ? persistedImageUrls : sources;
     const firstImage = imageUrls[0] || result.imageResourceUrl || result.image || '';
+    void publishSpmtEvent({
+      type: 'image.generation.completed',
+      visibility: scope === 'private' ? 'private' : 'creator',
+      actor: tenantId ? { userId: tenantId, username: tenantId, displayName: tenantId } : undefined,
+      payload: {
+        summary: `Generated ${imageUrls.length || 0} image${imageUrls.length === 1 ? '' : 's'} with ${genMode}.`,
+        tenantId: tenantId || 'global',
+        prompt: parsed.data.prompt,
+        provider: genMode,
+        model: parsed.data.model || settings?.model || null,
+        resolution: parsed.data.resolution || settings?.resolution || null,
+        imageCount: imageUrls.length,
+        persistedImageCount: persistedImageUrls.length,
+        scope,
+      },
+      links: firstImage && /^https?:\/\//i.test(firstImage)
+        ? [{ label: 'Open image', url: firstImage, kind: 'details' }]
+        : undefined,
+    });
 
     return apiOk({
       image: firstImage,

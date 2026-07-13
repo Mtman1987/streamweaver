@@ -127,7 +127,7 @@ function parseSeaArtModelSpec(value: unknown): { modelNo?: string; modelVerNo?: 
     }
   }
 
-  const separator = raw.includes('::') ? '::' : raw.includes('|') ? '|' : raw.includes(',') ? ',' : raw.includes('@') ? '@' : '';
+  const separator = raw.includes('::') ? '::' : raw.includes('|') ? '|' : raw.includes(',') ? ',' : raw.includes('@') ? '@' : raw.includes(':') ? ':' : '';
   if (separator) {
     const [modelNo, modelVerNo] = raw.split(separator).map((part) => part.trim()).filter(Boolean);
     return { modelNo, modelVerNo };
@@ -143,7 +143,7 @@ function hasCompleteSeaArtModelSpec(value: unknown): boolean {
     const parsed = parseSeaArtModelSpec(raw);
     return Boolean(parsed.modelNo && parsed.modelVerNo);
   }
-  return raw.includes('::') || raw.includes('|') || raw.includes(',') || raw.includes('@');
+  return raw.includes('::') || raw.includes('|') || raw.includes(',') || raw.includes('@') || raw.includes(':');
 }
 
 function getSeaArtModel(options: ImageGenerationOptions): { key: string; modelNo: string; modelVerNo: string; hd: boolean } {
