@@ -64,6 +64,8 @@ function rewriteLegacyLocalDiscordMediaUrl(value: string): string {
 }
 
 function getConfiguredBotAvatarMediaUrl(tenantId?: string, slot: DiscordMediaSlot = 'public'): string {
+    if (slot === 'public') return buildBotAvatarUrl(tenantId);
+
     const config = readUserConfigSync(tenantId);
     const slotUrls = slot === 'private'
         ? [config.PRIVATE_DM_GIF_URL, config.PUBLIC_DISCORD_GIF_URL]
