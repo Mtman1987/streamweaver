@@ -39,8 +39,9 @@ function firstUrl(...values: unknown[]): string {
 
 export function buildBotAvatarUrl(tenantId?: string): string {
     const baseUrl = getConfiguredAppUrl();
-    // Use static public GIF — Discord reliably embeds/animates direct .gif URLs
-    return `${baseUrl}/avatars/idle.gif`;
+    const tenantParam = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+    // Use the same direct GIF endpoint as the TTS player instead of the JS overlay page.
+    return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}`;
 }
 
 type DiscordMediaSlot = 'public' | 'private';
@@ -79,7 +80,8 @@ function getConfiguredBotAvatarMediaUrl(tenantId?: string, slot: DiscordMediaSlo
         if (rewritten) return rewritten;
     }
     if (configured) return configured;
-    return discordMediaSlotUrl(slot);
+    if (slot === 'private') return discordMediaSlotUrl(slot);
+    return buildBotAvatarUrl(tenantId);
 }
 
 export function buildStreamWeaverLogoUrl(): string {
