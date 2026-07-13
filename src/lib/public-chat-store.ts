@@ -8,6 +8,19 @@ export type PublicChatMessage = {
   username: string;
   message: string;
   timestamp: string;
+  attachments?: Array<{
+    id: string;
+    url: string;
+    filename: string;
+    content_type?: string;
+  }>;
+  embeds?: Array<{
+    title?: string;
+    description?: string;
+    url?: string;
+    image?: { url?: string };
+    thumbnail?: { url?: string };
+  }>;
 };
 
 function getPublicChatFilePath(tenantId?: string): string {
@@ -29,12 +42,45 @@ function isPublicChatMessage(value: any): value is PublicChatMessage {
   );
 }
 
+function normalizePublicChatMessage(value: PublicChatMessage): PublicChatMessage {
+  const attachments = Array.isArray(value.attachments)
+    ? value.attachments
+        .map((attachment: any) => ({
+          id: String(attachment?.id || attachment?.url || attachment?.filename || ''),
+          url: String(attachment?.url || attachment?.proxy_url || ''),
+          filename: String(attachment?.filename || attachment?.name || 'attachment'),
+          content_type: attachment?.content_type ? String(attachment.content_type) : undefined,
+        }))
+        .filter((attachment) => attachment.url)
+    : undefined;
+  const embeds = Array.isArray(value.embeds)
+    ? value.embeds
+        .map((embed: any) => ({
+          title: embed?.title ? String(embed.title) : undefined,
+          description: embed?.description ? String(embed.description) : undefined,
+          url: embed?.url ? String(embed.url) : undefined,
+          image: embed?.image?.url ? { url: String(embed.image.url) } : undefined,
+          thumbnail: embed?.thumbnail?.url ? { url: String(embed.thumbnail.url) } : undefined,
+        }))
+        .filter((embed) => embed.title || embed.description || embed.url || embed.image?.url || embed.thumbnail?.url)
+    : undefined;
+
+  return {
+    type: value.type,
+    username: value.username,
+    message: value.message,
+    timestamp: value.timestamp,
+    ...(attachments?.length ? { attachments } : {}),
+    ...(embeds?.length ? { embeds } : {}),
+  };
+}
+
 async function readAllUnsafe(tenantId?: string): Promise<PublicChatMessage[]> {
   try {
     const raw = await fs.readFile(getPublicChatFilePath(tenantId), 'utf-8');
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isPublicChatMessage);
+    return parsed.filter(isPublicChatMessage).map(normalizePublicChatMessage);
   } catch {
     return [];
   }
@@ -62,7 +108,7 @@ export async function appendPublicChatMessages(
   await fs.mkdir(dir, { recursive: true });
 
   const existing = await readPublicChatMessages(undefined, tenantId);
-  const merged = [...existing, ...newMessages].filter(isPublicChatMessage);
+  const merged = [...existing, ...newMessages].filter(isPublicChatMessage).map(normalizePublicChatMessage);
   const trimmed = merged.length > safeMax ? merged.slice(-safeMax) : merged;
 
   await fs.writeFile(filePath, JSON.stringify(trimmed, null, 2));

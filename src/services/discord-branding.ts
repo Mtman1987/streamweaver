@@ -3,6 +3,7 @@ import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { getStoredTokens } from '@/lib/token-utils.server';
 import { listTenants } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
+import { getDiscordMediaPublicPath } from '@/lib/discord-media-store';
 import { getTwitchUser } from './twitch';
 
 const STREAMWEAVER_BRAND_NAME = 'StreamWeaver';
@@ -38,25 +39,47 @@ function firstUrl(...values: unknown[]): string {
 
 export function buildBotAvatarUrl(tenantId?: string): string {
     const baseUrl = getConfiguredAppUrl();
-    const tenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-    const cacheVersion = Math.floor(Date.now() / 3_600_000);
-    return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}&v=${cacheVersion}`;
+    // Use static public GIF — Discord reliably embeds/animates direct .gif URLs
+    return `${baseUrl}/avatars/idle.gif`;
 }
 
 type DiscordMediaSlot = 'public' | 'private';
+
+function discordMediaSlotUrl(slot: DiscordMediaSlot): string {
+    const fileSlot = slot === 'private' ? 'private-dm' : 'public-discord';
+    return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath(fileSlot)}`;
+}
+
+function rewriteLegacyLocalDiscordMediaUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        const pathname = url.pathname.toLowerCase();
+        if (pathname === '/avatars/private-dm.gif') return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath('private-dm')}`;
+        if (pathname === '/avatars/public-discord.gif') return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath('public-discord')}`;
+    } catch {
+        return '';
+    }
+    return '';
+}
 
 function getConfiguredBotAvatarMediaUrl(tenantId?: string, slot: DiscordMediaSlot = 'public'): string {
     const config = readUserConfigSync(tenantId);
     const slotUrls = slot === 'private'
         ? [config.PRIVATE_DM_GIF_URL, config.PUBLIC_DISCORD_GIF_URL]
         : [config.PUBLIC_DISCORD_GIF_URL, config.PRIVATE_DM_GIF_URL];
-    return firstUrl(
+    const configured = firstUrl(
         ...slotUrls,
         config.PUBLIC_AVATAR_URL,
         config.TWITCH_BOT_AVATAR_GIF_URL,
         config.TWITCH_BOT_AVATAR_URL,
         config.BOT_AVATAR_URL,
     );
+    if (configured) {
+        const rewritten = rewriteLegacyLocalDiscordMediaUrl(configured);
+        if (rewritten) return rewritten;
+    }
+    if (configured) return configured;
+    return discordMediaSlotUrl(slot);
 }
 
 export function buildStreamWeaverLogoUrl(): string {

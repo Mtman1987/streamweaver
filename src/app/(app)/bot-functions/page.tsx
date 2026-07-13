@@ -464,11 +464,12 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
 
         setIsSavingMediaSlots(true);
         try {
+            // Upload to public/avatars/ so Discord gets a direct static .gif URL
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('type', slot);
+            formData.append('slot', slot);
 
-            const uploadResponse = await fetch('/api/avatars', {
+            const uploadResponse = await fetch('/api/discord-media', {
                 method: 'POST',
                 body: formData,
             });
@@ -476,9 +477,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 throw new Error(`Upload failed: ${uploadResponse.status}`);
             }
 
-            const tenantId = getClientTenantId();
-            const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-            const mediaUrl = `${window.location.origin}/api/avatars?type=${slot}&format=gif${tenantQuery}&v=${Date.now()}`;
+            const { url: mediaUrl } = await uploadResponse.json();
             const nextPrivateUrl = slot === 'private-dm' ? mediaUrl : privateDmGifUrl;
             const nextPublicUrl = slot === 'public-discord' ? mediaUrl : publicDiscordGifUrl;
 

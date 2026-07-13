@@ -4534,6 +4534,33 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     }
 }
 
+function normalizeDiscordAttachmentsForMemory(msg: any) {
+    return Array.isArray(msg.attachments)
+        ? msg.attachments
+            .map((attachment: any) => ({
+                id: String(attachment?.id || attachment?.url || attachment?.filename || ''),
+                url: String(attachment?.url || attachment?.proxy_url || ''),
+                filename: String(attachment?.filename || attachment?.name || 'attachment'),
+                content_type: attachment?.content_type ? String(attachment.content_type) : undefined,
+            }))
+            .filter((attachment: { url: string }) => attachment.url)
+        : [];
+}
+
+function normalizeDiscordEmbedsForMemory(msg: any) {
+    return Array.isArray(msg.embeds)
+        ? msg.embeds
+            .map((embed: any) => ({
+                title: embed?.title ? String(embed.title) : undefined,
+                description: embed?.description ? String(embed.description) : undefined,
+                url: embed?.url ? String(embed.url) : undefined,
+                image: embed?.image?.url ? { url: String(embed.image.url) } : undefined,
+                thumbnail: embed?.thumbnail?.url ? { url: String(embed.thumbnail.url) } : undefined,
+            }))
+            .filter((embed: { title?: string; description?: string; url?: string; image?: { url?: string }; thumbnail?: { url?: string } }) => embed.title || embed.description || embed.url || embed.image?.url || embed.thumbnail?.url)
+        : [];
+}
+
 export async function handleDiscordMessage(msg: any, tenantId?: string, options: DiscordDispatchOptions = {}): Promise<{ commandHandled: boolean }> {
     const sourceChannelId = msg.channelId || msg.channel_id;
     if (!sourceChannelId) return { commandHandled: false };
@@ -4596,12 +4623,16 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         }
     }
 
-    if (!options.skipPublicHistory && !msg.author?.bot && !msg.content.startsWith('[') && String(msg.content || '').trim()) {
+    const memoryAttachments = normalizeDiscordAttachmentsForMemory(msg);
+    const memoryEmbeds = normalizeDiscordEmbedsForMemory(msg);
+    if (!options.skipPublicHistory && !msg.author?.bot && !String(msg.content || '').startsWith('[') && (String(msg.content || '').trim() || memoryAttachments.length || memoryEmbeds.length)) {
         appendPublicChatMessages([{
             type: 'user',
             username: sourceUserName,
             message: String(msg.content),
             timestamp: new Date().toISOString(),
+            ...(memoryAttachments.length ? { attachments: memoryAttachments } : {}),
+            ...(memoryEmbeds.length ? { embeds: memoryEmbeds } : {}),
         }], 300, tenantId).catch(() => {});
     }
 

@@ -69,6 +69,8 @@ type AppMemoryMessage = {
   username: string;
   message: string;
   timestamp: string;
+  attachments?: DiscordAttachment[];
+  embeds?: DiscordEmbed[];
 };
 
 const APP_PRIVATE_CHANNEL_ID = "__app_private__";
@@ -368,6 +370,8 @@ export default function ChatPage() {
       global_name: message.username,
       bot: message.type === "ai",
     },
+    attachments: message.attachments,
+    embeds: message.embeds,
   }), []);
 
   const fetchDiscordMessages = React.useCallback(async (silent = false) => {

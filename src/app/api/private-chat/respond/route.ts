@@ -14,6 +14,8 @@ import { z } from 'zod';
 type RequestBody = {
   username: string;
   message: string;
+  attachments?: PrivateChatMessage['attachments'];
+  embeds?: PrivateChatMessage['embeds'];
   personality?: string;
   historyLimit?: number;
   tenantId?: string;
@@ -23,10 +25,19 @@ const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 const privateRespondSchema = z.object({
   username: z.string().trim().min(1, 'username is required').max(128),
-  message: z.string().trim().min(1, 'message is required').max(5000),
+  message: z.string().trim().max(5000),
+  attachments: z.array(z.object({
+    id: z.string().optional(),
+    url: z.string().trim().min(1),
+    filename: z.string().optional(),
+    content_type: z.string().optional(),
+  }).passthrough()).optional(),
+  embeds: z.array(z.object({}).passthrough()).optional(),
   personality: z.string().trim().max(3000).optional(),
   historyLimit: z.coerce.number().int().min(0).max(100).optional().default(20),
   tenantId: z.string().trim().max(128).optional(),
+}).refine((value) => value.message || value.attachments?.length || value.embeds?.length, {
+  message: 'message or media is required',
 });
 
 function formatHistory(messages: PrivateChatMessage[]): string {
@@ -34,7 +45,9 @@ function formatHistory(messages: PrivateChatMessage[]): string {
 
   const lines = messages.map((m) => {
     const role = m.type === 'ai' ? (m.username || 'AI') : (m.username || 'User');
-    return `${role}: ${m.message}`;
+    const mediaCount = (m.attachments?.length || 0) + (m.embeds?.length || 0);
+    const mediaNote = mediaCount ? ` [${mediaCount} media item${mediaCount === 1 ? '' : 's'}]` : '';
+    return `${role}: ${m.message}${mediaNote}`;
   });
 
   return `Conversation so far:\n${lines.join('\n')}`;
@@ -72,7 +85,7 @@ export async function POST(request: NextRequest) {
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { username, message, personality, historyLimit, tenantId: bodyTenantId } = parsed.data;
+    const { username, message, attachments, embeds, personality, historyLimit, tenantId: bodyTenantId } = parsed.data as RequestBody;
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId || bodyTenantId;
     const botName = getBotName(tenantId);
@@ -129,6 +142,8 @@ export async function POST(request: NextRequest) {
       username,
       message,
       timestamp: new Date().toISOString(),
+      attachments,
+      embeds,
     };
 
     if (VERBOSE_LOGS) {

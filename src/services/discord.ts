@@ -33,6 +33,16 @@ export async function uploadFileToDiscord(
     return local.uploadFileToDiscord(channelId, fileContent, fileName, messageContent);
 }
 
+export async function uploadBinaryFileToDiscord(
+    channelId: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    payload?: { content?: string; embeds?: Record<string, unknown>[] },
+): Promise<Record<string, unknown>> {
+    return local.uploadBinaryFileToDiscord(channelId, fileBuffer, fileName, mimeType, payload);
+}
+
 export async function getChannelMessages(channelId: string, limit: number = 50) {
     return local.getChannelMessages(channelId, limit);
 }

@@ -7,8 +7,17 @@ import { z } from 'zod';
 const privateChatMessageSchema = z.object({
   type: z.enum(['user', 'ai']),
   username: z.string().trim().min(1).max(128),
-  message: z.string().trim().min(1).max(4000),
+  message: z.string().trim().max(4000),
   timestamp: z.string().trim().min(1).max(64),
+  attachments: z.array(z.object({
+    id: z.string().optional(),
+    url: z.string().trim().min(1),
+    filename: z.string().optional(),
+    content_type: z.string().optional(),
+  }).passthrough()).optional(),
+  embeds: z.array(z.object({}).passthrough()).optional(),
+}).refine((value) => value.message || value.attachments?.length || value.embeds?.length, {
+  message: 'Message or media is required',
 });
 
 export async function GET(request: NextRequest) {
@@ -45,10 +54,21 @@ export async function POST(request: NextRequest) {
     }
 
     const session = getTenantFromRequest(request);
-    const { type, username, message, timestamp } = parsedBody.data;
+    const { type, username, message, timestamp, attachments, embeds } = parsedBody.data;
+    const normalizedAttachments: PrivateChatMessage['attachments'] | undefined = attachments
+      ?.reduce<NonNullable<PrivateChatMessage['attachments']>>((acc, attachment) => {
+        if (!attachment.url) return acc;
+        acc.push({
+          id: String(attachment.id || attachment.url || attachment.filename || ''),
+          url: attachment.url,
+          filename: String(attachment.filename || 'attachment'),
+          ...(attachment.content_type ? { content_type: attachment.content_type } : {}),
+        });
+        return acc;
+      }, []);
 
     await appendPrivateChatMessages(
-      [{ type, username, message, timestamp }],
+      [{ type, username, message, timestamp, attachments: normalizedAttachments, embeds }],
       100,
       session?.tenantId
     );

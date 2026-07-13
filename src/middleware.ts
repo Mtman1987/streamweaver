@@ -50,6 +50,7 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname.startsWith('/api/auth/')) return true;
   if (pathname === '/api/__health' || pathname === '/api/health' || pathname === '/api/session') return true;
   if (pathname === '/api/discord/chat') return true;
+  if (pathname.startsWith('/api/discord-media/')) return true;
   if (pathname.startsWith('/api/gen-settings')) return true;
   if (pathname.startsWith('/api/say/')) return true;
 

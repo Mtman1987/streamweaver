@@ -11,6 +11,7 @@ import { getBotName } from '@/lib/bot-settings-store';
 import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-state';
 import { runImageCommand } from './image-command';
 import { queueTtsOverlay } from './tts-overlay-queue';
+import { appendPrivateChatMessages } from '@/lib/private-chat-store';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -23,6 +24,41 @@ const MAX_CHAT_HISTORY = LIMITS.MAX_CHAT_HISTORY; // Prevent unbounded growth
 const MISSING_DISCORD_LOG_NOTICE_INTERVAL_MS = 10 * 60 * 1000;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function normalizeDiscordAttachmentsForMemory(msg: any) {
+    const values = Array.isArray(msg?.attachments)
+        ? msg.attachments
+        : msg?.attachments?.values
+            ? Array.from(msg.attachments.values())
+            : [];
+    return values
+        .map((attachment: any) => ({
+            id: String(attachment?.id || attachment?.url || attachment?.proxy_url || ''),
+            filename: String(attachment?.filename || attachment?.name || 'attachment'),
+            url: attachment?.url || attachment?.proxy_url || '',
+            proxy_url: attachment?.proxy_url || undefined,
+            content_type: attachment?.content_type || attachment?.contentType || undefined,
+            width: typeof attachment?.width === 'number' ? attachment.width : undefined,
+            height: typeof attachment?.height === 'number' ? attachment.height : undefined,
+            size: typeof attachment?.size === 'number' ? attachment.size : undefined,
+        }))
+        .filter((attachment: { url: string }) => attachment.url);
+}
+
+function normalizeDiscordEmbedsForMemory(msg: any) {
+    const values = Array.isArray(msg?.embeds) ? msg.embeds : [];
+    return values
+        .map((embed: any) => ({
+            title: typeof embed?.title === 'string' ? embed.title : undefined,
+            description: typeof embed?.description === 'string' ? embed.description : undefined,
+            url: typeof embed?.url === 'string' ? embed.url : undefined,
+            image: embed?.image?.url ? { url: String(embed.image.url) } : undefined,
+            thumbnail: embed?.thumbnail?.url ? { url: String(embed.thumbnail.url) } : undefined,
+            video: embed?.video?.url ? { url: String(embed.video.url) } : undefined,
+            type: typeof embed?.type === 'string' ? embed.type : undefined,
+        }))
+        .filter((embed: { title?: string; description?: string; url?: string; image?: { url: string }; thumbnail?: { url: string }; video?: { url: string } }) => embed.title || embed.description || embed.url || embed.image || embed.thumbnail || embed.video);
+}
 
 function isDiscordEmbeddableImageUrl(value: unknown): value is string {
     if (typeof value !== 'string') return false;
@@ -240,8 +276,12 @@ export async function checkDmChannelActivity(): Promise<void> {
         }
 
         for (const msg of newMessages.reverse()) {
-            if (!msg?.content || msg?.author?.bot) continue;
-            const messageText = String(msg.content || '').trim();
+            if (msg?.author?.bot) continue;
+            const messageText = String(msg?.content || '').trim();
+            const memoryAttachments = normalizeDiscordAttachmentsForMemory(msg);
+            const memoryEmbeds = normalizeDiscordEmbedsForMemory(msg);
+            const hasMemoryMedia = memoryAttachments.length > 0 || memoryEmbeds.length > 0;
+            if (!messageText && !hasMemoryMedia) continue;
             try {
                 if (msg.id) {
                     lastDiscordMessageId.set(stateKey, msg.id);
@@ -273,6 +313,8 @@ export async function checkDmChannelActivity(): Promise<void> {
                             message: messageText,
                             author: msg.author,
                             mentions: msg.mentions,
+                            attachments: msg.attachments,
+                            embeds: msg.embeds,
                             dispatch: false,
                         }),
                     });
@@ -282,12 +324,26 @@ export async function checkDmChannelActivity(): Promise<void> {
                     continue;
                 }
 
+                if (!messageText) {
+                    await appendPrivateChatMessages([{
+                        type: 'user',
+                        username: msg.author?.global_name || msg.author?.username || 'DiscordUser',
+                        message: '',
+                        timestamp: new Date().toISOString(),
+                        ...(memoryAttachments.length ? { attachments: memoryAttachments } : {}),
+                        ...(memoryEmbeds.length ? { embeds: memoryEmbeds } : {}),
+                    }], 100, tenantId);
+                    continue;
+                }
+
                 const res = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: msg.author?.global_name || msg.author?.username || 'DiscordUser',
-                        message: msg.content,
+                        message: messageText,
+                        attachments: memoryAttachments,
+                        embeds: memoryEmbeds,
                         tenantId,
                         historyLimit: 30,
                     }),
