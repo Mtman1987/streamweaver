@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/tts-listener',
   '/tts-player',
   '/say-player',
+  '/tts-mixer',
   '/brb-player',
   '/shoutout-player',
   '/partner-checkin',

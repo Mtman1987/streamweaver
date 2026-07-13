@@ -42,3 +42,14 @@ export function addSayQueueItem(tenantId: unknown, audioUrl: string): SayQueueIt
   }
   return item;
 }
+
+export function listSayQueueStreams() {
+  return Array.from(sayQueues.entries())
+    .map(([tenantId, queue]) => ({
+      tenantId,
+      itemCount: queue.length,
+      latestId: queue[queue.length - 1]?.id || 0,
+      lastActiveAt: queue[queue.length - 1]?.addedAt || null,
+    }))
+    .sort((a, b) => String(b.lastActiveAt || '').localeCompare(String(a.lastActiveAt || '')));
+}
