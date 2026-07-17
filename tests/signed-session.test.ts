@@ -16,42 +16,19 @@ test('StreamWeaver session rejects unsigned and tampered tenant cookies', () => 
   assert.equal(parseSessionCookie(tampered), null);
 });
 
-test('middleware delegates signed session verification to the Node runtime route', async () => {
-  const originalFetch = global.fetch;
-  let verifyCalls = 0;
-  global.fetch = async (input) => {
-    const url = new URL(String(input));
-    assert.equal(url.pathname, '/api/session');
-    verifyCalls += 1;
-    return Response.json({ id: 'tenant-a', username: 'owner' });
-  };
-
-  try {
-    const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard', {
-      headers: { cookie: 'streamweaver-session=payload.signature' },
-    });
-    const response = await middleware(request);
-    assert.equal(response.headers.get('x-middleware-next'), '1');
-    assert.equal(verifyCalls, 1);
-  } finally {
-    global.fetch = originalFetch;
-  }
+test('middleware passes signed session candidates to the Node page guard', async () => {
+  const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard', {
+    headers: { cookie: 'streamweaver-session=payload.signature' },
+  });
+  const response = await middleware(request);
+  assert.equal(response.headers.get('x-middleware-next'), '1');
 });
 
-test('middleware fails closed when the Node runtime rejects the signed session', async () => {
-  const originalFetch = global.fetch;
-  global.fetch = async () => new Response(null, { status: 401 });
-
-  try {
-    const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard', {
-      headers: { cookie: 'streamweaver-session=payload.signature' },
-    });
-    const response = await middleware(request);
-    assert.equal(response.status, 307);
-    assert.equal(new URL(String(response.headers.get('location'))).pathname, '/login');
-  } finally {
-    global.fetch = originalFetch;
-  }
+test('middleware rejects requests without a signed session candidate', async () => {
+  const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard');
+  const response = await middleware(request);
+  assert.equal(response.status, 307);
+  assert.equal(new URL(String(response.headers.get('location'))).pathname, '/login');
 });
 
 test('legacy SPMT migration verifies the provider identity and signs in Node runtime', async () => {

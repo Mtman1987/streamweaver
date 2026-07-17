@@ -135,26 +135,15 @@ export async function middleware(request: NextRequest) {
   }
 
   const sessionCookie = request.cookies.get('streamweaver-session')?.value;
-  let session: { id?: string; username?: string } | null = null;
-  if (sessionCookie && !sessionCookie.startsWith('{')) {
-    try {
-      // Fly secrets are runtime values. Next Edge middleware cannot safely verify
-      // an HMAC with a secret that is unavailable to the build, so delegate the
-      // check to the Node route that uses the live runtime environment.
-      const verifyResponse = await fetch(new URL('/api/session', request.url), {
-        headers: { cookie: request.headers.get('cookie') || '' },
-        cache: 'no-store',
-      });
-      if (verifyResponse.ok) session = await verifyResponse.json();
-    } catch {
-      session = null;
-    }
-  }
+  const signedCookieParts = sessionCookie?.split('.') || [];
+  const hasSignedSessionCandidate = Boolean(
+    signedCookieParts.length === 2 && signedCookieParts.every(Boolean),
+  );
 
   // One-time, provider-verified migration for existing SPMT sessions. The old
   // unsigned tenant cookie alone is never accepted as proof. Migration is also
   // delegated to Node so the replacement cookie uses the runtime HMAC secret.
-  if (!session && request.method === 'GET' && sessionCookie?.startsWith('{')) {
+  if (!hasSignedSessionCandidate && request.method === 'GET' && sessionCookie?.startsWith('{')) {
     const spmtToken = request.cookies.get('streamweaver-spmt-token')?.value;
     if (spmtToken) {
       const migrateUrl = new URL('/api/session/migrate', request.url);
@@ -165,14 +154,14 @@ export async function middleware(request: NextRequest) {
 
   // Root path — redirect based on auth state (avoids rendering the broken root page)
   if (pathname === '/' || pathname === '') {
-    if (session) {
+    if (hasSignedSessionCandidate) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Not authenticated
-  if (!session) {
+  if (!hasSignedSessionCandidate) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
