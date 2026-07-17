@@ -17,6 +17,7 @@
     "flow-library:sync": "npx tsx scripts/sync-flow-library.ts",
     "flow-packages:verify": "npx tsx scripts/verify-flow-packages.ts",
     "flow-packages:smoke": "npx tsx scripts/smoke-flow-package-tooling.ts",
+    "persistence:verify": "npx tsx scripts/verify-automation-variable-persistence.ts",
     "social-stream:bridge": "npx tsx scripts/social-stream-bridge.ts",
     "start": "cross-env NODE_ENV=production npx dotenv-cli -e .env -- tsx scripts/start-local.ts",
     "lint": "npx next lint",

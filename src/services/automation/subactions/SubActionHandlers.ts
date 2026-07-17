@@ -136,55 +136,67 @@ export class CoreLogicHandlers {
  * Variable Handlers
  */
 export class VariableHandlers {
-  private static globalVariables: Map<string, any> = new Map();
-  private static userVariables: Map<string, Map<string, any>> = new Map();
+  private static globalVariablesByTenant = new Map<string, Map<string, any>>();
+  private static userVariablesByTenant = new Map<string, Map<string, Map<string, any>>>();
+  private static loadedTenants = new Set<string>();
 
-  private static storeLoaded = false;
+  private static tenantKey(tenantId?: string): string {
+    return tenantId || '__global__';
+  }
 
-  private static async ensureStoreLoaded(): Promise<void> {
-    if (this.storeLoaded) return;
+  private static async ensureStoreLoaded(tenantId?: string): Promise<void> {
+    const tenantKey = this.tenantKey(tenantId);
+    if (this.loadedTenants.has(tenantKey)) return;
     if (typeof window !== 'undefined') {
       // Browser/editor environment: keep variables in-memory only.
-      this.storeLoaded = true;
+      this.globalVariablesByTenant.set(tenantKey, new Map());
+      this.userVariablesByTenant.set(tenantKey, new Map());
+      this.loadedTenants.add(tenantKey);
       return;
     }
     try {
       const { listGlobalVariables, readAutomationVariables } = await import('@/lib/automation-variables-store');
-      const data = await readAutomationVariables();
-      this.globalVariables = new Map(Object.entries(await listGlobalVariables()));
-      this.userVariables = new Map(
+      const data = await readAutomationVariables(tenantId);
+      this.globalVariablesByTenant.set(tenantKey, new Map(Object.entries(await listGlobalVariables(tenantId))));
+      this.userVariablesByTenant.set(tenantKey, new Map(
         Object.entries(data.users || {}).map(([user, vars]) => [user, new Map(Object.entries(vars || {}))])
-      );
-      this.storeLoaded = true;
+      ));
+      this.loadedTenants.add(tenantKey);
     } catch (error) {
-      console.warn('[VariableHandlers] Failed to load persisted variables:', error);
-      this.storeLoaded = true;
+      console.warn(`[VariableHandlers] Failed to load persisted variables for tenant ${tenantKey}:`, error);
+      this.globalVariablesByTenant.set(tenantKey, new Map());
+      this.userVariablesByTenant.set(tenantKey, new Map());
+      this.loadedTenants.add(tenantKey);
     }
   }
   
   static async handleSetGlobalVariable(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
-    await this.ensureStoreLoaded();
+    await this.ensureStoreLoaded(context.tenantId);
+    const tenantKey = this.tenantKey(context.tenantId);
+    const globalVariables = this.globalVariablesByTenant.get(tenantKey)!;
     const variableName = subAction.variableName!;
     const value = replaceVariables(subAction.value || '', context);
     
-    this.globalVariables.set(variableName, value);
+    globalVariables.set(variableName, value);
 
-    // Persist by default (local dev state). We can refine semantics later.
+    // Automation variables are tenant-owned app state. Persist them in the
+    // existing tenant store; the in-memory map is only a runtime cache.
     if (typeof window === 'undefined') {
       const { setGlobalVariable } = await import('@/lib/automation-variables-store');
-      await setGlobalVariable(variableName, value);
+      await setGlobalVariable(variableName, value, context.tenantId);
     }
     
     return { success: true };
   }
 
   static async handleGetGlobalVariable(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
-    await this.ensureStoreLoaded();
+    await this.ensureStoreLoaded(context.tenantId);
+    const globalVariables = this.globalVariablesByTenant.get(this.tenantKey(context.tenantId))!;
     const variableName = subAction.variableName!;
     const defaultValue = subAction.defaultValue;
     const destinationVariable = subAction.destinationVariable || variableName;
     
-    const value = this.globalVariables.get(variableName) ?? defaultValue;
+    const value = globalVariables.get(variableName) ?? defaultValue;
     
     return { 
       success: true, 
@@ -203,33 +215,36 @@ export class VariableHandlers {
   }
 
   static async handleSetUserVariable(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
-    await this.ensureStoreLoaded();
+    await this.ensureStoreLoaded(context.tenantId);
+    const tenantKey = this.tenantKey(context.tenantId);
+    const userVariables = this.userVariablesByTenant.get(tenantKey)!;
     const userName = replaceVariables(subAction.userName || context.userName || '', context);
     const variableName = subAction.variableName!;
     const value = replaceVariables(subAction.value || '', context);
     
-    if (!this.userVariables.has(userName)) {
-      this.userVariables.set(userName, new Map());
+    if (!userVariables.has(userName)) {
+      userVariables.set(userName, new Map());
     }
     
-    this.userVariables.get(userName)!.set(variableName, value);
+    userVariables.get(userName)!.set(variableName, value);
 
     if (typeof window === 'undefined') {
       const { setUserVariable } = await import('@/lib/automation-variables-store');
-      await setUserVariable(userName, variableName, value);
+      await setUserVariable(userName, variableName, value, context.tenantId);
     }
     
     return { success: true };
   }
 
   static async handleGetUserVariable(subAction: SubAction, context: ExecutionContext): Promise<SubActionHandlerResult> {
-    await this.ensureStoreLoaded();
+    await this.ensureStoreLoaded(context.tenantId);
+    const userVariables = this.userVariablesByTenant.get(this.tenantKey(context.tenantId))!;
     const userName = replaceVariables(subAction.userName || context.userName || '', context);
     const variableName = subAction.variableName!;
     const defaultValue = subAction.defaultValue;
     const destinationVariable = subAction.destinationVariable || variableName;
     
-    const userVars = this.userVariables.get(userName);
+    const userVars = userVariables.get(userName);
     const value = userVars?.get(variableName) ?? defaultValue;
     
     return { 
@@ -339,12 +354,12 @@ export class VariableHandlers {
     };
   }
 
-  static getGlobalVariables(): Map<string, any> {
-    return this.globalVariables;
+  static getGlobalVariables(tenantId?: string): Map<string, any> {
+    return this.globalVariablesByTenant.get(this.tenantKey(tenantId)) || new Map();
   }
 
-  static getUserVariables(): Map<string, Map<string, any>> {
-    return this.userVariables;
+  static getUserVariables(tenantId?: string): Map<string, Map<string, any>> {
+    return this.userVariablesByTenant.get(this.tenantKey(tenantId)) || new Map();
   }
 }
 

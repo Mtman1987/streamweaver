@@ -278,10 +278,10 @@ export class SubActionExecutor {
         return this.executeSetArgument(subAction, context);
       
       case SubActionType.SET_GLOBAL_VAR:
-        return this.executeSetGlobalVar(subAction, context);
+        return await this.executeSetGlobalVar(subAction, context);
       
       case SubActionType.GET_GLOBAL_VAR:
-        return this.executeGetGlobalVar(subAction, context);
+        return await this.executeGetGlobalVar(subAction, context);
       
       case SubActionType.HTTP_REQUEST:
         return await this.executeHttpRequest(subAction, context);
@@ -356,7 +356,7 @@ export class SubActionExecutor {
     return true;
   }
 
-  private executeSetGlobalVar(subAction: SubAction, context: ExecutionContext): boolean {
+  private async executeSetGlobalVar(subAction: SubAction, context: ExecutionContext): Promise<boolean> {
     const variableName = subAction.variableName || '';
     const value = this.replaceVariables(subAction.value?.toString() || '', context);
     const persisted = subAction.persisted ?? false;
@@ -364,14 +364,13 @@ export class SubActionExecutor {
     this.globalVariables.set(variableName, value);
     
     if (persisted) {
-      // Save to persistent storage
-      localStorage.setItem(`globalVar_${variableName}`, JSON.stringify(value));
+      await setGlobalVariable(variableName, value, context.tenantId);
     }
     
     return true;
   }
 
-  private executeGetGlobalVar(subAction: SubAction, context: ExecutionContext): boolean {
+  private async executeGetGlobalVar(subAction: SubAction, context: ExecutionContext): Promise<boolean> {
     const variableName = subAction.variableName || '';
     const destinationVariable = subAction.destinationVariable || variableName;
     const defaultValue = subAction.defaultValue;
@@ -379,17 +378,9 @@ export class SubActionExecutor {
     let value = this.globalVariables.get(variableName);
     
     if (value === undefined && subAction.persisted) {
-      const stored = localStorage.getItem(`globalVar_${variableName}`);
-      if (stored) {
-        try {
-          value = JSON.parse(stored);
-          this.globalVariables.set(variableName, value);
-        } catch {
-          value = defaultValue;
-        }
-      } else {
-        value = defaultValue;
-      }
+      const stored = await listGlobalVariables(context.tenantId);
+      value = stored[variableName] ?? defaultValue;
+      this.globalVariables.set(variableName, value);
     }
     
     if (value === undefined) {
@@ -691,10 +682,10 @@ export class SubActionExecutor {
     return this.globalVariables.get(name);
   }
 
-  setGlobalVariable(name: string, value: any, persisted = false): void {
+  async setGlobalVariable(name: string, value: any, persisted = false, tenantId?: string): Promise<void> {
     this.globalVariables.set(name, value);
     if (persisted) {
-      localStorage.setItem(`globalVar_${name}`, JSON.stringify(value));
+      await setGlobalVariable(name, value, tenantId);
     }
   }
 
