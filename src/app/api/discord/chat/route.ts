@@ -491,7 +491,18 @@ export async function POST(request: NextRequest) {
       const markHandled = () => markDmMessageHandled(tenantId!, normalized.messageId);
 
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
+      const gifMatch = message.trim().match(/^!gif(?:\s+(.+))?$/i);
       const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|pollinations|status))?$/i);
+      if (gifMatch) {
+        if (channelId) {
+          await sendDiscordBotMessage(
+            channelId,
+            'Animated GIF generation is not configured yet. Use `!img <description>` for a still image.',
+          );
+        }
+        await markHandled();
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-gif-unsupported' });
+      }
       if (!DISCORD_DM_IMAGE_COMMANDS_ENABLED && (imgMatch || genModeMatch)) {
         await markHandled();
         return apiOk({ success: true, botResponded: false, tenantId, context: 'private-image-dev-mode' });

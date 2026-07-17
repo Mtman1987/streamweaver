@@ -186,12 +186,16 @@ export default function LoginPage() {
           <p className="subtitle">Local streamer automation dashboard</p>
           
           <h2 className="section-title">Sign in</h2>
+
+          <a href="/auth/spmt/start" className="button">
+            Sign in with Space Mountain
+          </a>
           
           <a 
             href="/api/auth/twitch?role=login"
-            className="button"
+            className="button button-discord"
           >
-            Sign in with Twitch
+            Continue with existing Twitch sign-in
           </a>
 
           <div className="about">

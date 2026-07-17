@@ -44,7 +44,7 @@ function getDiscordStreamHubUrl(): string {
 }
 
 function getDiscordStreamHubSecret(): string {
-  return process.env.BOT_SECRET_KEY || '';
+  return process.env.DSH_SERVICE_SECRET || '';
 }
 
 function truncateDiscordStreamHubErrorBody(body: string): string {
@@ -68,6 +68,7 @@ function createDiscordStreamHubAbortSignal(timeoutMs = 8000): AbortSignal | unde
 
 async function postDiscordStreamHub<T>(path: string, payload: Record<string, unknown>): Promise<T> {
   const secret = getDiscordStreamHubSecret();
+  if (!secret) throw new Error('DSH_SERVICE_SECRET is not configured');
   const response = await fetch(`${getDiscordStreamHubUrl()}${path}`, {
     method: 'POST',
     headers: {
@@ -89,6 +90,7 @@ async function postDiscordStreamHub<T>(path: string, payload: Record<string, unk
 
 async function getDiscordStreamHub<T>(path: string, searchParams?: Record<string, string | number | undefined>): Promise<T> {
   const secret = getDiscordStreamHubSecret();
+  if (!secret) throw new Error('DSH_SERVICE_SECRET is not configured');
   const url = new URL(`${getDiscordStreamHubUrl()}${path}`);
   Object.entries(searchParams || {}).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return;
