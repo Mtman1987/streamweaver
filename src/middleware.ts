@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { serializeSessionCookieEdge, STREAMWEAVER_EDGE_SESSION_MAX_AGE, verifySessionCookieEdge } from '@/lib/session-cookie-edge';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -136,42 +135,31 @@ export async function middleware(request: NextRequest) {
   }
 
   const sessionCookie = request.cookies.get('streamweaver-session')?.value;
-  const session = await verifySessionCookieEdge(sessionCookie);
+  let session: { id?: string; username?: string } | null = null;
+  if (sessionCookie && !sessionCookie.startsWith('{')) {
+    try {
+      // Fly secrets are runtime values. Next Edge middleware cannot safely verify
+      // an HMAC with a secret that is unavailable to the build, so delegate the
+      // check to the Node route that uses the live runtime environment.
+      const verifyResponse = await fetch(new URL('/api/session', request.url), {
+        headers: { cookie: request.headers.get('cookie') || '' },
+        cache: 'no-store',
+      });
+      if (verifyResponse.ok) session = await verifyResponse.json();
+    } catch {
+      session = null;
+    }
+  }
 
   // One-time, provider-verified migration for existing SPMT sessions. The old
-  // unsigned tenant cookie alone is never accepted as proof.
+  // unsigned tenant cookie alone is never accepted as proof. Migration is also
+  // delegated to Node so the replacement cookie uses the runtime HMAC secret.
   if (!session && request.method === 'GET' && sessionCookie?.startsWith('{')) {
     const spmtToken = request.cookies.get('streamweaver-spmt-token')?.value;
     if (spmtToken) {
-      try {
-        const legacy = JSON.parse(sessionCookie);
-        const spmtBaseUrl = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
-        const userResponse = await fetch(`${spmtBaseUrl}/api/oauth/userinfo`, {
-          headers: { Authorization: `Bearer ${spmtToken}` },
-          cache: 'no-store',
-        });
-        const user = await userResponse.json().catch(() => null);
-        const tenantId = String(user?.twitchId || user?.twitch_id || user?.id || '');
-        if (userResponse.ok && tenantId && tenantId === String(legacy?.id || '') && user?.username) {
-          const signed = await serializeSessionCookieEdge({
-            id: tenantId,
-            spmtUserId: String(user.id),
-            identityProvider: 'spmt',
-            username: String(user.twitchUsername || user.twitch_username || user.username),
-            displayName: String(user.displayName || user.display_name || user.username),
-            loginTime: Number(legacy.loginTime || Date.now()),
-          });
-          const redirect = NextResponse.redirect(request.nextUrl);
-          redirect.cookies.set('streamweaver-session', signed, {
-            httpOnly: true,
-            secure: request.nextUrl.protocol === 'https:',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: STREAMWEAVER_EDGE_SESSION_MAX_AGE,
-          });
-          return redirect;
-        }
-      } catch {}
+      const migrateUrl = new URL('/api/session/migrate', request.url);
+      migrateUrl.searchParams.set('next', `${request.nextUrl.pathname}${request.nextUrl.search}`);
+      return NextResponse.redirect(migrateUrl);
     }
   }
 

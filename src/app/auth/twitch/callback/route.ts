@@ -10,6 +10,13 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code');
   const error = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
+  const requestedState = searchParams.get('state') || 'login';
+
+  console.info('[Twitch OAuth] Callback received', {
+    state: requestedState,
+    hasCode: Boolean(code),
+    providerError: error || null,
+  });
 
   if (error) {
     return NextResponse.json({ error, error_description: errorDescription }, { status: 400 });
@@ -44,6 +51,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.text();
+      console.error('[Twitch OAuth] Token exchange failed', { status: tokenResponse.status, details: errorData });
       return NextResponse.json({ error: 'Failed to exchange code for token', details: errorData }, { status: 500 });
     }
 
@@ -63,8 +71,11 @@ export async function GET(request: NextRequest) {
       const userData = await userResponse.json();
       userInfo = userData.data[0];
     }
+    if (!userInfo) {
+      console.error('[Twitch OAuth] User profile lookup failed', { status: userResponse.status });
+    }
 
-    const state = searchParams.get('state') || 'login';
+    const state = requestedState;
 
     // ─── LOGIN FLOW ───
     // Creates/validates the tenant and sets the session cookie.
@@ -119,6 +130,7 @@ export async function GET(request: NextRequest) {
         sameSite: 'lax',
         maxAge: STREAMWEAVER_SESSION_MAX_AGE,
       });
+      console.info('[Twitch OAuth] Login session issued', { tenantId: twitchId, username });
       return response;
     }
 

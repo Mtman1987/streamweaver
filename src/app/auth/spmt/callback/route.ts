@@ -21,6 +21,12 @@ export async function GET(request: NextRequest) {
   const clientSecret = String(process.env.STREAMWEAVER_CLIENT_SECRET || '').trim();
 
   if (!state || !code || !expectedState || !safeEqual(state, expectedState)) {
+    console.warn('[SPMT OAuth] Callback state rejected', {
+      hasState: Boolean(state),
+      hasCode: Boolean(code),
+      hasExpectedState: Boolean(expectedState),
+      stateMatched: Boolean(state && expectedState && safeEqual(state, expectedState)),
+    });
     return NextResponse.redirect(`${appOrigin}/login?error=invalid_spmt_state`);
   }
   if (!clientSecret) {
@@ -40,6 +46,7 @@ export async function GET(request: NextRequest) {
   });
   const tokenPayload = await exchange.json().catch(() => ({}));
   if (!exchange.ok || !tokenPayload?.access_token) {
+    console.error('[SPMT OAuth] Token exchange failed', { status: exchange.status, error: tokenPayload?.error || null });
     return NextResponse.redirect(`${appOrigin}/login?error=spmt_exchange_failed`);
   }
 
@@ -49,6 +56,7 @@ export async function GET(request: NextRequest) {
   });
   const user = await userResponse.json().catch(() => null);
   if (!userResponse.ok || !user?.id || !user?.username) {
+    console.error('[SPMT OAuth] User profile lookup failed', { status: userResponse.status });
     return NextResponse.redirect(`${appOrigin}/login?error=spmt_profile_failed`);
   }
 
@@ -80,5 +88,6 @@ export async function GET(request: NextRequest) {
     maxAge: 7 * 24 * 60 * 60,
   });
   response.cookies.delete('streamweaver-spmt-state');
+  console.info('[SPMT OAuth] Login session issued', { tenantId, spmtUserId: String(user.id) });
   return response;
 }
