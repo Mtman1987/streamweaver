@@ -2,6 +2,7 @@ import { getAllPartners } from './partner-checkin';
 import { getPartnerInviteLink } from './checkin-stats';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import { getConfigSection } from '../lib/local-config/service';
+import { getDiscordStreamHubCheckinMembers, type DiscordStreamHubCheckinMember } from './discord-stream-hub';
 
 export type CheckinKind = 'partner' | 'crew' | 'mod' | 'space-mountain';
 
@@ -106,29 +107,25 @@ async function fetchPartnerSource(tenantId?: string): Promise<CheckinSourceResul
 
 async function fetchCrewSource(tenantId?: string): Promise<CheckinSourceResult> {
   const redeemsConfig = await getConfigSection('redeems', tenantId);
+  const guildId = String(redeemsConfig.crewCheckin?.discordGuildId || redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
   const apiUrl = String(redeemsConfig.crewCheckin?.apiUrl || '').trim();
-  if (!apiUrl) {
-    return { kind: 'crew', label: 'Crew Check-In', sourceLabel: 'Crew', selectionMode: 'pick', entries: [] };
+  if (!guildId && !apiUrl) {
+    return { kind: 'crew', label: 'Crew Check-In', sourceLabel: 'Crew', selectionMode: 'pick', entries: [], error: 'Set the Discord server ID for Crew Check-In.' };
   }
 
   try {
-    const response = await fetch(apiUrl, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      return {
-        kind: 'crew',
-        label: 'Crew Check-In',
-        sourceLabel: 'Crew',
-        selectionMode: 'pick',
-        entries: [],
-        error: `Crew source returned ${response.status}. Check the Crew Check-In source URL in Redeems settings.`,
-      };
+    let members: any[] = [];
+    if (guildId) {
+      members = await getDiscordStreamHubCheckinMembers(guildId, 'Crew');
+    } else {
+      const response = await fetch(apiUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (!response.ok) throw new Error(`Legacy crew source returned ${response.status}`);
+      members = coerceArray(await response.json().catch(() => null));
+      const containsGroupMetadata = members.some((member: any) => String(member?.group || '').trim());
+      if (containsGroupMetadata) {
+        members = members.filter((member: any) => String(member?.group || '').trim().toLowerCase() === 'crew');
+      }
     }
-
-    const payload = await response.json().catch(() => null);
-    const members = coerceArray(payload);
     const entries = sortAndAssignIds(members
       .map((member: any) => {
         const name = String(
@@ -161,7 +158,7 @@ async function fetchCrewSource(tenantId?: string): Promise<CheckinSourceResult> 
     };
   } catch (error) {
     console.warn('[Crew Checkin] Source fetch failed:', error);
-    return { kind: 'crew', label: 'Crew Check-In', sourceLabel: 'Crew', selectionMode: 'pick', entries: [] };
+    return { kind: 'crew', label: 'Crew Check-In', sourceLabel: 'Crew', selectionMode: 'pick', entries: [], error: error instanceof Error ? error.message : 'Crew lookup failed' };
   }
 }
 
@@ -273,20 +270,17 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
     }
     chatters = filtered;
 
-    // If a Discord guild is configured, only keep chatters who are also in that server
+    // Space Mountain is the active Twitch chatter list intersected with the
+    // tenant's Discord membership. Missing Discord authority fails closed.
     const redeemsConfig = await getConfigSection('redeems', tenantId);
-    const guildId = redeemsConfig.spaceMountainCheckin?.discordGuildId;
-    if (guildId) {
-      try {
-        const discordMembers = await fetchDiscordMemberNames(guildId);
-        if (discordMembers.size > 0) {
-          chatters = chatters.filter(c => discordMembers.has(c.login) || discordMembers.has(c.name.toLowerCase()));
-          console.log(`[Space Mountain] Filtered to ${chatters.length} chatters who are also in Discord guild ${guildId}`);
-        }
-      } catch (err) {
-        console.warn('[Space Mountain] Discord member fetch failed, using all chatters:', err);
-      }
+    const guildId = String(redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
+    if (!guildId) {
+      return { kind: 'space-mountain', label: 'Space Mountain Check-In', sourceLabel: 'Space Mountain Riders', selectionMode: 'bulk', entries: [], error: 'Set the Discord server ID for Space Mountain Check-In.' };
     }
+    const discordMembers = await getDiscordStreamHubCheckinMembers(guildId);
+    const discordNames = discordCheckinNames(discordMembers);
+    chatters = chatters.filter(c => discordNames.has(c.login) || discordNames.has(c.name.toLowerCase()));
+    console.log(`[Space Mountain] Filtered to ${chatters.length} active chatters linked to Discord server ${guildId}`);
 
     const entries = sortAndAssignIds(chatters.map(c => ({
       key: toEntryKey('space-mountain', c.userId || c.login, c.name),
@@ -309,38 +303,16 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
 }
 
 /**
- * Fetch Discord server members and return a Set of lowercase display names / usernames.
- * Uses the same bot token as the Discord service.
+ * Normalize Discord names and verified Twitch links for active-chat intersection.
  */
-async function fetchDiscordMemberNames(guildId: string): Promise<Set<string>> {
-  const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token) return new Set();
-
+export function discordCheckinNames(members: DiscordStreamHubCheckinMember[]): Set<string> {
   const names = new Set<string>();
-  let after = '';
-  const limit = 1000;
-
-  // Paginate through members (max 1000 per request)
-  for (let i = 0; i < 10; i++) {
-    const url = `https://discord.com/api/v10/guilds/${guildId}/members?limit=${limit}${after ? `&after=${after}` : ''}`;
-    const res = await fetch(url, { headers: { Authorization: `Bot ${token}` } });
-    if (!res.ok) break;
-    const members: any[] = await res.json();
-    if (!members.length) break;
-
-    for (const m of members) {
-      const nick = (m.nick || '').toLowerCase().trim();
-      const username = (m.user?.username || '').toLowerCase().trim();
-      const globalName = (m.user?.global_name || '').toLowerCase().trim();
-      if (nick) names.add(nick);
-      if (username) names.add(username);
-      if (globalName) names.add(globalName);
+  for (const member of members) {
+    for (const value of [member.twitchLogin, member.username, member.displayName]) {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized) names.add(normalized);
     }
-
-    if (members.length < limit) break;
-    after = members[members.length - 1].user?.id || '';
   }
-
   return names;
 }
 

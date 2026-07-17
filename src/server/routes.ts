@@ -456,7 +456,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             res.end(JSON.stringify({ success: true }));
                         } else if (action === 'stop') {
                             const { stopBRB } = require('../services/brb-clips');
-                            stopBRB();
+                            stopBRB(tenantId);
                             broadcast({ type: 'brb-stop' }, tenantId);
                             try {
                                 const { getConfigSection } = require('../lib/local-config/service');

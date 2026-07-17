@@ -7,13 +7,14 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
+import { tenantPath } from '@/lib/tenant';
 import { sendChatMessage } from '../twitch';
 import { formatCompactPointAmount, parsePointAmount, PointAmount } from '../points';
 
 // ════════════════════════════════════════════════
 // 🛠️ SETTINGS
 // ════════════════════════════════════════════════
-interface GambleSettings {
+export interface GambleSettings {
   useBot: boolean;
   sendAction: boolean;
   pointsVariable: string;
@@ -52,43 +53,66 @@ const DEFAULT_SETTINGS: GambleSettings = {
   overlayDisplayMs: 5000
 };
 
-const SETTINGS_PATH = path.resolve(process.env.PERSIST_ROOT || path.join(process.cwd(), 'data', 'runtime'), 'global', 'gamble-settings.json');
 const DEFAULT_MAX_BET = '1000000000000000000000';
-
-let settings: GambleSettings = { ...DEFAULT_SETTINGS };
+const settingsCache = new Map<string, GambleSettings>();
 
 // ════════════════════════════════════════════════
 // 📊 SETTINGS MANAGEMENT
 // ════════════════════════════════════════════════
-async function loadSettings(): Promise<void> {
+function settingsKey(tenantId?: string): string {
+  return tenantId || '__development_global__';
+}
+function settingsPath(tenantId?: string): string {
+  if (tenantId) return tenantPath(tenantId, 'data/gamble-settings.json');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Classic gamble settings require tenant context');
+  }
+  return path.resolve(process.cwd(), 'data', 'gamble-settings.json');
+}
+
+async function loadSettings(tenantId?: string): Promise<GambleSettings> {
+  const key = settingsKey(tenantId);
+  const cached = settingsCache.get(key);
+  if (cached) return cached;
+
   try {
-    await fs.mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
-    const data = await fs.readFile(SETTINGS_PATH, 'utf-8');
-    settings = { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
-    console.log('[ClassicGamble] Settings loaded');
+    const filePath = settingsPath(tenantId);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const data = await fs.readFile(filePath, 'utf-8');
+    const loaded = { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
+    settingsCache.set(key, loaded);
+    console.log('[ClassicGamble] Settings loaded for ' + (tenantId || 'development'));
+    return loaded;
   } catch {
-    await saveSettings();
-    console.log('[ClassicGamble] Created default settings');
+    const defaults = { ...DEFAULT_SETTINGS };
+    await saveSettings(defaults, tenantId);
+    console.log('[ClassicGamble] Created default settings for ' + (tenantId || 'development'));
+    return defaults;
   }
 }
 
-async function saveSettings(): Promise<void> {
+async function saveSettings(settings: GambleSettings, tenantId?: string): Promise<void> {
   try {
-    await fs.mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
-    await fs.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2));
-    console.log('[ClassicGamble] Settings saved');
+    const filePath = settingsPath(tenantId);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const tempPath = filePath + '.tmp.' + process.pid + '.' + Date.now();
+    await fs.writeFile(tempPath, JSON.stringify(settings, null, 2));
+    await fs.rename(tempPath, filePath);
+    settingsCache.set(settingsKey(tenantId), settings);
+    console.log('[ClassicGamble] Settings saved for ' + (tenantId || 'development'));
   } catch (error) {
     console.error('[ClassicGamble] Failed to save settings:', error);
+    throw error;
   }
 }
 
-export async function updateSettings(newSettings: Partial<GambleSettings>): Promise<void> {
-  settings = { ...settings, ...newSettings };
-  await saveSettings();
+export async function updateSettings(newSettings: Partial<GambleSettings>, tenantId?: string): Promise<void> {
+  const current = await loadSettings(tenantId);
+  await saveSettings({ ...current, ...newSettings }, tenantId);
 }
 
-export function getSettings(): GambleSettings {
-  return { ...settings };
+export async function getSettings(tenantId?: string): Promise<GambleSettings> {
+  return { ...await loadSettings(tenantId) };
 }
 
 // ════════════════════════════════════════════════
@@ -131,7 +155,7 @@ interface DoubleResult {
   newTotalDisplay: string;
 }
 
-function determineOutcome(betAmount: bigint): { outcome: GambleOutcome; change: bigint } {
+function determineOutcome(betAmount: bigint, settings: GambleSettings): { outcome: GambleOutcome; change: bigint } {
   const jp = Math.max(1, settings.jackpotPercent);
   let wp = Math.max(1, settings.winPercent);
   if (wp < jp) wp = jp;
@@ -175,7 +199,7 @@ function determineRollOutcome(roll: number, betAmount: bigint): { outcome: strin
   }
 }
 
-function formatNumber(value: PointAmount): string {
+function formatNumber(value: PointAmount, settings: GambleSettings): string {
   const sep = settings.numberSeparator || ',';
   return formatCompactPointAmount(value).replace(/,/g, sep);
 }
@@ -203,9 +227,9 @@ function randomBigInt(maxInclusive: bigint): bigint {
   return maxInclusive;
 }
 
-function parseBetAmount(input: string, currentPoints: PointAmount): bigint | null {
+function parseBetAmount(input: string, currentPoints: PointAmount, settings: GambleSettings): bigint | null {
   const upper = input.toUpperCase();
-  const maxBet = getEffectiveMaxBet(currentPoints);
+  const maxBet = getEffectiveMaxBet(currentPoints, settings);
   
   if (upper === 'ALL') return maxBet;
   const points = parsePointAmount(currentPoints);
@@ -217,13 +241,13 @@ function parseBetAmount(input: string, currentPoints: PointAmount): bigint | nul
   return parseNumericBet(input);
 }
 
-function getEffectiveMaxBet(currentPoints: PointAmount): bigint {
+function getEffectiveMaxBet(currentPoints: PointAmount, settings: GambleSettings): bigint {
   const configuredMax = parsePointAmount(settings.maxBet) > 0n ? parsePointAmount(settings.maxBet) : parsePointAmount(DEFAULT_MAX_BET);
   const points = parsePointAmount(currentPoints);
   return points < configuredMax ? points : configuredMax;
 }
 
-async function sendOutput(user: string, message: string, tenantId?: string): Promise<void> {
+async function sendOutput(user: string, message: string, settings: GambleSettings, tenantId?: string): Promise<void> {
   if (tenantId?.startsWith('__kick_silent__')) return;
   await sendChatMessage(`❌ @${user}, ${message}`, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
 }
@@ -242,7 +266,7 @@ export async function handleGamble(
   userPoints: PointAmount,
   tenantId?: string
 ): Promise<GambleResult | null> {
-  await loadSettings();
+  const settings = await loadSettings(normalizeTenantId(tenantId));
   const currentPoints = parsePointAmount(userPoints);
   
   // Determine bet amount
@@ -252,42 +276,42 @@ export async function handleGamble(
     if (parsePointAmount(settings.defaultBet) > 0n) {
       betAmount = parsePointAmount(settings.defaultBet);
     } else {
-      await sendOutput(user, `please specify a valid bet amount or set DefaultBet > 0.`, tenantId);
+      await sendOutput(user, `please specify a valid bet amount or set DefaultBet > 0.`, settings, tenantId);
       return null;
     }
   } else {
-    betAmount = parseBetAmount(betInput, userPoints);
+    betAmount = parseBetAmount(betInput, userPoints, settings);
     
     if (betAmount === null) {
-      await sendOutput(user, `invalid bet! Use numbers, 10^21, k/m/b/t/q/quintillion/sextillion suffixes, plus all/half/quarter/third/random.`, tenantId);
+      await sendOutput(user, `invalid bet! Use numbers, 10^21, k/m/b/t/q/quintillion/sextillion suffixes, plus all/half/quarter/third/random.`, settings, tenantId);
       return null;
     }
   }
   
   // Validate bet
   if (betAmount <= 0n && currentPoints > 0n) {
-    await sendOutput(user, `you must bet a positive amount.`, tenantId);
+    await sendOutput(user, `you must bet a positive amount.`, settings, tenantId);
     return null;
   }
   
   if (betAmount > currentPoints) {
-    await sendOutput(user, `you can't bet ${formatNumber(betAmount)} ${settings.currencyName}! You only have ${formatNumber(currentPoints)}.`, tenantId);
+    await sendOutput(user, `you can't bet ${formatNumber(betAmount, settings)} ${settings.currencyName}! You only have ${formatNumber(currentPoints, settings)}.`, settings, tenantId);
     return null;
   }
 
-  const effectiveMaxBet = getEffectiveMaxBet(userPoints);
+  const effectiveMaxBet = getEffectiveMaxBet(userPoints, settings);
   if (betAmount > effectiveMaxBet) {
-    await sendOutput(user, `you can bet at most ${formatNumber(effectiveMaxBet)} ${settings.currencyName}.`, tenantId);
+    await sendOutput(user, `you can bet at most ${formatNumber(effectiveMaxBet, settings)} ${settings.currencyName}.`, settings, tenantId);
     return null;
   }
   
   if (parsePointAmount(settings.minBet) > 0n && betAmount < parsePointAmount(settings.minBet)) {
-    await sendOutput(user, `you must bet at least ${formatNumber(settings.minBet)} ${settings.currencyName}.`, tenantId);
+    await sendOutput(user, `you must bet at least ${formatNumber(settings.minBet, settings)} ${settings.currencyName}.`, settings, tenantId);
     return null;
   }
   
   // Process gamble
-  const { outcome, change } = determineOutcome(betAmount);
+  const { outcome, change } = determineOutcome(betAmount, settings);
   const newTotal = currentPoints + change < 0n ? 0n : currentPoints + change;
   const rawDisplayAmount = outcome === GambleOutcome.Loss ? betAmount : change;
   const displayAmount = rawDisplayAmount < 0n ? -rawDisplayAmount : rawDisplayAmount;
@@ -298,10 +322,10 @@ export async function handleGamble(
     change: change.toString(),
     newTotal: newTotal.toString(),
     displayAmount: displayAmount.toString(),
-    betAmountDisplay: formatNumber(betAmount),
-    changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change)}`,
-    newTotalDisplay: formatNumber(newTotal),
-    displayAmountDisplay: formatNumber(displayAmount)
+    betAmountDisplay: formatNumber(betAmount, settings),
+    changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change, settings)}`,
+    newTotalDisplay: formatNumber(newTotal, settings),
+    displayAmountDisplay: formatNumber(displayAmount, settings)
   };
   
   // Check gamble mode
@@ -310,12 +334,12 @@ export async function handleGamble(
   
   // Send result message in chat mode
   if (gambleMode === 'chat') {
-    await sendResultMessage(user, result, tenantId);
+    await sendResultMessage(user, result, settings, tenantId);
   }
   
   // Send to overlay in overlay mode
   if (gambleMode === 'overlay') {
-    await sendGambleToOverlay(user, result, tenantId);
+    await sendGambleToOverlay(user, result, settings, tenantId);
   }
   
   console.log(`[ClassicGamble] ${user} ${outcome}: ${change > 0n ? '+' : ''}${change} (new: ${newTotal})`);
@@ -329,17 +353,17 @@ export async function handleRoll(
   userPoints: PointAmount,
   tenantId?: string
 ): Promise<RollResult | null> {
-  await loadSettings();
+  const settings = await loadSettings(normalizeTenantId(tenantId));
   const currentPoints = parsePointAmount(userPoints);
   
   const betAmount = parseNumericBet(betInput);
   if (betAmount === null || betAmount <= 0n) {
-    await sendOutput(user, `usage: !roll <amount>`, tenantId);
+    await sendOutput(user, `usage: !roll <amount>`, settings, tenantId);
     return null;
   }
   
   if (betAmount > currentPoints) {
-    await sendOutput(user, `you don't have enough points! You have ${formatNumber(currentPoints)}.`, tenantId);
+    await sendOutput(user, `you don't have enough points! You have ${formatNumber(currentPoints, settings)}.`, settings, tenantId);
     return null;
   }
   
@@ -352,8 +376,8 @@ export async function handleRoll(
     outcome,
     change: change.toString(),
     newTotal: newTotal.toString(),
-    changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change)}`,
-    newTotalDisplay: formatNumber(newTotal),
+    changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change, settings)}`,
+    newTotalDisplay: formatNumber(newTotal, settings),
     canDouble: change !== 0n || betAmount > 0n
   };
   
@@ -369,7 +393,7 @@ export async function handleRoll(
   
 // Send to overlay if enabled
   if (gambleMode === 'overlay') {
-    await sendRollToOverlay(user, result, tenantId);
+    await sendRollToOverlay(user, result, settings, tenantId);
   }
   
   console.log(`[ClassicGamble] ${user} roll ${roll}: ${change > 0n ? '+' : ''}${change} (new: ${newTotal}) (mode: ${gambleMode})`);
@@ -383,13 +407,13 @@ export async function handleDouble(
   userPoints: PointAmount,
   tenantId?: string
 ): Promise<DoubleResult | null> {
-  await loadSettings();
+  const settings = await loadSettings(normalizeTenantId(tenantId));
   const currentPoints = parsePointAmount(userPoints);
   const wagerAmount = parsePointAmount(wager);
   
   const doubleWager = wagerAmount * 2n;
   if (doubleWager > currentPoints) {
-    await sendOutput(user, `you don't have enough points for double-or-nothing! Need ${formatNumber(doubleWager)}, have ${formatNumber(currentPoints)}.`, tenantId);
+    await sendOutput(user, `you don't have enough points for double-or-nothing! Need ${formatNumber(doubleWager, settings)}, have ${formatNumber(currentPoints, settings)}.`, settings, tenantId);
     return null;
   }
   
@@ -404,8 +428,8 @@ export async function handleDouble(
     won,
     change: change.toString(),
     newTotal: newTotal.toString(),
-    changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change)}`,
-    newTotalDisplay: formatNumber(newTotal)
+    changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change, settings)}`,
+    newTotalDisplay: formatNumber(newTotal, settings)
   };
   
   // Check gamble mode - overlay or chat
@@ -415,15 +439,15 @@ export async function handleDouble(
   // Send result message in chat mode
   if (gambleMode === 'chat') {
     const message = won 
-      ? `@${user} rolled ${roll}! DOUBLE OR NOTHING WIN! +${formatNumber(doubleWager)} points! New total: ${formatNumber(newTotal)}`
-      : `@${user} rolled ${roll}! Double or nothing failed. -${formatNumber(doubleWager)} points. New total: ${formatNumber(newTotal)}`;
+      ? `@${user} rolled ${roll}! DOUBLE OR NOTHING WIN! +${formatNumber(doubleWager, settings)} points! New total: ${formatNumber(newTotal, settings)}`
+      : `@${user} rolled ${roll}! Double or nothing failed. -${formatNumber(doubleWager, settings)} points. New total: ${formatNumber(newTotal, settings)}`;
     
     await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
   }
   
 // Send to overlay if enabled
   if (gambleMode === 'overlay') {
-    await sendDoubleToOverlay(user, result, wagerAmount.toString(), tenantId);
+    await sendDoubleToOverlay(user, result, wagerAmount.toString(), settings, tenantId);
   }
   
   console.log(`[ClassicGamble] ${user} double ${roll}: ${won ? 'WIN' : 'LOSS'} ${change > 0n ? '+' : ''}${change} (new: ${newTotal}) (mode: ${gambleMode})`);
@@ -434,28 +458,28 @@ export async function handleDouble(
 // ════════════════════════════════════════════════
 // 📡 OUTPUT
 // ════════════════════════════════════════════════
-async function sendResultMessage(user: string, result: GambleResult, tenantId?: string): Promise<void> {
+async function sendResultMessage(user: string, result: GambleResult, settings: GambleSettings, tenantId?: string): Promise<void> {
   const { outcome, displayAmount, newTotal } = result;
   
   let message: string;
-  const suffix = ` New Total: ${formatNumber(newTotal)} ${settings.currencyName}`;
+  const suffix = ` New Total: ${formatNumber(newTotal, settings)} ${settings.currencyName}`;
   
   switch (outcome) {
     case GambleOutcome.Jackpot:
-      message = `PowerUpL J A C K P O T PowerUpR @${user}, you hit the jackpot! You won ${formatNumber(displayAmount)} ${settings.currencyName}!${suffix}`;
+      message = `PowerUpL J A C K P O T PowerUpR @${user}, you hit the jackpot! You won ${formatNumber(displayAmount, settings)} ${settings.currencyName}!${suffix}`;
       break;
     case GambleOutcome.Win:
-      message = `@${user}, nice win! You got ${formatNumber(displayAmount)} ${settings.currencyName}! PopNemo${suffix}`;
+      message = `@${user}, nice win! You got ${formatNumber(displayAmount, settings)} ${settings.currencyName}! PopNemo${suffix}`;
       break;
     case GambleOutcome.Loss:
-      message = `@${user}, unlucky! You lost ${formatNumber(displayAmount)} ${settings.currencyName}. FailFish Remaining: ${formatNumber(newTotal)} ${settings.currencyName}`;
+      message = `@${user}, unlucky! You lost ${formatNumber(displayAmount, settings)} ${settings.currencyName}. FailFish Remaining: ${formatNumber(newTotal, settings)} ${settings.currencyName}`;
       break;
   }
   
   await sendChatMessage(message, settings.useBot ? 'bot' : 'broadcaster', undefined, tenantId);
 }
 
-async function sendRollToOverlay(user: string, result: RollResult, tenantId?: string): Promise<void> {
+async function sendRollToOverlay(user: string, result: RollResult, settings: GambleSettings, tenantId?: string): Promise<void> {
   try {
     const overlayData = {
       type: 'roll',
@@ -482,7 +506,7 @@ async function sendRollToOverlay(user: string, result: RollResult, tenantId?: st
   }
 }
 
-async function sendDoubleToOverlay(user: string, result: DoubleResult, wager: string, tenantId?: string): Promise<void> {
+async function sendDoubleToOverlay(user: string, result: DoubleResult, wager: string, settings: GambleSettings, tenantId?: string): Promise<void> {
   try {
     const overlayData = {
       type: 'double',
@@ -510,7 +534,7 @@ async function sendDoubleToOverlay(user: string, result: DoubleResult, wager: st
   }
 }
 
-async function sendGambleToOverlay(user: string, result: GambleResult, tenantId?: string): Promise<void> {
+async function sendGambleToOverlay(user: string, result: GambleResult, settings: GambleSettings, tenantId?: string): Promise<void> {
   try {
     const overlayData = {
       type: 'gamble',
@@ -538,6 +562,3 @@ async function sendGambleToOverlay(user: string, result: GambleResult, tenantId?
     console.error('[ClassicGamble] Gamble overlay error:', error);
   }
 }
-
-// Initialize settings on module load
-loadSettings().catch(console.error);

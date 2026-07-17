@@ -380,17 +380,15 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                                 }
                             }
                             const { getEnabledSetMap, formatSetList } = require('./pokemon-packs');
-                            const enabledSets = redeemsConfig.pokePack.enabledSets || ['base1','base2','base3','base4','base5','gym1'];
+                            const enabledSets = redeemsConfig.pokePack.enabledSets || [];
                             const setMap = getEnabledSetMap(enabledSets);
                             const setCount = Object.keys(setMap).length;
                             console.log(`[EventSub] PokePack tenant=${tenantId || 'global'} user=${userLogin} enabledSetCount=${enabledSets.length} availableSetCount=${setCount}`);
 
-                            // Check for number from recent chat or input
                             const recentMsgKey = userMessageKey(userLogin, tenantId);
                             const recentMsg = recentChatMessages.get(recentMsgKey);
                             const now = Date.now();
                             let setNumber: number | null = null;
-
                             if (recentMsg && (now - recentMsg.timestamp) < 5000) {
                                 setNumber = parseInt(recentMsg.message.trim(), 10);
                                 recentChatMessages.delete(recentMsgKey);
@@ -399,14 +397,13 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                             }
 
                             if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
-                                sendChatMessage(formatSetList(setMap), 'broadcaster', undefined, tenantId).catch(err => console.error('[EventSub] Failed to post set list:', err));
+                                sendChatMessage(`${formatSetList(setMap)} | Reply 1-${setCount}`, 'broadcaster', undefined, tenantId).catch(() => {});
                                 let tenantPackRedeems = pendingPackRedeems.get(tKey);
                                 if (!tenantPackRedeems) {
                                     tenantPackRedeems = new Map();
                                     pendingPackRedeems.set(tKey, tenantPackRedeems);
                                 }
                                 tenantPackRedeems.set(userLogin.toLowerCase(), { timestamp: Date.now(), pointCost: redeemsConfig.pokePack.pointCost });
-                                console.log(`[EventSub] Waiting for ${userLogin} to pick a pack set...`);
                                 return;
                             }
 
@@ -496,7 +493,6 @@ export function trackChatMessageForRedemption(username: string, message: string,
         }
     }
 
-    // If this user has a pending pack redeem and typed a number, fire it
     const tenantPackRedeems = pendingPackRedeems.get(tKey) || new Map();
     const pendingPack = tenantPackRedeems.get(key);
     if (pendingPack && Date.now() - pendingPack.timestamp < 30000) {

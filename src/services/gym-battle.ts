@@ -291,7 +291,8 @@ async function endBattle(winner: string, tenantId?: string): Promise<void> {
   bc({ type: 'gym-battle-end', payload: { winner, isChallenger, ...buildBattleState(tenantId) } }, tenantId);
   if (isChallenger) {
     const { awardGymBadge } = require('./user-stats');
-    await awardGymBadge(winner, `Gym Badge: defeated ${st.battle.gymLeader.username}`);
+    if (!tenantId) throw new Error('Gym badge award requires tenant context');
+    await awardGymBadge(winner, `Gym Badge: defeated ${st.battle.gymLeader.username}`, { tenantId, username: '' });
     await reply(`🏅 VICTORY! @${winner} defeated Gym Leader @${st.battle.gymLeader.username} and earned a Gym Badge!`, 'broadcaster', tenantId);
     await reply(`Congratulations ${winner}! You've proven yourself as a skilled trainer!`, 'bot', tenantId);
   } else {

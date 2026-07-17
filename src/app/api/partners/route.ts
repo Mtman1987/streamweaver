@@ -6,7 +6,8 @@ import { getCheckinStats, getPartnerOverrides, setPartnerOverrides } from '@/ser
 
 export async function GET(req: NextRequest) {
   const session = getTenantFromRequest(req);
-  const tenantId = session?.tenantId || req.nextUrl.searchParams.get('tenant') || undefined;
+  if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+  const tenantId = session.tenantId;
   const guildId = req.nextUrl.searchParams.get('guildId');
   const roleName = req.nextUrl.searchParams.get('roleName');
 
@@ -30,7 +31,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = getTenantFromRequest(req);
-    const tenantId = session?.tenantId || undefined;
+    if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+    const tenantId = session.tenantId;
     const body = await req.json();
     if (body.overrides && typeof body.overrides === 'object') {
       setPartnerOverrides(body.overrides, tenantId);

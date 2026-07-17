@@ -40,42 +40,22 @@ export default function AvatarOverlayPage() {
     const imgRef = useRef<HTMLImageElement>(null);
     const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
     const visibilityTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const displayModeRef = useRef<'auto' | 'always'>('auto');
 
     useEffect(() => {
         const tenantId = getOverlayTenantId();
         const tenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
 
-        // Load saved avatar files from localStorage
-        const savedIdleFile = localStorage.getItem('avatar_idle_file');
-        const savedTalkingFile = localStorage.getItem('avatar_talking_file');
-        const savedType = localStorage.getItem('avatar_type');
-        const savedDisplayMode = localStorage.getItem('avatar_display_mode') || 'auto';
-        const savedIdleAnimation = localStorage.getItem('bot_idle_animation');
-        const savedTalkingAnimation = localStorage.getItem('bot_talking_animation');
-        
-        console.log('[Avatar Overlay] Loading settings:', { savedIdleFile, savedTalkingFile, savedType, savedDisplayMode });
-        
-        // Override defaults if localStorage has values
-        if (savedIdleFile || savedTalkingFile || savedType) {
-            setAvatarState(prev => ({
-                ...prev,
-                idleUrl: savedIdleFile ? `/avatars/${savedIdleFile}` : prev.idleUrl,
-                talkingUrl: savedTalkingFile ? `/avatars/${savedTalkingFile}` : prev.talkingUrl,
-                animationType: (savedType as 'lottie' | 'mp4' | 'gif') || prev.animationType,
-                isVisible: savedDisplayMode === 'always'
-            }));
-        } else if (savedDisplayMode === 'always') {
-            setAvatarState(prev => ({ ...prev, isVisible: true }));
-        }
-
-        // OBS browser source has separate localStorage. Load server-persisted avatar settings too.
+        // OBS browser sources have separate browser storage, so tenant-owned
+        // server settings are the only avatar authority.
         fetch(`/api/avatars?type=settings${tenantParam}`)
             .then((res) => res.ok ? res.json() : null)
             .then((payload) => {
                 const data = payload?.data;
                 if (!data) return;
                 const serverType = (data.animationType === 'json' ? 'lottie' : data.animationType) as 'lottie' | 'gif' | 'mp4';
-                const serverDisplayMode = data.displayMode || savedDisplayMode;
+                const serverDisplayMode = data.displayMode || 'auto';
+                displayModeRef.current = serverDisplayMode === 'always' ? 'always' : 'auto';
                 const shouldShow = serverDisplayMode === 'always';
                 setAvatarState(prev => ({
                     ...prev,
@@ -87,31 +67,15 @@ export default function AvatarOverlayPage() {
 
                 if (serverType === 'lottie') {
                     if (data.idleFile) {
-                        fetch(`/avatars/${data.idleFile}`).then(r => r.json()).then(setIdleAnimationData).catch(() => {});
+                        fetch(`/api/avatars?type=idle&format=lottie${tenantParam}`).then(r => r.json()).then(payload => setIdleAnimationData(payload.data)).catch(() => {});
                     }
                     if (data.talkingFile) {
-                        fetch(`/avatars/${data.talkingFile}`).then(r => r.json()).then(setTalkingAnimationData).catch(() => {});
+                        fetch(`/api/avatars?type=talking&format=lottie${tenantParam}`).then(r => r.json()).then(payload => setTalkingAnimationData(payload.data)).catch(() => {});
                     }
                 }
             })
             .catch(() => {});
 
-        // Load Lottie animation JSON if available
-        if (savedIdleAnimation) {
-            try {
-                setIdleAnimationData(JSON.parse(savedIdleAnimation));
-            } catch (error) {
-                console.warn('[Avatar Overlay] Failed to parse idle animation JSON:', error);
-            }
-        }
-        if (savedTalkingAnimation) {
-            try {
-                setTalkingAnimationData(JSON.parse(savedTalkingAnimation));
-            } catch (error) {
-                console.warn('[Avatar Overlay] Failed to parse talking animation JSON:', error);
-            }
-        }
-        
         // Connect to WebSocket for real-time updates
         const connectWebSocket = () => {
             const ws = new WebSocket(getBrowserWebSocketUrl(getOverlayTenantId() || undefined));
@@ -133,6 +97,7 @@ export default function AvatarOverlayPage() {
                 if (data.type === 'update-avatar-settings') {
                     console.log('[Avatar Overlay] Updating settings:', data.payload);
                     const p = data.payload;
+                    if (p.displayMode) displayModeRef.current = p.displayMode === 'always' ? 'always' : 'auto';
                     setAvatarState(prev => ({
                         ...prev,
                         ...p,
@@ -159,7 +124,7 @@ export default function AvatarOverlayPage() {
                     hideTimerRef.current = setTimeout(() => {
                         setAvatarState(prev => ({ ...prev, isTalking: false, currentAnimation: 'idle' }));
                         
-                        const displayMode = localStorage.getItem('avatar_display_mode') || 'auto';
+                        const displayMode = displayModeRef.current;
                         if (displayMode === 'auto') {
                             visibilityTimerRef.current = setTimeout(() => {
                                 setAvatarState(prev => ({ ...prev, isVisible: false, currentAnimation: 'idle' }));

@@ -13,7 +13,10 @@ export async function GET(req: NextRequest) {
   }
 
   const session = getTenantFromRequest(req);
-  const tenantId = session?.tenantId || req.nextUrl.searchParams.get('tenant') || undefined;
+  if (!session?.tenantId) {
+    return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+  }
+  const tenantId = session.tenantId;
   const actor = req.nextUrl.searchParams.get('actor') || undefined;
 
   const source = await getCheckinSource(kind, tenantId, actor);

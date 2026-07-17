@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 import { generateAutomationAssistantResponse } from '@/services/automation/ai-workflow-builder';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 
 const assistantSchema = z.object({
   message: z.string().trim().min(1).max(4000),
@@ -20,12 +21,20 @@ const assistantSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const session = getTenantFromRequest(request);
+    if (!session?.tenantId) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
     const parsed = assistantSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return apiError('Message is required.', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const response = await generateAutomationAssistantResponse(parsed.data);
+    const response = await generateAutomationAssistantResponse({
+      ...parsed.data,
+      tenantId: session.tenantId,
+      userName: parsed.data.userName || session.username,
+    });
     return apiOk(response);
   } catch (error: any) {
     console.error('[Automation Assistant] Error:', error);

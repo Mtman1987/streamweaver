@@ -25,6 +25,7 @@ import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub'
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/bot-relay';
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import { parseDiscordChatPayload } from '@/lib/discord-chat-payload';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 import {
   beginPendingMtSupportRequest,
   consumePendingMtSupportRequest,
@@ -561,9 +562,15 @@ export async function POST(request: NextRequest) {
             }
           }
           for (const image of result.images) {
+            const imageUrl = await maybeShortenUrl(image);
+            const embed = await buildDiscordBotEmbed({
+              description: result.originalPrompt || prompt,
+              tenantId,
+              authorName: getBotName(tenantId),
+            });
             await sendDiscordEmbed(channelId, {
               content: 'Here is your image, Commander:',
-              embeds: [{ image: { url: await maybeShortenUrl(image) } }],
+              embeds: [{ ...embed, title: 'Image Generated', image: { url: imageUrl } }],
             });
           }
         }
@@ -609,7 +616,7 @@ export async function POST(request: NextRequest) {
 
       const privateRes = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           username: userName,
           message,
@@ -753,13 +760,12 @@ export async function POST(request: NextRequest) {
             description: result.originalPrompt || prompt,
             tenantId,
             authorName: getBotName(tenantId),
-            mediaSlot: 'public',
           });
           await sendDiscordEmbed(channelId, {
             embeds: [{
               ...embed,
               title: 'Image Generated',
-              thumbnail: { url: imageUrl },
+              image: { url: imageUrl },
             }],
           });
         }
@@ -1039,7 +1045,7 @@ export async function POST(request: NextRequest) {
 
     const aiRes = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         username: normalized.username || userName,
         userId,
@@ -1094,10 +1100,11 @@ export async function POST(request: NextRequest) {
         }
         discordReplySent = true;
         console.log(`[Discord Chat] Bot responded via webhook in channel ${channelId}`);
-        if (!relayOnly && botInteractionDecision?.shouldRespond) {
+        const interactionTenantId = botTenantId || tenantId;
+        if (!relayOnly && botInteractionDecision?.shouldRespond && interactionTenantId) {
           await appendBotInteraction({
             platform: 'discord',
-            tenantId: botTenantId || tenantId || undefined,
+            tenantId: interactionTenantId,
             channelId,
             sourceUser: userName,
             speakerBotId: botInteractionDecision.speaker.stableId,
@@ -1198,41 +1205,53 @@ function triggerIndex(message: string, trigger: string) {
   return match?.index ?? -1;
 }
 
-async function resolveMentionedBot(messageLower: string, guildTenantId?: string): Promise<BotMatch | null> {
+function explicitTriggerIndex(message: string, trigger: string) {
+  const normalized = trigger.replace(/^@/, '').trim();
+  if (!normalized) return -1;
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(^|[^a-z0-9_])@${escaped}([^a-z0-9_]|$)`, 'i').exec(message);
+  return match?.index ?? -1;
+}
+
+export async function resolveMentionedBot(messageLower: string, guildTenantId?: string): Promise<BotMatch | null> {
   const candidates: BotMatch[] = [];
-  const addCandidate = (tenantId: string | undefined) => {
+  const addCandidate = (tenantId: string | undefined, explicitOnly = false) => {
     const botName = getBotName(tenantId);
     const configAliases = splitAliases(readUserConfigSync(tenantId).AI_BOT_ALIASES);
     const settingAliases = splitAliases(getBotAliases(tenantId));
-    const triggers = Array.from(new Set([
-      botName.toLowerCase(),
-      `hey ${botName.toLowerCase()}`,
-      ...configAliases,
-      ...settingAliases,
-    ].filter(Boolean)));
+    const triggers = explicitOnly
+      ? Array.from(new Set([botName.toLowerCase(), ...configAliases, ...settingAliases].filter(Boolean)))
+      : Array.from(new Set([
+          botName.toLowerCase(),
+          `hey ${botName.toLowerCase()}`,
+          ...configAliases,
+          ...settingAliases,
+        ].filter(Boolean)));
 
     for (const trigger of triggers) {
-      const index = triggerIndex(messageLower, trigger);
+      const index = explicitOnly ? explicitTriggerIndex(messageLower, trigger) : triggerIndex(messageLower, trigger);
       if (index >= 0) {
-        candidates.push({ tenantId, botName, trigger, index });
+        candidates.push({ tenantId, botName, trigger: explicitOnly ? `@${trigger}` : trigger, index });
       }
     }
   };
 
   addCandidate(guildTenantId);
-  await addLoreCandidate(messageLower, candidates, guildTenantId);
+  await addLoreCandidate(messageLower, candidates, guildTenantId, false);
 
   for (const tenantId of await listTenants()) {
     if (tenantId === guildTenantId) continue;
-    addCandidate(tenantId);
-    await addLoreCandidate(messageLower, candidates, tenantId);
+    // A loose name or pet-name in one tenant's Discord must never invoke a
+    // different tenant's bot. Cross-tenant direct addressing requires @name.
+    addCandidate(tenantId, true);
+    await addLoreCandidate(messageLower, candidates, tenantId, true);
   }
 
   candidates.sort((a, b) => a.index - b.index || b.trigger.length - a.trigger.length);
   return candidates[0] || null;
 }
 
-async function addLoreCandidate(messageLower: string, candidates: BotMatch[], tenantId?: string) {
+async function addLoreCandidate(messageLower: string, candidates: BotMatch[], tenantId?: string, explicitOnly = false) {
   if (!tenantId) return;
   const lore = await readWorldLore();
   const characters = Object.values(lore?.characters || {});
@@ -1246,9 +1265,9 @@ async function addLoreCandidate(messageLower: string, candidates: BotMatch[], te
     ].filter(Boolean).map((value) => value.toLowerCase())));
 
     for (const trigger of triggers) {
-      const index = triggerIndex(messageLower, trigger);
+      const index = explicitOnly ? explicitTriggerIndex(messageLower, trigger) : triggerIndex(messageLower, trigger);
       if (index >= 0) {
-        candidates.push({ tenantId, botName: character.currentName, trigger, index });
+        candidates.push({ tenantId, botName: character.currentName, trigger: explicitOnly ? `@${trigger}` : trigger, index });
       }
     }
   }
@@ -1479,7 +1498,7 @@ async function sendCrossBotTargetReplies(input: {
 
     const aiRes = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         username: input.userName,
         userId: undefined,
@@ -1524,18 +1543,20 @@ async function sendCrossBotTargetReplies(input: {
       target: target.currentName,
       channelId: input.channelId,
     });
-    await appendBotInteraction({
-      platform: 'discord',
-      tenantId: targetTenantId,
-      channelId: input.channelId,
-      sourceUser: input.userName,
-      speakerBotId: target.stableId,
-      speakerBotName: target.currentName,
-      targetBotIds: [previousSpeaker.stableId],
-      targetBotNames: [previousSpeaker.currentName],
-      triggerMessage: input.triggerMessage,
-      responseMessage: reply,
-    }).catch(() => {});
+    if (targetTenantId) {
+      await appendBotInteraction({
+        platform: 'discord',
+        tenantId: targetTenantId,
+        channelId: input.channelId,
+        sourceUser: input.userName,
+        speakerBotId: target.stableId,
+        speakerBotName: target.currentName,
+        targetBotIds: [previousSpeaker.stableId],
+        targetBotNames: [previousSpeaker.currentName],
+        triggerMessage: input.triggerMessage,
+        responseMessage: reply,
+      }).catch(() => {});
+    }
     if (sentReply?.id) replyIds.push(sentReply.id);
 
     currentTarget = previousSpeaker as WorldLoreCharacter;

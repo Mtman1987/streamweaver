@@ -3,12 +3,14 @@ import { getStoredTokens, ensureValidToken, isTwitchAuthFailure } from '@/lib/to
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getConfigSection, initializeLocalConfig } from '@/lib/local-config/service';
+import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 
 export async function GET(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    const tenantFromQuery = request.nextUrl.searchParams.get('tenant') || undefined;
-    const tenantId = session?.tenantId || tenantFromQuery;
+    const internalAccess = hasInternalServiceAccess(request);
+    const tenantId = session?.tenantId || (internalAccess ? request.nextUrl.searchParams.get('tenant') || undefined : undefined);
+    if (!tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
     await initializeLocalConfig(tenantId);
     const twitchConfig = await getConfigSection('twitch', tenantId);
     const { clientId, clientSecret } = twitchConfig;

@@ -9,6 +9,7 @@ import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import { readUserConfigSync } from '../lib/user-config';
 import { resolveSayStreamKey, SAY_SHOUTOUT_SUPPRESSION_MS, suppressSayForTenant } from './say-tts';
+import { internalServiceHeaders } from '../lib/internal-service-auth';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -396,7 +397,7 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
                     const tenantQuery = realTenantId ? `?tenant=${encodeURIComponent(realTenantId)}` : '';
                     await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                         body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
                     }).catch(err => console.error('[WalkOn] Failed to update TTS player:', err));
                 } else {

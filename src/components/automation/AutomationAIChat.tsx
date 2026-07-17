@@ -92,7 +92,9 @@ export default function AutomationAIChat({
       return 'build';
     }
     
-    return 'chat';
+    // This is a dedicated creation surface: a plain idea is still a build
+    // request even when the user does not know automation terminology yet.
+    return 'build';
   };
   
   const handleSendMessage = async () => {
@@ -143,13 +145,7 @@ export default function AutomationAIChat({
           suggestedChanges: data?.suggestedChanges,
         };
       } else {
-        // General chat - placeholder
-        assistantMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'Ask me for a workflow, command behavior, or code snippet and I will draft something you can review and apply.',
-          timestamp: new Date()
-        };
+        throw new Error('Unable to classify the workflow idea.');
       }
       
       setMessages(prev => [...prev, assistantMessage]);

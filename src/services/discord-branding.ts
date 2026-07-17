@@ -12,6 +12,7 @@ const DISCORD_BOT_PROFILE_CACHE_MS = 60 * 60 * 1000;
 export type DiscordBotEmbed = {
     description: string;
     thumbnail: { url: string };
+    image?: { url: string };
     author: {
         name: string;
         icon_url?: string;
@@ -39,33 +40,26 @@ function firstUrl(...values: unknown[]): string {
 
 export function buildBotAvatarUrl(tenantId?: string): string {
     const baseUrl = getConfiguredAppUrl();
-    const tenantParam = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+    const tenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
     // Use the same direct GIF endpoint as the TTS player instead of the JS overlay page.
     return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}`;
 }
 
 type DiscordMediaSlot = 'public' | 'private';
 
-function discordMediaSlotUrl(slot: DiscordMediaSlot): string {
-    const fileSlot = slot === 'private' ? 'private-dm' : 'public-discord';
-    return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath(fileSlot)}`;
-}
-
-function rewriteLegacyLocalDiscordMediaUrl(value: string): string {
+function rewriteLegacyLocalDiscordMediaUrl(value: string, tenantId?: string): string {
     try {
         const url = new URL(value);
         const pathname = url.pathname.toLowerCase();
-        if (pathname === '/avatars/private-dm.gif') return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath('private-dm')}`;
-        if (pathname === '/avatars/public-discord.gif') return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath('public-discord')}`;
+        if (pathname === '/avatars/private-dm.gif') return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath('private-dm', tenantId)}`;
+        if (pathname === '/avatars/public-discord.gif') return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath('public-discord', tenantId)}`;
     } catch {
         return '';
     }
     return '';
 }
 
-function getConfiguredBotAvatarMediaUrl(tenantId?: string, slot: DiscordMediaSlot = 'public'): string {
-    if (slot === 'public') return buildBotAvatarUrl(tenantId);
-
+function getConfiguredDiscordEmbedMediaUrl(tenantId?: string, slot: DiscordMediaSlot = 'public'): string {
     const config = readUserConfigSync(tenantId);
     const slotUrls = slot === 'private'
         ? [config.PRIVATE_DM_GIF_URL, config.PUBLIC_DISCORD_GIF_URL]
@@ -78,12 +72,11 @@ function getConfiguredBotAvatarMediaUrl(tenantId?: string, slot: DiscordMediaSlo
         config.BOT_AVATAR_URL,
     );
     if (configured) {
-        const rewritten = rewriteLegacyLocalDiscordMediaUrl(configured);
+        const rewritten = rewriteLegacyLocalDiscordMediaUrl(configured, tenantId);
         if (rewritten) return rewritten;
     }
     if (configured) return configured;
-    if (slot === 'private') return discordMediaSlotUrl(slot);
-    return buildBotAvatarUrl(tenantId);
+    return '';
 }
 
 export function buildStreamWeaverLogoUrl(): string {
@@ -222,7 +215,8 @@ export async function buildDiscordBotEmbed(input: {
     const authorName = input.authorName || defaultBotName || owner.name;
     const authorIconUrl = input.authorIconUrl
         || owner.iconUrl;
-    const avatarMediaUrl = getConfiguredBotAvatarMediaUrl(resolvedTenantId, input.mediaSlot) || buildBotAvatarUrl(resolvedTenantId);
+    const avatarMediaUrl = buildBotAvatarUrl(resolvedTenantId);
+    const embedMediaUrl = getConfiguredDiscordEmbedMediaUrl(resolvedTenantId, input.mediaSlot);
     const footerParts = [STREAMWEAVER_BRAND_NAME];
     if (owner.name && owner.name !== STREAMWEAVER_BRAND_NAME) {
         footerParts.push(owner.name);
@@ -234,6 +228,7 @@ export async function buildDiscordBotEmbed(input: {
     return {
         description: input.description,
         thumbnail: { url: avatarMediaUrl },
+        ...(embedMediaUrl ? { image: { url: embedMediaUrl } } : {}),
         author: {
             name: authorName,
             ...(authorIconUrl ? { icon_url: authorIconUrl } : {}),

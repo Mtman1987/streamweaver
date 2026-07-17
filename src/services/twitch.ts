@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getChatOutputContext } from './chat-output-context';
+import { internalServiceHeaders } from '../lib/internal-service-auth';
 
 // In-memory cache for the app access token
 let appAccessToken: { token: string; expires: number } | null = null;
@@ -685,7 +686,7 @@ export async function getChatters(tenantId?: string): Promise<{ user_id: string;
         const url = tenantId 
             ? `${baseUrl}/api/chat/chatters?tenant=${tenantId}`
             : `${baseUrl}/api/chat/chatters`;
-        const response = await fetch(url);
+        const response = await fetch(url, { headers: internalServiceHeaders() });
         
         if (!response.ok) {
             console.warn(`[getChatters] API returned ${response.status}: ${response.statusText}`);

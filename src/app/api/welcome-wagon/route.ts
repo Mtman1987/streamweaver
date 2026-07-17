@@ -12,8 +12,10 @@ const welcomeActionSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    const tenantId = request.nextUrl.searchParams.get('tenantId') || session?.tenantId || undefined;
-    const excludedUsers = await getExcludedUsers(tenantId);
+    if (!session?.tenantId) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    const excludedUsers = await getExcludedUsers(session.tenantId);
     return apiOk({ excludedUsers });
   } catch (error) {
     return apiError('Failed to get excluded users', { status: 500, code: 'INTERNAL_ERROR' });
@@ -29,15 +31,17 @@ export async function POST(request: NextRequest) {
 
     const { username, action } = parsed.data;
     const session = getTenantFromRequest(request);
-    const tenantId = request.nextUrl.searchParams.get('tenantId') || session?.tenantId || undefined;
+    if (!session?.tenantId) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
     
     if (action === 'add') {
-      await addExcludedUser(username, tenantId);
+      await addExcludedUser(username, session.tenantId);
       return apiOk({ message: `Added ${username} to excluded list` });
     }
 
     if (action === 'remove') {
-      await removeExcludedUser(username, tenantId);
+      await removeExcludedUser(username, session.tenantId);
       return apiOk({ message: `Removed ${username} from excluded list` });
     }
 

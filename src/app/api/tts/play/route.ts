@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS } from '@/services/tts-provider';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const text = (url.searchParams.get('text') || '').trim();
-    const tenantId = (url.searchParams.get('tenantId') || '').trim() || undefined;
+    const session = getTenantFromRequest(request);
+    if (!session?.tenantId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const tenantId = session.tenantId;
 
     if (!text) {
       return NextResponse.json({ error: 'text query param is required' }, { status: 400 });

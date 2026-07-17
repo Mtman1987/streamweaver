@@ -11,6 +11,7 @@ import { incrementMetric } from './metrics';
 import { givePoints, stealPoints } from './points-transfer';
 import { handleOneOffTranslation } from './translation-manager';
 import type { StorageContext } from './storage';
+import { internalServiceHeaders } from '../lib/internal-service-auth';
 
 /**
  * Handle an incoming Kick chat message — process commands and award points
@@ -112,7 +113,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
   if (username.toLowerCase() === 'streamweaverbot') return;
 
   if (isCommand) {
-    incrementMetric('totalCommands').catch(() => {});
+    incrementMetric('totalCommands', 1, tenantId).catch(() => {});
     const cmdName = message.substring(1).split(' ')[0].toLowerCase();
     const args = message.substring(cmdName.length + 2).trim();
 
@@ -140,7 +141,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         return;
       }
       case 't': {
-        const translated = await handleOneOffTranslation(args.split(/\s+/).filter(Boolean));
+        const translated = await handleOneOffTranslation(args.split(/\s+/).filter(Boolean), tenantId);
         if (translated) await reply(translated);
         return;
       }
@@ -253,7 +254,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
       case 'back': {
         if (!isPrivileged) return;
         const { stopBRB } = require('./brb-clips');
-        stopBRB();
+        stopBRB(tenantId);
         if (typeof (global as any).broadcast === 'function') {
           (global as any).broadcast({ type: 'brb-stop' }, tenantId);
           try {
@@ -528,7 +529,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
           }
         }
         const { getEnabledSetMap, formatSetList } = require('./pokemon-packs');
-        const enabledSets = redeemsConfig.pokePack?.enabledSets || ['base1', 'base2', 'base3'];
+        const enabledSets = redeemsConfig.pokePack?.enabledSets || [];
         const setMap = getEnabledSetMap(enabledSets);
         const setCount = Object.keys(setMap).length;
         if (setCount === 0) {
@@ -537,7 +538,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         }
         const setNumber = parseInt(args, 10);
         if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
-          await reply(formatSetList(setMap));
+          await reply(`${formatSetList(setMap)} | Use !pack 1-${setCount}`);
           return;
         }
         // Open pack silently (suppress Twitch output) and reply to Kick only
@@ -623,7 +624,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
           return;
         }
         try {
-          incrementMetric('shoutoutsGiven').catch(() => {});
+          incrementMetric('shoutoutsGiven', 1, tenantId).catch(() => {});
           const { handleWalkOnShoutout } = require('./walk-on-shoutout');
           const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
           const linkMessage = `Go check out @${targetName} | Twitch: https://twitch.tv/${targetName} | Kick: https://kick.com/${targetName}`;
@@ -964,11 +965,11 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
 
     if (triggers.some(t => t && lowerMsg2.includes(t))) {
       console.log(`[KickDispatcher] AI triggered by "${triggers.find(t => t && lowerMsg2.includes(t))}" in message from ${username}`);
-      incrementMetric('athenaCommands').catch(() => {});
+      incrementMetric('athenaCommands', 1, tenantId).catch(() => {});
       const PORT = process.env.PORT || 3100;
       const res = await fetch(`http://127.0.0.1:${PORT}/api/ai/chat-with-memory`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ username, message, tenantId, context: 'kick' }),
       });
       if (res.ok) {
@@ -986,7 +987,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
               const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
               await fetch(`http://127.0.0.1:${PORT}/api/tts/current${tenantQuery}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
               }).catch(err => console.error('[KickDispatcher] TTS queue failed:', err));
               if (typeof (global as any).broadcast === 'function') {

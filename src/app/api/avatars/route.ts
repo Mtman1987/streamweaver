@@ -20,7 +20,8 @@ function settingsFile(tenantId?: string): string {
 export async function POST(request: NextRequest) {
     try {
         const session = getTenantFromRequest(request);
-        const tid = session?.tenantId;
+        if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+        const tid = session.tenantId;
         const contentType = request.headers.get('content-type') || '';
 
         let type: string;
@@ -90,7 +91,8 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const session = getTenantFromRequest(request);
-        const tid = session?.tenantId;
+        if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+        const tid = session.tenantId;
         const body = await request.json().catch(() => null);
         if (!body) return apiError('Invalid body', { status: 400, code: 'INVALID_BODY' });
         let settings: any = {};

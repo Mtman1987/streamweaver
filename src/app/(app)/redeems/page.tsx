@@ -12,9 +12,9 @@ import { Users, Sparkles, Save, RefreshCw, Gift, ChevronDown, ChevronRight, Sear
 interface CustomReward { pointCost: number; response: string }
 interface RedeemsConfig {
   partnerCheckin: { rewardTitle: string; pointCost: number; discordGuildId: string; discordRoleName: string };
-  crewCheckin: { rewardTitle: string; pointCost: number; apiUrl: string };
+  crewCheckin: { rewardTitle: string; pointCost: number; discordGuildId: string; apiUrl: string };
   modCheckin: { rewardTitle: string; pointCost: number };
-  spaceMountainCheckin: { rewardTitle: string; pointCost: number };
+  spaceMountainCheckin: { rewardTitle: string; pointCost: number; discordGuildId: string };
   pokePack: { rewardTitle: string; pointCost: number; enabledSets: string[] };
   customRewards: Record<string, CustomReward>;
 }
@@ -61,6 +61,8 @@ export default function RedeemsPage() {
       if (cfg) {
         if (!cfg.customRewards) cfg.customRewards = {};
         if (!cfg.pokePack.enabledSets) cfg.pokePack.enabledSets = [];
+        if (!cfg.crewCheckin.discordGuildId) cfg.crewCheckin.discordGuildId = '';
+        if (!cfg.spaceMountainCheckin.discordGuildId) cfg.spaceMountainCheckin.discordGuildId = '';
         setConfig(cfg);
         fetchRewards();
         fetchSets();
@@ -70,7 +72,7 @@ export default function RedeemsPage() {
         if (cfg.partnerCheckin.discordGuildId && cfg.partnerCheckin.discordRoleName) {
           fetchPartners(cfg.partnerCheckin.discordGuildId, cfg.partnerCheckin.discordRoleName);
         }
-        if (cfg.crewCheckin.apiUrl) fetchCheckinSource('crew');
+        if (cfg.crewCheckin.discordGuildId || cfg.crewCheckin.apiUrl) fetchCheckinSource('crew');
         fetchCheckinSource('mod');
         fetchCheckinSource('space-mountain');
       }
@@ -215,10 +217,10 @@ export default function RedeemsPage() {
   if (!config) return <div className="p-6 text-muted-foreground">Loading redeems config...</div>;
 
   const partnerReady = !!(config.partnerCheckin.rewardTitle && config.partnerCheckin.discordGuildId && config.partnerCheckin.discordRoleName);
-  const crewReady = !!(config.crewCheckin.rewardTitle && config.crewCheckin.apiUrl);
+  const crewReady = !!(config.crewCheckin.rewardTitle && config.crewCheckin.discordGuildId);
   const modReady = !!config.modCheckin.rewardTitle;
-  const spaceReady = !!config.spaceMountainCheckin.rewardTitle;
-  const pokeReady = !!config.pokePack.rewardTitle;
+  const spaceReady = !!(config.spaceMountainCheckin.rewardTitle && config.spaceMountainCheckin.discordGuildId);
+  const pokeReady = !!(config.pokePack.rewardTitle && config.pokePack.enabledSets?.length);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -332,7 +334,7 @@ export default function RedeemsPage() {
               <Users className="w-5 h-5" />
               <div>
                 <CardTitle>Crew Check-In</CardTitle>
-                <CardDescription>Uses a Stream Hub API endpoint to pull the crew list live, then runs the same numbered check-in flow.</CardDescription>
+                <CardDescription>Uses the selected Discord server&apos;s live Stream Hub Crew group for the numbered check-in flow.</CardDescription>
               </div>
             </div>
             <Badge variant={crewReady ? 'default' : 'secondary'}>
@@ -356,10 +358,12 @@ export default function RedeemsPage() {
                 onChange={e => setConfig({ ...config, crewCheckin: { ...config.crewCheckin, pointCost: parseInt(e.target.value) || 0 } })} />
             </div>
             <div>
-              <Label>Stream Hub API URL</Label>
-              <Input value={config.crewCheckin.apiUrl}
-                onChange={e => setConfig({ ...config, crewCheckin: { ...config.crewCheckin, apiUrl: e.target.value } })}
-                placeholder="https://your-stream-hub/checkins/crew" />
+              <Label>Discord Server</Label>
+              <select className={selectClass} value={config.crewCheckin.discordGuildId}
+                onChange={e => setConfig({ ...config, crewCheckin: { ...config.crewCheckin, discordGuildId: e.target.value } })}>
+                <option value="">Select a server...</option>
+                {guilds.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
             </div>
           </div>
           <div className="flex gap-2">
@@ -374,7 +378,8 @@ export default function RedeemsPage() {
                 </div>
               ))}
             </div>
-          ) : <p className="text-sm text-muted-foreground">No crew loaded yet.</p>}
+          ) : crewSource?.error ? <p className="text-sm text-destructive">{crewSource.error}</p>
+            : <p className="text-sm text-muted-foreground">No crew loaded yet.</p>}
         </CardContent>
       </Card>
 
@@ -427,7 +432,7 @@ export default function RedeemsPage() {
               <Sparkles className="w-5 h-5" />
               <div>
                 <CardTitle>Space Mountain Check-In</CardTitle>
-                <CardDescription>Bulk checks in everyone else currently in chat, no numbered pick required.</CardDescription>
+                <CardDescription>Bulk checks in active viewers from this streamer&apos;s Twitch chat who are also linked members of the selected Discord server.</CardDescription>
               </div>
             </div>
             <Badge variant={spaceReady ? 'default' : 'secondary'}>
@@ -436,7 +441,7 @@ export default function RedeemsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label>Twitch Reward</Label>
               <select className={selectClass} value={config.spaceMountainCheckin.rewardTitle}
@@ -450,11 +455,20 @@ export default function RedeemsPage() {
               <Input type="number" min={0} value={config.spaceMountainCheckin.pointCost ?? 0}
                 onChange={e => setConfig({ ...config, spaceMountainCheckin: { ...config.spaceMountainCheckin, pointCost: parseInt(e.target.value) || 0 } })} />
             </div>
+            <div>
+              <Label>Discord Server</Label>
+              <select className={selectClass} value={config.spaceMountainCheckin.discordGuildId}
+                onChange={e => setConfig({ ...config, spaceMountainCheckin: { ...config.spaceMountainCheckin, discordGuildId: e.target.value } })}>
+                <option value="">Select a server...</option>
+                {guilds.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => fetchCheckinSource('space-mountain')}>Preview Riders</Button>
           <p className="text-sm text-muted-foreground">
-            Current rider pool: {spaceSource?.entries?.length || 0} chatters excluding the redeemer and broadcaster.
+            Current rider pool: {spaceSource?.entries?.length || 0} active chatters who are linked in this Discord server, excluding the redeemer and broadcaster. The rotating front-seat rider earns 100 points.
           </p>
+          {spaceSource?.error && <p className="text-sm text-destructive">{spaceSource.error}</p>}
         </CardContent>
       </Card>
 
@@ -581,7 +595,7 @@ export default function RedeemsPage() {
               <Sparkles className="w-5 h-5" />
               <div>
                 <CardTitle>PokePack</CardTitle>
-                <CardDescription>Viewers redeem to open a Pokemon card pack from the enabled sets below.</CardDescription>
+                <CardDescription>You choose this month&apos;s set pool. Viewers choose a numbered set from whatever pool size you save.</CardDescription>
               </div>
             </div>
             <Badge variant={pokeReady ? 'default' : 'secondary'}>
@@ -609,13 +623,14 @@ export default function RedeemsPage() {
           {/* Set selection */}
           <div className="border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="font-medium">Enabled Sets ({(config.pokePack.enabledSets || []).length} of {allSets.length})</span>
+              <span className="font-medium">Monthly pool ({(config.pokePack.enabledSets || []).length} selected)</span>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setConfig({ ...config, pokePack: { ...config.pokePack, enabledSets: [] } })}>
                   Clear All
                 </Button>
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">Save Config after changing the pool. The displayed order becomes the viewer&apos;s dynamic 1–{(config.pokePack.enabledSets || []).length || 'N'} choice.</p>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input className="pl-9 h-8 text-sm" placeholder="Search sets..." value={setSearch} onChange={e => setSetSearch(e.target.value)} />
@@ -630,9 +645,12 @@ export default function RedeemsPage() {
                   const enabled = config.pokePack.enabledSets || [];
                   // Show enabled first, then the rest
                   const sorted = [...filtered].sort((a, b) => {
-                    const aOn = enabled.includes(a.id) ? 0 : 1;
-                    const bOn = enabled.includes(b.id) ? 0 : 1;
-                    return aOn - bOn;
+                    const aIndex = enabled.indexOf(a.id);
+                    const bIndex = enabled.indexOf(b.id);
+                    if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex;
+                    if (aIndex >= 0) return -1;
+                    if (bIndex >= 0) return 1;
+                    return 0;
                   });
                   let lastSeries = '';
                   return sorted.map(s => {
@@ -654,6 +672,7 @@ export default function RedeemsPage() {
                             {isEnabled && <Check className="w-3 h-3" />}
                           </div>
                           {s.images?.symbol && <img src={s.images.symbol} alt="" className="w-5 h-5 flex-shrink-0" />}
+                          {isEnabled && <Badge variant="outline" className="flex-shrink-0">Choice {enabled.indexOf(s.id) + 1}</Badge>}
                           <span className="flex-1 truncate">{s.name}</span>
                           <span className="text-xs text-muted-foreground flex-shrink-0">{s.total} cards</span>
                         </button>

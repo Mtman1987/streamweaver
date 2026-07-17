@@ -5,9 +5,9 @@ import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import { readUserConfig } from '../lib/user-config';
 import { isKnownBot } from './known-bots';
 import { getExcludedUsers } from './welcome-wagon-tracker';
+import { internalServiceHeaders } from '../lib/internal-service-auth';
 
-let isPlaying = false;
-let stopRequested = false;
+const runtimeByTenant = new Map<string, { isPlaying: boolean; stopRequested: boolean }>();
 
 const CLIP_MODE_FILE = 'brb-clip-mode.json';
 
@@ -76,7 +76,9 @@ async function fetchClipsForUser(username: string): Promise<any[]> {
 
 async function getChatters(tenantId?: string): Promise<string[]> {
   try {
-    const res = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/chat/chatters?tenant=${tenantId || ''}`);
+    const res = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/chat/chatters?tenant=${tenantId || ''}`, {
+      headers: internalServiceHeaders(),
+    });
     if (!res.ok) return [];
     const data = await res.json();
     return (data.chatters || []).map((c: any) => c.user_login).filter(Boolean);
@@ -106,8 +108,6 @@ async function getEligibleViewerClipTargets(chatters: string[], broadcasterName:
 }
 
 export async function startBRB(broadcasterName: string, tenantId?: string): Promise<void> {
-  if (isPlaying) { console.log('[BRB] Already playing'); return; }
-
   // Resolve tenant from broadcaster name if not provided
   if (!tenantId) {
     try {
@@ -119,9 +119,13 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
       }
     } catch {}
   }
+  if (!tenantId) throw new Error('BRB playback requires tenant context');
+  const runtime = runtimeByTenant.get(tenantId) || { isPlaying: false, stopRequested: false };
+  runtimeByTenant.set(tenantId, runtime);
+  if (runtime.isPlaying) { console.log(`[BRB:${tenantId}] Already playing`); return; }
 
-  isPlaying = true;
-  stopRequested = false;
+  runtime.isPlaying = true;
+  runtime.stopRequested = false;
   console.log(`[BRB] Starting for ${broadcasterName}, tenant ${tenantId}`);
 
   const { getConfigSection } = require('../lib/local-config/service');
@@ -134,7 +138,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
 
   await new Promise(r => setTimeout(r, 2000));
 
-  while (!stopRequested) {
+  while (!runtime.stopRequested) {
     const useViewerClips = await getClipModeFromStorage(tenantId);
     let targetUsers: string[];
 
@@ -149,7 +153,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
     }
 
     for (const user of targetUsers) {
-      if (stopRequested) break;
+      if (runtime.stopRequested) break;
 
       console.log(`[BRB] Fetching clips for ${user}...`);
       const clips = await fetchClipsForUser(user);
@@ -171,7 +175,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
       }, tenantId);
 
       const endTime = Date.now() + duration + 2000;
-      while (Date.now() < endTime && !stopRequested) {
+      while (Date.now() < endTime && !runtime.stopRequested) {
         await new Promise(r => setTimeout(r, 1000));
       }
     }
@@ -180,10 +184,15 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
   bc({ type: 'brb-stop' }, tenantId);
   bc({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
 
-  isPlaying = false;
+  runtime.isPlaying = false;
   console.log('[BRB] Stopped');
 }
 
-export function stopBRB(): void {
-  stopRequested = true;
+export function stopBRB(tenantId?: string): void {
+  if (!tenantId) {
+    if (process.env.NODE_ENV === 'production') throw new Error('Stopping BRB requires tenant context');
+    return;
+  }
+  const runtime = runtimeByTenant.get(tenantId);
+  if (runtime) runtime.stopRequested = true;
 }

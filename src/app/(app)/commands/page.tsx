@@ -94,8 +94,9 @@ export default function CommandsPage() {
   }, [error, toast]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("skip_shoutout_overlay");
-    setSkipShoutoutOverlay(saved === "true");
+    fetch('/api/user-config').then(r => r.ok ? r.json() : null).then(payload => {
+      setSkipShoutoutOverlay(payload?.config?.SKIP_SHOUTOUT_OVERLAY === 'true');
+    }).catch(() => {});
   }, []);
 
   const handleRunCommand = async (id: string) => {
@@ -177,17 +178,18 @@ export default function CommandsPage() {
   const handleToggleShoutoutMode = async (checked: boolean) => {
     setSkipShoutoutOverlay(checked);
     setIsSavingShoutoutMode(true);
-    localStorage.setItem("skip_shoutout_overlay", checked ? "true" : "false");
     try {
-      await fetch("/api/bot-settings", {
+      const response = await fetch("/api/bot-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ skipShoutoutOverlay: checked }),
       });
+      if (!response.ok) throw new Error('Server rejected the setting');
       toast({
         title: checked ? "Single-message shoutouts enabled" : "Overlay shoutouts enabled",
       });
     } catch (e: any) {
+      setSkipShoutoutOverlay(!checked);
       toast({
         variant: "destructive",
         title: "Failed to save shoutout mode",

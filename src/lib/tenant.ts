@@ -219,13 +219,8 @@ export async function listTenants(): Promise<string[]> {
  * Extract tenant ID from the streamweaver-session cookie value.
  */
 export function getTenantIdFromSession(sessionJson: string | undefined): string | null {
-  if (!sessionJson) return null;
-  try {
-    const session = JSON.parse(sessionJson);
-    return session.id || null;
-  } catch {
-    return null;
-  }
+  const { parseSessionCookie } = require('./session-cookie');
+  return parseSessionCookie(sessionJson)?.id || null;
 }
 
 /**

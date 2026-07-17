@@ -21,10 +21,13 @@ export async function POST(req: NextRequest) {
 
         const { action, user, betInput, settings: newSettings } = parsed.data;
         const session = getTenantFromRequest(req);
-        const ctx = session ? { tenantId: session.tenantId, username: session.username } : undefined;
+        if (!session?.tenantId) {
+            return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+        }
+        const ctx = { tenantId: session.tenantId, username: session.username };
         
         if (action === 'get-settings') {
-            const settings = getSettings();
+            const settings = await getSettings(session.tenantId);
             return apiOk({ success: true, settings });
         }
         
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
             if (!newSettings) {
                 return apiError('Settings required', { status: 400, code: 'SETTINGS_REQUIRED' });
             }
-            await updateSettings(newSettings);
+            await updateSettings(newSettings, session.tenantId);
             return apiOk({ success: true });
         }
         
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
             }
             
             const userPoints = await getPointBalance(user, ctx);
-            const result = await handleGamble(user, betInput || '', userPoints);
+            const result = await handleGamble(user, betInput || '', userPoints, session.tenantId);
             
             if (result) {
                 await updateUserPoints(user, result.newTotal, ctx);
@@ -61,7 +64,11 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
     try {
-        const settings = getSettings();
+        const session = getTenantFromRequest(req);
+        if (!session?.tenantId) {
+            return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+        }
+        const settings = await getSettings(session.tenantId);
         return apiOk({ success: true, settings });
     } catch (error: any) {
         console.error('[Classic Gamble API] Error:', error);

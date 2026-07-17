@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const requiredSecretNames = ['BOT_SECRET_KEY', 'DSH_SERVICE_SECRET', 'STREAMWEAVER_CLIENT_SECRET', 'SPMT_API_KEY'];
+  const requiredSecretNames = ['BOT_SECRET_KEY', 'DSH_SERVICE_SECRET', 'MOUNTAINVIEW_STREAMWEAVER_SECRET', 'STREAMWEAVER_CLIENT_SECRET', 'STREAMWEAVER_SESSION_SECRET', 'SPMT_API_KEY'];
   const missingSecretNames = process.env.NODE_ENV === 'production'
     ? requiredSecretNames.filter((name) => !String(process.env[name] || '').trim())
     : [];

@@ -100,6 +100,9 @@ async function importPayload(payload: any, tenantId?: string) {
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
+    if (!session?.tenantId) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
     const formData = await request.formData();
     const actionsFile = formData.get('actionsFile') as File | null;
     const commandsFile = formData.get('commandsFile') as File | null;
@@ -118,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     for (const file of [actionsFile, commandsFile].filter(Boolean) as File[]) {
       const payload = JSON.parse(await file.text());
-      const partial = await importPayload(payload, session?.tenantId);
+      const partial = await importPayload(payload, session.tenantId);
       results.actions.imported += partial.actions.imported;
       results.actions.skipped += partial.actions.skipped;
       results.actions.total = partial.actions.total;

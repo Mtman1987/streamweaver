@@ -40,8 +40,28 @@ function modeFilePath(tenantId?: string): string {
   return globalPath('bot-share-mode.json');
 }
 
-function historyFilePath(): string {
-  return globalPath('bot-interactions.json');
+function historyFilePath(tenantId: string): string {
+  if (!tenantId) throw new Error('Bot interaction history requires a tenant ID');
+  return tenantPath(tenantId, 'data/bot-interactions.json');
+}
+
+const historyWriteLocks = new Map<string, Promise<void>>();
+
+async function readHistoryFile(filePath: string): Promise<BotInteractionEntry[]> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeHistoryFile(filePath: string, entries: BotInteractionEntry[]): Promise<void> {
+  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(entries, null, 2));
+  await fs.rename(temporaryPath, filePath);
 }
 
 function normalize(value: string): string {
@@ -93,31 +113,40 @@ export async function toggleBotShareMode(tenantId?: string): Promise<BotShareMod
   return setBotShareMode(current === 'on' ? 'off' : 'on', tenantId);
 }
 
-export async function readBotInteractionHistory(limit = 10): Promise<BotInteractionEntry[]> {
+export async function readBotInteractionHistory(limit = 10, tenantId: string): Promise<BotInteractionEntry[]> {
+  const tenantHistory = await readHistoryFile(historyFilePath(tenantId));
+  if (tenantHistory.length) return tenantHistory.slice(-Math.max(1, limit));
+
+  // Grandfather only entries explicitly owned by this tenant from the former
+  // global history file. Entries without ownership cannot be copied safely.
+  const legacyHistory = await readHistoryFile(globalPath('bot-interactions.json'));
+  return legacyHistory
+    .filter((entry) => entry.tenantId === tenantId)
+    .slice(-Math.max(1, limit));
+}
+
+export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id' | 'timestamp'> & { tenantId: string }): Promise<void> {
+  const filePath = historyFilePath(entry.tenantId);
+  const previousWrite = historyWriteLocks.get(entry.tenantId) || Promise.resolve();
+  const nextWrite = previousWrite.then(async () => {
+    const existing = await readBotInteractionHistory(100, entry.tenantId);
+    const next: BotInteractionEntry = {
+      ...entry,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+    };
+    await writeHistoryFile(filePath, [...existing, next].slice(-100));
+  });
+  historyWriteLocks.set(entry.tenantId, nextWrite);
   try {
-    const raw = await fs.readFile(historyFilePath(), 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.slice(-Math.max(1, limit));
-  } catch {
-    return [];
+    await nextWrite;
+  } finally {
+    if (historyWriteLocks.get(entry.tenantId) === nextWrite) historyWriteLocks.delete(entry.tenantId);
   }
 }
 
-export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id' | 'timestamp'>): Promise<void> {
-  const filePath = historyFilePath();
-  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
-  const existing = await readBotInteractionHistory(100);
-  const next: BotInteractionEntry = {
-    ...entry,
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: new Date().toISOString(),
-  };
-  await fs.writeFile(filePath, JSON.stringify([...existing, next].slice(-100), null, 2));
-}
-
-export async function formatBotInteractionHistoryForPrompt(limit = 8): Promise<string> {
-  const history = await readBotInteractionHistory(limit);
+export async function formatBotInteractionHistoryForPrompt(limit = 8, tenantId: string): Promise<string> {
+  const history = await readBotInteractionHistory(limit, tenantId);
   if (!history.length) return '';
   const lines = history.map((entry) => {
     const targets = entry.targetBotNames.length ? ` to ${entry.targetBotNames.join(', ')}` : '';
@@ -212,7 +241,7 @@ export async function decideBotInteraction(input: {
   }
   if (!allowedTargets.length) return null;
 
-  const recent = await formatBotInteractionHistoryForPrompt(6);
+  const recent = input.tenantId ? await formatBotInteractionHistoryForPrompt(6, input.tenantId) : '';
   const targetNames = allowedTargets.map((target) => target.currentName).join(', ');
   const promptInstruction = [
     `Cross-bot interaction request on ${input.platform}.`,

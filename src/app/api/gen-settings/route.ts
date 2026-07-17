@@ -6,7 +6,6 @@ import { setGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
 const schema = z.object({
-  tenantId: z.string().trim().max(128).optional(),
   mode: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
   model: z.string().trim().max(200).optional(),
   lora: z.string().trim().max(200).optional(),
@@ -23,7 +22,8 @@ const schema = z.object({
 
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
-  const tenantId = session?.tenantId || request.nextUrl.searchParams.get('tenantId') || undefined;
+  if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+  const tenantId = session.tenantId;
   const settings = await readGenerationSettings(tenantId);
   return apiOk(settings);
 }
@@ -32,11 +32,10 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return apiError('Invalid body', { status: 400, code: 'INVALID_BODY', details: parsed.error.flatten() });
   const session = getTenantFromRequest(request);
-  const { tenantId: requestedTenantId, ...settings } = parsed.data;
-  const tenantId = session?.tenantId || requestedTenantId || undefined;
-  const saved = await writeGenerationSettings(settings, tenantId);
+  if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+  const saved = await writeGenerationSettings(parsed.data, session.tenantId);
   if (parsed.data.mode) {
-    await setGenMode(parsed.data.mode, tenantId).catch((err) => console.warn('[gen-settings] setGenMode sync failed:', err));
+    await setGenMode(parsed.data.mode, session.tenantId).catch((err) => console.warn('[gen-settings] setGenMode sync failed:', err));
   }
   return apiOk(saved);
 }

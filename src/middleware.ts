@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { serializeSessionCookieEdge, STREAMWEAVER_EDGE_SESSION_MAX_AGE, verifySessionCookieEdge } from '@/lib/session-cookie-edge';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -32,17 +33,6 @@ const PUBLIC_PATHS = [
   '/manifest.json',
 ];
 
-function getSession(request: NextRequest): { id: string; username: string } | null {
-  const cookie = request.cookies.get('streamweaver-session')?.value;
-  if (!cookie) return null;
-  try {
-    const parsed = JSON.parse(cookie);
-    return parsed.id ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function isPublicApiRequest(request: NextRequest): boolean {
   const { pathname, searchParams } = request.nextUrl;
   const method = request.method.toUpperCase();
@@ -53,7 +43,6 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname === '/api/discord/chat') return true;
   if (pathname.startsWith('/api/discord-media/')) return true;
   if (pathname === '/api/integrations/social-stream') return true;
-  if (pathname.startsWith('/api/gen-settings')) return true;
   if (pathname.startsWith('/api/say/')) return true;
 
   if (method !== 'GET') return false;
@@ -91,6 +80,11 @@ function hasSharedBotAccess(request: NextRequest): boolean {
 
 function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
+  const authHeader = request.headers.get('authorization') || '';
+  if (!authHeader.startsWith('Bearer ')) return false;
+  const token = authHeader.slice('Bearer '.length).trim();
+  const expected = String(process.env.MOUNTAINVIEW_STREAMWEAVER_SECRET || '').trim();
+  if (!expected || token !== expected) return false;
   return [
     '/api/ai/chat-with-memory',
     '/api/ai/image',
@@ -100,7 +94,7 @@ function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   ].includes(request.nextUrl.pathname);
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow internal server-to-server API requests (localhost)
@@ -113,7 +107,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname.startsWith('/api/mountainview/')) {
+  if ([
+    '/api/ai/chat-with-memory',
+    '/api/ai/image',
+    '/api/private-chat/respond',
+    '/api/tts',
+    '/api/tts/current',
+  ].includes(pathname) && hasSharedBotAccess(request)) {
     return NextResponse.next();
   }
 
@@ -135,7 +135,45 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = getSession(request);
+  const sessionCookie = request.cookies.get('streamweaver-session')?.value;
+  const session = await verifySessionCookieEdge(sessionCookie);
+
+  // One-time, provider-verified migration for existing SPMT sessions. The old
+  // unsigned tenant cookie alone is never accepted as proof.
+  if (!session && request.method === 'GET' && sessionCookie?.startsWith('{')) {
+    const spmtToken = request.cookies.get('streamweaver-spmt-token')?.value;
+    if (spmtToken) {
+      try {
+        const legacy = JSON.parse(sessionCookie);
+        const spmtBaseUrl = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
+        const userResponse = await fetch(`${spmtBaseUrl}/api/oauth/userinfo`, {
+          headers: { Authorization: `Bearer ${spmtToken}` },
+          cache: 'no-store',
+        });
+        const user = await userResponse.json().catch(() => null);
+        const tenantId = String(user?.twitchId || user?.twitch_id || user?.id || '');
+        if (userResponse.ok && tenantId && tenantId === String(legacy?.id || '') && user?.username) {
+          const signed = await serializeSessionCookieEdge({
+            id: tenantId,
+            spmtUserId: String(user.id),
+            identityProvider: 'spmt',
+            username: String(user.twitchUsername || user.twitch_username || user.username),
+            displayName: String(user.displayName || user.display_name || user.username),
+            loginTime: Number(legacy.loginTime || Date.now()),
+          });
+          const redirect = NextResponse.redirect(request.nextUrl);
+          redirect.cookies.set('streamweaver-session', signed, {
+            httpOnly: true,
+            secure: request.nextUrl.protocol === 'https:',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: STREAMWEAVER_EDGE_SESSION_MAX_AGE,
+          });
+          return redirect;
+        }
+      } catch {}
+    }
+  }
 
   // Root path — redirect based on auth state (avoids rendering the broken root page)
   if (pathname === '/' || pathname === '') {

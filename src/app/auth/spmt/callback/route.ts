@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { bootstrapTenant } from '@/lib/tenant';
+import { serializeSessionCookie, STREAMWEAVER_SESSION_MAX_AGE } from '@/lib/session-cookie';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
   await bootstrapTenant(tenantId, String(user.twitchUsername || user.twitch_username || user.username));
 
   const response = NextResponse.redirect(`${appOrigin}/dashboard`);
-  response.cookies.set('streamweaver-session', JSON.stringify({
+  response.cookies.set('streamweaver-session', serializeSessionCookie({
     id: tenantId,
     spmtUserId: String(user.id),
     identityProvider: 'spmt',
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
     secure: appOrigin.startsWith('https://'),
     sameSite: 'lax',
     path: '/',
-    maxAge: 7 * 24 * 60 * 60,
+    maxAge: STREAMWEAVER_SESSION_MAX_AGE,
   });
   response.cookies.set('streamweaver-spmt-token', String(tokenPayload.access_token), {
     httpOnly: true,

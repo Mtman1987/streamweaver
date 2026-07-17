@@ -1,4 +1,5 @@
 import { getInternalAppUrl } from '@/lib/runtime-origin';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 export type QueueTtsOverlayResult = {
   ok: boolean;
@@ -13,10 +14,7 @@ export async function queueTtsOverlay(text: string, tenantId?: string): Promise<
 
   try {
     const baseUrl = getInternalAppUrl();
-    const headers = {
-      'Content-Type': 'application/json',
-      'x-mountainview-bridge': '1',
-    };
+    const headers = internalServiceHeaders({ 'Content-Type': 'application/json' });
     const ttsRes = await fetch(`${baseUrl}/api/tts`, {
       method: 'POST',
       headers,

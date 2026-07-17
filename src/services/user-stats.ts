@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { getPoints as getPointsData, addPoints as addPointsData } from './points';
+import { getPoints as getPointsData } from './points';
+import { tenantPath } from '@/lib/tenant';
 import type { StorageContext } from './storage';
 
 type MasterStatsEntry = {
@@ -14,9 +15,6 @@ type MasterStatsEntry = {
   RareCards?: number;
   Badges?: string[];
 };
-
-const STATS_FILE = path.join(process.cwd(), 'data', 'user-stats.json');
-const MASTER_STATS_FILE = path.join(process.cwd(), 'MasterStats', 'allUsers.json');
 
 export interface UserStats {
   user: string;
@@ -33,31 +31,92 @@ export interface UserStats {
   cardCollection: string[];
 }
 
-let statsCache: Record<string, UserStats> = {};
-let lastSave = 0;
+const statsCaches = new Map<string, Record<string, UserStats>>();
+const saveLocks = new Map<string, Promise<void>>();
 
-function loadStats(): Record<string, UserStats> {
-  if (!fs.existsSync(STATS_FILE)) {
-    fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true });
-    fs.writeFileSync(STATS_FILE, '{}');
+function contextKey(ctx?: StorageContext): string {
+  if (ctx?.tenantId) return ctx.tenantId;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('User stats require tenant context');
+  }
+  return '__development_global__';
+}
+
+function statsFile(ctx?: StorageContext): string {
+  if (ctx?.tenantId) return tenantPath(ctx.tenantId, 'data/user-stats.json');
+  contextKey(ctx);
+  return path.join(process.cwd(), 'data', 'user-stats.json');
+}
+
+function readLegacyTenantStats(ctx?: StorageContext): Record<string, UserStats> {
+  if (!ctx?.tenantId || !ctx.username) return {};
+  const legacyPath = path.join(process.cwd(), 'data', 'user-stats.json');
+  if (!fs.existsSync(legacyPath)) return {};
+
+  try {
+    const legacy = JSON.parse(fs.readFileSync(legacyPath, 'utf-8')) as Record<string, UserStats>;
+    const channelKey = ctx.username.toLowerCase();
+    const migrated: Record<string, UserStats> = {};
+    for (const [username, user] of Object.entries(legacy)) {
+      const channelMinutes = Number(user?.watchtimeByChannel?.[channelKey] || 0);
+      if (channelMinutes <= 0) continue;
+      migrated[username] = {
+        ...user,
+        watchtime: channelMinutes,
+        watchtimeByChannel: { [channelKey]: channelMinutes },
+      };
+    }
+    return migrated;
+  } catch (error) {
+    console.warn('[UserStats] Legacy tenant migration skipped:', error);
     return {};
   }
-  const raw = JSON.parse(fs.readFileSync(STATS_FILE, 'utf-8'));
+}
+
+function loadStats(ctx?: StorageContext): Record<string, UserStats> {
+  const key = contextKey(ctx);
+  const cached = statsCaches.get(key);
+  if (cached) return cached;
+
+  const filePath = statsFile(ctx);
+  if (!fs.existsSync(filePath)) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const migrated = readLegacyTenantStats(ctx);
+    fs.writeFileSync(filePath, JSON.stringify(migrated, null, 2));
+    statsCaches.set(key, migrated);
+    if (Object.keys(migrated).length > 0) {
+      console.log('[UserStats] Migrated ' + Object.keys(migrated).length + ' users into tenant ' + key);
+    }
+    return migrated;
+  }
+  const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   // Migrate old entries that lack watchtimeByChannel
   for (const key of Object.keys(raw)) {
     if (!raw[key].watchtimeByChannel) {
       raw[key].watchtimeByChannel = raw[key].watchtime ? { unknown: raw[key].watchtime } : {};
     }
   }
+  statsCaches.set(key, raw);
   return raw;
 }
 
-async function saveStats() {
-  const now = Date.now();
-  if (now - lastSave < 1000) return;
-  
-  fs.writeFileSync(STATS_FILE, JSON.stringify(statsCache, null, 2));
-  lastSave = now;
+async function saveStats(ctx?: StorageContext): Promise<void> {
+  const key = contextKey(ctx);
+  const filePath = statsFile(ctx);
+  const previous = saveLocks.get(key) || Promise.resolve();
+  const next = previous.then(async () => {
+    const stats = statsCaches.get(key) || {};
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const tempPath = filePath + '.tmp.' + process.pid + '.' + Date.now();
+    fs.writeFileSync(tempPath, JSON.stringify(stats, null, 2));
+    fs.renameSync(tempPath, filePath);
+  });
+  saveLocks.set(key, next);
+  try {
+    await next;
+  } finally {
+    if (saveLocks.get(key) === next) saveLocks.delete(key);
+  }
 }
 
 function totalWatchtime(user: UserStats): number {
@@ -65,9 +124,7 @@ function totalWatchtime(user: UserStats): number {
 }
 
 export async function getUser(username: string, ctx?: StorageContext): Promise<UserStats> {
-  if (Object.keys(statsCache).length === 0) {
-    statsCache = loadStats();
-  }
+  const statsCache = loadStats(ctx);
   
   if (!statsCache[username]) {
     const pointsData = await getPointsData(username, ctx);
@@ -90,7 +147,7 @@ export async function getUser(username: string, ctx?: StorageContext): Promise<U
       badges,
       cardCollection: []
     };
-    await saveStats();
+    await saveStats(ctx);
   } else {
     const pointsData = await getPointsData(username, ctx);
     statsCache[username].points = pointsData.points;
@@ -111,7 +168,8 @@ export async function getUser(username: string, ctx?: StorageContext): Promise<U
   return statsCache[username];
 }
 
-export async function updateUser(username: string, updates: Partial<UserStats>) {
+export async function updateUser(username: string, updates: Partial<UserStats>, ctx?: StorageContext) {
+  const statsCache = loadStats(ctx);
   const user = statsCache[username];
   if (!user) {
     console.error(`[UserStats] Cannot update user ${username} - not in cache`);
@@ -122,15 +180,15 @@ export async function updateUser(username: string, updates: Partial<UserStats>) 
   user.watchtime = totalWatchtime(user);
   statsCache[username] = user;
   console.log(`[UserStats] Saving stats for ${username}...`);
-  await saveStats();
+  await saveStats(ctx);
 }
 
-export async function addCards(username: string, cards: any[]) {
-  statsCache = loadStats();
+export async function addCards(username: string, cards: any[], ctx?: StorageContext) {
+  const statsCache = loadStats(ctx);
   
   if (!statsCache[username]) {
     console.log(`[UserStats] Creating new user ${username} for card collection`);
-    const pointsData = await getPointsData(username);
+    const pointsData = await getPointsData(username, ctx);
     statsCache[username] = {
       user: username,
       points: pointsData.points,
@@ -163,14 +221,14 @@ export async function addCards(username: string, cards: any[]) {
     }
   }
   
-  await updateUser(username, user);
+  await updateUser(username, user, ctx);
   console.log(`[UserStats] ${username} now has ${user.totalCards} cards (${user.rareCards} rare)`);
   
   return cardNames;
 }
 
 export async function getLeaderboard(stat: 'points' | 'watchtime' | 'totalCards' | 'rareCards' | 'badges', limit = 10, ctx?: StorageContext) {
-  statsCache = loadStats();
+  const statsCache = loadStats(ctx);
   
   for (const username of Object.keys(statsCache)) {
     const pointsData = await getPointsData(username, ctx);
@@ -208,11 +266,11 @@ export async function getUserRank(username: string, stat: 'points' | 'watchtime'
   return leaderboard.findIndex(u => u.user.toLowerCase() === username.toLowerCase()) + 1;
 }
 
-export async function awardGymBadge(username: string, badge: string): Promise<void> {
-  const user = await getUser(username);
+export async function awardGymBadge(username: string, badge: string, ctx?: StorageContext): Promise<void> {
+  const user = await getUser(username, ctx);
   if (!user.badges.includes(badge)) {
     user.badges.push(badge);
-    await updateUser(username, { badges: user.badges });
+    await updateUser(username, { badges: user.badges }, ctx);
     console.log(`[UserStats] ${username} earned gym badge: ${badge}`);
     try {
       const { saveUserBadges } = require('./badge-storage-discord');
@@ -223,21 +281,21 @@ export async function awardGymBadge(username: string, badge: string): Promise<vo
   }
 }
 
-export async function getUserBadges(username: string): Promise<string[]> {
-  const user = await getUser(username);
+export async function getUserBadges(username: string, ctx?: StorageContext): Promise<string[]> {
+  const user = await getUser(username, ctx);
   return user.badges;
 }
 
-export async function incrementWatchtime(usernames: string[], channel?: string): Promise<void> {
+export async function incrementWatchtime(usernames: string[], channel?: string, ctx?: StorageContext): Promise<void> {
   if (usernames.length === 0) return;
-  if (Object.keys(statsCache).length === 0) statsCache = loadStats();
+  const statsCache = loadStats(ctx);
 
   const channelKey = (channel || 'unknown').toLowerCase();
   const now = new Date().toISOString();
   for (const name of usernames) {
     const key = name.toLowerCase();
     if (!statsCache[key]) {
-      const pointsData = await getPointsData(key);
+      const pointsData = await getPointsData(key, ctx);
       statsCache[key] = {
         user: key, points: pointsData.points, watchtime: 0, watchtimeByChannel: {},
         deaths: 0, joinDate: now, visits: 1, lastSeen: now,
@@ -249,7 +307,7 @@ export async function incrementWatchtime(usernames: string[], channel?: string):
     statsCache[key].watchtime = totalWatchtime(statsCache[key]);
     statsCache[key].lastSeen = now;
   }
-  await saveStats();
+  await saveStats(ctx);
 }
 
 export function formatWatchtime(user: UserStats): string {
@@ -272,9 +330,7 @@ export function formatWatchtime(user: UserStats): string {
   return msg;
 }
 
-function initializeCache() {
-  statsCache = loadStats();
-  console.log(`[UserStats] Loaded ${Object.keys(statsCache).length} users from cache`);
+export function clearUserStatsCacheForTests(): void {
+  statsCaches.clear();
+  saveLocks.clear();
 }
-
-initializeCache();

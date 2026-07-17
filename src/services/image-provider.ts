@@ -411,11 +411,16 @@ export async function generateImageWithPerchance(options: ImageGenerationOptions
   });
   const data = await readResponseBody(response);
   if (response.ok) {
-    const first = Array.isArray(data) ? String(data[0] || '').trim() : '';
-    const urlMatch = first.match(/https?:\/\/\S+/i);
-    const image = urlMatch ? urlMatch[0] : first;
-    if (image) {
-      return { image, raw: data };
+    const outputs = (Array.isArray(data) ? data : [])
+      .flatMap((item: unknown) => {
+        const value = String(item || '').trim();
+        const matches = value.match(/https?:\/\/[^\s"']+/gi);
+        return matches?.length ? matches : (value ? [value] : []);
+      })
+      .filter(Boolean)
+      .slice(0, cappedCount);
+    if (outputs.length) {
+      return { image: outputs[0], imageResourceUrl: outputs[0], imageResourceUrls: outputs, raw: data };
     }
 
     throw new Error(`Perchance returned no usable image output: ${JSON.stringify(data).slice(0, 500)}`);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { parseSessionCookie } from '@/lib/session-cookie';
 
 export async function GET(request: NextRequest) {
   const sessionCookie = request.cookies.get('streamweaver-session')?.value;
@@ -6,15 +7,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  try {
-    const session = JSON.parse(sessionCookie);
-    if (!session.id) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
-    }
-    return NextResponse.json(session);
-  } catch {
+  const session = parseSessionCookie(sessionCookie);
+  if (!session) {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
   }
+  return NextResponse.json(session);
 }
 
 export async function DELETE(request: NextRequest) {

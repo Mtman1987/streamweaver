@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { createActionClient, deleteActionClient, updateActionClient } from "@/lib/client-actions";
-import { createCommandClient, runCommandClient } from "@/lib/client-commands";
+import { createCommandClient, deleteCommandClient, runCommandClient, updateCommandClient } from "@/lib/client-commands";
 import {
   Dialog,
   DialogContent,
@@ -578,9 +578,15 @@ function ActiveCommandsPageClient() {
     return text.startsWith("!") ? text : `!${text.replace(/^!+/, "")}`;
   };
 
-  const findOrCreateCommandForAutomation = async (automation: any, triggers: any[]): Promise<string | null> => {
+  const findOrCreateCommandForAutomation = async (
+    automation: any,
+    triggers: any[]
+  ): Promise<{ id: string; created: boolean; wasEnabled: boolean } | null> => {
     const commandTrigger = triggers.find((trigger: any) => Number(trigger?.type) === TriggerType.COMMAND);
-    if (aiWorkflowMode === "edit" && selectedCommandId && !commandTrigger?.command && !commandTrigger?.commandName) return selectedCommandId;
+    if (aiWorkflowMode === "edit" && selectedCommandId && !commandTrigger?.command && !commandTrigger?.commandName) {
+      const selected = commands.find((command) => command.id === selectedCommandId);
+      return { id: selectedCommandId, created: false, wasEnabled: selected?.enabled !== false };
+    }
     const commandText = normalizeCommandText(
       commandTrigger?.command ||
         commandTrigger?.commandName ||
@@ -592,16 +598,17 @@ function ActiveCommandsPageClient() {
 
     const existing = commands.find((command) => String(command.command || "").trim().toLowerCase() === commandText.toLowerCase());
     if (existing) {
-      return existing.id;
+      return { id: existing.id, created: false, wasEnabled: existing.enabled !== false };
     }
 
     const created: any = await createCommandClient({
       name: String(automation?.command?.name || commandText.replace(/^!/, "") || "AI Command"),
       command: commandText,
       group: "AI Automations",
-      enabled: true,
+      // Keep a generated command inert until its action has been saved successfully.
+      enabled: false,
     });
-    return String(created?.id || "");
+    return { id: String(created?.id || ""), created: true, wasEnabled: false };
   };
 
   const normalizeAutomationTriggers = (automation: any, commandId: string | null): any[] => {
@@ -687,13 +694,17 @@ function ActiveCommandsPageClient() {
     if (!hasWorkflowDraft) return;
 
     setIsSaving(true);
+    let provisionedCommand: { id: string; created: boolean; wasEnabled: boolean } | null = null;
+    let createdActionId: string | null = null;
+    let updatedExistingAction = false;
     try {
       const draftAutomation = {
         name: draftWorkflowName,
         triggers: draftTriggers,
         subActions: draftSubActions,
       };
-      const commandId = await findOrCreateCommandForAutomation(draftAutomation, draftTriggers);
+      provisionedCommand = await findOrCreateCommandForAutomation(draftAutomation, draftTriggers);
+      const commandId = provisionedCommand?.id || null;
       const nextTriggers = normalizeAutomationTriggers(draftAutomation, commandId);
       const nextSubActions = normalizeAutomationSubActions(draftAutomation);
       const actionName = String(draftWorkflowName || selectedAction?.name || "AI Drafted Workflow").trim() || "AI Drafted Workflow";
@@ -709,6 +720,7 @@ function ActiveCommandsPageClient() {
             subActions: nextSubActions as any,
           } as any
         );
+        updatedExistingAction = true;
       } else {
         const created: any = await createActionClient({
           name: actionName,
@@ -718,6 +730,11 @@ function ActiveCommandsPageClient() {
           subActions: nextSubActions as any,
         } as any);
         actionId = String(created?.id || "");
+        createdActionId = actionId;
+      }
+
+      if (commandId && draftEnabled && !provisionedCommand?.wasEnabled) {
+        await updateCommandClient(commandId, { enabled: true });
       }
 
       setDraftActionId(actionId);
@@ -736,6 +753,21 @@ function ActiveCommandsPageClient() {
           : `${actionName} is saved.`,
       });
     } catch (e: any) {
+      if (createdActionId) {
+        await deleteActionClient(createdActionId).catch(() => {});
+      } else if (updatedExistingAction && selectedAction) {
+        await updateActionClient(selectedAction.id, {
+          name: selectedAction.name,
+          enabled: selectedAction.enabled,
+          triggers: selectedAction.triggers as any,
+          subActions: selectedAction.subActions as any,
+        } as any).catch(() => {});
+      }
+      if (provisionedCommand?.created && provisionedCommand.id) {
+        await deleteCommandClient(provisionedCommand.id).catch(() => {});
+      } else if (provisionedCommand && !provisionedCommand.wasEnabled) {
+        await updateCommandClient(provisionedCommand.id, { enabled: false }).catch(() => {});
+      }
       toast({ variant: "destructive", title: "Save failed", description: e?.message || String(e) });
     } finally {
       setIsSaving(false);
@@ -869,6 +901,19 @@ function ActiveCommandsPageClient() {
           )}
 
           <div className="mt-4">
+            <div className="mb-4 grid gap-2 md:grid-cols-3">
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm"><strong>1. Describe</strong><div className="mt-1 text-xs text-muted-foreground">Start with the idea in your own words. The assistant infers a command when needed.</div></div>
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm"><strong>2. Review and test</strong><div className="mt-1 text-xs text-muted-foreground">Load the draft below, inspect its trigger and steps, then use Run before going live.</div></div>
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm"><strong>3. Save and go live</strong><div className="mt-1 text-xs text-muted-foreground">Save the linked command and action, then turn Live on when the test behaves correctly.</div></div>
+            </div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              <Button asChild type="button" variant="outline" size="sm">
+                <Link href="/import/streamerbot">Upload actions or commands</Link>
+              </Button>
+              <Button asChild type="button" variant="outline" size="sm">
+                <Link href="/community">Import or export StreamWeaver flows</Link>
+              </Button>
+            </div>
             <AutomationAIChat
               currentWorkflow={aiWorkflowMode === "edit" ? currentWorkflowForAI : undefined}
               onAutomationGenerated={loadAutomationDraftFromAI}

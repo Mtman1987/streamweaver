@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
-import { getClientTenantId } from '@/lib/client-tenant';
 import { getEnvironmentAppUrl } from '@/lib/app-urls';
 
 type AnimationType = 'lottie' | 'gif' | 'mp4';
@@ -19,14 +18,26 @@ export default function AvatarControl() {
     const [gestureUrl, setGestureUrl] = useState('');
     const [ws, setWs] = useState<WebSocket | null>(null);
     const [overlayUrl, setOverlayUrl] = useState(`${getEnvironmentAppUrl()}/overlay/avatar`);
+    const [uploading, setUploading] = useState<string | null>(null);
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
-            setOverlayUrl(`${window.location.origin}/overlay/avatar`);
-        }
-
+        let websocket: WebSocket | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let cancelled = false;
+        fetch('/api/session').then(r => r.ok ? r.json() : null).then(session => {
+            if (session?.id) setOverlayUrl(`${window.location.origin}/overlay/avatar?tenant=${encodeURIComponent(session.id)}`);
+        }).catch(() => {});
+        fetch('/api/avatars?type=settings').then(r => r.ok ? r.json() : null).then(payload => {
+            const data = payload?.data;
+            if (!data) return;
+            const type = data.animationType === 'json' ? 'lottie' : data.animationType;
+            if (type === 'lottie' || type === 'gif' || type === 'mp4') setAnimationType(type);
+            if (data.idleFile) setIdleUrl(`/api/avatars?type=idle&format=${encodeURIComponent(type || 'lottie')}`);
+            if (data.talkingFile) setTalkingUrl(`/api/avatars?type=talking&format=${encodeURIComponent(type || 'lottie')}`);
+        }).catch(() => {});
         const connectWebSocket = () => {
-            const websocket = new WebSocket(getBrowserWebSocketUrl(getClientTenantId() || undefined));
+            if (cancelled) return;
+            websocket = new WebSocket(getBrowserWebSocketUrl());
             
             websocket.onopen = () => {
                 console.log('[Avatar Control] Connected to WebSocket');
@@ -35,24 +46,36 @@ export default function AvatarControl() {
             
             websocket.onclose = () => {
                 console.log('[Avatar Control] WebSocket closed, reconnecting...');
-                setTimeout(connectWebSocket, 1000);
+                reconnectTimer = setTimeout(connectWebSocket, 1000);
             };
         };
         
         connectWebSocket();
         
         return () => {
-            if (ws) {
-                ws.close();
-            }
+            cancelled = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            websocket?.close();
         };
     }, []);
 
     const handleFileSelect = async (type: 'idle' | 'talking' | 'gesture', file: File) => {
-        const url = URL.createObjectURL(file);
-        if (type === 'idle') setIdleUrl(url);
-        else if (type === 'talking') setTalkingUrl(url);
-        else setGestureUrl(url);
+        setUploading(type);
+        try {
+            const formData = new FormData();
+            formData.set('type', type);
+            formData.set('file', file);
+            const response = await fetch('/api/avatars', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error('Avatar upload failed');
+            const format = file.name.toLowerCase().endsWith('.json') ? 'lottie' : file.name.split('.').pop()?.toLowerCase() || animationType;
+            const url = `/api/avatars?type=${type}&format=${encodeURIComponent(format)}`;
+            if (type === 'idle') setIdleUrl(url);
+            else if (type === 'talking') setTalkingUrl(url);
+            else setGestureUrl(url);
+            if (format === 'lottie' || format === 'gif' || format === 'mp4') setAnimationType(format);
+        } finally {
+            setUploading(null);
+        }
     };
 
     const updateAvatarSettings = () => {
@@ -128,8 +151,8 @@ export default function AvatarControl() {
                 </div>
 
                 <div className="flex gap-2">
-                    <Button onClick={updateAvatarSettings}>
-                        Update Settings
+                    <Button onClick={updateAvatarSettings} disabled={Boolean(uploading)}>
+                        {uploading ? 'Uploading...' : 'Update Settings'}
                     </Button>
                     <Button onClick={showAvatar} variant="outline">
                         Show Avatar

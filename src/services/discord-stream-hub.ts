@@ -35,6 +35,16 @@ type DiscordStreamHubManualShoutoutPayload = {
   sourceMessageId?: string;
 };
 
+export type DiscordStreamHubCheckinMember = {
+  id: string;
+  discordUserId: string;
+  username: string;
+  displayName: string;
+  twitchLogin: string;
+  avatarUrl: string;
+  group: string;
+};
+
 function getDiscordStreamHubUrl(): string {
   return (
     process.env.DISCORD_STREAM_HUB_URL ||
@@ -211,6 +221,15 @@ export async function checkDiscordStreamHubAdminAccess(payload: {
     console.warn('[DiscordStreamHub] Admin access check failed:', error instanceof Error ? error.message : String(error));
     return null;
   }
+}
+
+export async function getDiscordStreamHubCheckinMembers(serverId: string, group?: string): Promise<DiscordStreamHubCheckinMember[]> {
+  if (!serverId) throw new Error('DiscordStreamHub check-in member lookup requires a server ID');
+  const data = await getDiscordStreamHub<{ members?: DiscordStreamHubCheckinMember[] }>(
+    '/api/discord/checkin-members',
+    { serverId, group },
+  );
+  return Array.isArray(data?.members) ? data.members : [];
 }
 
 export async function lookupDiscordStreamHubTwitchTarget(twitchLogin: string, serverId?: string): Promise<DiscordStreamHubClipLookup | null> {

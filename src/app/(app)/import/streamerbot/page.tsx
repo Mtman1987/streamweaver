@@ -26,9 +26,9 @@ export default function StreamerbotImportPage() {
       <div className="space-y-6 max-w-4xl mx-auto">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold mb-2">Streamer.bot Integration</h1>
+          <h1 className="text-3xl font-bold mb-2">Import workflow data</h1>
           <p className="text-muted-foreground">
-            Import your existing Streamer.bot actions and commands to continue using them in StreamWeaver
+            Upload existing Streamer.bot data or StreamWeaver-generated action and command JSON, then review it before enabling it live.
           </p>
         </div>
 
@@ -141,6 +141,9 @@ export default function StreamerbotImportPage() {
               <li>Reconfigure any third-party integrations</li>
             </ol>
             <div className="mt-4 flex gap-2">
+              <Link href="/active-commands">
+                <Button size="sm">Open workflow builder</Button>
+              </Link>
               <Link href="/actions">
                 <Button variant="outline" size="sm">
                   View Actions

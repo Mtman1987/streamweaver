@@ -79,10 +79,12 @@ export default function TTSPlayer() {
   // Poll for TTS audio queue — plays items sequentially without cutting off
   useEffect(() => {
     let isPlaying = false;
+    const cursorKey = `streamweaver:tts-cursor:${overlayTenant || 'global'}`;
+    let cursor = window.localStorage.getItem(cursorKey) || '';
 
-    const playTTS = async (audioUrl: string) => {
+    const playTTS = async (audioUrl: string): Promise<boolean> => {
       const audio = audioRef.current;
-      if (!audio) return;
+      if (!audio) return false;
 
       audio.src = audioUrl;
       audio.muted = false;
@@ -94,9 +96,11 @@ export default function TTSPlayer() {
       try {
         await audio.play();
         setStatus('Playing...');
+        return true;
       } catch (err: any) {
         setStatus(`Click overlay to play: ${err?.message || 'browser blocked autoplay'}`);
         isPlaying = false;
+        return false;
       }
     };
 
@@ -104,12 +108,17 @@ export default function TTSPlayer() {
       if (isPlaying) return;
       try {
         const sep = tenantQuery ? `&${tenantQuery}` : '';
-        const res = await fetch(`/api/tts/current?next=1${sep}`);
+        const after = cursor ? `&after=${encodeURIComponent(cursor)}` : '';
+        const res = await fetch(`/api/tts/current?next=1${after}${sep}`);
         if (!res.ok) return;
         const data = await res.json();
         if (data.audioUrl) {
           isPlaying = true;
-          await playTTS(data.audioUrl);
+          const started = await playTTS(data.audioUrl);
+          if (started && data.cursor) {
+            cursor = String(data.cursor);
+            window.localStorage.setItem(cursorKey, cursor);
+          }
         }
       } catch {}
     };

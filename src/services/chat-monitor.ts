@@ -12,6 +12,7 @@ import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-sta
 import { runImageCommand } from './image-command';
 import { queueTtsOverlay } from './tts-overlay-queue';
 import { appendPrivateChatMessages } from '@/lib/private-chat-store';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -338,7 +339,7 @@ export async function checkDmChannelActivity(): Promise<void> {
 
                 const res = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         username: msg.author?.global_name || msg.author?.username || 'DiscordUser',
                         message: messageText,

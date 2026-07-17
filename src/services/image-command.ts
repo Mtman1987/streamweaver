@@ -1,6 +1,7 @@
 import { generateAIResponse } from '@/services/ai-provider';
 import { readGenerationSettings, type GenerationSettings } from '@/lib/gen-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 type ProviderMode = GenerationSettings['mode'];
 
@@ -100,7 +101,7 @@ export async function runImageCommand(input: string, tenantId: string, options: 
 
   const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-mountainview-bridge': '1' },
+    headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       prompt: finalPrompt,
       tenantId,
@@ -136,9 +137,11 @@ export async function runImageCommand(input: string, tenantId: string, options: 
     .filter(Boolean)
     .filter((value, index, all) => all.indexOf(value) === index);
 
-  // Only return the locally-stored URL if available (prefer /api/ai/image/file/ over CDN)
-  const localImage = images.find((url) => url.includes('/api/ai/image/file/'));
-  const finalImages = localImage ? [localImage] : images.slice(0, 1);
+  // Prefer durable local copies, while preserving the requested 1-4 results.
+  // The former single-item reduction made every multi-image setting appear broken.
+  const localImages = images.filter((url) => url.includes('/api/ai/image/file/'));
+  const requestedCount = parsed.count || settings.imageCount || 1;
+  const finalImages = (localImages.length ? localImages : images).slice(0, requestedCount);
 
   return {
     prompt: finalPrompt,

@@ -3,6 +3,7 @@ import { generateTTS } from '@/services/tts-provider';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 
 const ttsSchema = z.object({
   text: z.string().trim().min(1, 'Text is required').max(2000, 'Text too long'),
@@ -13,7 +14,7 @@ const ttsSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    const isMountainViewBridge = request.headers.get('x-mountainview-bridge') === '1';
+    const isMountainViewBridge = hasMountainViewBridgeAccess(request);
     if (!session && !isMountainViewBridge) {
       return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
     }
@@ -26,6 +27,9 @@ export async function POST(request: NextRequest) {
 
     const { text, voice } = parsed.data;
     const tenantId = session?.tenantId || (isMountainViewBridge ? parsed.data.tenantId : undefined);
+    if (!tenantId) {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
+    }
     console.log('[TTS API] Request:', { textLength: text.length, textPreview: text.slice(0, 80), voice: voice ?? '(default)', tenantId: tenantId ?? 'global' });
 
     const audioDataUri = await generateTTS(text, voice, tenantId);

@@ -9,6 +9,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
+import { hasInternalServiceAccess, hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -61,7 +62,7 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
       
       const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId }),
       });
       
@@ -87,7 +88,15 @@ export async function POST(request: NextRequest) {
 
     const { username, message, attachments, embeds, personality, historyLimit, tenantId: bodyTenantId } = parsed.data as RequestBody;
     const session = getTenantFromRequest(request);
-    const tenantId = session?.tenantId || bodyTenantId;
+    const hasServiceAccess = hasInternalServiceAccess(request);
+    const hasMountainViewAccess = hasMountainViewBridgeAccess(request);
+    if (!session?.tenantId && !hasServiceAccess && !hasMountainViewAccess) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    const tenantId = session?.tenantId || ((hasServiceAccess || hasMountainViewAccess) ? bodyTenantId : undefined);
+    if (!tenantId) {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
+    }
     const botName = getBotName(tenantId);
     const botPersonality = getBotPersonality(tenantId);
     if (VERBOSE_LOGS) {

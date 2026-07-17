@@ -4,32 +4,38 @@ import type { PointAmount } from '../points';
 const pendingWagers = new Map<string, string>();
 const gambleModes = new Map<string, string>();
 
-export async function handleGambleMode(user: string, mode: string): Promise<void> {
-  gambleModes.set(user.toLowerCase(), mode);
+function tenantUserKey(user: string, tenantId: string): string {
+  const tenant = String(tenantId || '').trim();
+  if (!tenant) throw new Error('Gamble state requires tenant context');
+  return tenant + ':' + user.toLowerCase();
 }
 
-export async function handleRoll(user: string, wager: PointAmount, userPoints: PointAmount) {
-  const result = await handleClassicRoll(user, String(wager), userPoints);
+export async function handleGambleMode(user: string, mode: string, tenantId: string): Promise<void> {
+  gambleModes.set(tenantUserKey(user, tenantId), mode);
+}
+
+export async function handleRoll(user: string, wager: PointAmount, userPoints: PointAmount, tenantId: string) {
+  const result = await handleClassicRoll(user, String(wager), userPoints, tenantId);
   if (result) {
-    pendingWagers.set(user.toLowerCase(), result.change.startsWith('-') ? result.change.slice(1) : result.change || String(wager));
+    pendingWagers.set(tenantUserKey(user, tenantId), result.change.startsWith('-') ? result.change.slice(1) : result.change || String(wager));
   }
   return result;
 }
 
-export async function handleYes(user: string, userPoints: PointAmount) {
-  const key = user.toLowerCase();
+export async function handleYes(user: string, userPoints: PointAmount, tenantId: string) {
+  const key = tenantUserKey(user, tenantId);
   const wager = pendingWagers.get(key);
   if (!wager) {
     return null;
   }
   pendingWagers.delete(key);
-  return handleDouble(user, wager, userPoints);
+  return handleDouble(user, wager, userPoints, tenantId);
 }
 
-export async function handleNo(user: string) {
-  pendingWagers.delete(user.toLowerCase());
+export async function handleNo(user: string, tenantId: string) {
+  pendingWagers.delete(tenantUserKey(user, tenantId));
 }
 
-export function getGambleMode(user: string): string {
-  return gambleModes.get(user.toLowerCase()) || 'classic';
+export function getGambleMode(user: string, tenantId: string): string {
+  return gambleModes.get(tenantUserKey(user, tenantId)) || 'classic';
 }

@@ -129,53 +129,19 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
     const [isOptimizing, setIsOptimizing] = useState(false);
 
     useEffect(() => {
-        // Load all settings from localStorage first, then sync with server
+        // Tenant-owned server state is authoritative. Browser storage is not
+        // allowed to overwrite another signed-in account's bot or avatar.
         const loadSettings = async () => {
-            const savedIdle = localStorage.getItem("bot_idle_animation");
-            const savedTalking = localStorage.getItem("bot_talking_animation");
-            const savedVoice = localStorage.getItem("bot_tts_voice");
-            const savedName = localStorage.getItem("bot_name");
-            const savedPersonality = localStorage.getItem("bot_personality");
-            const savedSkipShoutoutOverlay = localStorage.getItem("skip_shoutout_overlay");
-            const savedIdleFile = localStorage.getItem("avatar_idle_file");
-            const savedTalkingFile = localStorage.getItem("avatar_talking_file");
-            const savedInterests = localStorage.getItem("bot_interests");
-            const savedAliases = localStorage.getItem("bot_aliases");
-            const savedType = localStorage.getItem("avatar_type");
-
-            if (savedIdle && savedIdle !== 'undefined') {
-                try { const parsed = JSON.parse(savedIdle); if (isValidLottie(parsed)) setIdleAnimationData(parsed); } catch {}
-            }
-            if (savedTalking && savedTalking !== 'undefined') {
-                try { const parsed = JSON.parse(savedTalking); if (isValidLottie(parsed)) setTalkingAnimationData(parsed); } catch {}
-            }
-            if (savedVoice) setTtsVoice(normalizeTtsVoice(savedVoice));
-            if (savedName) setBotName(savedName);
-            if (savedPersonality) setBotPersonality(savedPersonality);
-            if (savedSkipShoutoutOverlay) setSkipShoutoutOverlay(savedSkipShoutoutOverlay === 'true');
-            if (savedInterests) setBotInterests(savedInterests);
-            if (savedAliases) setBotAliases(savedAliases);
-            if (savedIdleFile) setIdleUrl(`/avatars/${savedIdleFile}`);
-            if (savedTalkingFile) setTalkingUrl(`/avatars/${savedTalkingFile}`);
-            if (savedType) setAnimationType(savedType as 'lottie' | 'mp4' | 'gif');
-            else if (!savedType) setAnimationType('lottie');
-            
-            const savedDisplayMode = localStorage.getItem('avatar_display_mode');
-            if (savedDisplayMode) setDisplayMode(savedDisplayMode);
-            
             // Try to load bot settings from server (source of truth)
             try {
                 const configRes = await fetch('/api/user-config');
                 if (configRes.ok) {
                     const configData = await configRes.json();
                     const cfg = configData.config || configData.data || configData;
-                    if (cfg.AI_BOT_NAME && !savedName) setBotName(cfg.AI_BOT_NAME);
-                    else if (cfg.AI_BOT_NAME) setBotName(cfg.AI_BOT_NAME);
-                    if (cfg.AI_BOT_PERSONALITY && !savedPersonality) setBotPersonality(cfg.AI_BOT_PERSONALITY);
-                    else if (cfg.AI_BOT_PERSONALITY) setBotPersonality(cfg.AI_BOT_PERSONALITY);
+                    if (cfg.AI_BOT_NAME) setBotName(cfg.AI_BOT_NAME);
+                    if (cfg.AI_BOT_PERSONALITY) setBotPersonality(cfg.AI_BOT_PERSONALITY);
                     const ttsProvider = normalizeTtsProvider(cfg.TTS_PROVIDER);
-                    if (cfg.TTS_VOICE && !savedVoice) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE, ttsProvider));
-                    else if (cfg.TTS_VOICE) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE, ttsProvider));
+                    if (cfg.TTS_VOICE) setTtsVoice(normalizeTtsVoice(cfg.TTS_VOICE, ttsProvider));
                     if (cfg.AI_BOT_INTERESTS) setBotInterests(cfg.AI_BOT_INTERESTS);
                     if (cfg.AI_BOT_ALIASES) setBotAliases(cfg.AI_BOT_ALIASES);
                     if (cfg.SKIP_SHOUTOUT_OVERLAY) setSkipShoutoutOverlay(cfg.SKIP_SHOUTOUT_OVERLAY === 'true');
@@ -206,33 +172,23 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                         const serverType = (d.animationType === 'json' ? 'lottie' : d.animationType) as 'lottie' | 'mp4' | 'gif';
                         if (serverType) setAnimationType(serverType);
                         if (d.idleFile) {
-                            const url = serverType === 'lottie' ? `/avatars/${d.idleFile}` : `/api/avatars?type=idle&format=${serverType}`;
+                            const url = `/api/avatars?type=idle&format=${serverType}`;
                             setIdleUrl(url);
-                            localStorage.setItem('avatar_idle_file', d.idleFile);
                         }
                         if (d.talkingFile) {
-                            const url = serverType === 'lottie' ? `/avatars/${d.talkingFile}` : `/api/avatars?type=talking&format=${serverType}`;
+                            const url = `/api/avatars?type=talking&format=${serverType}`;
                             setTalkingUrl(url);
-                            localStorage.setItem('avatar_talking_file', d.talkingFile);
                         }
-                        if (serverType) localStorage.setItem('avatar_type', serverType);
                         if (d.displayMode) {
                             setDisplayMode(d.displayMode);
-                            localStorage.setItem('avatar_display_mode', d.displayMode);
                         }
                         // Only sync Lottie animation data
                         if (serverType === 'lottie') {
                             if (d.idleFile) {
-                                fetch(`/avatars/${d.idleFile}`).then(r => r.json()).then(json => {
-                                    setIdleAnimationData(json);
-                                    localStorage.setItem('bot_idle_animation', JSON.stringify(json));
-                                }).catch(() => {});
+                                fetch('/api/avatars?type=idle&format=lottie').then(r => r.json()).then(payload => setIdleAnimationData(payload.data)).catch(() => {});
                             }
                             if (d.talkingFile) {
-                                fetch(`/avatars/${d.talkingFile}`).then(r => r.json()).then(json => {
-                                    setTalkingAnimationData(json);
-                                    localStorage.setItem('bot_talking_animation', JSON.stringify(json));
-                                }).catch(() => {});
+                                fetch('/api/avatars?type=talking&format=lottie').then(r => r.json()).then(payload => setTalkingAnimationData(payload.data)).catch(() => {});
                             }
                         }
                     }
@@ -241,78 +197,35 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 console.warn('Failed to sync with server:', error);
             }
             
-            // Sync identity on load, but do not sync a browser-local voice.
-            // The stream's saved TTS_VOICE is the source of truth unless the user changes it.
-            if (savedPersonality || savedName) {
-                const sendToServer = () => {
-                    if (typeof window !== 'undefined' && (window as any).ws) {
-                        (window as any).ws.send(JSON.stringify({
-                            type: 'update-bot-settings',
-                            payload: { 
-                                personality: savedPersonality || botPersonality,
-                                name: savedName || botName,
-                                skipShoutoutOverlay: savedSkipShoutoutOverlay === 'true'
-                            }
-                        }));
-                    } else {
-                        setTimeout(sendToServer, 1000);
-                    }
-                };
-                sendToServer();
-            }
         };
         
         loadSettings();
     }, []);
 
     const handleSaveBotIdentity = async () => {
-        localStorage.setItem("bot_name", botName);
-        localStorage.setItem("bot_personality", botPersonality);
-        localStorage.setItem("bot_interests", botInterests);
-        localStorage.setItem("bot_aliases", botAliases);
-        localStorage.setItem("skip_shoutout_overlay", skipShoutoutOverlay ? 'true' : 'false');
-        
-        // Send personality, name, and interests to server via WebSocket or API
         try {
-            if (typeof window !== 'undefined' && (window as any).ws && (window as any).ws.readyState === WebSocket.OPEN) {
-                (window as any).ws.send(JSON.stringify({
-                    type: 'update-bot-settings',
-                    payload: { personality: botPersonality, name: botName, interests: botInterests, aliases: botAliases, skipShoutoutOverlay }
-                }));
-            } else {
-                // Fallback to API if WebSocket not available
-                await fetch('/api/bot-settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ personality: botPersonality, name: botName, interests: botInterests, aliases: botAliases, skipShoutoutOverlay })
-                });
-            }
+            const response = await fetch('/api/bot-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ personality: botPersonality, name: botName, interests: botInterests, aliases: botAliases, skipShoutoutOverlay })
+            });
+            if (!response.ok) throw new Error('Server rejected the bot settings');
+            toast({ title: "Bot identity saved!" });
         } catch (error) {
             console.error('Failed to update server settings:', error);
+            toast({ variant: 'destructive', title: 'Bot identity was not saved' });
         }
-        
-        toast({ title: "Bot identity saved!" });
     }
 
     const handleVoiceChange = async (newVoice: string) => {
         setTtsVoice(newVoice);
-        localStorage.setItem("bot_tts_voice", newVoice);
-        
-        // Send voice to server via WebSocket or API
         try {
-            if (typeof window !== 'undefined' && (window as any).ws && (window as any).ws.readyState === WebSocket.OPEN) {
-                (window as any).ws.send(JSON.stringify({
-                    type: 'update-bot-settings',
-                    payload: { voice: newVoice }
-                }));
-            } else {
-                // Fallback to API if WebSocket not available
-                await fetch('/api/bot-settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ voice: newVoice })
-                });
-            }
+            const response = await fetch('/api/bot-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voice: newVoice })
+            });
+            if (!response.ok) throw new Error('Server rejected the voice setting');
         } catch (error) {
             console.error('Failed to update server settings:', error);
         }
@@ -354,14 +267,14 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 });
                 if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
                 
-                localStorage.setItem(`avatar_${type}_file`, `${type}.${fileExt}`);
-                localStorage.setItem('avatar_type', fileExt);
+                const stableUrl = `/api/avatars?type=${type}&format=${fileExt}`;
+                if (type === 'idle') setIdleUrl(stableUrl); else setTalkingUrl(stableUrl);
                 
                 if (typeof window !== 'undefined' && (window as any).ws) {
                     (window as any).ws.send(JSON.stringify({
                         type: 'update-avatar-settings',
                         payload: {
-                            [type === 'idle' ? 'idleUrl' : 'talkingUrl']: `/avatars/${type}.${fileExt}`,
+                            [type === 'idle' ? 'idleUrl' : 'talkingUrl']: stableUrl,
                             animationType: fileExt
                         }
                     }));
@@ -383,14 +296,11 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     const content = e.target?.result;
                     if (typeof content === 'string') {
                         const parsedJson = JSON.parse(content);
-                        const storageKey = type === 'idle' ? "bot_idle_animation" : "bot_talking_animation";
-                        
                         if (type === 'idle') {
                             setIdleAnimationData(parsedJson);
                         } else {
                             setTalkingAnimationData(parsedJson);
                         }
-                        localStorage.setItem(storageKey, JSON.stringify(parsedJson));
                         setAnimationType('lottie');
 
                         try {
@@ -930,7 +840,6 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                             value={displayMode} 
                             onValueChange={(value) => {
                                 setDisplayMode(value);
-                                localStorage.setItem('avatar_display_mode', value);
                                 fetch('/api/avatars', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayMode: value }) }).catch(() => {});
                                 if (typeof window !== 'undefined' && (window as any).ws) {
                                     (window as any).ws.send(JSON.stringify({

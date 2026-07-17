@@ -11,6 +11,7 @@ import { sendDiscordMessage } from '@/services/discord-local';
 import { runImageCommand } from '@/services/image-command';
 import { tenantPath, globalPath } from '@/lib/tenant';
 import { publishSpmtEvent } from '@/lib/spmt-client';
+import { hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
 import { z } from 'zod';
@@ -54,7 +55,7 @@ function getBaseUrl(request: NextRequest): string {
 async function postJson(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: any; text: string }> {
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-mountainview-bridge': '1' },
+    headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   });
   const text = await response.text();
@@ -134,7 +135,7 @@ async function handleBuiltInVoiceCommand(input: {
   }
 
   if (lower.includes('back from break') || lower.includes('stop brb') || lower === '!back') {
-    stopBRB();
+    stopBRB(input.tenantId);
     return { handled: true, type: 'brb-stop', response: 'BRB workflow stopped.' };
   }
 
@@ -249,6 +250,9 @@ function publishMountainViewVoiceEvent(type: string, input: {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!hasMountainViewBridgeAccess(request)) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
     const rawBody = await request.json().catch(() => null);
     const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody;
     const parsed = mountainViewVoiceSchema.safeParse(body);
@@ -266,8 +270,11 @@ export async function POST(request: NextRequest) {
       return apiError('Missing transcript', { status: 400, code: 'MISSING_TRANSCRIPT' });
     }
 
-    const username = command.username || 'mtman1987';
+    const username = command.username || 'MountainView user';
     const tenantId = command.tenantId || undefined;
+    if (!tenantId) {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
+    }
     const payload = asRecord(command.payload);
     const nestedPayload = asRecord(payload.payload);
     const voiceMode = command.voiceMode || firstString(payload.voiceMode, nestedPayload.voiceMode) || 'reply';

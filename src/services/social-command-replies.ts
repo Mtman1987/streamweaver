@@ -1,6 +1,7 @@
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 export const SOCIAL_COMMAND_NAMES = [
   'hug', 'boop', 'cuddle', 'dance', 'fistbump', 'headpat', 'highfive', 'love', 'tickle', 'hover',
@@ -140,7 +141,7 @@ export async function generateSocialCommandReply(input: GenerateSocialCommandRep
     const personality = await buildSpeakerPersonality(input.tenantId, botName);
     const response = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         username: input.userName,
         displayName: input.userName,

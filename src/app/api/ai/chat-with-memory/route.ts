@@ -5,6 +5,8 @@ import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendComma
 import { formatWorldLoreForPrompt } from '@/lib/world-lore-store';
 import { formatBotInteractionHistoryForPrompt } from '@/lib/bot-interactions-store';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getTenantFromRequest } from '@/lib/tenant-context';
+import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -42,7 +44,7 @@ const chatWithMemorySchema = z.object({
   personality: z.string().trim().max(3000).optional(),
   responseName: z.string().trim().max(128).optional(),
   tenantId: z.string().trim().max(128).optional(),
-  context: z.enum(['twitch', 'twitch-cross-bot', 'discord', 'discord-cross-bot', 'voice', 'private']).optional().default('twitch'),
+  context: z.enum(['twitch', 'twitch-cross-bot', 'discord', 'discord-cross-bot', 'kick', 'voice', 'private']).optional().default('twitch'),
 });
 
 type AIChatMessage = {
@@ -91,9 +93,16 @@ export async function POST(request: NextRequest) {
       tenantId: bodyTenantId,
       context,
     } = parsed.data;
-    // Resolve tenant: prefer session cookie (browser requests), fall back to body (server-side internal calls)
-    const session = (await import('@/lib/tenant-context')).getTenantFromRequest(request);
-    const tenantId = session?.tenantId || bodyTenantId;
+    const session = getTenantFromRequest(request);
+    const hasServiceAccess = hasInternalServiceAccess(request);
+    const hasMountainViewAccess = hasMountainViewBridgeAccess(request);
+    if (!session?.tenantId && !hasServiceAccess && !hasMountainViewAccess) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    const tenantId = session?.tenantId || ((hasServiceAccess || hasMountainViewAccess) ? bodyTenantId : undefined);
+    if (!tenantId) {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
+    }
     if (VERBOSE_LOGS) {
       console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context, source: session?.tenantId ? 'cookie' : 'body' });
     }
@@ -132,7 +141,7 @@ export async function POST(request: NextRequest) {
 
     const historyText = formatHistory(history, botResponseName);
     const worldLoreText = await formatWorldLoreForPrompt();
-    const botInteractionHistory = await formatBotInteractionHistoryForPrompt();
+    const botInteractionHistory = await formatBotInteractionHistoryForPrompt(8, tenantId);
 
     // Commander override: inject global memory and special system prompt for mtman1987
     let commanderContext = '';
@@ -151,6 +160,7 @@ export async function POST(request: NextRequest) {
       'twitch-cross-bot': '[Context: Twitch cross-bot follow-up. Answer as the requested bot only, then stop.]',
       discord: '[Context: Discord server message. Can be slightly longer but stay concise.]',
       'discord-cross-bot': '[Context: Discord cross-bot follow-up. Answer as the requested bot only, then stop.]',
+      kick: '[Context: Live Kick chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
       voice: `[Context: The broadcaster is speaking to you via voice command. This is ${userIsCommander ? 'the Commander (M.T.)' : 'the streamer'}. Respond conversationally.]`,
       private: '[Context: Private conversation. Not on stream. You can be more detailed and personal.]',
     };

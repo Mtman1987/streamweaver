@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getMetrics, loadMetrics } from '@/services/metrics';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { apiOk } from '@/lib/api-response';
+import { apiError, apiOk } from '@/lib/api-response';
 
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
-  await loadMetrics(session?.tenantId);
-  return apiOk(getMetrics());
+  if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+  await loadMetrics(session.tenantId);
+  return apiOk(getMetrics(session.tenantId));
 }

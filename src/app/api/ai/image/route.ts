@@ -12,6 +12,7 @@ import { getGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { publishSpmtEvent } from '@/lib/spmt-client';
+import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 import { z } from 'zod';
 
 const imageSchema = z.object({
@@ -100,7 +101,15 @@ export async function POST(request: NextRequest) {
     }
 
     const session = getTenantFromRequest(request);
-    const tenantId = session?.tenantId || parsed.data.tenantId;
+    const hasServiceAccess = hasInternalServiceAccess(request);
+    const hasMountainViewAccess = hasMountainViewBridgeAccess(request);
+    if (!session?.tenantId && !hasServiceAccess && !hasMountainViewAccess) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    const tenantId = session?.tenantId || ((hasServiceAccess || hasMountainViewAccess) ? parsed.data.tenantId : undefined);
+    if (!tenantId) {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
+    }
     const scope = parsed.data.scope;
 
     // Resolve effective mode: prefer tenant gen-settings (UI source of truth),

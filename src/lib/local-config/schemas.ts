@@ -92,6 +92,7 @@ export const redeemsConfigSchema = z.object({
   crewCheckin: z.object({
     rewardTitle: z.string().default(''),
     pointCost: z.number().int().default(0),
+    discordGuildId: z.string().default(''),
     apiUrl: z.string().default(''),
   }).default({}),
   modCheckin: z.object({

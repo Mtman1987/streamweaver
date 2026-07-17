@@ -177,7 +177,9 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 })
                 .then((data: UserConfigPayload) => {
                     console.log('[VoiceCommander] User config data:', data);
-                    setUserConfig(data?.config || {});
+                    const config = data?.config || {};
+                    setUserConfig(config);
+                    personalityRef.current = config.AI_BOT_PERSONALITY || '';
                 })
                 .catch((error) => {
                     console.error('[VoiceCommander] Failed to load user config:', error);
@@ -191,25 +193,6 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             console.error('[VoiceCommander] No WebSocket URL available');
             return;
         }
-
-        // Load local personality for voice commands. TTS voice is owned by the
-        // server-side tenant config so a stale browser value cannot overwrite it.
-        let savedPersonality = localStorage.getItem("bot_personality") || "";
-        
-        // If localStorage is empty, try to get from global (set by bot-settings API)
-        if (!savedPersonality && typeof window !== 'undefined') {
-            const globalPersonality = (window as any).botPersonality;
-            if (globalPersonality) {
-                savedPersonality = globalPersonality;
-                console.log('[VoiceCommander] Loaded personality from global:', savedPersonality.substring(0, 50) + '...');
-            }
-        }
-        
-        console.log('[VoiceCommander] Loaded settings:', { 
-            savedPersonality: savedPersonality ? '(set)' : '(empty)'
-        });
-        
-        personalityRef.current = savedPersonality;
 
         let isCancelled = false;
         
@@ -786,7 +769,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
         }
 
         // For Twitch/Discord modes, only send AI response if AI name is mentioned
-        const botName = localStorage.getItem('bot_name') || (global as any).botName || 'AI Bot';
+        const botName = userConfig.AI_BOT_NAME || 'AI Bot';
         const botUsername = userConfig.TWITCH_BOT_USERNAME || 'streamweaverbot';
         const aiTriggers = [botName.toLowerCase(), botUsername.toLowerCase(), `@${botUsername.toLowerCase()}`];
         const hasAiTrigger = aiTriggers.some(trigger => lowerTranscription.includes(trigger));
@@ -1218,7 +1201,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         <h4 className="font-medium mb-1 text-xs truncate">History</h4>
                         <div className={cn("space-y-1 overflow-y-auto", isEmbedded ? "max-h-24" : "max-h-16")}>
                             {messages.slice(0, 3).map(msg => {
-                                const botName = localStorage.getItem('bot_name') || 'AI Bot';
+                                const botName = userConfig.AI_BOT_NAME || 'AI Bot';
                                 const isAiMessage = msg.speaker === 'ai-input' || msg.text.toLowerCase().includes(botName.toLowerCase());
                                 return (
                                     <div key={msg.id} className="text-xs text-muted-foreground p-1 bg-muted/50 rounded flex gap-1 items-center">

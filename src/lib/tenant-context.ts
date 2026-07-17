@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import type { StorageContext } from '@/services/storage';
+import { parseSessionCookie } from '@/lib/session-cookie';
 
 export interface TenantSession {
   tenantId: string;
@@ -11,18 +12,14 @@ export interface TenantSession {
 export function getTenantFromRequest(request: NextRequest): TenantSession | null {
   const cookie = request.cookies.get('streamweaver-session')?.value;
   if (!cookie) return null;
-  try {
-    const session = JSON.parse(cookie);
-    if (!session.id || !session.username) return null;
-    return {
-      tenantId: session.id,
-      username: session.username,
-      displayName: session.displayName,
-      avatar: session.avatar,
-    };
-  } catch {
-    return null;
-  }
+  const session = parseSessionCookie(cookie);
+  if (!session) return null;
+  return {
+    tenantId: session.id,
+    username: session.username,
+    displayName: session.displayName,
+    avatar: session.avatar,
+  };
 }
 
 export function toStorageContext(session: TenantSession): StorageContext {

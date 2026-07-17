@@ -11,33 +11,18 @@ export default function GamesLayout({
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    // Check URL for user data from OAuth callback
-    const urlParams = new URLSearchParams(window.location.search);
-    const userParam = urlParams.get('user');
-    
-    if (userParam) {
-      const userData = JSON.parse(decodeURIComponent(userParam));
-      localStorage.setItem('games_user', JSON.stringify(userData));
-      setUser(userData);
-      // Clean URL
-      window.history.replaceState({}, '', '/games');
-      return;
-    }
-    
-    // Check if user is already logged in
-    const savedUser = localStorage.getItem('games_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    fetch('/api/session').then(r => r.ok ? r.json() : null).then(session => {
+      if (!session?.id) return;
+      setUser({
+        id: session.id,
+        username: session.displayName || session.username,
+        avatar: session.avatar || '',
+      });
+    }).catch(() => {});
   }, []);
 
   const handleTwitchLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
-    const redirectUri = `${window.location.origin}/api/auth/twitch/callback`;
-    const scope = 'user:read:email';
-    const state = 'games'; // Identify this as games login
-    
-    window.location.href = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}`;
+    window.location.href = '/login';
   };
 
   if (!user) {

@@ -117,6 +117,22 @@ function normalizeCommandText(value: unknown): string {
   return text.startsWith('!') ? text : `!${text.replace(/^!+/, '')}`;
 }
 
+function inferCommandFromIdea(message: string): string {
+  const ignored = new Set([
+    'a', 'an', 'and', 'automation', 'build', 'command', 'create', 'do', 'for', 'from',
+    'make', 'me', 'of', 'please', 'that', 'the', 'then', 'to', 'viewer', 'viewers',
+    'when', 'workflow', 'you',
+  ]);
+  const tokens = String(message || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.replace(/^-+|-+$/g, ''))
+    .filter((token) => token && !ignored.has(token));
+  const candidate = tokens[tokens.length - 1] || 'custom';
+  return `!${candidate.slice(0, 32)}`;
+}
+
 function workflowNameForCommand(commandLabel: string | null, fallback = 'AI Drafted Workflow'): string {
   if (!commandLabel) return fallback;
   const base = commandLabel.replace(/^!+/, '').replace(/[-_]/g, ' ').trim();
@@ -911,7 +927,7 @@ function ensureCommandLabel(automation: any, sourceMessage: string): string {
       fromTrigger?.commandName ||
       automation?.command?.command ||
       automation?.command ||
-      inferCommandLabel(sourceMessage)
+      inferCommandLabel(sourceMessage) || inferCommandFromIdea(sourceMessage)
   );
 
   return commandText;
@@ -985,22 +1001,29 @@ export async function createWorkflowFromPrompt(input: AssistantAutomationInput):
     index: Number(subAction?.index ?? index),
   }));
 
-  const action = await createAction({
-    name: String(automation.name || commandName || 'AI Workflow').trim() || 'AI Workflow',
-    group: 'AI Automations',
-    enabled: false,
-    triggers,
-    subActions,
-    aiGenerated: true,
-    aiPrompt: input.message,
-    draftStatus: requiresReview ? 'review-required' : 'draft',
-    requiresReview,
-    metadata: {
-      createdBy: input.userName || 'unknown',
-      createdFrom: 'chat-ai',
-      ...(automation.metadata || {}),
-    },
-  } as any, input.tenantId);
+  let action: any;
+  try {
+    action = await createAction({
+      name: String(automation.name || commandName || 'AI Workflow').trim() || 'AI Workflow',
+      group: 'AI Automations',
+      enabled: false,
+      triggers,
+      subActions,
+      aiGenerated: true,
+      aiPrompt: input.message,
+      draftStatus: requiresReview ? 'review-required' : 'draft',
+      requiresReview,
+      metadata: {
+        createdBy: input.userName || 'unknown',
+        createdFrom: 'chat-ai',
+        ...(automation.metadata || {}),
+      },
+    } as any, input.tenantId);
+  } catch (error) {
+    // Do not leave an orphan command behind when action persistence fails.
+    if (command?.id) await deleteCommand(String(command.id), input.tenantId).catch(() => {});
+    throw error;
+  }
 
   return {
     assistantMessage: draft.assistantMessage,

@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { getConfiguredAppUrl, getOAuthRedirectUri } from '@/lib/runtime-origin';
 import { tenantPath, bootstrapTenant, communityBotTokensPath, isAdmin } from '@/lib/tenant';
+import { parseSessionCookie, serializeSessionCookie, STREAMWEAVER_SESSION_MAX_AGE } from '@/lib/session-cookie';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -112,11 +113,11 @@ export async function GET(request: NextRequest) {
       };
 
       const response = NextResponse.redirect(`${appOrigin}/dashboard`);
-      response.cookies.set('streamweaver-session', JSON.stringify(sessionData), {
+      response.cookies.set('streamweaver-session', serializeSessionCookie(sessionData), {
         httpOnly: true,
         secure: appOrigin.startsWith('https://'),
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
+        maxAge: STREAMWEAVER_SESSION_MAX_AGE,
       });
       return response;
     }
@@ -124,11 +125,7 @@ export async function GET(request: NextRequest) {
     // ─── BROADCASTER / BOT / COMMUNITY-BOT FLOW ───
     // Requires an existing session so we know which tenant to write to.
     const sessionCookie = request.cookies.get('streamweaver-session')?.value;
-    let tenantId: string | null = null;
-    try {
-      const session = JSON.parse(sessionCookie || '');
-      tenantId = session.id;
-    } catch {}
+    const tenantId = parseSessionCookie(sessionCookie)?.id || null;
 
     if (!tenantId) {
       // No session — if this is a broadcaster re-auth, treat it like a login
@@ -168,11 +165,11 @@ export async function GET(request: NextRequest) {
           loginTime: Date.now(),
         };
         const response = NextResponse.redirect(`${appOrigin}/integrations?success=true`);
-        response.cookies.set('streamweaver-session', JSON.stringify(sessionData), {
+        response.cookies.set('streamweaver-session', serializeSessionCookie(sessionData), {
           httpOnly: true,
           secure: appOrigin.startsWith('https://'),
           sameSite: 'lax',
-          maxAge: 60 * 60 * 24 * 7,
+          maxAge: STREAMWEAVER_SESSION_MAX_AGE,
         });
         return response;
       }

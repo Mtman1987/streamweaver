@@ -25,7 +25,8 @@ function getFilePath(tenantId?: string): string {
 export async function GET(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    const tenantId = request.nextUrl.searchParams.get('tenantId') || session?.tenantId || undefined;
+    if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+    const tenantId = session.tenantId;
     const filePath = getFilePath(tenantId);
     const data = await fs.readFile(filePath, 'utf-8').catch(() => '{}');
     const parsed = JSON.parse(data);
@@ -63,7 +64,8 @@ export async function POST(request: NextRequest) {
     }
 
     const session = getTenantFromRequest(request);
-    const tenantId = parsed.data.tenantId || session?.tenantId;
+    if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+    const tenantId = session.tenantId;
     const filePath = getFilePath(tenantId);
 
     // Merge with existing (don't overwrite fields not sent)

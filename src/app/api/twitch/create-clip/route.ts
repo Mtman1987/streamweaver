@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getStoredTokens, ensureValidToken } from '@/lib/token-utils.server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
+import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 
 export async function POST(req: NextRequest) {
     try {
@@ -14,7 +15,8 @@ export async function POST(req: NextRequest) {
         }
 
         const session = getTenantFromRequest(req);
-        const tenantId = session?.tenantId || url.searchParams.get('tenantId')?.trim() || undefined;
+        const tenantId = session?.tenantId || (hasInternalServiceAccess(req) ? url.searchParams.get('tenantId')?.trim() || undefined : undefined);
+        if (!tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
         const tokens = await getStoredTokens(tenantId);
         if (!tokens) {
             return apiError('No Twitch tokens available', { status: 401, code: 'MISSING_TOKENS' });

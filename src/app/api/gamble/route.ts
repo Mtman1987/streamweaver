@@ -21,7 +21,10 @@ export async function POST(req: NextRequest) {
 
         const { command, user, wager, mode } = parsed.data;
         const session = getTenantFromRequest(req);
-        const ctx = session ? { tenantId: session.tenantId, username: session.username } : undefined;
+        if (!session?.tenantId) {
+            return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+        }
+        const ctx = { tenantId: session.tenantId, username: session.username };
         
         if (!user) {
             return apiError('User required', { status: 400, code: 'USER_REQUIRED' });
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
             if (!mode) {
                 return apiError('Mode required', { status: 400, code: 'MODE_REQUIRED' });
             }
-            await handleGambleMode(user, mode);
+            await handleGambleMode(user, mode, session.tenantId);
             return apiOk({ success: true });
         }
 
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
                 return apiError('Valid wager required', { status: 400, code: 'INVALID_WAGER' });
             }
             
-            const result = await handleRoll(user, wager, userPoints);
+            const result = await handleRoll(user, wager, userPoints, session.tenantId);
             if (result) {
                 await updateUserPoints(user, result.newTotal, ctx);
             }
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (command === 'yes') {
-            const result = await handleYes(user, userPoints);
+            const result = await handleYes(user, userPoints, session.tenantId);
             if (result) {
                 await updateUserPoints(user, result.newTotal, ctx);
             }
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (command === 'no') {
-            await handleNo(user);
+            await handleNo(user, session.tenantId);
             return apiOk({ success: true });
         }
 

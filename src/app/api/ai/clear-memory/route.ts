@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clearPublicChatMemory } from '@/lib/public-chat-store';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 
 export async function POST(request: NextRequest) {
   console.log('[AI Clear Memory] Manual memory clear requested');
   
   try {
-    await clearPublicChatMemory();
+    const session = getTenantFromRequest(request);
+    if (!session?.tenantId) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    await clearPublicChatMemory(session.tenantId);
     
     console.log('[AI Clear Memory] Memory successfully cleared');
     return apiOk({ 
@@ -23,6 +28,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  // Allow GET requests for easy testing/emergency clearing
-  return POST(request);
+  return apiError('Method not allowed', { status: 405, code: 'METHOD_NOT_ALLOWED' });
 }

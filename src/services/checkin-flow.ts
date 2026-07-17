@@ -3,8 +3,10 @@ import { recordDetailedCheckin, getEntryInviteLink } from './checkin-stats';
 import { getCheckinSource, type CheckinEntry, type CheckinKind } from './checkin-sources';
 import { getStoredTokens } from '../lib/token-utils.server';
 import { readJsonFile, writeJsonFile } from './storage';
+import { internalServiceHeaders } from '../lib/internal-service-auth';
 
 const FRONT_SEAT_FILE = 'space-mountain-front-seat.json';
+export const FRONT_SEAT_BONUS_POINTS = 100;
 
 type FrontSeatHistory = { history: string[] }; // last N usernames who got front seat
 
@@ -165,7 +167,7 @@ async function playGreeting(greeting: string, tenantId?: string): Promise<void> 
       const tenantQuery = ttsTenantId ? `?tenant=${encodeURIComponent(ttsTenantId)}` : '';
       await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/tts/current${tenantQuery}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
       }).catch(() => {});
     } else if (typeof (global as any).broadcast === 'function') {
@@ -304,17 +306,21 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
 
   // Pick front seat rider — rotate so no one gets it every time
   const frontSeatRider = await pickFrontSeat(checkedIn, tenantId);
+  if (kind === 'space-mountain') {
+    const { addPoints } = require('./points');
+    await addPoints(frontSeatRider.name, FRONT_SEAT_BONUS_POINTS, 'space-mountain-front-seat', await resolvePointsCtx(tenantId));
+  }
 
   const names = checkedIn.slice(0, 8).map((entry) => entry.name).join(', ');
   const suffix = checkedIn.length > 8 ? ` and ${checkedIn.length - 8} more` : '';
-  let broadcasterMsg = `@${username} launched ${copy.title} with ${checkedIn.length} riders: ${names}${suffix} | 🎢 Front seat: ${frontSeatRider.name}!`;
+  let broadcasterMsg = `@${username} launched ${copy.title} with ${checkedIn.length} riders: ${names}${suffix} | 🎢 Front seat: ${frontSeatRider.name} (+${FRONT_SEAT_BONUS_POINTS} pts)!`;
   if (pointCost > 0) {
     const balance = await getBalance(username, tenantId);
     if (typeof balance === 'number') broadcasterMsg += ` | Balance: ${balance} pts`;
   }
   await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
 
-  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${frontSeatRider.name}! 🎢`;
+  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${frontSeatRider.name} with ${FRONT_SEAT_BONUS_POINTS} bonus points! 🎢`;
   await playGreeting(greeting, tenantId);
 
   broadcastCheckin('reveal', {
@@ -327,6 +333,7 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     count: checkedIn.length,
     names: checkedIn.map((entry) => entry.name),
     frontSeat: frontSeatRider.name,
+    frontSeatBonusPoints: FRONT_SEAT_BONUS_POINTS,
     entry: frontSeatRider,
   }, tenantId);
 }

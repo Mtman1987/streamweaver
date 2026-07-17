@@ -102,7 +102,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
         // Resolve tenant from URL query param (for overlays) or session cookie (dashboard clients).
         const urlTenantId = extractTenantIdFromRequest(request);
         const cookieTenantId = extractTenantIdFromCookie(request);
-        const resolvedTenantId = urlTenantId || cookieTenantId;
+        const resolvedTenantId = cookieTenantId || urlTenantId;
+        (ws as any).__sessionAuthorized = Boolean(cookieTenantId);
+        (ws as any).__authorizedTenantId = cookieTenantId || '';
         if (resolvedTenantId) {
             (ws as any).__tenantId = resolvedTenantId;
         }
@@ -139,6 +141,11 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 if (message.type === 'identify') {
                     const tid = message.payload?.tenantId || message.tenantId;
                     if (tid) {
+                        const authorizedTenantId = (ws as any).__authorizedTenantId as string;
+                        if (authorizedTenantId && tid !== authorizedTenantId) {
+                            ws.send(JSON.stringify({ type: 'error', payload: { message: 'Cannot identify as another tenant' } }));
+                            return;
+                        }
                         (ws as any).__tenantId = tid;
 
                         // Send tenant-specific Twitch status after identify.
@@ -156,7 +163,7 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         
                         // Add user to active users
                         const userProfile = message.payload?.userProfile;
-                        if (userProfile) {
+                        if (userProfile && ((ws as any).__sessionAuthorized || (ws as any).__localAuthorized)) {
                             activeUsers.set(tid, {
                                 tenantId: tid,
                                 username: userProfile.username || tid,
@@ -181,9 +188,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     return;
                 }
 
-                // SECURITY: In cloud mode, tenant-identified connections are authorized.
-                // In local mode, require API key.
-                const isAuthorized = (ws as any).__localAuthorized || !!(ws as any).__tenantId;
+                // Tenant query/identify selects a read-only overlay subscription.
+                // Mutations require a signed session cookie or the local API key.
+                const isAuthorized = (ws as any).__localAuthorized || (ws as any).__sessionAuthorized;
                 if (!isAuthorized) {
                     ws.send(JSON.stringify({
                         type: 'error',
@@ -345,15 +352,23 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 } else if (message.type === 'voice-command') {
                     const { command } = message.payload;
                     const lowerCmd = command.toLowerCase();
+                    const tenantId = (ws as any).__tenantId;
+                    if (!tenantId) {
+                        ws.send(JSON.stringify({
+                            type: 'error',
+                            payload: { message: 'Missing tenant context for voice-command' }
+                        }));
+                        return;
+                    }
                     
                     if (lowerCmd.includes('translation on') || lowerCmd.includes('translation begin')) {
                         const { setTranslationMode } = require('../services/translation-manager');
-                        setTranslationMode(true);
-                        console.log('[Voice Command] Translation mode enabled');
+                        setTranslationMode(true, tenantId);
+                        console.log(`[Voice Command] Translation mode enabled for tenant ${tenantId}`);
                     } else if (lowerCmd.includes('translation off') || lowerCmd.includes('translation end')) {
                         const { setTranslationMode } = require('../services/translation-manager');
-                        setTranslationMode(false);
-                        console.log('[Voice Command] Translation mode disabled');
+                        setTranslationMode(false, tenantId);
+                        console.log(`[Voice Command] Translation mode disabled for tenant ${tenantId}`);
                     }
                 } else if (message.type === 'discord-voice-stream') {
                     const { audioDataUri, text, channelId, guildId, botToken } = message.payload;

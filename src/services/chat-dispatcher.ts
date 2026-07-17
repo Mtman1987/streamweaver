@@ -11,13 +11,14 @@ import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { matchShoutoutTarget } from './shoutout-matcher';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
-import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation } from './translation-manager';
+import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
 import { handleLeaderboardCommand } from './leaderboard-commands';
 import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
 import { getPoints, getPointBalance, setPoints } from './points';
 import { getAIConfig } from './ai-provider';
 import { getBotName } from '../lib/bot-settings-store';
+import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
@@ -431,7 +432,7 @@ async function buildRelayDeliveryMessage(input: {
 
     const aiRes = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
             username: targetAudienceName,
             displayName: targetAudienceName,
@@ -516,6 +517,10 @@ export async function deliverBotRelay(input: {
     const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, input.speakerTenantId);
     if (!targetTenantId) {
         return { delivered: false, error: `could not resolve ${input.target.currentName}` };
+    }
+
+    if (!(await isBotRelayAllowed(input.speakerTenantId, targetTenantId))) {
+        return { delivered: false, error: `${input.target.currentName} has not enabled bot sharing` };
     }
 
     try {
@@ -1494,7 +1499,7 @@ async function sendTwitchCrossBotFollowUp(input: {
 
             const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
                     username: input.userName,
                     message: prompt,
@@ -1526,18 +1531,20 @@ async function sendTwitchCrossBotFollowUp(input: {
             await sendChatMessage(reply, 'bot', targetChannel, targetTenantId).catch((error) => {
                 console.error('[Dispatcher] Twitch cross-bot send failed:', error);
             });
-            await appendBotInteraction({
-                platform: 'twitch',
-                tenantId: targetTenantId,
-                channelId: targetChannel,
-                sourceUser: input.userName,
-                speakerBotId: target.stableId,
-                speakerBotName: target.currentName,
-                targetBotIds: lastSpeakerId ? [lastSpeakerId] : [],
-                targetBotNames: [lastSpeakerName],
-                triggerMessage: input.triggerMessage,
-                responseMessage: reply,
-            }).catch(() => {});
+            if (targetTenantId) {
+                await appendBotInteraction({
+                    platform: 'twitch',
+                    tenantId: targetTenantId,
+                    channelId: targetChannel,
+                    sourceUser: input.userName,
+                    speakerBotId: target.stableId,
+                    speakerBotName: target.currentName,
+                    targetBotIds: lastSpeakerId ? [lastSpeakerId] : [],
+                    targetBotNames: [lastSpeakerName],
+                    triggerMessage: input.triggerMessage,
+                    responseMessage: reply,
+                }).catch(() => {});
+            }
             count++;
             lastSpeakerId = target.stableId;
             lastSpeakerName = target.currentName;
@@ -2180,7 +2187,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Handle basic commands that should work regardless of bot status
     if (isCommand) {
         console.log(`[Dispatcher] Command detected: ${actualMessage} from ${actualUsername}`);
-        incrementMetric('totalCommands').catch(() => {});
+        incrementMetric('totalCommands', 1, tenantId).catch(() => {});
         
         const commands = await getAllCommands(tenantId);
         const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
@@ -2295,7 +2302,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 }
 
                 const { getEnabledSetMap, formatSetList } = require('./pokemon-packs');
-                const enabledSets = redeemsConfig.pokePack.enabledSets || ['base1','base2','base3','base4','base5','gym1'];
+                const enabledSets = redeemsConfig.pokePack.enabledSets || [];
                 console.log(`[Dispatcher] !pack tenant=${tenantId || 'global'} channel=${replyChannel} enabledSetCount=${enabledSets.length}`, enabledSets);
                 
                 const setMap = getEnabledSetMap(enabledSets);
@@ -2309,24 +2316,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
                 const setNumber = parseInt(numArg, 10);
                 if (!setNumber || isNaN(setNumber) || setNumber < 1 || setNumber > setCount) {
-                    console.log(`[Dispatcher] Invalid set number: ${numArg}, waiting for valid selection`);
-                    const setListMessage = formatSetList(setMap);
-                    console.log(`[Dispatcher] Set list message:`, setListMessage);
-                    await reply(setListMessage, 'broadcaster').catch(() => {});
+                    await reply(`${formatSetList(setMap)} | Use !pack 1-${setCount}`, 'broadcaster').catch(() => {});
                     const { pendingPackRedeems } = require('./eventsub');
-                    if (pendingPackRedeems) {
-                        const tenantKey = tenantId || 'global';
-                        let tenantPackRedeems = pendingPackRedeems.get(tenantKey);
-                        if (!tenantPackRedeems) {
-                            tenantPackRedeems = new Map();
-                            pendingPackRedeems.set(tenantKey, tenantPackRedeems);
-                        }
-                        tenantPackRedeems.set(actualUsername.toLowerCase(), { timestamp: Date.now(), pointCost });
+                    const tenantKey = tenantId || 'global';
+                    let tenantPackRedeems = pendingPackRedeems.get(tenantKey);
+                    if (!tenantPackRedeems) {
+                        tenantPackRedeems = new Map();
+                        pendingPackRedeems.set(tenantKey, tenantPackRedeems);
                     }
+                    tenantPackRedeems.set(actualUsername.toLowerCase(), { timestamp: Date.now(), pointCost });
                     return;
                 }
 
-                console.log(`[Dispatcher] Opening pack ${setNumber} for ${actualUsername}`);
+                console.log(`[Dispatcher] Opening monthly pool pack ${setNumber} for ${actualUsername}`);
                 const { handlePackOpenCmd } = require('./eventsub');
                 await handlePackOpenCmd(actualUsername, setNumber, pointCost, tenantId);
             } catch (error) {
@@ -2375,8 +2377,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     
     // Allow !t translation commands from broadcaster/mods before other checks
     if (isCommand && actualMessage.toLowerCase().startsWith('!t ')) {
+        if (!tenantId) {
+            console.warn('[Dispatcher] Ignoring translation command without tenant context');
+            return;
+        }
         const args = actualMessage.substring(3).trim().split(/\s+/);
-        const translated = await handleOneOffTranslation(args);
+        const translated = await handleOneOffTranslation(args, tenantId);
         if (translated) {
             await reply(translated, 'bot').catch(() => {});
         }
@@ -2394,8 +2400,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     }
     
     // Skip auto-translation for messages that start with [ to prevent loops
-    if (!self && !message.startsWith('[') && (isTranslationActive() || require('./translation-manager').isUserAutoTranslate(actualUsername))) {
-        const translated = await autoTranslateIncoming(actualMessage, actualUsername);
+    const translationEnabled = tenantId
+        ? isTranslationActive(tenantId) || await isUserAutoTranslate(actualUsername, tenantId)
+        : false;
+    if (!self && !message.startsWith('[') && translationEnabled && tenantId) {
+        const translated = await autoTranslateIncoming(actualMessage, actualUsername, tenantId);
         if (translated) {
             console.log(`[Dispatcher] Auto-translated incoming: ${translated}`);
             // Show translation in chat as bot to prevent loops
@@ -2609,8 +2618,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
         // Handle !t one-off translation for mods
         if (actualMessage.toLowerCase().startsWith('!t ')) {
+            if (!tenantId) {
+                console.warn('[Dispatcher] Ignoring translation command without tenant context');
+                return;
+            }
             const args = actualMessage.substring(3).trim().split(/\s+/);
-            const translated = await handleOneOffTranslation(args);
+            const translated = await handleOneOffTranslation(args, tenantId);
             if (translated) {
                 await reply(translated, 'bot').catch(() => {});
                 return;
@@ -2969,7 +2982,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !back command
         if (actualMessage.toLowerCase() === '!back') {
             if (tags.mod || tags.badges?.broadcaster) {
-                stopBRB();
+                stopBRB(tenantId);
                 // Immediately stop overlay and switch scene back
                 if (typeof (global as any).broadcast === 'function') {
                     (global as any).broadcast({ type: 'brb-stop' }, tenantId);
@@ -3114,7 +3127,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const targetName = actualMessage.substring(4).trim().replace('@', '');
             if (targetName) {
                 console.log(`[Dispatcher] Processing !so shoutout for ${targetName}`);
-                incrementMetric('shoutoutsGiven').catch(() => {});
+                incrementMetric('shoutoutsGiven', 1, tenantId).catch(() => {});
                 const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
                 await handleWalkOnShoutout(targetName, targetName, profileImage, true, tenantId).catch(err => {
                     console.error('[Dispatcher] !so shoutout failed:', err);
@@ -3329,6 +3342,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const tenantQuery = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
                 const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/twitch/create-clip${tenantQuery}`, {
                     method: 'POST',
+                    headers: internalServiceHeaders(),
                     signal: AbortSignal.timeout(10000),
                 });
                 const data = await response.json().catch(() => null);
@@ -3445,7 +3459,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (actualMessage.toLowerCase() === '!watchtime') {
             try {
                 const { getUser, formatWatchtime } = require('./user-stats');
-                const user = await getUser(actualUsername);
+                if (!tenantCtx) throw new Error('Missing tenant context for watchtime');
+                const user = await getUser(actualUsername, tenantCtx);
                 const msg = formatWatchtime(user);
                 await reply(msg, 'bot').catch(() => {});
             } catch (error) {
@@ -4132,7 +4147,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (!botShareEnabled && !isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
                 console.log('[Dispatcher] Shoutout command detected');
                 try {
-                    const chattersResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/chat/chatters`);
+                    const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+                    const chattersResponse = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/chat/chatters${tenantQuery}`, {
+                        headers: internalServiceHeaders(),
+                    });
                     let chatters = [];
                     if (chattersResponse.ok) {
                         const chattersData = await chattersResponse.json();
@@ -4376,7 +4394,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         console.log(`[Dispatcher] Cross-bot interaction triggered: ${decision.reason}`);
                         const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                             body: JSON.stringify({
                                 username: actualUsername,
                                 displayName: displayName,
@@ -4396,17 +4414,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     responseTenantId,
                                 });
                                 await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
-                                await appendBotInteraction({
-                                    platform: 'twitch',
-                                    tenantId: responseTenantId,
-                                    sourceUser: actualUsername,
-                                    speakerBotId: decision.speaker.stableId,
-                                    speakerBotName: decision.speaker.currentName,
-                                    targetBotIds: decision.targets.map((target: any) => target.stableId),
-                                    targetBotNames: decision.targets.map((target: any) => target.currentName),
-                                    triggerMessage: actualMessage,
-                                    responseMessage: aiReply,
-                                }).catch(() => {});
+                                if (responseTenantId) {
+                                    await appendBotInteraction({
+                                        platform: 'twitch',
+                                        tenantId: responseTenantId,
+                                        sourceUser: actualUsername,
+                                        speakerBotId: decision.speaker.stableId,
+                                        speakerBotName: decision.speaker.currentName,
+                                        targetBotIds: decision.targets.map((target: any) => target.stableId),
+                                        targetBotNames: decision.targets.map((target: any) => target.currentName),
+                                        triggerMessage: actualMessage,
+                                        responseMessage: aiReply,
+                                    }).catch(() => {});
+                                }
                                 await sendTwitchCrossBotFollowUp({
                                     channel: responseChannel,
                                     userName: actualUsername,
@@ -4447,7 +4467,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             
             if (mentionsBot) {
                 
-                incrementMetric('athenaCommands').catch(() => {});
+                incrementMetric('athenaCommands', 1, tenantId).catch(() => {});
                 // Use chat-with-memory API for context-aware responses
                 try {
                     console.log('[Dispatcher] Calling chat-with-memory API...');
@@ -4456,7 +4476,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     
                     const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                         body: JSON.stringify({
                             username: actualUsername,
                             message: messageToSend,
@@ -4505,7 +4525,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                             const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
                                             await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                                                 method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
+                                                headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                                                 body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
                                             }).catch(err => console.error('[Dispatcher] Failed to send TTS to player:', err));
                                         } else if (typeof (global as any).broadcast === 'function') {
@@ -4545,6 +4565,14 @@ function normalizeDiscordAttachmentsForMemory(msg: any) {
             }))
             .filter((attachment: { url: string }) => attachment.url)
         : [];
+}
+
+export async function isBotRelayAllowed(sourceTenantId?: string, targetTenantId?: string): Promise<boolean> {
+    if (!sourceTenantId || !targetTenantId) return false;
+    const { getBotShareMode } = await import('../lib/bot-interactions-store');
+    if (await getBotShareMode(sourceTenantId) !== 'on') return false;
+    if (sourceTenantId === targetTenantId) return true;
+    return await getBotShareMode(targetTenantId) === 'on';
 }
 
 function normalizeDiscordEmbedsForMemory(msg: any) {
@@ -4684,7 +4712,7 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
             if (decision?.shouldRespond) {
                     const response = await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/ai/chat-with-memory`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({
                         username: msg.author?.username || sourceUserName,
                         userId: msg.author?.id || msg.author?.userId || undefined,
@@ -4708,18 +4736,20 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
                     const aiReply = data.response?.trim() || data.data?.response?.trim() || '';
                     if (aiReply) {
                         await sendDiscordMessage(sourceChannelId, aiReply).catch((error) => console.error('[Discord Bridge] Failed to send cross-bot reply:', error));
-                        await appendBotInteraction({
-                            platform: 'discord',
-                            tenantId,
-                            channelId: sourceChannelId,
-                            sourceUser: sourceUserName,
-                            speakerBotId: decision.speaker.stableId,
-                            speakerBotName: decision.speaker.currentName,
-                            targetBotIds: decision.targets.map((target: any) => target.stableId),
-                            targetBotNames: decision.targets.map((target: any) => target.currentName),
-                            triggerMessage: msg.content,
-                            responseMessage: aiReply,
-                        }).catch(() => {});
+                        if (tenantId) {
+                            await appendBotInteraction({
+                                platform: 'discord',
+                                tenantId,
+                                channelId: sourceChannelId,
+                                sourceUser: sourceUserName,
+                                speakerBotId: decision.speaker.stableId,
+                                speakerBotName: decision.speaker.currentName,
+                                targetBotIds: decision.targets.map((target: any) => target.stableId),
+                                targetBotNames: decision.targets.map((target: any) => target.currentName),
+                                triggerMessage: msg.content,
+                                responseMessage: aiReply,
+                            }).catch(() => {});
+                        }
                         return { commandHandled: false };
                     }
                 } else {

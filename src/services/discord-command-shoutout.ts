@@ -3,6 +3,7 @@ import { buildStreamWeaverLogoUrl } from './discord-branding';
 import { createDiscordStreamHubManualShoutout } from './discord-stream-hub';
 import { getTwitchUser } from './twitch';
 import { fetchClip } from './walk-on-shoutout';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 type StreamInfo = {
   title: string;
@@ -81,12 +82,12 @@ async function getStreamInfo(username: string): Promise<StreamInfo | null> {
   };
 }
 
-async function getAiShoutout(username: string): Promise<string> {
+async function getAiShoutout(username: string, tenantId?: string): Promise<string> {
   try {
     const response = await fetch(`${getInternalAppUrl()}/api/ai/shoutout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username }),
+      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ username, tenantId }),
     });
     const data = await response.json().catch(() => null);
     return String(data?.shoutout || data?.data?.shoutout || '').trim();
@@ -148,7 +149,7 @@ export async function buildDiscordCommandShoutoutPayload(input: {
     getTwitchUser(username).catch(() => null),
     getStreamInfo(username).catch(() => null),
     fetchClip(username).catch(() => null),
-    getAiShoutout(username).catch(() => ''),
+    getAiShoutout(username, input.tenantId).catch(() => ''),
   ]);
   let dshMedia = await getDshMediaLookup(username).catch(() => null);
   if (input.allowGifGeneration && !dshMedia?.gifUrl) {

@@ -7,6 +7,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { tenantPath, globalPath } from '@/lib/tenant';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { runImageCommand } from '@/services/image-command';
+import { hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 
 const relaySchema = z.object({
   source: z.string().trim().max(128).optional(),
@@ -68,8 +69,8 @@ async function persistBase64Image(imageBase64: string, tenantId: string | undefi
 }
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get('x-mountainview-bridge') !== '1') {
-    return apiError('MountainView bridge header required', { status: 401, code: 'UNAUTHORIZED' });
+  if (!hasMountainViewBridgeAccess(request)) {
+    return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
   }
 
   try {
@@ -83,7 +84,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = parsed.data;
-    const tenantId = body.tenantId || body.username || undefined;
+    const tenantId = body.tenantId || undefined;
+    if (!tenantId) {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
+    }
     const storedImageUrl = body.imageBase64 ? await persistBase64Image(body.imageBase64, tenantId, request) : null;
     const prompt = body.prompt?.trim() || '';
     const imageUrl = body.imageUrl || storedImageUrl || '';

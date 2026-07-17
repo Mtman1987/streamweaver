@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 import { z } from 'zod';
 
 const ttsCurrentSchema = z.object({
@@ -8,6 +9,7 @@ const ttsCurrentSchema = z.object({
 });
 
 type TtsQueueItem = {
+  cursor: string;
   audioUrl: string;
   addedAt: string;
 };
@@ -42,16 +44,6 @@ function getTenantState(request: NextRequest): TenantTtsState {
   return map[tenantKey];
 }
 
-function isLocalRequest(request: NextRequest): boolean {
-  if (request.headers.get('x-mountainview-bridge') === '1') return true;
-  const host = request.headers.get('host') || '';
-  if (host.startsWith('127.0.0.1') || host.startsWith('localhost')) return true;
-  const forwarded = request.headers.get('x-forwarded-for') || '';
-  if (forwarded.startsWith('127.0.0.1') || forwarded === '::1') return true;
-  if (request.nextUrl.searchParams.get('tenant')) return true;
-  return false;
-}
-
 export async function GET(request: NextRequest) {
   const state = getTenantState(request);
   const { searchParams } = new URL(request.url);
@@ -62,12 +54,20 @@ export async function GET(request: NextRequest) {
     return apiOk({ updatedAt: hasItems ? state.queue[0].addedAt : state.lastServedAt });
   }
 
-  // ?next=1 pops the next item from the queue (player calls this when ready for next)
+  // Public overlay reads are cursor-based and non-destructive. One player must not
+  // be able to consume audio before another player for the same tenant receives it.
   if (searchParams.get('next')) {
-    const item = state.queue.shift();
+    const after = searchParams.get('after');
+    const afterIndex = after ? state.queue.findIndex((entry) => entry.cursor === after) : -1;
+    const itemIndex = afterIndex >= 0 ? afterIndex + 1 : 0;
+    const item = state.queue[itemIndex];
     if (item) {
-      state.lastServedAt = item.addedAt;
-      return apiOk({ audioUrl: item.audioUrl, updatedAt: item.addedAt, remaining: state.queue.length });
+      return apiOk({
+        audioUrl: item.audioUrl,
+        updatedAt: item.addedAt,
+        cursor: item.cursor,
+        remaining: Math.max(0, state.queue.length - itemIndex - 1),
+      });
     }
     return apiOk({ audioUrl: null, updatedAt: state.lastServedAt, remaining: 0 });
   }
@@ -82,8 +82,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
-    if (!session && !isLocalRequest(request)) {
+    if (!session && !hasInternalServiceAccess(request) && !hasMountainViewBridgeAccess(request)) {
       return apiError('Not authenticated', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    if (getTenantKey(request) === 'global') {
+      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
     }
 
     const parsed = ttsCurrentSchema.safeParse(await request.json().catch(() => null));
@@ -95,7 +98,8 @@ export async function POST(request: NextRequest) {
     const state = getTenantState(request);
     const addedAt = new Date().toISOString();
 
-    state.queue.push({ audioUrl, addedAt });
+    const cursor = crypto.randomUUID();
+    state.queue.push({ cursor, audioUrl, addedAt });
 
     // Cap queue at 20 to prevent memory issues
     if (state.queue.length > 20) {
@@ -103,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[TTS Current] POST queued | queue size:', state.queue.length, '| addedAt:', addedAt);
-    return apiOk({ success: true, updatedAt: addedAt, queueSize: state.queue.length });
+    return apiOk({ success: true, updatedAt: addedAt, cursor, queueSize: state.queue.length });
   } catch (error: any) {
     return apiError(error?.message || 'Failed to queue tts audio', { status: 500, code: 'INTERNAL_ERROR' });
   }
