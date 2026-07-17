@@ -66,15 +66,16 @@ export async function GET(request: NextRequest) {
     let kickChannelId = '';
     let kickChatroomId = '';
     try {
-      const userRes = await fetch('https://api.kick.com/public/v1/users/me', {
+      const userRes = await fetch('https://api.kick.com/public/v1/users', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
       if (userRes.ok) {
         const userData = await userRes.json();
-        const user = userData.data || userData;
-        kickUsername = user.username || user.name || user.slug || '';
-        kickChannelId = String(user.channel_id || user.id || '');
-        kickChatroomId = String(user.chatroom_id || user.chatroom?.id || '');
+        const user = Array.isArray(userData.data) ? userData.data[0] : userData.data || userData;
+        kickUsername = user?.name || user?.username || user?.slug || '';
+        kickChannelId = String(user?.user_id || user?.channel_id || user?.id || '');
+        // Kick's public chat Pusher channel is keyed by broadcaster_user_id.
+        kickChatroomId = String(user?.chatroom_id || user?.chatroom?.id || kickChannelId);
       }
     } catch (e) {
       console.error('[Kick OAuth] User info fetch failed:', e);

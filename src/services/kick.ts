@@ -364,16 +364,17 @@ export class KickService extends EventEmitter {
         }
       } catch {}
 
-      // Fallback: /users/me (only works for the token owner's channel)
+      // Fallback: /users with no id returns the currently authorized user.
+      // Kick's current response is { data: [{ user_id, name, ... }] }.
       try {
-        const res = await fetch('https://api.kick.com/public/v1/users/me', {
+        const res = await fetch('https://api.kick.com/public/v1/users', {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (res.ok) {
           const data = await res.json();
-          const user = data.data || data;
-          const chatroomId = user.chatroom_id || user.chatroom?.id;
-          const channelId = user.channel_id || user.id;
+          const user = Array.isArray(data.data) ? data.data[0] : data.data || data;
+          const channelId = user?.user_id || user?.id;
+          const chatroomId = user?.chatroom_id || user?.chatroom?.id || channelId;
           if (channelId && chatroomId) return { id: channelId, chatroom: { id: chatroomId } };
         }
       } catch {}
