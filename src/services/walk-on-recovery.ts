@@ -51,6 +51,10 @@ function stringifyError(error: unknown): string {
   }
 }
 
+function isNonRestartableDeliveryFailure(error: unknown): boolean {
+  return /Shared chat source-only send (?:failed|skipped).+\((?:permission|broadcaster-not-found|sender-not-found|sender-unavailable)\)/i.test(stringifyError(error));
+}
+
 async function loadQueue(tenantId?: string): Promise<WalkOnRecoveryJob[]> {
   try {
     const raw = await fs.readFile(queuePath(tenantId), 'utf-8');
@@ -139,7 +143,11 @@ export async function queueWalkOnRetry(input: {
   }
 
   await saveQueue(input.tenantId, jobs);
-  await requestProcessRestart(input.tenantId, `walk-on shoutout failed for ${input.displayName}`);
+  if (isNonRestartableDeliveryFailure(input.error)) {
+    console.warn(`[WalkOnRecovery] Queued non-restartable shared-chat delivery failure for ${input.displayName}; waiting for token or channel repair.`);
+  } else {
+    await requestProcessRestart(input.tenantId, `walk-on shoutout failed for ${input.displayName}`);
+  }
 }
 
 async function getAlertDiscordChannelId(tenantId?: string): Promise<string | null> {
@@ -183,7 +191,7 @@ async function buildSuggestedFixes(job: WalkOnRecoveryJob, retryError: string): 
   return suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n');
 }
 
-async function reportFailure(job: WalkOnRecoveryJob, retryError: unknown): Promise<void> {
+async function reportFailure(job: WalkOnRecoveryJob, retryError: unknown, fallbackAttempted: boolean): Promise<void> {
   const retryErrorText = stringifyError(retryError);
   const channelId = await getAlertDiscordChannelId(job.tenantId);
   if (!channelId) {
@@ -212,7 +220,9 @@ async function reportFailure(job: WalkOnRecoveryJob, retryError: unknown): Promi
     recentLogs.length > 0 ? recentLogs.join('\n') : 'No buffered logs available in this process.',
     '',
     'Fallback result:',
-    'Simple text shoutout was sent after restart + retry failed.',
+    fallbackAttempted
+      ? 'Simple text fallback was attempted after the retry failed.'
+      : 'Simple text fallback was skipped because it would use the same blocked shared-chat authorization path.',
     'Walk-on restart recovery circuit was disabled for this tenant. Clear data/walk-on-recovery-circuit.json after fixing the root cause.',
     '',
     'Suggested next checks:',
@@ -224,7 +234,7 @@ async function reportFailure(job: WalkOnRecoveryJob, retryError: unknown): Promi
     channelId,
     report,
     fileName,
-    `⚠️ Walk-on shoutout failed after restart + retry for **${job.displayName}**. Simple text fallback was sent; report attached.`
+    `⚠️ Walk-on shoutout failed after retry for **${job.displayName}**. ${fallbackAttempted ? 'Simple text fallback was attempted.' : 'Authorization repair is required; duplicate fallback was skipped.'} Report attached.`
   ).catch((error) => {
     console.error('[WalkOnRecovery] Failed to upload Discord report:', error);
   });
@@ -266,13 +276,18 @@ async function processQueueForTenant(tenantId?: string): Promise<void> {
       }
       throw new Error('Retry was skipped by cooldown/exclusion rules');
     } catch (retryError) {
-      console.error(`[WalkOnRecovery] Retry failed for ${job.displayName}; sending simple fallback`, retryError);
-      try {
-        await sendSimpleFallback(job);
-      } catch (fallbackError) {
-        console.error(`[WalkOnRecovery] Simple fallback failed for ${job.displayName}:`, fallbackError);
+      const fallbackAttempted = !isNonRestartableDeliveryFailure(retryError);
+      console.error(`[WalkOnRecovery] Retry failed for ${job.displayName}; ${fallbackAttempted ? 'sending simple fallback' : 'authorization repair required'}`, retryError);
+      if (fallbackAttempted) {
+        try {
+          await sendSimpleFallback(job);
+        } catch (fallbackError) {
+          console.error(`[WalkOnRecovery] Simple fallback failed for ${job.displayName}:`, fallbackError);
+        }
+      } else {
+        console.warn(`[WalkOnRecovery] Skipping identical chat fallback for ${job.displayName}; authorization repair is required.`);
       }
-      await reportFailure(job, retryError);
+      await reportFailure(job, retryError, fallbackAttempted);
       await disableRestartCircuit(job.tenantId, `Walk-on retry failed for ${job.displayName}; report sent and simple fallback attempted.`);
     }
   }

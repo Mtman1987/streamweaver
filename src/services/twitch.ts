@@ -103,12 +103,17 @@ export async function sendChatMessage(
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.statusText}`);
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(payload?.error || `Failed to send message: ${response.statusText}`);
     }
     
     console.log(`[Twitch] Message sent via API: ${message}`);
   } catch (error: any) {
     console.error('[Twitch] Failed to send message:', error);
+    const message = String(error?.message || error || '');
+    if (/Shared chat source-only send (?:failed|skipped)/i.test(message)) {
+      throw new Error(message);
+    }
     throw new Error('Twitch client not available for sending messages');
   }
 }

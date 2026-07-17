@@ -81,7 +81,7 @@ test('shared chat sends use Helix source-only even when no user token is availab
   }
 });
 
-test('shared chat source-only does not fall back to IRC when source-only auth is insufficient', async () => {
+test('shared chat source-only retries with a stored user token when app authorization is insufficient', async () => {
   const originalFetch = global.fetch;
   const originalClientId = process.env.TWITCH_CLIENT_ID;
   const originalClientSecret = process.env.TWITCH_CLIENT_SECRET;
@@ -145,6 +145,9 @@ test('shared chat source-only does not fall back to IRC when source-only auth is
       if (auth === 'Bearer app-token') {
         return new Response('The sender must have authorized the app with the user:bot scope.', { status: 401 });
       }
+      if (auth === 'Bearer community-token') {
+        return new Response(JSON.stringify({ data: [{ is_sent: true }] }), { status: 200 });
+      }
     }
 
     throw new Error(`Unexpected fetch call: ${url}`);
@@ -160,18 +163,15 @@ test('shared chat source-only does not fall back to IRC when source-only auth is
   };
 
   try {
-    await assert.rejects(
-      sendWithSharedChatAwareness({
-        client,
-        channel: 'testchannel',
-        message: 'hello from community bot',
-        as: 'bot',
-        tenantId,
-      }),
-      /Shared chat source-only send failed/,
-    );
+    await sendWithSharedChatAwareness({
+      client,
+      channel: 'testchannel',
+      message: 'hello from community bot',
+      as: 'bot',
+      tenantId,
+    });
 
-    assert.deepEqual(authHeaders, ['Bearer app-token']);
+    assert.deepEqual(authHeaders, ['Bearer app-token', 'Bearer community-token']);
     assert.equal(ircFallbackSent, false);
   } finally {
     global.fetch = originalFetch;

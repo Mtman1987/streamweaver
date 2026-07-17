@@ -244,6 +244,21 @@ type HelixAuthCandidate = {
   token: string;
 };
 
+export type SharedChatSendFailureReason =
+  | 'broadcaster-not-found'
+  | 'sender-not-found'
+  | 'permission'
+  | 'api-error'
+  | 'exception'
+  | 'sender-unavailable';
+
+export class SharedChatSendError extends Error {
+  constructor(public readonly reason: SharedChatSendFailureReason, channel: string) {
+    super(`Shared chat source-only send failed for #${channel} (${reason})`);
+    this.name = 'SharedChatSendError';
+  }
+}
+
 async function getUserTokenCandidates(as: 'bot' | 'broadcaster', tenantId?: string): Promise<HelixAuthCandidate[]> {
   try {
     const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
@@ -304,6 +319,10 @@ async function sendViaHelixAPI(
       `https://api.twitch.tv/helix/users?login=${encodeURIComponent(targetChannel)}`,
       { headers: { 'Client-ID': clientId, Authorization: `Bearer ${appToken}` } },
     );
+    if (!bRes.ok) {
+      console.warn(`[SharedChat] Broadcaster lookup failed for ${targetChannel} (${bRes.status})`);
+      return { success: false, reason: 'api-error' };
+    }
     const bData = await bRes.json();
     const broadcasterId = bData.data?.[0]?.id;
     if (!broadcasterId) return { success: false, reason: 'broadcaster-not-found' };
@@ -317,61 +336,61 @@ async function sendViaHelixAPI(
     const senderId = sData.data?.[0]?.id;
     if (!senderId) return { success: false, reason: 'sender-not-found' };
 
+    const sendCandidates = [
+      { kind: 'app' as const, token: appToken },
+      ...userAuthCandidates,
+    ].filter((candidate, index, list) =>
+      Boolean(candidate.token) && list.findIndex((entry) => entry.token === candidate.token) === index,
+    );
     let lastStatus = 0;
     let lastErrorText = '';
-    const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
-      method: 'POST',
-      headers: {
-        'Client-ID': clientId,
-        Authorization: `Bearer ${appToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        broadcaster_id: broadcasterId,
-        sender_id: senderId,
-        message,
-        for_source_only: true,
-      }),
-    });
+    let permissionFailure = false;
+    const senderAuthKinds = userAuthCandidates.map((candidate) => candidate.kind).join(', ') || 'none';
+    for (const candidate of sendCandidates) {
+      const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
+        method: 'POST',
+        headers: {
+          'Client-ID': clientId,
+          Authorization: `Bearer ${candidate.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          broadcaster_id: broadcasterId,
+          sender_id: senderId,
+          message,
+          for_source_only: true,
+        }),
+      });
 
-    if (res.ok) {
-      console.log(`[SharedChat] Source-only Helix send succeeded using app token for #${targetChannel}`);
-      return { success: true };
+      if (res.ok) {
+        console.log(`[SharedChat] Source-only Helix send succeeded using ${candidate.kind} token for #${targetChannel}`);
+        return { success: true };
+      }
+
+      lastStatus = res.status;
+      lastErrorText = await res.text();
+      console.warn(`[SharedChat] Helix source-only send failed using ${candidate.kind} token (${res.status}): ${lastErrorText}`);
+      const lower = lastErrorText.toLowerCase();
+      permissionFailure ||= lower.includes('channel:bot') ||
+        lower.includes('user:bot') ||
+        lower.includes('user:write:chat') ||
+        lower.includes('sender must be a moderator') ||
+        lower.includes('must have authorized') ||
+        lower.includes('sender_id must match');
     }
 
-    lastStatus = res.status;
-    lastErrorText = await res.text();
-    console.warn(`[SharedChat] Helix source-only send failed using app token (${res.status}): ${lastErrorText}`);
-
-    const lower = lastErrorText.toLowerCase();
-    const senderAuthKinds = userAuthCandidates.map((candidate) => candidate.kind).join(', ') || 'none';
-    if (
-      lower.includes('channel:bot') ||
-      lower.includes('user:bot') ||
-      lower.includes('user:write:chat') ||
-      lower.includes('sender must be a moderator') ||
-      lower.includes('must have authorized')
-    ) {
+    if (permissionFailure) {
       console.warn(
-        `[SharedChat] Source-only app-token send requires sender authorization (user:bot + user:write:chat) and broadcaster authorization/channel mod status. Available sender token kinds: ${senderAuthKinds}`,
+        `[SharedChat] Source-only send exhausted app and user-token authorization. Available sender token kinds: ${senderAuthKinds}`,
       );
       return { success: false, reason: 'permission' };
     }
 
-    if (lastStatus === 401 && attempt < 1) {
+    if (lastStatus === 401 && attempt < 1 && /invalid oauth token/i.test(lastErrorText)) {
+      appAccessToken = null;
+      appTokenExpiry = 0;
       return sendViaHelixAPI(targetChannel, senderLogin, message, userAuthCandidates, attempt + 1);
     }
-
-    if (
-      (lastErrorText || '').toLowerCase().includes('sender must be a moderator') ||
-      (lastErrorText || '').toLowerCase().includes('channel:bot') ||
-      (lastErrorText || '').toLowerCase().includes('user:bot') ||
-      (lastErrorText || '').toLowerCase().includes('user:write:chat') ||
-      (lastErrorText || '').toLowerCase().includes('must have authorized')
-    ) {
-      return { success: false, reason: 'permission' };
-    }
-
     return { success: false, reason: 'api-error' };
   } catch (e: any) {
     console.error('[SharedChat] Helix send error:', e.message);
@@ -484,10 +503,10 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
         }
       }
 
-      throw new Error(`Shared chat source-only send failed for #${normalized} (${result.reason || 'unknown'})`);
+      throw new SharedChatSendError((result.reason || 'api-error') as SharedChatSendFailureReason, normalized);
     }
 
-    throw new Error(`Shared chat source-only send skipped for #${normalized}: sender login unavailable`);
+    throw new SharedChatSendError('sender-unavailable', normalized);
   }
 
   // Normal IRC send
