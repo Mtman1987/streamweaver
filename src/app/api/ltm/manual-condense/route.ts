@@ -4,6 +4,7 @@ import { getChannelMessages } from '@/services/discord';
 import { apiError, apiOk } from '@/lib/api-response';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { z } from 'zod';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 
 const manualCondenseSchema = z.object({
   channelId: z.string().trim().min(1, 'channelId required').max(64),
@@ -13,13 +14,16 @@ const manualCondenseSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const session = getTenantFromRequest(request);
+    if (!session) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+    const tenantId = session.tenantId;
     const parsed = manualCondenseSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return apiError('channelId required', { status: 400, code: 'INVALID_BODY' });
     }
     const { channelId, startIndex, batchSize } = parsed.data;
     
-    const aiConfig = getAIConfig();
+    const aiConfig = getAIConfig(tenantId);
     if (!aiConfig.apiKey) {
       return apiError('Missing API key', { status: 500, code: 'MISSING_CONFIG' });
     }
@@ -59,7 +63,7 @@ Format your response as:
 TITLE: [your title]
 CONTENT: [your summary]`;
     
-    const responseText = (await generateAIResponse(prompt, 'You condense streamer chat history into durable memory entries.'))?.trim();
+    const responseText = (await generateAIResponse(prompt, 'You condense streamer chat history into durable memory entries.', tenantId))?.trim();
     
     if (!responseText) {
       return apiError('AI returned empty response', { status: 502, code: 'UPSTREAM_ERROR' });
@@ -75,7 +79,7 @@ CONTENT: [your summary]`;
     const title = titleMatch[1].trim();
     const content = contentMatch[1].trim();
     
-    await addLTMEntry(title, content);
+    await addLTMEntry(title, content, tenantId);
     
     return apiOk({ 
       title, 

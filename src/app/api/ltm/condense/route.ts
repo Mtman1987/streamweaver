@@ -4,6 +4,7 @@ import { addLTMEntry } from '@/lib/ltm-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { z } from 'zod';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 
 type RequestBody = {
   channelId: string;
@@ -15,7 +16,7 @@ const ltmCondenseSchema = z.object({
   messageCount: z.coerce.number().int().min(1).max(500).optional(),
 });
 
-async function condenseChatHistory(channelId: string): Promise<{ title: string; content: string } | null> {
+async function condenseChatHistory(channelId: string, tenantId: string): Promise<{ title: string; content: string } | null> {
   try {
     // Get last 50 messages from Discord
     const messages = await getChannelMessages(channelId, 50) as Array<{ content?: string }>;
@@ -37,7 +38,7 @@ async function condenseChatHistory(channelId: string): Promise<{ title: string; 
     
     if (!chatHistory) return null;
     
-    const aiConfig = getAIConfig();
+    const aiConfig = getAIConfig(tenantId);
     if (!aiConfig.apiKey) throw new Error('Missing API key');
     
     const prompt = `Analyze this conversation and create a Long Term Memory (LTM) entry:
@@ -52,7 +53,7 @@ Format your response as:
 TITLE: [your title here]
 CONTENT: [your 5-10 sentence summary here]`;
     
-    const response = (await generateAIResponse(prompt, 'You condense streamer chat history into durable memory entries.'))?.trim();
+    const response = (await generateAIResponse(prompt, 'You condense streamer chat history into durable memory entries.', tenantId))?.trim();
     
     if (!response) return null;
     
@@ -75,16 +76,19 @@ CONTENT: [your 5-10 sentence summary here]`;
 
 export async function POST(request: NextRequest) {
   try {
+    const session = getTenantFromRequest(request);
+    if (!session) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+    const tenantId = session.tenantId;
     const parsed = ltmCondenseSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return apiError('Missing channelId', { status: 400, code: 'INVALID_BODY' });
     }
     const { channelId } = parsed.data;
     
-    const ltmEntry = await condenseChatHistory(channelId);
+    const ltmEntry = await condenseChatHistory(channelId, tenantId);
     
     if (ltmEntry) {
-      await addLTMEntry(ltmEntry.title, ltmEntry.content);
+      await addLTMEntry(ltmEntry.title, ltmEntry.content, tenantId);
       console.log('[LTM] Created new memory:', ltmEntry.title);
       return apiOk({ 
         success: true, 

@@ -9,6 +9,7 @@ export interface AutomationEvent {
   user?: string;
   message?: string;
   data?: any;
+  tenantId?: string;
 }
 
 export class AutomationEngine {
@@ -36,7 +37,7 @@ export class AutomationEngine {
     const platformBit = this.getPlatformBit(event.platform);
     console.log(`[AutomationEngine] Looking for command: "${event.message}" on platform bit: ${platformBit}`);
     
-    const command = this.commandManager.findCommandByTrigger(event.message, platformBit);
+    const command = this.commandManager.findCommandByTrigger(event.message, platformBit, event.tenantId);
     
     if (!command) {
       console.log(`[AutomationEngine] No command found for: "${event.message}"`);

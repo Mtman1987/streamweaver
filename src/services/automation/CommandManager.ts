@@ -76,7 +76,7 @@ export class CommandManager {
     return Array.from(this.commandGroups);
   }
 
-  findCommandByTrigger(message: string, platform: number): Command | null {
+  findCommandByTrigger(message: string, platform: number, tenantId?: string): Command | null {
     console.log(`[CommandManager] Searching for command in message: "${message}" on platform: ${platform}`);
     console.log(`[CommandManager] Total commands loaded: ${this.commands.size}`);
     
@@ -92,7 +92,7 @@ export class CommandManager {
         continue;
       }
 
-      const matches = this.matchesCommand(command, message);
+      const matches = this.matchesCommand(command, message, tenantId);
       console.log(`[CommandManager] Command ${command.command} matches: ${matches}`);
       if (matches) {
         console.log(`[CommandManager] Found matching command: ${command.command}`);
@@ -103,13 +103,13 @@ export class CommandManager {
     return null;
   }
 
-  private matchesCommand(command: Command, message: string): boolean {
+  private matchesCommand(command: Command, message: string, tenantId?: string): boolean {
     const text = command.caseSensitive ? message : message.toLowerCase();
     let trigger = command.caseSensitive ? command.command : command.command.toLowerCase();
 
     // Replace {{BOT_NAME}} placeholder with actual bot name from config
     if (trigger.includes('{{bot_name}}')) {
-      const aiConfig = getAIConfig();
+      const aiConfig = getAIConfig(tenantId);
       const botName = aiConfig.botName || 'AI Bot';
       trigger = trigger.replace(/\{\{bot_name\}\}/gi, botName);
     }
