@@ -628,7 +628,15 @@ async function startServer() {
             } catch (e) { /* silent */ }
         }, 300000); // every 5 minutes
         pollingService.addTask('metrics', async () => {
-            try { const { updateMetrics } = require('./src/services/metrics'); await updateMetrics(); } catch (e) { /* silent */ }
+            try {
+                const { updateMetrics } = require('./src/services/metrics');
+                const { listTenants } = require('./src/lib/tenant');
+                for (const tenantId of await listTenants()) {
+                    await updateMetrics(tenantId).catch((error: any) => {
+                        console.warn(`[Metrics:${tenantId}] Update failed:`, error?.message || error);
+                    });
+                }
+            } catch (e) { /* silent */ }
         }, 120000);
         pollingService.addTask('points-sync', async () => {
             try {

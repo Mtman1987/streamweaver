@@ -108,3 +108,11 @@ test('translation and classic gamble state stay isolated by tenant', async () =>
     await rm(persistRoot, { recursive: true, force: true });
   }
 });
+
+test('the metrics polling sweep updates every configured tenant explicitly', async () => {
+  const serverSource = await readFile(new URL('../server.ts', import.meta.url), 'utf8');
+  const metricsTask = serverSource.match(/addTask\('metrics',[\s\S]*?\}, 120000\);/)?.[0] || '';
+  assert.match(metricsTask, /listTenants/);
+  assert.match(metricsTask, /updateMetrics\(tenantId\)/);
+  assert.doesNotMatch(metricsTask, /updateMetrics\(\s*\)/);
+});
