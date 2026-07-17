@@ -202,4 +202,4 @@ Build args (in `fly.toml`):
 ## Documentation
 
 - `docs/SHARED-CHAT.md` — How shared chat detection and source-only messaging works
-- `TODO-MULTI-TENANT.md` — Migration status and remaining work
+- [Suite production roadmap](https://github.com/Mtman1987/spmt-live/blob/main/docs/ecosystem/PRODUCTION_ROADMAP.md) — canonical backlog, including StreamWeaver tenant and app-track work
