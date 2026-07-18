@@ -58,3 +58,23 @@ test('returns a filtered result immediately so the route can remove old history'
   assert.equal(result.finishReason, 'content_filter');
   assert.equal(calls, 1);
 });
+
+test('recognizes EdenAI policy rejection errors as filtered results', async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    error: {
+      message: 'Content rejected due to the violation of the following policies: sexual, sexual/minors.',
+      code: 'invalid_parameter',
+    },
+  }), { status: 400 });
+
+  const result = await requestPrivateChatCompletion({
+    apiKey: 'test-key',
+    systemPrompt: 'system',
+    prompt: 'prompt containing old history',
+    fetchImpl: fetchImpl as typeof fetch,
+  });
+
+  assert.equal(result.filtered, true);
+  assert.equal(result.finishReason, 'content_filter');
+  assert.equal(result.upstreamStatus, 400);
+});

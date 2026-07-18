@@ -56,6 +56,19 @@ export async function requestPrivateChatCompletion(input: {
 
     const rawBody = await response.text();
     if (!response.ok) {
+      if (/content[_ ]filter|content rejected|policy violation|violation of the following policies/i.test(rawBody)) {
+        console.warn('[Private Chat API] EdenAI rejected prompt content', {
+          attempt,
+          upstreamStatus: response.status,
+        });
+        return {
+          text: '',
+          upstreamStatus: response.status,
+          upstreamError: rawBody,
+          filtered: true,
+          finishReason: 'content_filter',
+        };
+      }
       return {
         text: '',
         upstreamStatus: response.status,
