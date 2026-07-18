@@ -59,31 +59,32 @@ export class KickService extends EventEmitter {
    * Load stored tokens for a tenant (bot token preferred, then global community bot)
    */
   async loadTokens(tenantId: string): Promise<KickTokens | null> {
+    let tenantData: Record<string, any> = {};
     try {
       const tokensFile = tenantPath(tenantId, 'tokens/kick-tokens.json');
-      const data = JSON.parse(await fs.readFile(tokensFile, 'utf-8'));
+      tenantData = JSON.parse(await fs.readFile(tokensFile, 'utf-8'));
 
       // Prefer tenant's own bot token
-      if (data.botToken) {
+      if (tenantData.botToken) {
         return {
-          accessToken: data.botToken,
-          refreshToken: data.botRefreshToken,
-          tokenExpiry: data.botTokenExpiry,
-          username: data.botUsername || '',
-          channelId: data.broadcasterChannelId || data.botChannelId || '',
-          chatroomId: data.broadcasterChatroomId || data.botChatroomId || '',
+          accessToken: tenantData.botToken,
+          refreshToken: tenantData.botRefreshToken,
+          tokenExpiry: tenantData.botTokenExpiry,
+          username: tenantData.botUsername || '',
+          channelId: tenantData.broadcasterChannelId || tenantData.botChannelId || '',
+          chatroomId: tenantData.broadcasterChatroomId || tenantData.botChatroomId || '',
         };
       }
 
       // Fall back to broadcaster token for sending
-      if (data.broadcasterToken) {
+      if (tenantData.broadcasterToken) {
         return {
-          accessToken: data.broadcasterToken,
-          refreshToken: data.broadcasterRefreshToken,
-          tokenExpiry: data.broadcasterTokenExpiry,
-          username: data.broadcasterUsername || '',
-          channelId: data.broadcasterChannelId || '',
-          chatroomId: data.broadcasterChatroomId || '',
+          accessToken: tenantData.broadcasterToken,
+          refreshToken: tenantData.broadcasterRefreshToken,
+          tokenExpiry: tenantData.broadcasterTokenExpiry,
+          username: tenantData.broadcasterUsername || '',
+          channelId: tenantData.broadcasterChannelId || '',
+          chatroomId: tenantData.broadcasterChatroomId || '',
         };
       }
     } catch {}
@@ -99,8 +100,10 @@ export class KickService extends EventEmitter {
           refreshToken: data.refreshToken,
           tokenExpiry: data.tokenExpiry,
           username: data.username || 'streamweaverbot',
-          channelId: data.channelId || '',
-          chatroomId: '',
+          // Listening can use tenant-owned channel metadata with the shared
+          // community bot token. Keep those two storage scopes joined here.
+          channelId: tenantData.broadcasterChannelId || tenantData.botChannelId || data.channelId || '',
+          chatroomId: tenantData.broadcasterChatroomId || tenantData.botChatroomId || data.chatroomId || '',
         };
       }
     } catch {}
