@@ -1,4 +1,5 @@
 import { readUserConfigSync } from '@/lib/user-config';
+import { generateImageWithSeaArtCli, SeaArtCliUnavailableError } from './seaart-cli';
 
 export type ImageGenerationResult = {
   image?: string;
@@ -256,6 +257,16 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   const createEndpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/api/v1/task/v2/text-to-img';
   const progressEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/api/v1/task/batch-progress';
   const { key: modelKey, modelNo, modelVerNo, hd } = getSeaArtModel(options);
+  if (process.env.SEAART_CLI_DISABLED !== 'true') {
+    try {
+      const result = await generateImageWithSeaArtCli(options, { modelNo, modelVerNo });
+      console.info(`[SeaArt] official CLI generation succeeded: model=${modelKey}`);
+      return result;
+    } catch (error) {
+      if (!(error instanceof SeaArtCliUnavailableError)) throw error;
+      console.warn(`[SeaArt] official CLI unavailable; using existing provider adapter: ${error.message}`);
+    }
+  }
   const { width, height } = normalizeSeaArtDimensions(options.resolution, hd);
   const nIter = Math.max(1, Math.min(8, Number(options.numImages || options.providerParams?.n_iter || 1) || 1));
   const steps = Number(options.providerParams?.steps || 0);

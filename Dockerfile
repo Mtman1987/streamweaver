@@ -29,14 +29,22 @@ RUN npm run build:simple
 
 FROM node:20-slim AS runner
 
+ARG SEAART_CLI_VERSION=v1.1.0
+ARG SEAART_CLI_SHA256=5fee0662bf68b0997be951b1eedb0716fc0991945b462655e199c7ecbadd119a
+
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y python3 python3-pip python3-venv ca-certificates && \
+    apt-get install --no-install-recommends -y python3 python3-pip python3-venv ca-certificates curl && \
     python3 -m venv /opt/piper && \
     /opt/piper/bin/pip install --no-cache-dir piper-tts && \
+    curl -fsSL "https://public.cdn.seaspark.ai/ai-tool/release/${SEAART_CLI_VERSION}/seaart-linux-amd64.tar.gz" -o /tmp/seaart.tar.gz && \
+    echo "${SEAART_CLI_SHA256}  /tmp/seaart.tar.gz" | sha256sum -c - && \
+    tar -xzf /tmp/seaart.tar.gz -C /tmp && \
+    install -m 0755 /tmp/seaart /usr/local/bin/seaart && \
+    rm -rf /tmp/seaart.tar.gz /tmp/seaart /tmp/seaart-mcp /tmp/skills && \
     rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/opt/piper/bin:${PATH}"
