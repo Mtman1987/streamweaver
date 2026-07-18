@@ -13,7 +13,6 @@ import { hasInternalServiceAccess, hasMountainViewBridgeAccess, internalServiceH
 import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
 import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
-import { readUserConfigSync } from '@/lib/user-config';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -109,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     const generationSettings = await readGenerationSettings(tenantId);
     const seaartCharacterId = generationSettings.seaartCharacterId;
-    const seaartCharacterToken = readUserConfigSync(tenantId).SEAART_CHARACTER_TOKEN || process.env.SEAART_CHARACTER_TOKEN || '';
+    const seaartCharacterToken = process.env.SEAART_CHARACTER_TOKEN || '';
     const useSeaArtCharacter = Boolean(seaartCharacterId);
     const edenaiKey = process.env.EDENAI_API_KEY || '';
     if (!useSeaArtCharacter && !edenaiKey) {
