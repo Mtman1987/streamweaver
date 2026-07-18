@@ -204,7 +204,7 @@ export function DiscordChannelSettings() {
                 <div>
                   <Label>SeaArt character ID</Label>
                   <Input value={genSettings.seaartCharacterId} onChange={(e) => setGenSettings(prev => ({ ...prev, seaartCharacterId: e.target.value }))} placeholder="Paste a SeaArt character ID or URL" />
-                  <p className="text-xs text-muted-foreground mt-1">Reserved for the DM character-chat provider.</p>
+                  <p className="text-xs text-muted-foreground mt-1">When set, private app chat and Discord DMs use this SeaArt character instead of EdenAI.</p>
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
