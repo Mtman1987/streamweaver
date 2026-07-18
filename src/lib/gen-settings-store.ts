@@ -5,6 +5,7 @@ import { tenantPath } from '@/lib/tenant';
 export type GenerationSettings = {
   mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
   model: string;
+  seaartCharacterId: string;
   lora: string;
   loraStrength: number;
   imageCount: number;
@@ -49,6 +50,7 @@ export const DEFAULT_IMAGE_PROMPT_TEMPLATE = IMAGE_PROMPT_TEMPLATES.general;
 const defaults: GenerationSettings = {
   mode: 'eden',
   model: '',
+  seaartCharacterId: '',
   lora: '',
   loraStrength: 0.7,
   imageCount: 1,
@@ -81,6 +83,7 @@ function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
   return {
     mode,
     model: String(input.model || '').trim(),
+    seaartCharacterId: String(input.seaartCharacterId || '').trim(),
     lora: String(input.lora || '').trim(),
     loraStrength,
     imageCount,

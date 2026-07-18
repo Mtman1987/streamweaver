@@ -28,6 +28,7 @@ const availableVoices = TTS_VOICE_OPTIONS;
 interface GenerationSettings {
     mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
     model: string;
+    seaartCharacterId: string;
     lora: string;
     loraStrength: number;
     imageCount: number;
@@ -51,6 +52,7 @@ const defaultImagePromptTemplate = [
 const defaultGenSettings: GenerationSettings = {
     mode: 'eden',
     model: '',
+    seaartCharacterId: '',
     lora: '',
     loraStrength: 0.7,
     imageCount: 1,
@@ -613,10 +615,17 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="image-model">Model</Label>
+                            <Label htmlFor="image-model">Image model</Label>
                             <Input id="image-model" value={genSettings.model} onChange={(event) => setGenSettings((prev) => ({ ...prev, model: event.target.value }))} placeholder="wai-ani-ponyxl or modelNo:modelVerNo" />
                             <p className="text-xs text-white/50">SeaArt accepts saved presets, aliases, or custom modelNo:modelVerNo pairs.</p>
                         </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="seaart-character-id">SeaArt character ID</Label>
+                            <Input id="seaart-character-id" value={genSettings.seaartCharacterId} onChange={(event) => setGenSettings((prev) => ({ ...prev, seaartCharacterId: event.target.value }))} placeholder="Paste the SeaArt character ID" />
+                            <p className="text-xs text-white/50">Saved per tenant for the upcoming SeaArt DM character-chat provider.</p>
+                        </div>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="image-seed">Seed</Label>
                             <Input id="image-seed" type="number" value={genSettings.seed} onChange={(event) => setGenSettings((prev) => ({ ...prev, seed: Number(event.target.value) || 0 }))} />

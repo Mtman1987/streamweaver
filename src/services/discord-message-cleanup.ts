@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { globalPath } from '@/lib/tenant';
-import { deleteMessage } from '@/services/discord-local';
+import { deleteMessage, isDiscordApiError } from '@/services/discord-local';
 
 type PendingDiscordCleanup = {
   id: string;
@@ -171,11 +171,15 @@ export async function processDueDiscordMessageCleanups(): Promise<void> {
         try {
           await deleteMessage(entry.channelId, messageId);
         } catch (error) {
-          console.warn('[Discord Cleanup] Message delete failed:', {
+          const detail = {
             channelId: entry.channelId,
             messageId,
+            status: isDiscordApiError(error) ? error.status : undefined,
             error: error instanceof Error ? error.message : String(error),
-          });
+          };
+          // Keep the complete failure on one line so Fly's log monitor can
+          // classify the actual Discord status instead of only seeing "{".
+          console.warn(`[Discord Cleanup] Message delete failed: ${JSON.stringify(detail)}`);
         }
       }
     }

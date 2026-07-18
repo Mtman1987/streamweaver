@@ -8,6 +8,7 @@ import { z } from 'zod';
 const schema = z.object({
   mode: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
   model: z.string().trim().max(200).optional(),
+  seaartCharacterId: z.string().trim().max(200).optional(),
   lora: z.string().trim().max(200).optional(),
   loraStrength: z.coerce.number().min(0).max(2).optional(),
   imageCount: z.coerce.number().int().min(1).max(4).optional(),

@@ -23,6 +23,7 @@ interface ChannelSettings {
 interface GenerationSettings {
   mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
   model: string;
+  seaartCharacterId: string;
   lora: string;
   loraStrength: number;
   imageCount: number;
@@ -38,6 +39,7 @@ interface GenerationSettings {
 const defaultGenSettings: GenerationSettings = {
   mode: 'eden',
   model: '',
+  seaartCharacterId: '',
   lora: '',
   loraStrength: 0.7,
   imageCount: 1,
@@ -194,10 +196,15 @@ export function DiscordChannelSettings() {
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
-                    <Label>Model</Label>
+                    <Label>Image model</Label>
                     <Link href="/generation/models" className="text-xs text-indigo-400 hover:text-indigo-300">Browse models</Link>
                   </div>
                   <Input value={genSettings.model} onChange={(e) => setGenSettings(prev => ({ ...prev, model: e.target.value }))} placeholder="Preset or modelNo:modelVerNo" />
+                </div>
+                <div>
+                  <Label>SeaArt character ID</Label>
+                  <Input value={genSettings.seaartCharacterId} onChange={(e) => setGenSettings(prev => ({ ...prev, seaartCharacterId: e.target.value }))} placeholder="Paste the SeaArt character ID" />
+                  <p className="text-xs text-muted-foreground mt-1">Reserved for the DM character-chat provider.</p>
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
