@@ -10,6 +10,7 @@ import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
+import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -161,35 +162,22 @@ export async function POST(request: NextRequest) {
     }
     await appendPrivateChatMessages([userEntry], 100, tenantId);
 
-    // Use EdenAI API with proper system/user role separation
-    const response = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${edenaiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemIdentity },
-          { role: 'user', content: prompt }
-        ],
-        stream: false
-      })
+    const completion = await requestPrivateChatCompletion({
+      apiKey: edenaiKey,
+      systemPrompt: systemIdentity,
+      prompt,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Private Chat API] EdenAI error:', response.status, errorText);
+    if (completion.upstreamStatus) {
+      console.error('[Private Chat API] EdenAI error:', completion.upstreamStatus, completion.upstreamError);
       return apiError('EdenAI API failed', {
         status: 502,
         code: 'UPSTREAM_ERROR',
-        details: { upstreamStatus: response.status },
+        details: { upstreamStatus: completion.upstreamStatus },
       });
     }
 
-    const data = await response.json();
-    let responseText = data.choices?.[0]?.message?.content?.trim() || '';
+    let responseText = completion.text;
 
     // Handle LTM requests
     const ltmRequestMatch = responseText.match(/LTM_REQUEST:\s*(.+)/);
@@ -203,26 +191,13 @@ export async function POST(request: NextRequest) {
           // Re-generate response with LTM content
           const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
           
-          const enhancedResponse = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${edenaiKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                { role: 'system', content: systemIdentity },
-                { role: 'user', content: enhancedPrompt }
-              ],
-              stream: false
-            })
+          const enhancedCompletion = await requestPrivateChatCompletion({
+            apiKey: edenaiKey,
+            systemPrompt: systemIdentity,
+            prompt: enhancedPrompt,
           });
-          
-          if (enhancedResponse.ok) {
-            const enhancedData = await enhancedResponse.json();
-            responseText = enhancedData.choices?.[0]?.message?.content?.trim() || responseText;
-          }
+
+          responseText = enhancedCompletion.text || responseText;
         } else {
           // No memory found — let AI know
           responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about, Commander?`;
