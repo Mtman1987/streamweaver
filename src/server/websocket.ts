@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import * as http from 'http';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
 import { getTenantIdFromSession } from '../lib/tenant';
+import { resolveTenantSocketAction } from './websocket-tenant';
 
 const privilegedTypes = new Set([
     'send-twitch-message',
@@ -256,14 +257,15 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                 } else if (message.type === 'reconnect-twitch') {
                     console.log('[WebSocket] Received reconnect request for Twitch');
                     try {
-                        const tenantId = (ws as any).__tenantId;
-                        if (!tenantId) {
+                        const tenantAction = resolveTenantSocketAction((ws as any).__tenantId, 'reconnect-twitch');
+                        if (!tenantAction.ok) {
                             ws.send(JSON.stringify({
                                 type: 'error',
-                                payload: { message: 'Missing tenant context for reconnect-twitch' }
+                                payload: { message: tenantAction.error }
                             }));
                             return;
                         }
+                        const tenantId = tenantAction.tenantId;
                         const { setupTwitchClient } = require('../services/twitch-client');
                         await setupTwitchClient(tenantId);
                         console.log(`[WebSocket] Twitch reconnection attempt completed for tenant ${tenantId}`);

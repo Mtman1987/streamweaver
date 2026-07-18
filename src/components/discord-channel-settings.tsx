@@ -203,7 +203,7 @@ export function DiscordChannelSettings() {
                 </div>
                 <div>
                   <Label>SeaArt character ID</Label>
-                  <Input value={genSettings.seaartCharacterId} onChange={(e) => setGenSettings(prev => ({ ...prev, seaartCharacterId: e.target.value }))} placeholder="Paste the SeaArt character ID" />
+                  <Input value={genSettings.seaartCharacterId} onChange={(e) => setGenSettings(prev => ({ ...prev, seaartCharacterId: e.target.value }))} placeholder="Paste a SeaArt character ID or URL" />
                   <p className="text-xs text-muted-foreground mt-1">Reserved for the DM character-chat provider.</p>
                 </div>
                 <div>

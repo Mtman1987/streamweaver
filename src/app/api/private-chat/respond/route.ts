@@ -11,6 +11,9 @@ import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
 import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
+import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
+import { readGenerationSettings } from '@/lib/gen-settings-store';
+import { readUserConfigSync } from '@/lib/user-config';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -104,8 +107,12 @@ export async function POST(request: NextRequest) {
       console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });
     }
 
-    const edenaiKey = process.env.EDENAI_API_KEY;
-    if (!edenaiKey) {
+    const generationSettings = await readGenerationSettings(tenantId);
+    const seaartCharacterId = generationSettings.seaartCharacterId;
+    const seaartCharacterToken = readUserConfigSync(tenantId).SEAART_CHARACTER_TOKEN || process.env.SEAART_CHARACTER_TOKEN || '';
+    const useSeaArtCharacter = Boolean(seaartCharacterId);
+    const edenaiKey = process.env.EDENAI_API_KEY || '';
+    if (!useSeaArtCharacter && !edenaiKey) {
       return apiError('Server missing EdenAI API key', { status: 500, code: 'MISSING_CONFIG' });
     }
 
@@ -168,13 +175,22 @@ export async function POST(request: NextRequest) {
     }
     await appendPrivateChatMessages([userEntry], 100, tenantId);
 
-    let completion = await requestPrivateChatCompletion({
-      apiKey: edenaiKey,
-      systemPrompt: systemIdentity,
-      prompt,
-    });
+    let completion = useSeaArtCharacter
+      ? await requestSeaArtCharacterCompletion({
+          token: seaartCharacterToken,
+          tenantId,
+          characterId: seaartCharacterId,
+          message,
+          history,
+          characterName: botName,
+        })
+      : await requestPrivateChatCompletion({
+          apiKey: edenaiKey,
+          systemPrompt: systemIdentity,
+          prompt,
+        });
 
-    if (completion.filtered) {
+    if ('filtered' in completion && completion.filtered) {
       console.warn('[Private Chat API] Retrying filtered DM without older conversation history');
       completion = await requestPrivateChatCompletion({
         apiKey: edenaiKey,
@@ -183,9 +199,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (completion.upstreamStatus) {
-      console.error('[Private Chat API] EdenAI error:', completion.upstreamStatus, completion.upstreamError);
-      return apiError('EdenAI API failed', {
+    if (completion.upstreamStatus || completion.upstreamError) {
+      const provider = useSeaArtCharacter ? 'SeaArt character' : 'EdenAI';
+      console.error(`[Private Chat API] ${provider} error:`, completion.upstreamStatus || null, completion.upstreamError);
+      return apiError(`${provider} API failed`, {
         status: 502,
         code: 'UPSTREAM_ERROR',
         details: { upstreamStatus: completion.upstreamStatus },
@@ -206,11 +223,20 @@ export async function POST(request: NextRequest) {
           // Re-generate response with LTM content
           const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
           
-          const enhancedCompletion = await requestPrivateChatCompletion({
-            apiKey: edenaiKey,
-            systemPrompt: systemIdentity,
-            prompt: enhancedPrompt,
-          });
+          const enhancedCompletion = useSeaArtCharacter
+            ? await requestSeaArtCharacterCompletion({
+                token: seaartCharacterToken,
+                tenantId,
+                characterId: seaartCharacterId,
+                message: `${message}\n\nRelevant memory: ${ltmContent}`,
+                history,
+                characterName: botName,
+              })
+            : await requestPrivateChatCompletion({
+                apiKey: edenaiKey,
+                systemPrompt: systemIdentity,
+                prompt: enhancedPrompt,
+              });
 
           responseText = enhancedCompletion.text || responseText;
         } else {
@@ -239,7 +265,7 @@ export async function POST(request: NextRequest) {
     await appendPrivateChatMessages([aiEntry], 100, tenantId);
 
     if (VERBOSE_LOGS) console.log('[Private Chat API] Successfully saved both messages');
-    return apiOk({ response: responseText });
+    return apiOk({ response: responseText, provider: useSeaArtCharacter ? 'seaart-character' : 'edenai' });
   } catch (error) {
     console.error('Private chat respond API error:', error);
     return apiError('Failed to generate private chat response', { status: 500, code: 'INTERNAL_ERROR' });
