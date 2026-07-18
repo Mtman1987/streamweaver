@@ -36,3 +36,25 @@ test('retries a successful EdenAI response that contains no visible text', async
   assert.equal(requests.length, 2);
   assert.equal(JSON.parse(String(requests[0].body)).max_tokens, 1600);
 });
+
+test('returns a filtered result immediately so the route can remove old history', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    return new Response(JSON.stringify({
+      choices: [{ finish_reason: 'content_filter', message: { content: null } }],
+    }), { status: 200 });
+  };
+
+  const result = await requestPrivateChatCompletion({
+    apiKey: 'test-key',
+    systemPrompt: 'system',
+    prompt: 'prompt containing old history',
+    fetchImpl: fetchImpl as typeof fetch,
+  });
+
+  assert.equal(result.text, '');
+  assert.equal(result.filtered, true);
+  assert.equal(result.finishReason, 'content_filter');
+  assert.equal(calls, 1);
+});

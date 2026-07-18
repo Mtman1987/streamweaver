@@ -8,6 +8,8 @@ export type PrivateChatCompletionResult = {
   text: string;
   upstreamStatus?: number;
   upstreamError?: string;
+  filtered?: boolean;
+  finishReason?: string;
 };
 
 export function extractPrivateChatResponseText(data: any): string {
@@ -70,13 +72,20 @@ export async function requestPrivateChatCompletion(input: {
     if (text) return { text };
 
     const choice = data?.choices?.[0];
+    const finishReason = String(choice?.finish_reason || '');
     console.warn('[Private Chat API] EdenAI returned no visible text', {
       attempt,
-      finishReason: choice?.finish_reason || null,
+      finishReason: finishReason || null,
       contentType: Array.isArray(choice?.message?.content) ? 'array' : typeof choice?.message?.content,
       completionTokens: data?.usage?.completion_tokens || null,
       reasoningTokens: data?.usage?.completion_tokens_details?.reasoning_tokens || null,
     });
+
+    // Repeating an identical provider-filtered prompt cannot recover. Let the
+    // private-chat route retry with the latest message but without old history.
+    if (finishReason === 'content_filter') {
+      return { text: '', filtered: true, finishReason };
+    }
   }
 
   return { text: '' };

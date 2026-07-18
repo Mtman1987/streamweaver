@@ -146,6 +146,12 @@ export async function POST(request: NextRequest) {
     ].filter(Boolean);
 
     const prompt = promptParts.join('\n\n');
+    const reducedContextPrompt = [
+      extendedGuidance,
+      '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
+      `Latest message from ${username}: ${message}${ltmContext}`,
+      `Respond as ${botName}:`,
+    ].filter(Boolean).join('\n\n');
 
     const userEntry: PrivateChatMessage = {
       type: 'user',
@@ -162,11 +168,20 @@ export async function POST(request: NextRequest) {
     }
     await appendPrivateChatMessages([userEntry], 100, tenantId);
 
-    const completion = await requestPrivateChatCompletion({
+    let completion = await requestPrivateChatCompletion({
       apiKey: edenaiKey,
       systemPrompt: systemIdentity,
       prompt,
     });
+
+    if (completion.filtered) {
+      console.warn('[Private Chat API] Retrying filtered DM without older conversation history');
+      completion = await requestPrivateChatCompletion({
+        apiKey: edenaiKey,
+        systemPrompt: systemIdentity,
+        prompt: reducedContextPrompt,
+      });
+    }
 
     if (completion.upstreamStatus) {
       console.error('[Private Chat API] EdenAI error:', completion.upstreamStatus, completion.upstreamError);
