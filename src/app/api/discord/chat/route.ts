@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: false, skipped: 'invalid-json' });
       }
     } catch (error) {
-      console.error('[Discord Chat] Invalid JSON payload:', error);
+      console.log('[Discord Chat] Rejected malformed JSON payload:', error instanceof Error ? error.message : String(error));
       return apiOk({ success: false, skipped: 'invalid-json' });
     }
 

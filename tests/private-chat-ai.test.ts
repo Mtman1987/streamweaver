@@ -34,7 +34,10 @@ test('retries a successful EdenAI response that contains no visible text', async
 
   assert.equal(result.text, 'Recovered response');
   assert.equal(requests.length, 2);
-  assert.equal(JSON.parse(String(requests[0].body)).max_tokens, 1600);
+  const body = JSON.parse(String(requests[0].body));
+  assert.equal(body.max_tokens, 2400);
+  assert.equal(body.reasoning_effort, 'minimal');
+  assert.deepEqual(body.fallbacks, ['openai/gpt-4.1-mini', 'anthropic/claude-sonnet-4-5']);
 });
 
 test('returns a filtered result immediately so the route can remove old history', async () => {

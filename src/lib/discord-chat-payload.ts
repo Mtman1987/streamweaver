@@ -103,14 +103,14 @@ export function parseDiscordChatPayload(rawBody: string) {
     };
 
     if (salvaged.message && salvaged.channelId) {
-      console.warn('[Discord Chat] Salvaged malformed JSON payload', {
+      console.log('[Discord Chat] Salvaged malformed JSON payload', {
         keys: Object.keys(salvaged).filter((key) => Boolean((salvaged as any)[key])),
         error: parseError instanceof Error ? parseError.message : String(parseError),
       });
       return salvaged;
     }
 
-    console.warn('[Discord Chat] Invalid JSON payload', {
+    console.log('[Discord Chat] Rejected malformed JSON payload', {
       preview: raw.slice(0, 500),
       error: parseError instanceof Error ? parseError.message : String(parseError),
     });

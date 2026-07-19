@@ -1,5 +1,5 @@
 const PRIVATE_CHAT_MODEL = 'google/gemini-2.5-flash';
-const PRIVATE_CHAT_MAX_TOKENS = 1600;
+const PRIVATE_CHAT_MAX_TOKENS = 2400;
 const PRIVATE_CHAT_ATTEMPTS = 2;
 
 type FetchLike = typeof fetch;
@@ -37,7 +37,7 @@ export async function requestPrivateChatCompletion(input: {
   const fetchImpl = input.fetchImpl || fetch;
 
   for (let attempt = 1; attempt <= PRIVATE_CHAT_ATTEMPTS; attempt++) {
-    const response = await fetchImpl('https://api.edenai.run/v3/llm/chat/completions', {
+    const response = await fetchImpl('https://api.edenai.run/v3/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${input.apiKey}`,
@@ -45,11 +45,14 @@ export async function requestPrivateChatCompletion(input: {
       },
       body: JSON.stringify({
         model: PRIVATE_CHAT_MODEL,
+        fallbacks: ['openai/gpt-4.1-mini', 'anthropic/claude-sonnet-4-5'],
         messages: [
           { role: 'system', content: input.systemPrompt },
           { role: 'user', content: input.prompt },
         ],
         max_tokens: PRIVATE_CHAT_MAX_TOKENS,
+        max_completion_tokens: PRIVATE_CHAT_MAX_TOKENS,
+        reasoning_effort: 'minimal',
         stream: false,
       }),
     });
@@ -86,13 +89,18 @@ export async function requestPrivateChatCompletion(input: {
 
     const choice = data?.choices?.[0];
     const finishReason = String(choice?.finish_reason || '');
-    console.warn('[Private Chat API] EdenAI returned no visible text', {
+    const details = {
       attempt,
       finishReason: finishReason || null,
       contentType: Array.isArray(choice?.message?.content) ? 'array' : typeof choice?.message?.content,
       completionTokens: data?.usage?.completion_tokens || null,
       reasoningTokens: data?.usage?.completion_tokens_details?.reasoning_tokens || null,
-    });
+    };
+    if (attempt < PRIVATE_CHAT_ATTEMPTS) {
+      console.log('[Private Chat API] EdenAI returned no visible text; retrying', details);
+    } else {
+      console.warn('[Private Chat API] EdenAI returned no visible text after retries', details);
+    }
 
     // Repeating an identical provider-filtered prompt cannot recover. Let the
     // private-chat route retry with the latest message but without old history.

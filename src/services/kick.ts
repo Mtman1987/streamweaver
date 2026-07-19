@@ -282,7 +282,14 @@ export class KickService extends EventEmitter {
       });
 
       this.pusher.connection.bind('error', (err: any) => {
-        console.error(`[Kick] ❌ Pusher connection error for ${channelName}:`, err?.error?.data || err);
+        const details = err?.error?.data || err;
+        const code = Number(details?.code || err?.data?.code || 0);
+        const message = String(details?.message || err?.data?.message || '');
+        if (code === 4200 || /reconnect immediately/i.test(message)) {
+          console.log(`[Kick] Pusher requested reconnect for ${channelName}; transport will reconnect.`);
+          return;
+        }
+        console.error(`[Kick] ❌ Pusher connection error for ${channelName}:`, details);
         this.emit('error', err);
       });
 
