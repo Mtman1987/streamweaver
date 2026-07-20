@@ -1,5 +1,6 @@
-export type TTSProvider = 'edenai';
+export type TTSProvider = 'edenai' | 'openai' | 'gemini';
 export type EdenAITTSProvider = 'google' | 'microsoft' | 'amazon';
+export type OpenAITTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
 export type TTSVoiceGender = 'MALE' | 'FEMALE';
 
 export type TTSVoiceOption = {
@@ -77,24 +78,53 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   },
 ];
 
+export const OPENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
+  { id: 'openai:alloy', label: 'Alloy', provider: 'openai', providerLabel: 'OpenAI', gender: 'Female', description: 'Neutral and balanced' },
+  { id: 'openai:echo', label: 'Echo', provider: 'openai', providerLabel: 'OpenAI', gender: 'Male', description: 'Warm and rounded' },
+  { id: 'openai:fable', label: 'Fable', provider: 'openai', providerLabel: 'OpenAI', gender: 'Male', description: 'Expressive and dynamic' },
+  { id: 'openai:onyx', label: 'Onyx', provider: 'openai', providerLabel: 'OpenAI', gender: 'Male', description: 'Deep and authoritative' },
+  { id: 'openai:nova', label: 'Nova', provider: 'openai', providerLabel: 'OpenAI', gender: 'Female', description: 'Energetic and bright' },
+  { id: 'openai:shimmer', label: 'Shimmer', provider: 'openai', providerLabel: 'OpenAI', gender: 'Female', description: 'Clear and expressive' },
+];
+
+export const GEMINI_VOICE_OPTIONS: TTSVoiceOption[] = [
+  { id: 'gemini:Aoede',  label: 'Aoede',  provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Bright and expressive' },
+  { id: 'gemini:Charon', label: 'Charon', provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Deep and informative' },
+  { id: 'gemini:Fenrir', label: 'Fenrir', provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Excitable and energetic' },
+  { id: 'gemini:Kore',   label: 'Kore',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Firm and confident' },
+  { id: 'gemini:Puck',   label: 'Puck',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Upbeat and clear' },
+  { id: 'gemini:Leda',   label: 'Leda',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Warm and natural' },
+  { id: 'gemini:Orus',   label: 'Orus',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Smooth and steady' },
+  { id: 'gemini:Zephyr', label: 'Zephyr', provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Bright and airy' },
+];
+
 export const GOOGLE_VOICE_OPTIONS: TTSVoiceOption[] = [];
 
-export const TTS_VOICE_OPTIONS: TTSVoiceOption[] = [...EDENAI_VOICE_OPTIONS];
+export const TTS_VOICE_OPTIONS: TTSVoiceOption[] = [...EDENAI_VOICE_OPTIONS, ...OPENAI_VOICE_OPTIONS, ...GEMINI_VOICE_OPTIONS];
 
-export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
-export const DEFAULT_TTS_VOICE = 'edenai:google:FEMALE';
+export const DEFAULT_TTS_PROVIDER: TTSProvider = 'gemini';
+export const DEFAULT_TTS_VOICE = 'gemini:Aoede';
 
 export function normalizeTtsProvider(provider: unknown): TTSProvider {
-  return 'edenai';
+  const p = String(provider || '').trim().toLowerCase();
+  if (p === 'openai') return 'openai';
+  if (p === 'gemini') return 'gemini';
+  if (p === 'edenai') return 'edenai';
+  return DEFAULT_TTS_PROVIDER;
 }
 
 export function normalizeTtsVoice(voice: string | undefined | null, provider: TTSProvider = DEFAULT_TTS_PROVIDER): string {
-  if (!voice) return DEFAULT_TTS_VOICE;
+  if (!voice) {
+    if (provider === 'openai') return 'openai:nova';
+    if (provider === 'gemini') return 'gemini:Aoede';
+    return DEFAULT_TTS_VOICE;
+  }
   const trimmed = voice.trim();
   const canonical = TTS_VOICE_OPTIONS.find((o) => o.id.toLowerCase() === trimmed.toLowerCase());
   if (canonical) return canonical.id;
   // Legacy name mapping
   const lower = trimmed.toLowerCase();
+  if (lower === 'alloy' || lower === 'echo' || lower === 'fable' || lower === 'onyx' || lower === 'nova' || lower === 'shimmer') return `openai:${lower}`;
   if (lower.includes('female') || lower.includes('wavenet-f')) return 'edenai:google:FEMALE';
   if (lower.includes('male') || lower.includes('wavenet-m') || lower.includes('wavenet-d')) return 'edenai:google:MALE';
   return DEFAULT_TTS_VOICE;
@@ -106,6 +136,11 @@ export function getTtsVoiceOption(voice: string | undefined | null, provider: TT
 }
 
 export function getProviderForVoice(voice: string | undefined | null, fallback: TTSProvider = DEFAULT_TTS_PROVIDER): TTSProvider {
+  if (typeof voice === 'string') {
+    const v = voice.trim().toLowerCase();
+    if (v.startsWith('openai:')) return 'openai';
+    if (v.startsWith('gemini:')) return 'gemini';
+  }
   return getTtsVoiceOption(voice, fallback).provider;
 }
 
@@ -114,7 +149,7 @@ export function getFallbackVoiceForProvider(_provider: TTSProvider, selectedVoic
   return selected.gender === 'Male' ? 'edenai:google:MALE' : 'edenai:google:FEMALE';
 }
 
-// Keep these exports for backward compat but they all resolve to edenai now
+// Keep these exports for backward compat
 export function normalizePiperVoice(_voice?: string | null): string { return DEFAULT_TTS_VOICE; }
 export function normalizeEdenAIVoice(voice?: string | null): string { return normalizeTtsVoice(voice, 'edenai'); }
-export function normalizeOpenAIVoice(_voice?: string | null): string { return DEFAULT_TTS_VOICE; }
+export function normalizeOpenAIVoice(voice?: string | null): string { return normalizeTtsVoice(voice, 'openai'); }

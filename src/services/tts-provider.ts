@@ -8,12 +8,12 @@ import {
   normalizeTtsProvider,
   normalizeTtsVoice,
 } from '@/lib/tts-voices';
+import { GoogleGenAI } from '@google/genai';
 
 export interface TTSConfig {
   provider: TTSProvider;
   voice: string;
   apiKey: string;
-  discordBridge: boolean;
 }
 
 export const TTS_VOICES: Record<string, string[]> = {
@@ -22,6 +22,8 @@ export const TTS_VOICES: Record<string, string[]> = {
 
 function resolveTTSApiKey(provider: TTSProvider, tenantId?: string): string {
   const config = readUserConfigSync(tenantId);
+  if (provider === 'openai') return config.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+  if (provider === 'gemini') return config.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
   return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
 }
 
@@ -30,9 +32,8 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
   const configuredProvider = normalizeTtsProvider(config.TTS_PROVIDER || process.env.TTS_PROVIDER);
   const provider = getProviderForVoice(config.TTS_VOICE, configuredProvider);
   const voice = normalizeTtsVoice(config.TTS_VOICE, provider);
-  const discordBridge = config.DISCORD_TTS_BRIDGE === 'true';
   const apiKey = resolveTTSApiKey(provider, tenantId);
-  return { provider, voice, apiKey, discordBridge };
+  return { provider, voice, apiKey };
 }
 
 let lastTTSCall = 0;
@@ -87,19 +88,68 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
   let audioDataUri: string;
 
   try {
-    if (!config.apiKey) throw new Error('No EdenAI API key configured');
-    audioDataUri = await generateEdenAITTS(normalizedText, config.voice, config.apiKey);
+    if (config.provider === 'openai') {
+      if (!config.apiKey) throw new Error('No OpenAI API key configured');
+      audioDataUri = await generateOpenAITTS(normalizedText, config.voice, config.apiKey);
+    } else if (config.provider === 'gemini') {
+      if (!config.apiKey) throw new Error('No Gemini API key configured');
+      audioDataUri = await generateGeminiTTS(normalizedText, config.voice, config.apiKey);
+    } else {
+      if (!config.apiKey) throw new Error('No EdenAI API key configured');
+      audioDataUri = await generateEdenAITTS(normalizedText, config.voice, config.apiKey);
+    }
   } catch (err) {
-    // Fallback: StreamElements TTS (free, no key needed)
-    console.warn(`[TTS] EdenAI failed, falling back to StreamElements:`, (err as Error).message);
-    audioDataUri = await generateFallbackTTS(normalizedText);
-  }
-
-  if (config.discordBridge) {
-    sendToDiscordBridge(audioDataUri, normalizedText, config.voice).catch((e) => console.warn('[TTS] Discord bridge failed:', e));
+    // If primary failed and it wasn't already Gemini, try Gemini before StreamElements
+    const geminiKey = resolveTTSApiKey('gemini', tenantId);
+    if (config.provider !== 'gemini' && geminiKey) {
+      try {
+        console.warn(`[TTS] ${config.provider} failed, trying Gemini fallback:`, (err as Error).message);
+        audioDataUri = await generateGeminiTTS(normalizedText, 'Aoede', geminiKey);
+      } catch (geminiErr) {
+        console.warn(`[TTS] Gemini fallback failed, falling back to StreamElements:`, (geminiErr as Error).message);
+        audioDataUri = await generateFallbackTTS(normalizedText);
+      }
+    } else {
+      console.warn(`[TTS] ${config.provider} failed, falling back to StreamElements:`, (err as Error).message);
+      audioDataUri = await generateFallbackTTS(normalizedText);
+    }
   }
 
   return audioDataUri;
+}
+
+async function generateGeminiTTS(text: string, voice: string, apiKey: string): Promise<string> {
+  const voiceName = voice.replace(/^gemini:/i, '') || 'Aoede';
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-preview-tts',
+    contents: [{ parts: [{ text }] }],
+    config: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+    },
+  });
+  const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!audioData) throw new Error('Gemini TTS returned no audio data');
+  return `data:audio/wav;base64,${audioData}`;
+}
+
+async function generateOpenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
+  const voiceName = voice.replace(/^openai:/, '') || 'nova';
+  const response = await fetchWithRetry('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ model: 'tts-1', voice: voiceName, input: text }),
+  }, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    throw new Error(`OpenAI TTS failed: ${response.status} ${errBody}`);
+  }
+  const audioBuffer = await response.arrayBuffer();
+  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
 async function generateEdenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
@@ -147,10 +197,4 @@ async function generateFallbackTTS(text: string): Promise<string> {
   return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
-async function sendToDiscordBridge(audioDataUri: string, text: string, voice: string): Promise<void> {
-  await fetch('http://localhost:8090/discord-tts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'discord-tts', payload: { audioDataUri, text, voice } }),
-  });
-}
+
