@@ -275,7 +275,8 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
 }
 
 async function bridgeDiscordMessageToTwitch(msg: any, tenantId?: string) {
-    if (String(msg.content || '').startsWith('[')) return;
+    const rawContent = String(msg.content || '');
+    if (rawContent.startsWith('[') || rawContent.startsWith('!')) return;
 
     let processedContent = String(msg.content || '');
 
