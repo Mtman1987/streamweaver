@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllKickInstances } from '@/services/kick';
+import { getInternalServiceSecrets, isKnownInternalSecret } from '@/lib/internal-service-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +25,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'invalid JSON payload' }, { status: 400 });
   }
 
-  const expectedSecret = String(process.env.BOT_SECRET_KEY || '').trim();
-  if (!expectedSecret || getSecret(request, body) !== expectedSecret) {
+  if (getInternalServiceSecrets().length === 0 || !isKnownInternalSecret(getSecret(request, body))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

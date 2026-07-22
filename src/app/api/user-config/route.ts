@@ -36,7 +36,6 @@ const ALLOWED_KEYS = new Set([
   // TTS Configuration (user-specific)
   'TTS_PROVIDER', // 'piper' | 'edenai' | 'openai' (legacy routed values auto-normalize)
   'TTS_VOICE',
-  'DISCORD_TTS_BRIDGE', // 'true' | 'false'
   'PRIVATE_DM_GIF_URL',
   'PUBLIC_DISCORD_GIF_URL',
 

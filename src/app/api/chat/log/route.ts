@@ -5,6 +5,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import { tenantPath } from '@/lib/tenant';
+import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 
 const chatLogSchema = z.object({
   username: z.string().trim().min(1).max(128),
@@ -21,8 +22,7 @@ export async function POST(request: NextRequest) {
     const session = getTenantFromRequest(request);
     const tenantId = session?.tenantId;
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] !== process.env.BOT_SECRET_KEY) {
+    if (!hasInternalServiceAccess(request)) {
       return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
     }
 

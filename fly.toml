@@ -4,7 +4,7 @@ primary_region = 'iad'
 [build]
   [build.args]
     NEXT_PUBLIC_TWITCH_CLIENT_ID = '9u0mtc83xeabmguw53c89dehth0gwg'
-    NEXT_PUBLIC_STREAMWEAVE_WS_URL = 'wss://streamweaver-new.fly.dev:8090'
+    NEXT_PUBLIC_STREAMWEAVE_WS_URL = 'wss://streamweaver-new.fly.dev'
     NEXT_PUBLIC_BASE_URL = 'https://streamweaver-new.fly.dev'
     NEXT_PUBLIC_STREAMWEAVE_URL = 'https://streamweaver-new.fly.dev'
 
@@ -31,15 +31,6 @@ primary_region = 'iad'
     grace_period = '60s'
     method = 'GET'
     path = '/api/health'
-
-[[services]]
-  internal_port = 8090
-  protocol = 'tcp'
-  auto_stop_machines = 'off'
-
-  [[services.ports]]
-    port = 8090
-    handlers = ['tls']
 
 [[vm]]
   cpu_kind = 'shared'

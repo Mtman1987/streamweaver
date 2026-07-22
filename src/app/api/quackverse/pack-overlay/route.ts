@@ -1,12 +1,9 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
+import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 
 function hasAccess(request: NextRequest) {
-  const secret = String(process.env.BOT_SECRET_KEY || '').trim();
-  if (!secret) return false;
-  const auth = request.headers.get('authorization') || '';
-  const botSecret = request.headers.get('x-bot-secret') || '';
-  return auth === `Bearer ${secret}` || botSecret === secret;
+  return hasInternalServiceAccess(request);
 }
 
 export async function POST(request: NextRequest) {

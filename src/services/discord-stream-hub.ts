@@ -54,7 +54,7 @@ function getDiscordStreamHubUrl(): string {
 }
 
 function getDiscordStreamHubSecret(): string {
-  return process.env.DSH_SERVICE_SECRET || '';
+  return process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '';
 }
 
 function truncateDiscordStreamHubErrorBody(body: string): string {

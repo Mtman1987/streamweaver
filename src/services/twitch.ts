@@ -278,9 +278,9 @@ export async function getChannelBadges(broadcasterId?: string): Promise<any> {
  * Gets follow age for a user in the broadcaster's channel.
  * Uses /helix/channels/followers with broadcaster token.
  */
-export async function getFollowAge(username: string, tenantId?: string): Promise<{ followedAt: string } | null> {
+export async function getFollowAge(username: string, tenantId?: string): Promise<{ followedAt: string | null } | null> {
   try {
-    const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
+    const { getStoredTokens, ensureValidToken, forceRefreshStoredToken } = require('../lib/token-utils.server');
     const clientId = process.env.TWITCH_CLIENT_ID;
     const clientSecret = process.env.TWITCH_CLIENT_SECRET;
     if (!clientId || !clientSecret) return null;
@@ -288,34 +288,65 @@ export async function getFollowAge(username: string, tenantId?: string): Promise
     const tokens = await getStoredTokens(tenantId);
     if (!tokens) return null;
 
-    const broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+    let broadcasterToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
 
-    // Get broadcaster ID from token
+    // Resolve broadcaster identity from validate + stored broadcaster username.
     const valRes = await fetch('https://id.twitch.tv/oauth2/validate', {
       headers: { Authorization: `Bearer ${broadcasterToken}` },
     });
     if (!valRes.ok) return null;
     const valData = await valRes.json();
-    const broadcasterId = valData.user_id;
+
+    let broadcasterId: string | null = typeof valData?.user_id === 'string' ? valData.user_id : null;
+    const validatedLogin = String(valData?.login || '').trim().toLowerCase();
+    const expectedBroadcasterLogin = String(tokens.broadcasterUsername || tokens.loginUsername || '').trim().toLowerCase();
+
+    // If the validated token belongs to a different login (for example bot token drift), prefer known broadcaster login.
+    if (expectedBroadcasterLogin && (!validatedLogin || validatedLogin !== expectedBroadcasterLogin)) {
+      const expectedBroadcaster = await getTwitchUser(expectedBroadcasterLogin, 'login');
+      if (expectedBroadcaster?.id) {
+        broadcasterId = expectedBroadcaster.id;
+      }
+    }
+
     if (!broadcasterId) return null;
 
     // Get target user ID
     const user = await getTwitchUser(username, 'login');
     if (!user?.id) return null;
 
-    const res = await fetch(
-      `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${broadcasterId}&user_id=${user.id}`,
-      {
+    const fetchFollow = async (token: string) => {
+      const params = new URLSearchParams({
+        broadcaster_id: broadcasterId,
+        user_id: user.id,
+      });
+      return fetch(`https://api.twitch.tv/helix/channels/followers?${params.toString()}`, {
         headers: {
-          Authorization: `Bearer ${broadcasterToken}`,
+          Authorization: `Bearer ${token}`,
           'Client-ID': clientId,
         },
+      });
+    };
+
+    let res = await fetchFollow(broadcasterToken);
+    if (res.status === 401 || res.status === 403) {
+      try {
+        broadcasterToken = await forceRefreshStoredToken(clientId, clientSecret, 'broadcaster', tenantId);
+        res = await fetchFollow(broadcasterToken);
+      } catch (refreshError) {
+        console.warn('[Twitch] getFollowAge refresh retry failed:', refreshError);
       }
-    );
-    if (!res.ok) return null;
+    }
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      console.warn(`[Twitch] getFollowAge request failed: ${res.status} ${errorText}`);
+      return null;
+    }
+
     const data = await res.json();
     const follow = data.data?.[0];
-    return follow ? { followedAt: follow.followed_at } : null;
+    return follow ? { followedAt: follow.followed_at } : { followedAt: null };
   } catch (error) {
     console.error('[Twitch] getFollowAge error:', error);
     return null;

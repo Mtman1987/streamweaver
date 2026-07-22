@@ -69,6 +69,7 @@ import { findDiscordLastSeenForNames } from './discord-last-seen';
 import { getInternalAppUrl } from '../lib/runtime-origin';
 import {
     applySayState,
+    cleanSayTextForSpeech,
     formatSaySpeechText,
     isSayEnabled,
     hasSayEnabledInChannel,
@@ -705,6 +706,42 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     };
     const isMod = await hasEffectiveDiscordModAccess(msg);
     const discordServerId = msg.guildId || msg.guild_id;
+
+    if (/^!say(?:\s|$)/i.test(actualMessage)) {
+        const args = actualMessage.substring('!say'.length).trim().split(/\s+/).filter(Boolean);
+        const firstState = parseSayState(args[0]);
+        const targetToken = firstState ? '' : (args[0] || '');
+        const requestedState = firstState || parseSayState(args[1]);
+        const sayUsers = await readSayUsers();
+
+        if (!targetToken || targetToken.toLowerCase() === 'all') {
+            if (!isMod) {
+                await reply(`@${actualUsername}, only mods can change !say for everyone.`);
+                return true;
+            }
+            const nextState = applySayState(sayUsers, sayAllKey(sourceChannelId), requestedState);
+            await writeSayUsers(sayUsers);
+            await reply(`TTS for everyone in this Discord channel is now ${nextState}. Listen: ${buildSayPlayerUrl(undefined, 'discord', sourceChannelId)}`);
+            return true;
+        }
+
+        const mentionTarget = parseDiscordCommandTarget(msg, targetToken);
+        const targetUserId = mentionTarget?.userId || '';
+        if (!targetUserId) {
+            await reply(`@${actualUsername}, mention the Discord user you want to update.`);
+            return true;
+        }
+        const isSelf = targetUserId === (msg.author?.id || msg.userId || '');
+        if (!isSelf && !isMod) {
+            await reply(`@${actualUsername}, only mods can change !say for another user.`);
+            return true;
+        }
+        const nextState = applySayState(sayUsers, sayUserKey(targetUserId, sourceChannelId), requestedState);
+        await writeSayUsers(sayUsers);
+        const suffix = nextState === 'on' ? ` Listen: ${buildSayPlayerUrl(undefined, 'discord', sourceChannelId)}` : '';
+        await reply(`TTS for @${mentionTarget?.username || targetUserId} is now ${nextState}.${suffix}`);
+        return true;
+    }
 
     if (actualMessage.toLowerCase() === '!leader' || actualMessage.toLowerCase() === '!pleader') {
         try {
@@ -3373,12 +3410,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Handle !followage command
         if (actualMessage.toLowerCase().startsWith('!followage')) {
             const args = actualMessage.substring(11).trim();
-            const targetUser = args ? args.replace('@', '') : actualUsername;
+            const targetUser = (args ? args : actualUsername)
+                .replace(/^@+/, '')
+                .replace(/[^a-zA-Z0-9_]/g, '')
+                .toLowerCase();
+            if (!targetUser) {
+                await reply(`@${actualUsername}, provide a valid Twitch username.`, 'bot').catch(() => {});
+                return;
+            }
             
             try {
                 const { getFollowAge } = require('./twitch');
                 const followData = await getFollowAge(targetUser, tenantId);
-                
+
                 if (followData?.followedAt) {
                     const followDate = new Date(followData.followedAt);
                     const now = new Date();
@@ -3394,8 +3438,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     timeStr += `${remainingDays}d`;
                     
                     await reply(`@${targetUser} has been following for ${timeStr}!`, 'bot').catch(() => {});
-                } else {
+                } else if (followData && !followData.followedAt) {
                     await reply(`@${targetUser} is not following!`, 'bot').catch(() => {});
+                } else {
+                    await reply(`@${actualUsername}, couldn't verify follow status right now. Try again in a moment.`, 'bot').catch(() => {});
                 }
             } catch (error) {
                 await reply(`@${actualUsername}, couldn't fetch follow data!`, 'bot').catch(() => {});
@@ -3412,8 +3458,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 if (followData?.followedAt) {
                     const followDate = new Date(followData.followedAt);
                     await reply(`@${actualUsername} followed on ${followDate.toLocaleDateString()}!`, 'broadcaster').catch(() => {});
-                } else {
+                } else if (followData && !followData.followedAt) {
                     await reply(`@${actualUsername}, you're not following!`, 'broadcaster').catch(() => {});
+                } else {
+                    await reply(`@${actualUsername}, I couldn't verify follow status right now. Try again in a moment.`, 'broadcaster').catch(() => {});
                 }
             } catch (error) {
                 await reply(`@${actualUsername}, couldn't fetch follow data!`, 'broadcaster').catch(() => {});
@@ -4767,6 +4815,24 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
             ...msg,
             channelId: sourceChannelId,
         }, tenantId);
+    }
+
+    if (!msg.author?.bot && normalizedContent && !normalizedContent.startsWith('!') && !normalizedContent.startsWith('[')) {
+        const sayMessage = cleanSayTextForSpeech(normalizedContent);
+        if (isSayTextSpeakable(sayMessage)) {
+            readSayUsers().then((sayUsers) => {
+                const userId = msg.author?.id || msg.userId || sourceUserName;
+                if (!isSayEnabled(sayUsers, userId, sourceChannelId)) return;
+                const sayChannelKey = resolveSayStreamKey(undefined, 'discord', sourceChannelId);
+                if (isSaySuppressedForTenant(sayChannelKey)) return;
+                const spokenMessage = formatSaySpeechText(sayChannelKey, sourceUserName, sayMessage);
+                return fetch(`${getInternalAppUrl()}/api/say/queue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
+                });
+            }).catch((error) => console.warn('[Say TTS] Discord queue failed:', error));
+        }
     }
 
     return { commandHandled: false };
