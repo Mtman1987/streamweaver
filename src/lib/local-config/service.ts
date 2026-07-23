@@ -1,5 +1,4 @@
 import * as crypto from 'crypto';
-import * as fs from 'fs';
 import { promises as fsp } from 'fs';
 import * as path from 'path';
 import {
@@ -98,10 +97,18 @@ function migrateFromLegacy(config: LocalConfigMap, tenantId?: string): LocalConf
       discord: {
         ...config.discord,
         botToken: config.discord.botToken || process.env.DISCORD_BOT_TOKEN || '',
+        guildId: config.discord.guildId || '',
         logChannelId: config.discord.logChannelId || '',
         aiChatChannelId: config.discord.aiChatChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_AI_CHAT_CHANNEL_ID || '',
+        shoutoutChannelId: config.discord.shoutoutChannelId || '',
         shareChannelId: config.discord.shareChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_SHARE_CHANNEL_ID || '',
         metricsChannelId: config.discord.metricsChannelId || legacyUserConfig.NEXT_PUBLIC_DISCORD_METRICS_CHANNEL_ID || '',
+        dmChannelId: config.discord.dmChannelId || '',
+        dmEnabled: config.discord.dmEnabled === true,
+        discordBridgeEnabled: config.discord.discordBridgeEnabled !== false,
+        discordUserId: config.discord.discordUserId || '',
+        discordUsername: config.discord.discordUsername || '',
+        discordUserLinkedAt: config.discord.discordUserLinkedAt || '',
       },
     automation: {
       ...config.automation,

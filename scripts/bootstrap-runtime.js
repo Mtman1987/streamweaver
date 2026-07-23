@@ -18,10 +18,11 @@ const dirs = [
   'plugin-exports',
   path.join('public', 'avatars'),
   'tmp',
+  'config',
 ];
 
 const files = [
-  { file: path.join('tokens', 'discord-channels.json'), value: {} },
+  { file: path.join('config', 'discord.json'), value: {} },
   { file: path.join('tokens', 'automation-variables.json'), value: {} },
   { file: path.join('tokens', 'app-config.json'), value: {} },
   { file: path.join('tokens', 'discord-webhooks.json'), value: {} },
@@ -33,7 +34,6 @@ const files = [
   { file: path.join('data', 'carmen-state.json'), value: {} },
   { file: path.join('data', 'gamble-settings.json'), value: {} },
   { file: path.join('data', 'user-stats.json'), value: {} },
-  { file: path.join('src', 'data', 'discord-channels.json'), value: {} },
   { file: path.join('src', 'data', 'message-counter.json'), value: { count: 0 } },
   { file: path.join('src', 'data', 'stream-metrics.json'), value: { sessions: [] } },
   { file: path.join('src', 'data', 'private-chat.json'), value: [] },

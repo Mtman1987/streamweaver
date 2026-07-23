@@ -1,10 +1,10 @@
 import * as fs from 'fs/promises';
-import { resolve } from 'path';
 import { uploadFileToDiscord } from './discord';
 import { readPublicChatMessages } from '@/lib/public-chat-store';
-import { globalPath, tenantPath } from '@/lib/tenant';
+import { globalPath } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getRecentLogLines } from './runtime-log-buffer';
+import { readDiscordConfig } from '@/lib/discord-config';
 
 type SupportPlatform = 'twitch' | 'discord';
 
@@ -107,11 +107,8 @@ function redactSensitiveText(text: string): string {
 }
 
 async function readDiscordChannelSettings(tenantId?: string): Promise<Record<string, unknown>> {
-  const filePath = tenantId
-    ? tenantPath(tenantId, 'tokens/discord-channels.json')
-    : resolve(process.cwd(), 'tokens', 'discord-channels.json');
   try {
-    return JSON.parse(await fs.readFile(filePath, 'utf-8'));
+    return await readDiscordConfig(tenantId) as Record<string, unknown>;
   } catch {
     return {};
   }

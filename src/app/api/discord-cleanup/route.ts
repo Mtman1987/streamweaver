@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import * as fs from 'fs/promises';
+import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { tenantPath } from '@/lib/tenant';
+import { readDiscordConfig } from '@/lib/discord-config';
 
 const discordCleanupSchema = z.object({
   action: z.enum(['cleanup']).optional().default('cleanup'),
@@ -16,8 +15,7 @@ const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 async function getDiscordChannelId(tenantId?: string): Promise<string | null> {
     if (!tenantId) return null;
     try {
-        const data = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-        const settings = JSON.parse(data);
+        const settings = await readDiscordConfig(tenantId);
         return settings.logChannelId || null;
     } catch {
         return null;

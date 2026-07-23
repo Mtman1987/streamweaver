@@ -11,19 +11,30 @@ test('Discord plain-name routing can address any configured tenant bot', async (
   try {
     const writeTenantConfig = async (tenantId: string, botName: string, aliases: string) => {
       const tokensDir = path.join(persistRoot, 'tenants', tenantId, 'tokens');
+      const configDir = path.join(persistRoot, 'tenants', tenantId, 'config');
       await mkdir(tokensDir, { recursive: true });
+      await mkdir(configDir, { recursive: true });
       await writeFile(path.join(tokensDir, 'user-config.json'), JSON.stringify({
         AI_BOT_NAME: botName,
         AI_BOT_ALIASES: aliases,
       }));
+      await writeFile(path.join(configDir, 'discord.json'), JSON.stringify({
+        guildId: 'shared-guild',
+        discordUserId: `discord-${tenantId}`,
+      }));
     };
     await writeTenantConfig('tenant-a', 'LocalBot', 'local pal');
     await writeTenantConfig('tenant-b', 'ForeignBot', 'foreign pal');
+    await writeTenantConfig('discord-c', 'DiscordIdBot', 'discord id bot');
 
-    const { resolveMentionedBot } = await import('../src/app/api/discord/chat/route');
+    const { resolveDiscordAuthorTenant, resolveMentionedBot } = await import('../src/app/api/discord/chat/route');
     assert.equal((await resolveMentionedBot('hello local pal', 'tenant-a'))?.tenantId, 'tenant-a');
     assert.equal((await resolveMentionedBot('hello foreign pal', 'tenant-a'))?.tenantId, 'tenant-b');
     assert.equal((await resolveMentionedBot('foreignbot tell a joke', 'tenant-a'))?.tenantId, 'tenant-b');
+    assert.equal(await resolveDiscordAuthorTenant('discord-tenant-a'), 'tenant-a');
+    assert.equal(await resolveDiscordAuthorTenant('discord-tenant-b'), 'tenant-b');
+    assert.equal(await resolveDiscordAuthorTenant('discord-c'), 'discord-c');
+    assert.equal(await resolveDiscordAuthorTenant('discord-missing'), undefined);
   } finally {
     await rm(persistRoot, { recursive: true, force: true });
   }

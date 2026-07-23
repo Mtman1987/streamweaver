@@ -32,6 +32,7 @@ import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { globalPath, listTenants, tenantPath } from '../lib/tenant';
+import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
@@ -291,8 +292,7 @@ async function bridgeDiscordMessageToTwitch(msg: any, tenantId?: string) {
 async function getTenantDiscordDmChannelId(tenantId?: string): Promise<string | null> {
     if (!tenantId) return null;
     try {
-        const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-        const config = JSON.parse(raw);
+        const config = await readDiscordConfig(tenantId);
         const value = String(config?.dmChannelId || '').trim();
         return value || null;
     } catch {
@@ -1590,9 +1590,7 @@ async function sendTwitchCrossBotFollowUp(input: {
 async function getDiscordLogChannelId(tenantId?: string): Promise<string | null> {
     if (!tenantId) return null;
     try {
-        const p = tenantPath(tenantId, 'tokens/discord-channels.json');
-        const data = await fs.readFile(p, 'utf-8');
-        const config = JSON.parse(data);
+        const config = await readDiscordConfig(tenantId);
         if (config.discordBridgeEnabled === false) return null;
         return config.logChannelId;
     } catch { return null; }

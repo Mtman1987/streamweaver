@@ -31,10 +31,19 @@ export const twitchConfigSchema = z.object({
 
 export const discordConfigSchema = z.object({
   botToken: z.string().default(''),
+  guildId: z.string().default(''),
   logChannelId: z.string().default(''),
   aiChatChannelId: z.string().default(''),
+  shoutoutChannelId: z.string().default(''),
   shareChannelId: z.string().default(''),
   metricsChannelId: z.string().default(''),
+  dmChannelId: z.string().default(''),
+  dmEnabled: z.boolean().default(false),
+  dmChannelUpdatedAt: z.string().default(''),
+  discordBridgeEnabled: z.boolean().default(true),
+  discordUserId: z.string().default(''),
+  discordUsername: z.string().default(''),
+  discordUserLinkedAt: z.string().default(''),
 });
 
 export const gameConfigSchema = z.object({

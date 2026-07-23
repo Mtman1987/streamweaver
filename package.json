@@ -20,6 +20,7 @@
     "persistence:verify": "npx tsx scripts/verify-automation-variable-persistence.ts",
     "test:isolation": "npx tsx --test tests/*.test.ts && npm run persistence:verify",
     "social-stream:bridge": "npx tsx scripts/social-stream-bridge.ts",
+    "migrate:discord-config": "npx tsx scripts/migrate-discord-config-single-source.ts",
     "start": "cross-env NODE_ENV=production npx dotenv-cli -e .env -- tsx scripts/start-local.ts",
     "lint": "npx next lint",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit --incremental false",

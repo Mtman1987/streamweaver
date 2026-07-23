@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getOAuthRedirectUri } from '@/lib/runtime-origin';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { tenantPath } from '@/lib/tenant';
-import { promises as fs } from 'fs';
-import { resolve } from 'path';
+import { updateDiscordConfig } from '@/lib/discord-config';
 import { z } from 'zod';
 
 const discordManualExchangeSchema = z.object({
@@ -64,16 +62,11 @@ export async function POST(request: NextRequest) {
 
     const session = getTenantFromRequest(request);
     if (state === 'discord-user' && session?.tenantId && discordUserId) {
-      const filePath = tenantPath(session.tenantId, 'tokens/discord-channels.json');
-      let existing: Record<string, any> = {};
-      try { existing = JSON.parse(await fs.readFile(filePath, 'utf-8')); } catch {}
-      await fs.mkdir(resolve(filePath, '..'), { recursive: true });
-      await fs.writeFile(filePath, JSON.stringify({
-        ...existing,
+      await updateDiscordConfig({
         discordUserId,
         discordUsername: username,
         discordUserLinkedAt: new Date().toISOString(),
-      }, null, 2), 'utf-8');
+      }, session.tenantId);
     }
 
     return apiOk({ success: true, username, role: state, discordUserId: discordUserId || undefined });

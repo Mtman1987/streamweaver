@@ -1,5 +1,5 @@
 /**
- * Seed script: Copies discord-channels.json and user-config.json into the tenant volume.
+ * Seed script: writes Discord runtime config and user-config into the tenant volume.
  * 
  * Usage:
  *   npx tsx scripts/seed-tenant-discord.ts
@@ -37,10 +37,12 @@ const USER_CONFIG = {
 
 async function seed() {
   const tenantTokensDir = path.join(PERSIST_ROOT, 'tenants', TENANT_ID, 'tokens');
+  const tenantConfigDir = path.join(PERSIST_ROOT, 'tenants', TENANT_ID, 'config');
   await fs.mkdir(tenantTokensDir, { recursive: true });
+  await fs.mkdir(tenantConfigDir, { recursive: true });
 
-  // Write discord-channels.json
-  const discordPath = path.join(tenantTokensDir, 'discord-channels.json');
+  // Write single-source Discord runtime config
+  const discordPath = path.join(tenantConfigDir, 'discord.json');
   await fs.writeFile(discordPath, JSON.stringify(DISCORD_CHANNELS, null, 2));
   console.log(`✅ Written: ${discordPath}`);
 

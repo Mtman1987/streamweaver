@@ -10,6 +10,7 @@ import { getStoredTokens } from '@/lib/token-utils.server';
 import { sendDiscordMessage } from '@/services/discord-local';
 import { runImageCommand } from '@/services/image-command';
 import { tenantPath, globalPath } from '@/lib/tenant';
+import { readDiscordConfig } from '@/lib/discord-config';
 import { publishSpmtEvent } from '@/lib/spmt-client';
 import { hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -114,7 +115,7 @@ async function getDiscordMountainViewChannelId(tenantId?: string, preferred?: st
   if (preferred && /^\d+$/.test(preferred)) return preferred;
   if (!tenantId) return '';
   try {
-    const config = JSON.parse(await readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf8'));
+    const config = await readDiscordConfig(tenantId);
     return firstString(config.aiChatChannelId, config.logChannelId, config.dmChannelId, config.shoutoutChannelId);
   } catch {
     return '';

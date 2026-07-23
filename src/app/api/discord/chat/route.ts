@@ -4,13 +4,14 @@ import { apiOk } from '@/lib/api-response';
 import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { readUserConfigSync } from '@/lib/user-config';
-import { getAdminTwitchId, listTenants, tenantPath } from '@/lib/tenant';
+import { getAdminTwitchId, listTenants } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { deleteMessage, sendDiscordEmbed, sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
+import { readDiscordConfig, updateDiscordConfig } from '@/lib/discord-config';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed, getDiscordBotProfileAvatarUrl, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
 import { getAvatarUrlForTenant } from '@/services/discord-webhook-avatar';
@@ -306,12 +307,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Resolve which tenant this guild belongs to (or auto-assign on first message)
-    let tenantId = normalized.tenantId || await resolveGuildTenant(guildId, channelId);
     const isPrivateDiscordLane = isDirectMessage;
+    let tenantId = normalized.tenantId;
+    let tenantResolution = tenantId ? 'payload' : 'none';
+    if (!tenantId) {
+      tenantId = isPrivateDiscordLane
+        ? await resolveGuildTenant('', channelId)
+        : await resolveDiscordAuthorTenant(userId, userName);
+      tenantResolution = tenantId ? (isPrivateDiscordLane ? 'dm-channel' : 'discord-author') : 'none';
+    }
+    if (!tenantId && !isPrivateDiscordLane && dshAccess?.isOwner) {
+      const ownerTenantId = getAdminTwitchId().trim();
+      if (ownerTenantId && (await listTenants()).includes(ownerTenantId)) {
+        tenantId = ownerTenantId;
+        tenantResolution = 'discord-owner';
+      }
+    }
     logDiscordTrace(traceId, 'tenant-resolved', {
       payloadTenantId: normalized.tenantId || null,
       resolvedTenantId: tenantId || null,
+      resolution: tenantResolution,
       guildId: guildId || null,
       channelId: channelId || null,
     });
@@ -382,19 +397,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Auto-save guildId to the tenant's discord-channels.json if not set yet
+    // Auto-save guildId to the tenant's single Discord runtime config if not set yet.
     if (!tenantId && guildId) {
       // Can't auto-assign without knowing which tenant — skip
     } else if (tenantId && guildId) {
       // Ensure guildId is persisted in their config
       try {
-        const dcPath = tenantPath(tenantId, 'tokens/discord-channels.json');
-        let dcConfig: Record<string, any> = {};
-        try { dcConfig = JSON.parse(await fs.readFile(dcPath, 'utf-8')); } catch {}
+        const dcConfig = await readDiscordConfig(tenantId);
         if (!dcConfig.guildId) {
-          dcConfig.guildId = guildId;
-          await fs.mkdir(dcPath.replace(/[\/\\][^\/\\]+$/, ''), { recursive: true });
-          await fs.writeFile(dcPath, JSON.stringify(dcConfig, null, 2));
+          await updateDiscordConfig({ guildId }, tenantId);
           console.log(`[Discord Chat] Auto-saved guildId ${guildId} for tenant ${tenantId}`);
         }
       } catch {}
@@ -710,24 +721,16 @@ export async function POST(request: NextRequest) {
 
     // Handle !img in guild channels (not just DMs)
     if (!isPrivateDiscordLane && message.trim().match(/^!img(?:\s+(.+))?$/i)) {
-      // Only the guild's own tenant should handle !img to prevent multi-bot duplication
-      const guildTenant = await resolveGuildTenant(guildId);
-      if (guildTenant && tenantId !== guildTenant) {
-        return apiOk({ success: true, botResponded: false, skipped: 'img-not-owner-tenant' });
-      }
-      // If no guild tenant resolved, only let the first tenant (alphabetically) handle it
-      if (!guildTenant) {
-        const allTenants = await listTenants();
-        if (allTenants.length > 1 && tenantId !== allTenants.sort()[0]) {
-          return apiOk({ success: true, botResponded: false, skipped: 'img-not-primary-tenant' });
-        }
-      }
-
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
       const prompt = (imgMatch?.[1] || '').trim();
+      if (!tenantId) {
+        if (channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I can't tell which StreamWeaver account owns your Discord user yet. Link Discord in StreamWeaver first, then try !img again.`);
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), context: 'guild-image', error: 'tenant-unresolved' });
+      }
       if (!prompt) {
         if (channelId) {
-          const baseUrl = getConfiguredAppUrl();
           await sendDiscordRouteReplyOrCollect(channelId, `Usage: !img <description>`);
         }
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image' });
@@ -739,8 +742,7 @@ export async function POST(request: NextRequest) {
 
       let result;
       try {
-        const imgTenantId = tenantId || (await listTenants())[0] || '';
-        result = await runImageCommand(message, imgTenantId, { scope: 'public' });
+        result = await runImageCommand(message, tenantId, { scope: 'public' });
       } catch (error) {
         console.warn(`[Discord Chat:${tenantId}] !img guild failed:`, error);
         if (channelId) {
@@ -817,12 +819,8 @@ export async function POST(request: NextRequest) {
 
     if (dispatch && tenantId && channelId && !botMentioned) {
       try {
-        const dcPath = tenantPath(tenantId, 'tokens/discord-channels.json');
-        let bridgeEnabled = false;
-        try {
-          const dcConfig = JSON.parse(await fs.readFile(dcPath, 'utf-8'));
-          bridgeEnabled = dcConfig.discordBridgeEnabled !== false && dcConfig.logChannelId === channelId;
-        } catch {}
+        const dcConfig = await readDiscordConfig(tenantId);
+        const bridgeEnabled = dcConfig.discordBridgeEnabled !== false && dcConfig.logChannelId === channelId;
 
         if (bridgeEnabled) {
           // Don't bridge bot commands to Twitch
@@ -1347,8 +1345,7 @@ async function addLoreCandidate(messageLower: string, candidates: BotMatch[], te
 async function getDiscordLogChannelId(tenantId?: string): Promise<string | null> {
   if (!tenantId) return null;
   try {
-    const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-    const config = JSON.parse(raw);
+    const config = await readDiscordConfig(tenantId);
     return config.logChannelId || null;
   } catch {
     return null;
@@ -1393,8 +1390,31 @@ async function sendDiscordBotEmbedReply(channelId: string, message: string, tena
   });
 }
 
+export async function resolveDiscordAuthorTenant(userId?: string, username?: string): Promise<string | undefined> {
+  const normalizedUserId = String(userId || '').trim();
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  if (!normalizedUserId && !normalizedUsername) return undefined;
+
+  try {
+    const tenantIds = await listTenants();
+    if (normalizedUserId && tenantIds.includes(normalizedUserId)) return normalizedUserId;
+
+    for (const id of tenantIds) {
+      try {
+        const config = await readDiscordConfig(id);
+        if (normalizedUserId && String(config.discordUserId || '').trim() === normalizedUserId) return id;
+        if (normalizedUsername && String(config.discordUsername || '').trim().toLowerCase() === normalizedUsername) return id;
+      } catch {}
+    }
+  } catch {}
+
+  return undefined;
+}
+
 /**
- * Resolve which tenant a Discord guild belongs to by checking discord-channels.json files.
+ * Resolve a Discord lane to a tenant. A guild is not tenant ownership here:
+ * most tenants share the same Discord server, so public guild matches only
+ * resolve when exactly one tenant has that guild configured.
  */
 async function resolveGuildTenant(guildId: string, channelId?: string): Promise<string | undefined> {
   try {
@@ -1405,8 +1425,7 @@ async function resolveGuildTenant(guildId: string, channelId?: string): Promise<
       if (channelId) {
         for (const id of tenantIds) {
           try {
-            const raw = await fs.readFile(tenantPath(id, 'tokens/discord-channels.json'), 'utf-8');
-            const config = JSON.parse(raw);
+            const config = await readDiscordConfig(id);
             if (config.dmChannelId === channelId) return id;
           } catch {}
         }
@@ -1418,13 +1437,15 @@ async function resolveGuildTenant(guildId: string, channelId?: string): Promise<
       return undefined;
     }
 
+    const matches: string[] = [];
     for (const id of tenantIds) {
       try {
-        const raw = await fs.readFile(tenantPath(id, 'tokens/discord-channels.json'), 'utf-8');
-        const config = JSON.parse(raw);
-        if (config.guildId === guildId) return id;
+        const config = await readDiscordConfig(id);
+        if (config.guildId === guildId) matches.push(id);
       } catch {}
     }
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) return undefined;
   } catch {}
 
   // If the guild is unknown, only fall back automatically in strict single-tenant mode.

@@ -258,10 +258,9 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
 
   // Post to tenant's shoutout Discord channel if bridge is enabled
   try {
-    const { promises: fsP } = require('fs');
-    const { tenantPath: tp } = require('../lib/tenant');
     if (tenantId) {
-      const dcConfig = JSON.parse(await fsP.readFile(tp(tenantId, 'tokens/discord-channels.json'), 'utf-8'));
+      const { readDiscordConfig } = require('../lib/discord-config');
+      const dcConfig = await readDiscordConfig(tenantId);
       if (dcConfig.discordBridgeEnabled !== false && dcConfig.shoutoutChannelId) {
         const { sendDiscordMessage: sendDM } = require('./discord');
         await sendDM(dcConfig.shoutoutChannelId, `${copy.emoji} **${username}** just checked in with **${entry.name}** during a **${copy.title}**!`);

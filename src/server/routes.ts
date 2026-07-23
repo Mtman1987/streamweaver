@@ -3,6 +3,7 @@ import * as url from 'url';
 import { resolve } from 'path';
 import { promises as fs } from 'fs';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
+import { readDiscordConfig } from '../lib/discord-config';
 import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
 import { getAdminTwitchId, tenantPath } from '../lib/tenant';
 import { readUserConfigSync } from '../lib/user-config';
@@ -29,8 +30,7 @@ async function getDiscordBridgeTarget(tenantId?: string): Promise<string | null>
     if (!tenantId) return null;
 
     try {
-        const channelsData = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-        const channels = JSON.parse(channelsData);
+        const channels = await readDiscordConfig(tenantId);
         if (channels?.discordBridgeEnabled === false) return null;
         return typeof channels?.logChannelId === 'string' ? channels.logChannelId.trim() || null : null;
     } catch {}
@@ -166,10 +166,8 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         const { message, as, targetChannel, tenantId: requestedTenantId, bridgeToDiscord } = JSON.parse(body);
                         
                         if (message.startsWith('[Discord]') && requestedTenantId) {
-                            const discordChannelsPath = tenantPath(requestedTenantId, 'tokens/discord-channels.json');
                             try {
-                                const channelsData = await fs.readFile(discordChannelsPath, 'utf-8');
-                                const channels = JSON.parse(channelsData);
+                                const channels = await readDiscordConfig(requestedTenantId);
                                 if (channels.discordBridgeEnabled === false) {
                                     console.log('[HTTP /api/twitch/send-message] Discord bridge disabled, skipping message');
                                     res.writeHead(200, { 'Content-Type': 'application/json' });

@@ -2,8 +2,8 @@ import { ChatHistoryMessage, DiscordMessage } from '../types/game-types';
 import { LIMITS } from '../constants';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
-import { tenantPath } from '../lib/tenant';
 import { isDiscordApiError } from './discord-local';
+import { readDiscordConfig } from '@/lib/discord-config';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { buildDiscordBotEmbed, buildTtsOverlayUrl } from './discord-branding';
@@ -92,11 +92,9 @@ async function maybeShortenUrl(url: string): Promise<string> {
 
 async function getDiscordChannelId(type: 'logChannelId' | 'aiChatChannelId' | 'shoutoutChannelId' | 'gameStateChannelId' | 'dmChannelId', tenantId?: string): Promise<string | null> {
     if (!tenantId) return null;
-    const SETTINGS_FILE = tenantPath(tenantId, 'tokens/discord-channels.json');
-    
+
     try {
-        const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
-        const settings = JSON.parse(data);
+        const settings = await readDiscordConfig(tenantId) as Record<string, any>;
         return settings[type] || null;
     } catch {
         return null;

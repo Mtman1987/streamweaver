@@ -3,9 +3,8 @@ import { sendDiscordMessage } from '@/services/discord';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
-import { promises as fs } from 'fs';
-import { tenantPath } from '@/lib/tenant';
 import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
+import { readDiscordConfig } from '@/lib/discord-config';
 
 const chatLogSchema = z.object({
   username: z.string().trim().min(1).max(128),
@@ -36,8 +35,7 @@ export async function POST(request: NextRequest) {
     let discordChannelId = '';
     if (tenantId) {
       try {
-        const raw = await fs.readFile(tenantPath(tenantId, 'tokens/discord-channels.json'), 'utf-8');
-        const settings = JSON.parse(raw);
+        const settings = await readDiscordConfig(tenantId);
         discordChannelId = String(settings.logChannelId || '').trim();
       } catch {}
     }

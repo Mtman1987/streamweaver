@@ -3,6 +3,7 @@ import { sendChatMessage } from './twitch';
 import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
 import { tenantPath } from '../lib/tenant';
+import { readDiscordConfig } from '../lib/discord-config';
 import { getShoutoutEligibility, getShoutoutCount, recordShoutout } from './welcome-wagon-tracker';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { getAppConfig } from '../lib/app-config';
@@ -484,9 +485,7 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
 async function getDiscordShoutoutChannelId(tenantId?: string): Promise<string | null> {
     if (!tenantId) return null;
     try {
-        const p = tenantPath(tenantId, 'tokens/discord-channels.json');
-        const data = await fs.readFile(p, 'utf-8');
-        const channels = JSON.parse(data);
+        const channels = await readDiscordConfig(tenantId);
         if (channels.discordBridgeEnabled === false) return null;
         return channels.shoutoutChannelId || null;
     } catch {

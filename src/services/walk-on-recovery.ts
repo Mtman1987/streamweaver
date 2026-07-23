@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { listTenants, tenantPath } from '../lib/tenant';
+import { readDiscordConfig } from '../lib/discord-config';
 import { readUserConfigSync } from '../lib/user-config';
 import { sendChatMessage } from './twitch';
 import { uploadFileToDiscord } from './discord';
@@ -162,8 +163,7 @@ async function getAlertDiscordChannelId(tenantId?: string): Promise<string | nul
   if (!tenantId) return null;
 
   try {
-    const channelsPath = tenantPath(tenantId, 'tokens/discord-channels.json');
-    const channels = JSON.parse(await fs.readFile(channelsPath, 'utf-8'));
+    const channels = await readDiscordConfig(tenantId);
     return channels.logChannelId || channels.shoutoutChannelId || null;
   } catch {
     return null;

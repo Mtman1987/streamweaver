@@ -1,9 +1,7 @@
 import { NextRequest } from 'next/server';
-import { promises as fs } from 'fs';
-import { resolve } from 'path';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { tenantPath } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
+import { publicDiscordConfig, readDiscordConfig, updateDiscordConfig } from '@/lib/discord-config';
 import { z } from 'zod';
 
 const discordChannelsSchema = z.object({
@@ -14,33 +12,17 @@ const discordChannelsSchema = z.object({
   dmChannelId: z.string().trim().max(64).optional().default(''),
   dmEnabled: z.boolean().optional(),
   discordBridgeEnabled: z.boolean().optional(),
+  discordUserId: z.string().trim().max(64).optional().default(''),
+  discordUsername: z.string().trim().max(128).optional().default(''),
   tenantId: z.string().trim().max(128).optional(),
 });
-
-function getFilePath(tenantId?: string): string {
-  if (tenantId) return tenantPath(tenantId, 'tokens/discord-channels.json');
-  return resolve(process.cwd(), 'tokens', 'discord-channels.json');
-}
 
 export async function GET(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
     if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
     const tenantId = session.tenantId;
-    const filePath = getFilePath(tenantId);
-    const data = await fs.readFile(filePath, 'utf-8').catch(() => '{}');
-    const parsed = JSON.parse(data);
-    return apiOk({
-      guildId: parsed.guildId || '',
-      logChannelId: tenantId ? (parsed.logChannelId || '') : '',
-      aiChatChannelId: tenantId ? (parsed.aiChatChannelId || '') : '',
-      shoutoutChannelId: tenantId ? (parsed.shoutoutChannelId || '') : '',
-      dmChannelId: parsed.dmChannelId || '',
-      discordUserId: parsed.discordUserId || '',
-      discordUsername: parsed.discordUsername || '',
-      dmEnabled: parsed.dmEnabled === true,
-      discordBridgeEnabled: parsed.discordBridgeEnabled !== false,
-    });
+    return apiOk(publicDiscordConfig(await readDiscordConfig(tenantId)));
   } catch {
     return apiOk({
       guildId: '',
@@ -66,24 +48,9 @@ export async function POST(request: NextRequest) {
     const session = getTenantFromRequest(request);
     if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
     const tenantId = session.tenantId;
-    const filePath = getFilePath(tenantId);
-
-    // Merge with existing (don't overwrite fields not sent)
-    let existing: Record<string, any> = {};
-    try { existing = JSON.parse(await fs.readFile(filePath, 'utf-8')); } catch {}
 
     const { tenantId: _tenantId, ...channelSettings } = parsed.data;
-    const normalizedSettings = tenantId
-      ? channelSettings
-      : {
-          dmChannelId: channelSettings.dmChannelId,
-          dmEnabled: channelSettings.dmEnabled,
-          discordBridgeEnabled: channelSettings.discordBridgeEnabled,
-        };
-    const settings = { ...existing, ...normalizedSettings };
-
-    await fs.mkdir(resolve(filePath, '..'), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(settings, null, 2));
+    await updateDiscordConfig(channelSettings, tenantId);
 
     return apiOk({ success: true });
   } catch (error) {
