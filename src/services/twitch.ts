@@ -196,7 +196,7 @@ export async function getTwitchUser(usernameOrId: string, by: "login" | "id" = "
                 gameName = channel.game_name;
             }
         } else {
-             console.warn('Failed to fetch Twitch channel info for user:', usernameOrId);
+             console.warn(`[Twitch] Channel metadata unavailable for ${normalizedIdentifier} (${channelResponse.status}); using no-game fallback.`);
         }
         
         return {
