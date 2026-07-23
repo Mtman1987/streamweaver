@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addSayQueueItem, getSayQueue, normalizeSayQueueTenant } from '../_store';
+import { addSayQueueItem, getSayQueue } from '../_store';
+import { resolveSayQueueStreamKey } from '../_stream';
 import { generateTTS } from '@/services/tts-provider';
 
 export async function POST(request: NextRequest) {
@@ -7,7 +8,7 @@ export async function POST(request: NextRequest) {
   if (!text) return NextResponse.json({ ok: false, error: 'empty' });
   const cleanText = String(text).slice(0, 500);
   const requestedTenantIds = Array.isArray(tenantIds) ? tenantIds : [tenantId];
-  const queueTenantIds = Array.from(new Set(requestedTenantIds.map(normalizeSayQueueTenant)));
+  const queueTenantIds = Array.from(new Set(await Promise.all(requestedTenantIds.map(resolveSayQueueStreamKey))));
   const queueTenantId = queueTenantIds[0] || 'global';
   const voiceOverride = typeof voice === 'string' && voice.trim() ? voice.trim() : undefined;
   try {

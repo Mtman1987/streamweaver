@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSayQueue, normalizeSayQueueTenant } from '../_store';
+import { getSayQueue } from '../_store';
+import { resolveSayQueueStreamKey } from '../_stream';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const tenantId = normalizeSayQueueTenant(request.nextUrl.searchParams.get('tenantId'));
+  const tenantId = await resolveSayQueueStreamKey(request.nextUrl.searchParams.get('tenantId'));
   const after = Math.max(0, Number(request.nextUrl.searchParams.get('after') || 0));
   const sayQueue = getSayQueue(tenantId);
   const latestId = sayQueue[sayQueue.length - 1]?.id || after;

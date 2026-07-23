@@ -250,16 +250,11 @@ export async function POST(request: NextRequest) {
         createdAt: normalized.createdAt,
       });
       if (!isFirstSeen) {
-        const trimmedMessage = String(message || '').trim();
-        const commandLikeMessage = trimmedMessage.startsWith('!') || detectMtFixItIntent(trimmedMessage).matched;
         console.log('[Discord Chat] Skipping duplicate public message:', {
           messageId: normalized.messageId || null,
           channelId: channelId || null,
-          commandLikeMessage,
         });
-        if (!commandLikeMessage) {
-          return apiOk({ success: true, botResponded: false, duplicate: true });
-        }
+        return apiOk({ success: true, botResponded: false, duplicate: true });
       }
       recordDiscordLastSeen({
         userId,

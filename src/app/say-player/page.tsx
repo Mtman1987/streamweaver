@@ -172,26 +172,40 @@ export default function SayPlayer() {
       const transcript = event.results[0]?.[0]?.transcript?.trim() || '';
       if (!transcript) return;
       setMicTranscript(transcript);
-      setStatus(`Sending: "${transcript}"`);
+      setStatus(`Typing in chat: "${transcript}"`);
 
-      // Queue as TTS so the channel hears it
-      const body: any = { text: transcript };
-      if (tenantId) body.tenantId = tenantId;
-      if (voice) body.voice = voice;
-      await fetch('/api/say/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }).catch(() => {});
+      try {
+        const isDiscordRoom = tenantId.toLowerCase().startsWith('discord:');
+        const chatResponse = await fetch(isDiscordRoom ? '/api/discord/send-message' : '/api/chat/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(isDiscordRoom
+            ? { channelId: tenantId.slice('discord:'.length), message: transcript }
+            : { message: transcript, as: 'broadcaster' }),
+        });
+        if (!chatResponse.ok) {
+          const error = await chatResponse.json().catch(() => null);
+          throw new Error(error?.error || 'Chat post failed');
+        }
 
-      // Also post to chat so it appears as text
-      await fetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: transcript, platform: 'discord', channelId: tenantId?.replace('discord:', '') }),
-      }).catch(() => {});
+        const body: any = { text: transcript };
+        if (tenantId) body.tenantId = tenantId;
+        if (voice) body.voice = voice;
+        const queueResponse = await fetch('/api/say/queue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const queueResult = await queueResponse.json().catch(() => null);
+        if (!queueResponse.ok || !queueResult?.ok) {
+          setStatus('Typed in chat, but TTS could not read it. Listening for new messages...');
+          return;
+        }
 
-      setStatus('Listening for messages...');
+        setStatus('Typed in chat. Listening for messages...');
+      } catch (error: any) {
+        setStatus(`Could not type in chat: ${error?.message || 'sign in and try again'}`);
+      }
     };
 
     recognition.onerror = () => { setMicActive(false); setStatus('Mic error. Try again.'); };
