@@ -34,6 +34,7 @@ export default function SayPlayer() {
   const [status, setStatus] = useState('Click to unlock browser audio.');
   const [micActive, setMicActive] = useState(false);
   const [micTranscript, setMicTranscript] = useState('');
+  const [postingAs, setPostingAs] = useState('');
 
   useEffect(() => {
     const nextTenantId = new URLSearchParams(window.location.search).get('tenantId') || '';
@@ -49,6 +50,17 @@ export default function SayPlayer() {
       const savedVoice = localStorage.getItem('streamweaver-say-voice') || '';
       if (savedVoice) setVoice(savedVoice);
     } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/say/chat')
+      .then(async (response) => {
+        const result = await response.json().catch(() => null);
+        if (response.ok && result?.identity?.username) {
+          setPostingAs(result.identity.username);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   function updateVolume(nextVolume: number) {
@@ -175,34 +187,34 @@ export default function SayPlayer() {
       setStatus(`Typing in chat: "${transcript}"`);
 
       try {
-        const isDiscordRoom = tenantId.toLowerCase().startsWith('discord:');
-        const chatResponse = await fetch(isDiscordRoom ? '/api/discord/send-message' : '/api/chat/send', {
+        const response = await fetch('/api/say/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(isDiscordRoom
-            ? { channelId: tenantId.slice('discord:'.length), message: transcript }
-            : { message: transcript, as: 'broadcaster' }),
+          body: JSON.stringify({
+            text: transcript,
+            streamKey: tenantId || undefined,
+            voice: voice || undefined,
+          }),
         });
-        if (!chatResponse.ok) {
-          const error = await chatResponse.json().catch(() => null);
-          throw new Error(error?.error || 'Chat post failed');
+        const result = await response.json().catch(() => null);
+        const verifiedName = result?.identity?.username || result?.details?.identity?.username;
+        if (verifiedName) setPostingAs(verifiedName);
+        if (!response.ok || !result?.ok) {
+          if (result?.details?.posted) {
+            setStatus(`${result.error || 'Typed in chat, but TTS could not read it.'} Listening for new messages...`);
+            return;
+          }
+          if (response.status === 401) {
+            throw new Error('Sign in to StreamWeaver to post as yourself');
+          }
+          throw new Error(result?.error || 'Chat post failed');
         }
-
-        const body: any = { text: transcript };
-        if (tenantId) body.tenantId = tenantId;
-        if (voice) body.voice = voice;
-        const queueResponse = await fetch('/api/say/queue', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const queueResult = await queueResponse.json().catch(() => null);
-        if (!queueResponse.ok || !queueResult?.ok) {
+        if (!result?.queued) {
           setStatus('Typed in chat, but TTS could not read it. Listening for new messages...');
           return;
         }
 
-        setStatus('Typed in chat. Listening for messages...');
+        setStatus(`Typed as ${verifiedName || 'your signed-in profile'}. Listening for messages...`);
       } catch (error: any) {
         setStatus(`Could not type in chat: ${error?.message || 'sign in and try again'}`);
       }
@@ -271,6 +283,11 @@ export default function SayPlayer() {
       >
         {micActive ? '🔴 Stop Mic' : '🎤 Speak to Chat'}
       </button>
+      <p style={{ fontSize: '0.8rem', color: postingAs ? '#9f9' : '#bb8', maxWidth: '80vw' }}>
+        {postingAs
+          ? `Posting as verified user: ${postingAs}`
+          : 'Sign in to StreamWeaver to post with your name and avatar.'}
+      </p>
       {micTranscript && (
         <p style={{ fontSize: '0.85rem', color: '#9f9', maxWidth: '80vw' }}>Last: "{micTranscript}"</p>
       )}
