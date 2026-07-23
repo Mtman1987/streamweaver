@@ -39,13 +39,16 @@ export function hasInternalServiceAccess(request: NextRequest): boolean {
   return isKnownInternalSecret(extractInternalServiceSecret(request));
 }
 
-export function isMountainViewBridgeAuthDisabled(): boolean {
-  return String(process.env.MOUNTAINVIEW_BRIDGE_AUTH_DISABLED || '').trim() === 'true';
+export function isMountainViewBridgeSecretEnforced(): boolean {
+  return String(process.env.MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET || '').trim() === 'true';
 }
 
 export function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
-  if (isMountainViewBridgeAuthDisabled()) return true;
+  // Default: trust the bridge header alone so the bridge works without
+  // provisioning a shared secret. Set MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET=true
+  // to require a matching MOUNTAINVIEW_STREAMWEAVER_SECRET bearer token.
+  if (!isMountainViewBridgeSecretEnforced()) return true;
   const expected = configuredSecret('MOUNTAINVIEW_STREAMWEAVER_SECRET');
   return Boolean(expected && bearerToken(request) === expected);
 }

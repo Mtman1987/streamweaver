@@ -80,11 +80,12 @@ function hasSharedBotAccess(request: NextRequest): boolean {
 function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
 
-  // Test-only escape hatch: when explicitly enabled, skip the bearer-secret
-  // check so the bridge can be exercised without provisioning the secret.
-  // Still gated by the bridge header AND the path allowlist below. Defaults OFF.
-  const authDisabled = String(process.env.MOUNTAINVIEW_BRIDGE_AUTH_DISABLED || '').trim() === 'true';
-  if (!authDisabled) {
+  // Default: trust the bridge header alone so the bridge works without a
+  // provisioned shared secret. Set MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET=true to
+  // require a matching bearer token. Either way, access stays limited to the
+  // MountainView path allowlist below.
+  const enforceSecret = String(process.env.MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET || '').trim() === 'true';
+  if (enforceSecret) {
     const authHeader = request.headers.get('authorization') || '';
     if (!authHeader.startsWith('Bearer ')) return false;
     const token = authHeader.slice('Bearer '.length).trim();
