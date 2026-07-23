@@ -79,18 +79,37 @@ function hasSharedBotAccess(request: NextRequest): boolean {
 
 function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
-  const authHeader = request.headers.get('authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) return false;
-  const token = authHeader.slice('Bearer '.length).trim();
-  const expected = String(process.env.MOUNTAINVIEW_STREAMWEAVER_SECRET || '').trim();
-  if (!expected || token !== expected) return false;
+
+  // Test-only escape hatch: when explicitly enabled, skip the bearer-secret
+  // check so the bridge can be exercised without provisioning the secret.
+  // Still gated by the bridge header AND the path allowlist below. Defaults OFF.
+  const authDisabled = String(process.env.MOUNTAINVIEW_BRIDGE_AUTH_DISABLED || '').trim() === 'true';
+  if (!authDisabled) {
+    const authHeader = request.headers.get('authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) return false;
+    const token = authHeader.slice('Bearer '.length).trim();
+    const expected = String(process.env.MOUNTAINVIEW_STREAMWEAVER_SECRET || '').trim();
+    if (!expected || token !== expected) return false;
+  }
+
+  const pathname = request.nextUrl.pathname;
   return [
     '/api/ai/chat-with-memory',
     '/api/ai/image',
     '/api/private-chat/respond',
     '/api/tts',
     '/api/tts/current',
-  ].includes(request.nextUrl.pathname);
+    '/api/tts/play',
+    '/api/twitch/start',
+    '/api/twitch/send-message',
+    '/api/twitch/screen-assist/start',
+    '/api/stream/stop',
+    '/api/stream/overlay',
+    '/api/glasses/audio-stream/start',
+    '/api/glasses/video-stream/start',
+    '/api/obs/scenes',
+    '/api/memory/person-note',
+  ].includes(pathname) || pathname.startsWith('/api/mountainview/');
 }
 
 export async function middleware(request: NextRequest) {
