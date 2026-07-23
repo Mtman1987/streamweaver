@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     identityProvider: 'spmt',
     username: String(user.twitchUsername || user.twitch_username || user.username),
     displayName: String(user.displayName || user.display_name || user.username),
+    avatar: String(user.avatarUrl || user.avatar_url || ''),
     loginTime: Date.now(),
   }), {
     httpOnly: true,
