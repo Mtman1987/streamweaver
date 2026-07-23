@@ -294,7 +294,10 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
   }
 
   if (source.entries.length === 0) {
-    await sendChatMessage(`@${username}, no one is queued up for ${copy.title} right now.`, 'broadcaster', undefined, tenantId).catch(() => {});
+    const message = source.error
+      ? `@${username}, ${copy.title} rider lookup is unavailable right now: ${source.error}`
+      : `@${username}, no eligible Space Mountain members are active in chat right now.`;
+    await sendChatMessage(message, 'broadcaster', undefined, tenantId).catch(() => {});
     return;
   }
 

@@ -45,6 +45,8 @@ export type DiscordStreamHubCheckinMember = {
   group: string;
 };
 
+let cachedDefaultGuildId: string | null = null;
+
 function getDiscordStreamHubUrl(): string {
   return (
     process.env.DISCORD_STREAM_HUB_URL ||
@@ -121,6 +123,26 @@ async function getDiscordStreamHub<T>(path: string, searchParams?: Record<string
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function getDiscordStreamHubDefaultGuildId(): Promise<string> {
+  if (cachedDefaultGuildId) return cachedDefaultGuildId;
+
+  const response = await fetch(`${getDiscordStreamHubUrl()}/api/runtime-config`, {
+    cache: 'no-store',
+    signal: createDiscordStreamHubAbortSignal(),
+  });
+  if (!response.ok) {
+    const details = await readDiscordStreamHubErrorBody(response);
+    throw new Error(`DiscordStreamHub runtime config failed: ${response.status}${details ? ` ${details}` : ''}`);
+  }
+
+  const data = await response.json().catch(() => null) as any;
+  const guildId = String(data?.publicIds?.hardcodedGuildId || '').trim();
+  if (!guildId) throw new Error('DiscordStreamHub runtime config does not define the Space Mountain server ID');
+
+  cachedDefaultGuildId = guildId;
+  return guildId;
 }
 
 export function getDiscordPointsContext() {

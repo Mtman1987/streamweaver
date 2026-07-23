@@ -2,7 +2,11 @@ import { getAllPartners } from './partner-checkin';
 import { getPartnerInviteLink } from './checkin-stats';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import { getConfigSection } from '../lib/local-config/service';
-import { getDiscordStreamHubCheckinMembers, type DiscordStreamHubCheckinMember } from './discord-stream-hub';
+import {
+  getDiscordStreamHubCheckinMembers,
+  getDiscordStreamHubDefaultGuildId,
+  type DiscordStreamHubCheckinMember,
+} from './discord-stream-hub';
 
 export type CheckinKind = 'partner' | 'crew' | 'mod' | 'space-mountain';
 
@@ -77,6 +81,37 @@ function coerceArray(payload: any): any[] {
   if (Array.isArray(payload?.members)) return payload.members;
   if (Array.isArray(payload?.results)) return payload.results;
   return [];
+}
+
+type SpaceMountainChatter = { login: string; name: string; userId: string };
+
+/**
+ * Twitch's chatters endpoint can lag behind the message that invoked the
+ * command. Keep the invoking chatter and broadcaster in the candidate set so
+ * they can participate when the Discord membership intersection confirms them.
+ */
+export function includeRequiredSpaceMountainChatters(
+  chatters: SpaceMountainChatter[],
+  actorUsername?: string,
+  broadcaster?: { username?: string; userId?: string },
+): SpaceMountainChatter[] {
+  const byLogin = new Map<string, SpaceMountainChatter>();
+  for (const chatter of chatters) {
+    const login = String(chatter.login || '').trim().toLowerCase();
+    if (!login) continue;
+    byLogin.set(login, { ...chatter, login });
+  }
+
+  const add = (username?: string, userId = '') => {
+    const name = String(username || '').trim();
+    const login = name.toLowerCase();
+    if (!login || byLogin.has(login)) return;
+    byLogin.set(login, { login, name, userId });
+  };
+
+  add(actorUsername);
+  add(broadcaster?.username, String(broadcaster?.userId || ''));
+  return [...byLogin.values()];
 }
 
 async function fetchPartnerSource(tenantId?: string): Promise<CheckinSourceResult> {
@@ -231,7 +266,14 @@ async function fetchModSource(tenantId?: string): Promise<CheckinSourceResult> {
 async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: string): Promise<CheckinSourceResult> {
   const auth = await getBroadcasterAuth(tenantId);
   if (!auth) {
-    return { kind: 'space-mountain', label: 'Space Mountain Check-In', sourceLabel: 'Space Mountain Riders', selectionMode: 'bulk', entries: [] };
+    return {
+      kind: 'space-mountain',
+      label: 'Space Mountain Check-In',
+      sourceLabel: 'Space Mountain Riders',
+      selectionMode: 'bulk',
+      entries: [],
+      error: 'No broadcaster auth available. Re-auth as Broadcaster on the Integrations page.',
+    };
   }
 
   try {
@@ -246,21 +288,31 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
       }
     );
     if (!response.ok) {
-      console.warn('[Space Mountain] Failed to fetch chatters:', response.status, await response.text().catch(() => ''));
-      return { kind: 'space-mountain', label: 'Space Mountain Check-In', sourceLabel: 'Space Mountain Riders', selectionMode: 'bulk', entries: [] };
+      const details = await response.text().catch(() => '');
+      console.warn('[Space Mountain] Failed to fetch chatters:', response.status, details);
+      return {
+        kind: 'space-mountain',
+        label: 'Space Mountain Check-In',
+        sourceLabel: 'Space Mountain Riders',
+        selectionMode: 'bulk',
+        entries: [],
+        error: `Twitch chatter lookup failed (${response.status}).`,
+      };
     }
 
     const payload = await response.json() as any;
-    const actor = (actorUsername || '').toLowerCase();
-    const broadcaster = (auth.broadcasterUsername || '').toLowerCase();
-    let chatters: Array<{ login: string; name: string; userId: string }> = (payload?.data || [])
+    let chatters: SpaceMountainChatter[] = (payload?.data || [])
       .map((chatter: any) => {
         const login = String(chatter?.user_login || '').trim();
         const name = String(chatter?.user_name || login).trim();
-        if (!login || login.toLowerCase() === actor || login.toLowerCase() === broadcaster) return null;
+        if (!login) return null;
         return { login: login.toLowerCase(), name, userId: String(chatter?.user_id || '') };
       })
       .filter(Boolean);
+    chatters = includeRequiredSpaceMountainChatters(chatters, actorUsername, {
+      username: auth.broadcasterUsername,
+      userId: auth.broadcasterId,
+    });
 
     // Filter out known bots
     const { isKnownBot: isBot } = require('./known-bots');
@@ -271,12 +323,11 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
     chatters = filtered;
 
     // Space Mountain is the active Twitch chatter list intersected with the
-    // tenant's Discord membership. Missing Discord authority fails closed.
+    // shared Discord membership. A tenant can override the guild, but every
+    // StreamWeaver automatically falls back to DSH's public Space Mountain ID.
     const redeemsConfig = await getConfigSection('redeems', tenantId);
-    const guildId = String(redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
-    if (!guildId) {
-      return { kind: 'space-mountain', label: 'Space Mountain Check-In', sourceLabel: 'Space Mountain Riders', selectionMode: 'bulk', entries: [], error: 'Set the Discord server ID for Space Mountain Check-In.' };
-    }
+    const configuredGuildId = String(redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
+    const guildId = configuredGuildId || await getDiscordStreamHubDefaultGuildId();
     const discordMembers = await getDiscordStreamHubCheckinMembers(guildId);
     const discordNames = discordCheckinNames(discordMembers);
     chatters = chatters.filter(c => discordNames.has(c.login) || discordNames.has(c.name.toLowerCase()));
@@ -298,7 +349,14 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
     };
   } catch (error) {
     console.warn('[Space Mountain] Source fetch failed:', error);
-    return { kind: 'space-mountain', label: 'Space Mountain Check-In', sourceLabel: 'Space Mountain Riders', selectionMode: 'bulk', entries: [] };
+    return {
+      kind: 'space-mountain',
+      label: 'Space Mountain Check-In',
+      sourceLabel: 'Space Mountain Riders',
+      selectionMode: 'bulk',
+      entries: [],
+      error: error instanceof Error ? error.message : 'Space Mountain rider lookup failed',
+    };
   }
 }
 
