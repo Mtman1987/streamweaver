@@ -40,6 +40,40 @@ let lastTTSCall = 0;
 const TTS_RATE_LIMIT = 2000;
 const TTS_FETCH_TIMEOUT_MS = 20_000;
 const TTS_DOWNLOAD_TIMEOUT_MS = 30_000;
+const TTS_AUTH_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const TTS_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
+const providerCooldowns = new Map<string, number>();
+
+const FALLBACK_VOICES: Record<TTSProvider, string> = {
+  gemini: 'Aoede',
+  edenai: 'edenai:google:FEMALE',
+  openai: 'openai:nova',
+};
+
+export function getTTSFallbackProviders(primary: TTSProvider): TTSProvider[] {
+  return (['gemini', 'edenai', 'openai'] as TTSProvider[]).filter((provider) => provider !== primary);
+}
+
+export function getTTSProviderCooldownMs(error: unknown): number {
+  const message = String((error as Error)?.message || error || '').toLowerCase();
+  if (/\b(?:401|403)\b|api key not valid|key was reported as leaked|permission_denied/.test(message)) {
+    return TTS_AUTH_COOLDOWN_MS;
+  }
+  if (/\b429\b|resource_exhausted|quota/.test(message)) {
+    return TTS_QUOTA_COOLDOWN_MS;
+  }
+  return 0;
+}
+
+function providerCooldownKey(tenantId: string | undefined, provider: TTSProvider): string {
+  return `${tenantId || 'global'}:${provider}`;
+}
+
+async function generateProviderTTS(provider: TTSProvider, text: string, voice: string, apiKey: string): Promise<string> {
+  if (provider === 'openai') return generateOpenAITTS(text, voice, apiKey);
+  if (provider === 'gemini') return generateGeminiTTS(text, voice, apiKey);
+  return generateEdenAITTS(text, voice, apiKey);
+}
 
 async function fetchWithRetry(
   input: string,
@@ -85,37 +119,33 @@ export async function generateTTS(text: string, voiceOverride?: string, tenantId
     ? { ...baseConfig, provider: selectedProvider, voice: normalizeTtsVoice(voiceOverride, selectedProvider), apiKey: resolveTTSApiKey(selectedProvider, tenantId) }
     : baseConfig;
 
-  let audioDataUri: string;
+  const attempts = [
+    { provider: config.provider, voice: config.voice, apiKey: config.apiKey },
+    ...getTTSFallbackProviders(config.provider).map((provider) => ({
+      provider,
+      voice: FALLBACK_VOICES[provider],
+      apiKey: resolveTTSApiKey(provider, tenantId),
+    })),
+  ];
 
-  try {
-    if (config.provider === 'openai') {
-      if (!config.apiKey) throw new Error('No OpenAI API key configured');
-      audioDataUri = await generateOpenAITTS(normalizedText, config.voice, config.apiKey);
-    } else if (config.provider === 'gemini') {
-      if (!config.apiKey) throw new Error('No Gemini API key configured');
-      audioDataUri = await generateGeminiTTS(normalizedText, config.voice, config.apiKey);
-    } else {
-      if (!config.apiKey) throw new Error('No EdenAI API key configured');
-      audioDataUri = await generateEdenAITTS(normalizedText, config.voice, config.apiKey);
-    }
-  } catch (err) {
-    // If primary failed and it wasn't already Gemini, try Gemini before StreamElements
-    const geminiKey = resolveTTSApiKey('gemini', tenantId);
-    if (config.provider !== 'gemini' && geminiKey) {
-      try {
-        console.warn(`[TTS] ${config.provider} failed, trying Gemini fallback:`, (err as Error).message);
-        audioDataUri = await generateGeminiTTS(normalizedText, 'Aoede', geminiKey);
-      } catch (geminiErr) {
-        console.warn(`[TTS] Gemini fallback failed, falling back to StreamElements:`, (geminiErr as Error).message);
-        audioDataUri = await generateFallbackTTS(normalizedText);
-      }
-    } else {
-      console.warn(`[TTS] ${config.provider} failed, falling back to StreamElements:`, (err as Error).message);
-      audioDataUri = await generateFallbackTTS(normalizedText);
+  for (const [index, attempt] of attempts.entries()) {
+    if (!attempt.apiKey) continue;
+    const cooldownKey = providerCooldownKey(tenantId, attempt.provider);
+    if ((providerCooldowns.get(cooldownKey) || 0) > Date.now()) continue;
+    try {
+      return await generateProviderTTS(attempt.provider, normalizedText, attempt.voice, attempt.apiKey);
+    } catch (error) {
+      const cooldownMs = getTTSProviderCooldownMs(error);
+      if (cooldownMs) providerCooldowns.set(cooldownKey, Date.now() + cooldownMs);
+      const nextProvider = attempts.slice(index + 1).find((candidate) => Boolean(candidate.apiKey))?.provider;
+      console.warn(
+        `[TTS] ${attempt.provider} failed${nextProvider ? `, trying ${nextProvider} fallback` : ', trying legacy fallback'}:`,
+        (error as Error).message,
+      );
     }
   }
 
-  return audioDataUri;
+  return generateFallbackTTS(normalizedText);
 }
 
 async function generateGeminiTTS(text: string, voice: string, apiKey: string): Promise<string> {

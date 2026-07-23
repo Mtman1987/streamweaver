@@ -129,12 +129,24 @@ type TwitchUser = {
     created_at?: string;
 };
 
+export function normalizeTwitchUserIdentifier(usernameOrId: string, by: "login" | "id" = "login"): string {
+    const trimmed = String(usernameOrId || '').trim().replace(/^@/, '');
+    if (by === 'id') return /^\d+$/.test(trimmed) ? trimmed : '';
+    const login = trimmed.toLowerCase().replace(/^[^a-z0-9_]+|[^a-z0-9_]+$/g, '');
+    return /^[a-z0-9_]+$/.test(login) ? login : '';
+}
+
 // Get User Information from Twitch API
 export async function getTwitchUser(usernameOrId: string, by: "login" | "id" = "login"): Promise<{ id: string; bio: string; lastGame: string; displayName: string; profileImageUrl: string; createdAt?: string; } | null> {
     const clientId = getTwitchClientId();
+    const normalizedIdentifier = normalizeTwitchUserIdentifier(usernameOrId, by);
+    if (!normalizedIdentifier) {
+        console.warn(`[Twitch] Skipping invalid empty ${by} identifier.`);
+        return null;
+    }
 
     try {
-        const userQuery = by === 'login' ? `login=${usernameOrId}` : `id=${usernameOrId}`;
+        const userQuery = new URLSearchParams({ [by]: normalizedIdentifier }).toString();
         const fetchUserResponse = async () => {
             const appToken = await getTwitchAppAccessToken();
             return fetch(`https://api.twitch.tv/helix/users?${userQuery}`, {
