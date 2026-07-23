@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { apiOk } from '@/lib/api-response';
 import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
@@ -53,6 +54,15 @@ import {
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED !== 'false';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
+
+function logDiscordTrace(traceId: string, stage: string, details: Record<string, unknown> = {}) {
+  console.log(`[DiscordTrace] ${JSON.stringify({
+    traceId,
+    service: 'streamweaver',
+    stage,
+    ...details,
+  })}`);
+}
 
 type NormalizedDiscordPayload = {
   raw: any;
@@ -173,8 +183,24 @@ export async function POST(request: NextRequest) {
     const relayOnly =
       request.headers.get('x-discord-reply-mode') === 'collect' ||
       request.headers.get('x-chat-origin') === 'dsh-fanout';
+    const traceId = request.headers.get('x-discord-trace-id') || normalized.messageId || randomUUID();
     const collectedReplies: Array<Record<string, unknown>> = [];
     processDueDiscordMessageCleanups().catch((error) => console.warn('[Discord Chat] Cleanup sweep failed:', error));
+
+    logDiscordTrace(traceId, 'ingress', {
+      source: request.headers.get('x-chat-origin') || 'direct',
+      replyMode: relayOnly ? 'collect' : 'direct',
+      guildId: guildId || null,
+      channelId: channelId || null,
+      messageId: normalized.messageId || null,
+      userId: userId || null,
+      userName,
+      isDirectMessage,
+      isBotAuthor: isDiscordBotAuthor(data),
+      dispatch,
+      messageLength: message.length,
+      messagePreview: isDirectMessage ? '[private message]' : message.slice(0, 120),
+    });
 
     const collectReply = (payload: string | Record<string, unknown>) => {
       if (typeof payload === 'string') {
@@ -223,6 +249,7 @@ export async function POST(request: NextRequest) {
           messageId: normalized.messageId || null,
           channelId: channelId || null,
         });
+        logDiscordTrace(traceId, 'skipped', { reason: 'duplicate-public-message' });
         return apiOk({ success: true, botResponded: false, duplicate: true });
       }
       recordDiscordLastSeen({
@@ -282,6 +309,12 @@ export async function POST(request: NextRequest) {
     // Resolve which tenant this guild belongs to (or auto-assign on first message)
     let tenantId = normalized.tenantId || await resolveGuildTenant(guildId, channelId);
     const isPrivateDiscordLane = isDirectMessage;
+    logDiscordTrace(traceId, 'tenant-resolved', {
+      payloadTenantId: normalized.tenantId || null,
+      resolvedTenantId: tenantId || null,
+      guildId: guildId || null,
+      channelId: channelId || null,
+    });
 
     if (!isPrivateDiscordLane) {
       const mtFixItIntent = detectMtFixItIntent(message);
@@ -408,6 +441,13 @@ export async function POST(request: NextRequest) {
 
     const botMatch = await resolveMentionedBot(msgLower, tenantId);
     const botMentioned = Boolean(botMatch);
+    logDiscordTrace(traceId, 'mention-decision', {
+      mentioned: botMentioned,
+      matchedBotName: botMatch?.botName || null,
+      matchedTenantId: botMatch?.tenantId || null,
+      matchedTrigger: botMatch?.trigger || null,
+      guildTenantId: tenantId || null,
+    });
     const ignoreMatch = message.trim().match(/^!ignore(?:\s+(.+))?$/i);
     if (ignoreMatch) {
       const replyChannelId = channelId || await getDiscordLogChannelId(tenantId);
@@ -800,34 +840,89 @@ export async function POST(request: NextRequest) {
     // If bot not mentioned, just bridge and return
     if (!botMentioned) {
       // Check if user has TTS enabled via !say — queue to standalone say system
-      if (!isDiscordBotAuthor(data) && isSayTextSpeakable(message) && !message.trim().startsWith('!')) {
+      const botAuthor = isDiscordBotAuthor(data);
+      const speakable = isSayTextSpeakable(message);
+      const isCommand = message.trim().startsWith('!');
+      let sayEnabled = false;
+      let sayQueued = false;
+      if (!botAuthor && speakable && !isCommand) {
         try {
           const sayUsers = await readSayUsers();
-          if (isSayEnabled(sayUsers, userId, channelId)) {
+          sayEnabled = isSayEnabled(sayUsers, userId, channelId);
+          if (sayEnabled) {
             const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
             const spokenMessage = formatSaySpeechText(sayChannelKey, userName, message);
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
-            }).catch(() => {});
+            }).then(async (response) => {
+              const result = await response.json().catch(() => null);
+              logDiscordTrace(traceId, 'say-queue-result', {
+                ok: response.ok && Boolean(result?.ok),
+                status: response.status,
+                tenantId: sayChannelKey,
+                queued: result?.queued || 0,
+                skipped: Boolean(result?.skipped),
+                reason: result?.reason || result?.error || null,
+              });
+            }).catch((error) => {
+              logDiscordTrace(traceId, 'say-queue-result', {
+                ok: false,
+                tenantId: sayChannelKey,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            });
+            sayQueued = true;
           }
-        } catch { /* no say-users file = nobody enrolled */ }
+        } catch (error) {
+          logDiscordTrace(traceId, 'say-state-error', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
+      logDiscordTrace(traceId, 'say-decision', {
+        eligible: !botAuthor && speakable && !isCommand,
+        botAuthor,
+        speakable,
+        isCommand,
+        sayEnabled,
+        queueRequested: sayQueued,
+        userId: userId || null,
+        channelId: channelId || null,
+      });
+      logDiscordTrace(traceId, 'complete', {
+        botResponded: false,
+        reason: 'bot-not-mentioned',
+        replyCount: collectedReplies.length,
+      });
       return apiOk({ success: true, botResponded: false });
     }
 
     // Generate AI response
     const botTenantId = botMatch?.tenantId;
     const botName = botMatch?.botName || getBotName(tenantId);
-    if (await isBotTriggerIgnored({
+    const triggerIgnored = await isBotTriggerIgnored({
       tenantId: botTenantId || tenantId || undefined,
       botName,
       trigger: botMatch?.trigger,
-    }, tenantId)) {
+    }, tenantId);
+    logDiscordTrace(traceId, 'trigger-decision', {
+      botName,
+      botTenantId: botTenantId || null,
+      guildTenantId: tenantId || null,
+      trigger: botMatch?.trigger || null,
+      ignored: triggerIgnored,
+    });
+    if (triggerIgnored) {
       console.log('[Discord Chat] Bot trigger ignored:', {
         tenantId: tenantId || null,
         botTenantId: botTenantId || null,
+        botName,
+      });
+      logDiscordTrace(traceId, 'complete', {
+        botResponded: false,
+        reason: 'bot-trigger-ignored',
         botName,
       });
       return apiOk({ success: true, botResponded: false, ignored: true, botName });
@@ -1030,6 +1125,11 @@ export async function POST(request: NextRequest) {
 
     if (!aiRes.ok) {
       console.error('[Discord Chat] AI response failed:', aiRes.status);
+      logDiscordTrace(traceId, 'ai-result', {
+        ok: false,
+        status: aiRes.status,
+        botName,
+      });
       return apiOk({ success: true, botResponded: false, error: 'ai-failed' });
     }
 
@@ -1037,8 +1137,18 @@ export async function POST(request: NextRequest) {
     const aiReply = aiData.response || aiData.data?.response || '';
 
     if (!aiReply) {
+      logDiscordTrace(traceId, 'ai-result', {
+        ok: false,
+        reason: 'empty-response',
+        botName,
+      });
       return apiOk({ success: true, botResponded: false, error: 'empty-response' });
     }
+    logDiscordTrace(traceId, 'ai-result', {
+      ok: true,
+      botName,
+      responseLength: aiReply.length,
+    });
 
     // Send response to Discord and queue the same reply for the persistent TTS overlay.
     let discordReplySent = false;
@@ -1064,6 +1174,12 @@ export async function POST(request: NextRequest) {
         }
         discordReplySent = true;
         console.log(`[Discord Chat] Bot responded via webhook in channel ${channelId}`);
+        logDiscordTrace(traceId, relayOnly ? 'reply-collected' : 'reply-delivered', {
+          botName,
+          channelId,
+          replyMode: relayOnly ? 'collect' : 'direct',
+          replyCount: relayOnly ? collectedReplies.length : 1,
+        });
         const interactionTenantId = botTenantId || tenantId;
         if (!relayOnly && botInteractionDecision?.shouldRespond && interactionTenantId) {
           await appendBotInteraction({
@@ -1121,6 +1237,13 @@ export async function POST(request: NextRequest) {
       console.warn('[Discord Chat] Cannot send bot response: missing channelId');
     }
 
+    logDiscordTrace(traceId, 'complete', {
+      botResponded: discordReplySent,
+      botName,
+      tenantId: botTenantId || tenantId || null,
+      replyMode: relayOnly ? 'collect' : 'direct',
+      replyCount: relayOnly ? collectedReplies.length : (discordReplySent ? 1 : 0),
+    });
     return apiOk({
       success: true,
       botResponded: discordReplySent,

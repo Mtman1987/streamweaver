@@ -7,6 +7,7 @@ import { resolveSayQueueStreamKey } from '../_stream';
 import { buildSayChatSpeech, resolveSayChatIdentity } from '@/services/say-chat';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { generateTTS } from '@/services/tts-provider';
+import { touchTtsConsumer } from '@/services/tts-consumer-presence';
 
 const sayChatSchema = z.object({
   text: z.string().trim().min(1, 'Message required').max(500, 'Message too long'),
@@ -82,6 +83,10 @@ export async function POST(request: NextRequest) {
   try {
     const spokenText = buildSayChatSpeech(identity, text);
     const voiceOverride = voice || undefined;
+    // This request originates from the active Say Player itself, so it is
+    // authoritative proof of a live playback consumer even if the tab was
+    // opened before a deploy and missed the new heartbeat code.
+    touchTtsConsumer(streamKey, 'say', 'say');
     const audioDataUri = await generateTTS(
       spokenText,
       voiceOverride,

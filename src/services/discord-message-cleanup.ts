@@ -171,6 +171,14 @@ export async function processDueDiscordMessageCleanups(): Promise<void> {
         try {
           await deleteMessage(entry.channelId, messageId);
         } catch (error) {
+          if (isDiscordApiError(error) && error.status === 404) {
+            console.log(`[Discord Cleanup] Message already absent: ${JSON.stringify({
+              channelId: entry.channelId,
+              messageId,
+              status: error.status,
+            })}`);
+            continue;
+          }
           const detail = {
             channelId: entry.channelId,
             messageId,
