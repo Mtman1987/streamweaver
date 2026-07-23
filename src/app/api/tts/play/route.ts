@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS } from '@/services/tts-provider';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const text = (url.searchParams.get('text') || '').trim();
     const session = getTenantFromRequest(request);
-    if (!session?.tenantId) {
+    const bridgeTenant = hasMountainViewBridgeAccess(request)
+      ? (url.searchParams.get('tenantId') || '').trim()
+      : '';
+    const tenantId = session?.tenantId || bridgeTenant;
+    if (!tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const tenantId = session.tenantId;
 
     if (!text) {
       return NextResponse.json({ error: 'text query param is required' }, { status: 400 });

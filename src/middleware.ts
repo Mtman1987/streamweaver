@@ -91,6 +91,16 @@ function hasMountainViewBridgeAccess(request: NextRequest): boolean {
     '/api/private-chat/respond',
     '/api/tts',
     '/api/tts/current',
+    '/api/tts/play',
+    '/api/twitch/start',
+    '/api/twitch/send-message',
+    '/api/twitch/screen-assist/start',
+    '/api/stream/stop',
+    '/api/stream/overlay',
+    '/api/glasses/audio-stream/start',
+    '/api/glasses/video-stream/start',
+    '/api/obs/scenes',
+    '/api/memory/person-note',
   ].includes(pathname) || pathname.startsWith('/api/mountainview/');
 }
 
