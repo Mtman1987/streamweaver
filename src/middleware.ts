@@ -84,13 +84,14 @@ function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   const token = authHeader.slice('Bearer '.length).trim();
   const expected = String(process.env.MOUNTAINVIEW_STREAMWEAVER_SECRET || '').trim();
   if (!expected || token !== expected) return false;
+  const pathname = request.nextUrl.pathname;
   return [
     '/api/ai/chat-with-memory',
     '/api/ai/image',
     '/api/private-chat/respond',
     '/api/tts',
     '/api/tts/current',
-  ].includes(request.nextUrl.pathname);
+  ].includes(pathname) || pathname.startsWith('/api/mountainview/');
 }
 
 export async function middleware(request: NextRequest) {
