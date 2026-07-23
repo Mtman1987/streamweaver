@@ -35,6 +35,7 @@ import {
 } from '@/services/mt-support-report';
 import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
+import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import {
   applySayState,
   formatSaySpeechText,
@@ -127,39 +128,6 @@ function normalizeDiscordPayload(body: any): NormalizedDiscordPayload {
   };
 }
 
-function readDiscordMention(source: any, userId: string): any | null {
-  if (!source) return null;
-  if (typeof source.get === 'function') return source.get(userId) || null;
-  if (Array.isArray(source)) {
-    return source.find((entry: any) => String(entry?.id || entry?.user?.id) === userId) || null;
-  }
-  return source[userId] || null;
-}
-
-function resolveDiscordSayMention(rawTarget: string, data: any): { userId: string; displayName: string } | null {
-  const match = String(rawTarget || '').trim().match(/^<@!?(\d+)>$/);
-  if (!match) return null;
-
-  const targetUserId = match[1];
-  const mentions = data?.mentions || {};
-  const user = readDiscordMention(mentions.users || mentions, targetUserId);
-  const member = readDiscordMention(mentions.members, targetUserId);
-  const displayName =
-    user?.globalName ||
-    user?.global_name ||
-    member?.displayName ||
-    member?.display_name ||
-    member?.nick ||
-    member?.user?.globalName ||
-    member?.user?.global_name ||
-    member?.user?.username ||
-    user?.displayName ||
-    user?.username ||
-    targetUserId;
-
-  return { userId: targetUserId, displayName };
-}
-
 function isDiscordBotAuthor(data: any): boolean {
   return Boolean(
     data?.bot ||
@@ -197,7 +165,8 @@ export async function POST(request: NextRequest) {
     const guildId = normalized.guildId;
     const userName = normalized.displayName || normalized.username;
     const userAvatar = normalized.avatarUrl;
-    const message = normalized.message;
+    const rawMessage = normalized.message;
+    const message = replaceDiscordUserMentions(rawMessage, data);
     const channelId = normalized.channelId;
     const dispatch = normalized.dispatch;
     const isDirectMessage = normalized.isDirectMessage;
@@ -646,7 +615,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle !say - standalone TTS toggle
-    const sayMatch = !isPrivateDiscordLane ? message.trim().match(/^!say(?:\s+(.+))?$/i) : null;
+    const sayMatch = !isPrivateDiscordLane ? rawMessage.trim().match(/^!say(?:\s+(.+))?$/i) : null;
     if (sayMatch) {
       const args = String(sayMatch[1] || '').trim().split(/\s+/).filter(Boolean);
       const firstState = parseSayState(args[0]);
@@ -661,7 +630,7 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-toggle-all', mode: nextState });
       }
 
-      const mentionTarget = targetToken ? resolveDiscordSayMention(targetToken, data) : null;
+      const mentionTarget = targetToken ? resolveDiscordUserMention(targetToken, data) : null;
       if (targetToken && !mentionTarget) {
         if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, mention the Discord user you want to update.`);
         return apiOk({ success: true, botResponded: Boolean(channelId), context: 'say-target-unresolved' });

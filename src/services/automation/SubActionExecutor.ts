@@ -651,7 +651,9 @@ export class SubActionExecutor {
 
     let audioDataUri = '';
     try {
-      audioDataUri = await generateTTS(readbackText, voice, context.tenantId);
+      audioDataUri = await generateTTS(readbackText, voice, context.tenantId, {
+        requireActiveConsumer: true,
+      });
     } catch (error) {
       console.error('[Voice Reply Prompt] Failed to generate private readback TTS:', error);
     }

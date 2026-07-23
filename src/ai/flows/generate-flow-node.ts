@@ -40,7 +40,7 @@ export async function generateFlowNode(input: GenerateFlowNodeInput): Promise<Ge
       label: 'Broadcast TTS',
       data: {
         text: description,
-        voice: input.context?.defaultVoice || 'Algieba',
+        voice: normalizeTtsVoice(input.context?.defaultVoice || DEFAULT_TTS_VOICE),
       },
     };
   }
@@ -92,3 +92,4 @@ export async function generateFlowNode(input: GenerateFlowNodeInput): Promise<Ge
     },
   };
 }
+import { DEFAULT_TTS_VOICE, normalizeTtsVoice } from '@/lib/tts-voices';

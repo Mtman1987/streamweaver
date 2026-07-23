@@ -1,6 +1,5 @@
-export type TTSProvider = 'edenai' | 'openai' | 'gemini';
-export type EdenAITTSProvider = 'google' | 'microsoft' | 'amazon';
-export type OpenAITTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+export type TTSProvider = 'edenai';
+export type EdenAITTSProvider = 'google' | 'microsoft' | 'amazon' | 'openai';
 export type TTSVoiceGender = 'MALE' | 'FEMALE';
 
 export type TTSVoiceOption = {
@@ -10,146 +9,210 @@ export type TTSVoiceOption = {
   providerLabel: string;
   gender: 'Male' | 'Female';
   description: string;
-  edenaiProvider?: EdenAITTSProvider;
-  edenaiOption?: TTSVoiceGender;
-  googleVoice?: string;
+  edenaiProvider: EdenAITTSProvider;
+  edenaiOption: TTSVoiceGender;
+  edenaiVoiceModel: string;
 };
 
+// Curated, named voices only. Every entry here was smoke-tested against the
+// production Eden AI account on 2026-07-23. Do not add generic gender-only
+// entries: those allow providers to silently choose lower-quality voices.
 export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   {
-    id: 'edenai:google:FEMALE',
-    label: 'Google Female',
+    id: 'edenai:openai:nova',
+    label: 'Nova',
     provider: 'edenai',
-    providerLabel: 'Google',
+    providerLabel: 'OpenAI via Eden AI',
     gender: 'Female',
-    description: 'Natural Google WaveNet female voice',
+    description: 'Bright, natural, and inexpensive',
+    edenaiProvider: 'openai',
+    edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'nova',
+  },
+  {
+    id: 'edenai:openai:shimmer',
+    label: 'Shimmer',
+    provider: 'edenai',
+    providerLabel: 'OpenAI via Eden AI',
+    gender: 'Female',
+    description: 'Clear and expressive',
+    edenaiProvider: 'openai',
+    edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'shimmer',
+  },
+  {
+    id: 'edenai:openai:echo',
+    label: 'Echo',
+    provider: 'edenai',
+    providerLabel: 'OpenAI via Eden AI',
+    gender: 'Male',
+    description: 'Warm and rounded',
+    edenaiProvider: 'openai',
+    edenaiOption: 'MALE',
+    edenaiVoiceModel: 'echo',
+  },
+  {
+    id: 'edenai:openai:fable',
+    label: 'Fable',
+    provider: 'edenai',
+    providerLabel: 'OpenAI via Eden AI',
+    gender: 'Male',
+    description: 'Expressive and animated',
+    edenaiProvider: 'openai',
+    edenaiOption: 'MALE',
+    edenaiVoiceModel: 'fable',
+  },
+  {
+    id: 'edenai:openai:onyx',
+    label: 'Onyx',
+    provider: 'edenai',
+    providerLabel: 'OpenAI via Eden AI',
+    gender: 'Male',
+    description: 'Deep and authoritative',
+    edenaiProvider: 'openai',
+    edenaiOption: 'MALE',
+    edenaiVoiceModel: 'onyx',
+  },
+  {
+    id: 'edenai:google:en-US-Wavenet-F',
+    label: 'WaveNet F',
+    provider: 'edenai',
+    providerLabel: 'Google via Eden AI',
+    gender: 'Female',
+    description: 'Natural Google WaveNet voice',
     edenaiProvider: 'google',
     edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'en-US-Wavenet-F',
   },
   {
-    id: 'edenai:google:MALE',
-    label: 'Google Male',
+    id: 'edenai:google:en-US-Wavenet-D',
+    label: 'WaveNet D',
     provider: 'edenai',
-    providerLabel: 'Google',
+    providerLabel: 'Google via Eden AI',
     gender: 'Male',
-    description: 'Natural Google WaveNet male voice',
+    description: 'Natural Google WaveNet voice',
     edenaiProvider: 'google',
     edenaiOption: 'MALE',
+    edenaiVoiceModel: 'en-US-Wavenet-D',
   },
   {
-    id: 'edenai:microsoft:FEMALE',
-    label: 'Microsoft Female',
+    id: 'edenai:microsoft:en-US-JennyNeural',
+    label: 'Jenny Neural',
     provider: 'edenai',
-    providerLabel: 'Microsoft',
+    providerLabel: 'Microsoft via Eden AI',
     gender: 'Female',
-    description: 'Natural Microsoft Azure female voice',
+    description: 'Conversational Microsoft neural voice',
     edenaiProvider: 'microsoft',
     edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'en-US-JennyNeural',
   },
   {
-    id: 'edenai:microsoft:MALE',
-    label: 'Microsoft Male',
+    id: 'edenai:microsoft:en-US-GuyNeural',
+    label: 'Guy Neural',
     provider: 'edenai',
-    providerLabel: 'Microsoft',
+    providerLabel: 'Microsoft via Eden AI',
     gender: 'Male',
-    description: 'Natural Microsoft Azure male voice',
+    description: 'Conversational Microsoft neural voice',
     edenaiProvider: 'microsoft',
     edenaiOption: 'MALE',
+    edenaiVoiceModel: 'en-US-GuyNeural',
   },
   {
-    id: 'edenai:amazon:FEMALE',
-    label: 'Amazon Female',
+    id: 'edenai:amazon:Ruth',
+    label: 'Ruth',
     provider: 'edenai',
-    providerLabel: 'Amazon',
+    providerLabel: 'Amazon via Eden AI',
     gender: 'Female',
-    description: 'Natural Amazon Polly female voice',
+    description: 'Natural Amazon generative/neural voice',
     edenaiProvider: 'amazon',
     edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'Ruth',
   },
   {
-    id: 'edenai:amazon:MALE',
-    label: 'Amazon Male',
+    id: 'edenai:amazon:Joanna',
+    label: 'Joanna',
     provider: 'edenai',
-    providerLabel: 'Amazon',
+    providerLabel: 'Amazon via Eden AI',
+    gender: 'Female',
+    description: 'Polished Amazon neural voice',
+    edenaiProvider: 'amazon',
+    edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'Joanna',
+  },
+  {
+    id: 'edenai:amazon:Matthew',
+    label: 'Matthew',
+    provider: 'edenai',
+    providerLabel: 'Amazon via Eden AI',
     gender: 'Male',
-    description: 'Natural Amazon Polly male voice',
+    description: 'Natural Amazon generative/neural voice',
     edenaiProvider: 'amazon',
     edenaiOption: 'MALE',
+    edenaiVoiceModel: 'Matthew',
   },
 ];
 
-export const OPENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
-  { id: 'openai:alloy', label: 'Alloy', provider: 'openai', providerLabel: 'OpenAI', gender: 'Female', description: 'Neutral and balanced' },
-  { id: 'openai:echo', label: 'Echo', provider: 'openai', providerLabel: 'OpenAI', gender: 'Male', description: 'Warm and rounded' },
-  { id: 'openai:fable', label: 'Fable', provider: 'openai', providerLabel: 'OpenAI', gender: 'Male', description: 'Expressive and dynamic' },
-  { id: 'openai:onyx', label: 'Onyx', provider: 'openai', providerLabel: 'OpenAI', gender: 'Male', description: 'Deep and authoritative' },
-  { id: 'openai:nova', label: 'Nova', provider: 'openai', providerLabel: 'OpenAI', gender: 'Female', description: 'Energetic and bright' },
-  { id: 'openai:shimmer', label: 'Shimmer', provider: 'openai', providerLabel: 'OpenAI', gender: 'Female', description: 'Clear and expressive' },
-];
+export const TTS_VOICE_OPTIONS = EDENAI_VOICE_OPTIONS;
+export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
+export const DEFAULT_TTS_VOICE = 'edenai:openai:nova';
 
-export const GEMINI_VOICE_OPTIONS: TTSVoiceOption[] = [
-  { id: 'gemini:Aoede',  label: 'Aoede',  provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Bright and expressive' },
-  { id: 'gemini:Charon', label: 'Charon', provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Deep and informative' },
-  { id: 'gemini:Fenrir', label: 'Fenrir', provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Excitable and energetic' },
-  { id: 'gemini:Kore',   label: 'Kore',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Firm and confident' },
-  { id: 'gemini:Puck',   label: 'Puck',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Upbeat and clear' },
-  { id: 'gemini:Leda',   label: 'Leda',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Warm and natural' },
-  { id: 'gemini:Orus',   label: 'Orus',   provider: 'gemini', providerLabel: 'Gemini', gender: 'Male',   description: 'Smooth and steady' },
-  { id: 'gemini:Zephyr', label: 'Zephyr', provider: 'gemini', providerLabel: 'Gemini', gender: 'Female', description: 'Bright and airy' },
-];
+const LEGACY_VOICE_MAP: Record<string, string> = {
+  'openai:nova': 'edenai:openai:nova',
+  'openai:shimmer': 'edenai:openai:shimmer',
+  'openai:alloy': 'edenai:openai:nova',
+  'openai:echo': 'edenai:openai:echo',
+  'openai:fable': 'edenai:openai:fable',
+  'openai:onyx': 'edenai:openai:onyx',
+  nova: 'edenai:openai:nova',
+  shimmer: 'edenai:openai:shimmer',
+  alloy: 'edenai:openai:nova',
+  echo: 'edenai:openai:echo',
+  fable: 'edenai:openai:fable',
+  onyx: 'edenai:openai:onyx',
+  'edenai:google:female': 'edenai:google:en-US-Wavenet-F',
+  'edenai:google:male': 'edenai:google:en-US-Wavenet-D',
+  'edenai:microsoft:female': 'edenai:microsoft:en-US-JennyNeural',
+  'edenai:microsoft:male': 'edenai:microsoft:en-US-GuyNeural',
+  'edenai:amazon:female': 'edenai:amazon:Ruth',
+  'edenai:amazon:male': 'edenai:amazon:Matthew',
+};
 
-export const GOOGLE_VOICE_OPTIONS: TTSVoiceOption[] = [];
-
-export const TTS_VOICE_OPTIONS: TTSVoiceOption[] = [...EDENAI_VOICE_OPTIONS, ...OPENAI_VOICE_OPTIONS, ...GEMINI_VOICE_OPTIONS];
-
-export const DEFAULT_TTS_PROVIDER: TTSProvider = 'gemini';
-export const DEFAULT_TTS_VOICE = 'gemini:Aoede';
-
-export function normalizeTtsProvider(provider: unknown): TTSProvider {
-  const p = String(provider || '').trim().toLowerCase();
-  if (p === 'openai') return 'openai';
-  if (p === 'gemini') return 'gemini';
-  if (p === 'edenai') return 'edenai';
+export function normalizeTtsProvider(_provider: unknown): TTSProvider {
   return DEFAULT_TTS_PROVIDER;
 }
 
-export function normalizeTtsVoice(voice: string | undefined | null, provider: TTSProvider = DEFAULT_TTS_PROVIDER): string {
-  if (!voice) {
-    if (provider === 'openai') return 'openai:nova';
-    if (provider === 'gemini') return 'gemini:Aoede';
-    return DEFAULT_TTS_VOICE;
-  }
+export function normalizeTtsVoice(voice: string | undefined | null, _provider: TTSProvider = DEFAULT_TTS_PROVIDER): string {
+  if (!voice) return DEFAULT_TTS_VOICE;
   const trimmed = voice.trim();
-  const canonical = TTS_VOICE_OPTIONS.find((o) => o.id.toLowerCase() === trimmed.toLowerCase());
+  const canonical = TTS_VOICE_OPTIONS.find((option) => option.id.toLowerCase() === trimmed.toLowerCase());
   if (canonical) return canonical.id;
-  // Legacy name mapping
+
+  const legacy = LEGACY_VOICE_MAP[trimmed.toLowerCase()];
+  if (legacy) return legacy;
+
   const lower = trimmed.toLowerCase();
-  if (lower === 'alloy' || lower === 'echo' || lower === 'fable' || lower === 'onyx' || lower === 'nova' || lower === 'shimmer') return `openai:${lower}`;
-  if (lower.includes('female') || lower.includes('wavenet-f')) return 'edenai:google:FEMALE';
-  if (lower.includes('male') || lower.includes('wavenet-m') || lower.includes('wavenet-d')) return 'edenai:google:MALE';
+  if (lower.includes('female')) return DEFAULT_TTS_VOICE;
+  if (lower.includes('male') || ['charon', 'fenrir', 'puck', 'orus', 'algieba'].includes(lower)) {
+    return 'edenai:openai:onyx';
+  }
   return DEFAULT_TTS_VOICE;
 }
 
 export function getTtsVoiceOption(voice: string | undefined | null, provider: TTSProvider = DEFAULT_TTS_PROVIDER): TTSVoiceOption {
   const normalized = normalizeTtsVoice(voice, provider);
-  return TTS_VOICE_OPTIONS.find((o) => o.id === normalized) || EDENAI_VOICE_OPTIONS[0];
+  return TTS_VOICE_OPTIONS.find((option) => option.id === normalized) || TTS_VOICE_OPTIONS[0];
 }
 
-export function getProviderForVoice(voice: string | undefined | null, fallback: TTSProvider = DEFAULT_TTS_PROVIDER): TTSProvider {
-  if (typeof voice === 'string') {
-    const v = voice.trim().toLowerCase();
-    if (v.startsWith('openai:')) return 'openai';
-    if (v.startsWith('gemini:')) return 'gemini';
-  }
-  return getTtsVoiceOption(voice, fallback).provider;
+export function getProviderForVoice(_voice: string | undefined | null, _fallback: TTSProvider = DEFAULT_TTS_PROVIDER): TTSProvider {
+  return 'edenai';
 }
 
 export function getFallbackVoiceForProvider(_provider: TTSProvider, selectedVoice?: string | null): string {
   const selected = getTtsVoiceOption(selectedVoice);
-  return selected.gender === 'Male' ? 'edenai:google:MALE' : 'edenai:google:FEMALE';
+  return selected.gender === 'Male' ? 'edenai:openai:onyx' : DEFAULT_TTS_VOICE;
 }
 
-// Keep these exports for backward compat
-export function normalizePiperVoice(_voice?: string | null): string { return DEFAULT_TTS_VOICE; }
-export function normalizeEdenAIVoice(voice?: string | null): string { return normalizeTtsVoice(voice, 'edenai'); }
-export function normalizeOpenAIVoice(voice?: string | null): string { return normalizeTtsVoice(voice, 'openai'); }
+// Backward-compatible exports used by older workflow/config callers.
+export function normalizePiperVoice(voice?: string | null): string { return normalizeTtsVoice(voice); }
+export function normalizeEdenAIVoice(voice?: string | null): string { return normalizeTtsVoice(voice); }
+export function normalizeOpenAIVoice(voice?: string | null): string { return normalizeTtsVoice(voice); }

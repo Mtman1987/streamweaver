@@ -85,8 +85,19 @@ export async function POST(request: NextRequest) {
     const audioDataUri = await generateTTS(
       spokenText,
       voiceOverride,
-      streamKey === 'global' ? undefined : streamKey,
+      streamKey,
+      { requireActiveConsumer: true, consumerScope: 'say' },
     );
+    if (!audioDataUri) {
+      return apiOk({
+        posted: true,
+        queued: false,
+        skipped: true,
+        reason: 'no-active-say-listener',
+        tenantId: streamKey,
+        identity,
+      });
+    }
     const item = addSayQueueItem(streamKey, audioDataUri);
     return apiOk({
       posted: true,

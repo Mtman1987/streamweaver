@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { addSayQueueItem, getSayQueue } from '../_store';
 import { resolveSayQueueStreamKey } from '../_stream';
 import { generateTTS } from '@/services/tts-provider';
+import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 
 export async function POST(request: NextRequest) {
   const { text, tenantId, tenantIds, voice } = await request.json().catch(() => ({ text: '' }));
@@ -9,11 +10,27 @@ export async function POST(request: NextRequest) {
   const cleanText = String(text).slice(0, 500);
   const requestedTenantIds = Array.isArray(tenantIds) ? tenantIds : [tenantId];
   const queueTenantIds = Array.from(new Set(await Promise.all(requestedTenantIds.map(resolveSayQueueStreamKey))));
-  const queueTenantId = queueTenantIds[0] || 'global';
+  const activeQueueTenantIds = queueTenantIds.filter((id) => hasActiveTtsConsumer(id, 'say'));
+  const queueTenantId = activeQueueTenantIds[0] || queueTenantIds[0] || 'global';
+  if (activeQueueTenantIds.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: 'no-active-say-listener',
+      tenantId: queueTenantId,
+      queued: 0,
+      queues: [],
+    });
+  }
   const voiceOverride = typeof voice === 'string' && voice.trim() ? voice.trim() : undefined;
   try {
-    const audioDataUri = await generateTTS(cleanText, voiceOverride, queueTenantId === 'global' ? undefined : queueTenantId);
-    const queued = queueTenantIds.map((id) => {
+    const audioDataUri = await generateTTS(
+      cleanText,
+      voiceOverride,
+      queueTenantId,
+      { requireActiveConsumer: true, consumerScope: 'say' },
+    );
+    const queued = activeQueueTenantIds.map((id) => {
       const item = addSayQueueItem(id, audioDataUri);
       const sayQueue = getSayQueue(id);
       return { tenantId: id, queued: sayQueue.length, id: item.id };

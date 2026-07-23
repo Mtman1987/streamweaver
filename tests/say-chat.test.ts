@@ -15,7 +15,7 @@ test('speech-to-chat uses the signed display name and avatar', () => {
     username: 'Mtman1987',
     avatarUrl: 'https://cdn.example.com/mtman.png',
   });
-  assert.equal(buildSayChatSpeech(identity, 'What about this?'), 'Mtman1987 said: What about this?');
+  assert.equal(buildSayChatSpeech(identity, 'What about this?'), 'Mtman said: What about this?');
 });
 
 test('speech-to-chat falls back to the signed username', () => {

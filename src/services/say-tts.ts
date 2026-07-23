@@ -68,6 +68,13 @@ export function cleanSayTextForSpeech(text: unknown): string {
     .trim();
 }
 
+export function cleanSaySpeakerForSpeech(speaker: unknown): string {
+  return cleanSayTextForSpeech(speaker)
+    .replace(/\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function parseTwitchEmoteRange(range: string | [number, number]): { start: number; end: number } | null {
   if (Array.isArray(range)) {
     const [start, end] = range;
@@ -153,7 +160,7 @@ export function isSayTextSpeakable(text: unknown): boolean {
 
 export function formatSaySpeechText(streamKey: unknown, speaker: unknown, message: unknown): string {
   const cleanMessage = cleanSayTextForSpeech(message);
-  const cleanSpeaker = cleanSayTextForSpeech(speaker);
+  const cleanSpeaker = cleanSaySpeakerForSpeech(speaker);
   if (!cleanSpeaker) return cleanMessage;
 
   const key = String(streamKey || '').trim() || 'global';
@@ -169,7 +176,7 @@ export function formatSaySpeechText(streamKey: unknown, speaker: unknown, messag
     return cleanMessage;
   }
 
-  return `${cleanSpeaker} says: ${cleanMessage}`;
+  return `${cleanSpeaker} said: ${cleanMessage}`;
 }
 
 export function parseSayState(value: unknown): SayState | null {

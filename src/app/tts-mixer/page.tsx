@@ -118,6 +118,23 @@ export default function TtsMixerPage() {
     };
   }, [enabled, playNext, selected]);
 
+  useEffect(() => {
+    if (!enabled || selected.length === 0) return;
+    const heartbeat = () => {
+      selected.forEach((tenantId) => {
+        fetch('/api/tts/presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenantId, kind: 'mixer', scope: 'say' }),
+          keepalive: true,
+        }).catch(() => {});
+      });
+    };
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 10_000);
+    return () => window.clearInterval(interval);
+  }, [enabled, selected]);
+
   const toggleStream = (tenantId: string) => {
     setSelected((current) => current.includes(tenantId)
       ? current.filter((item) => item !== tenantId)

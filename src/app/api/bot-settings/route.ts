@@ -4,6 +4,7 @@ import { setBotSettings, reloadBotSettings } from '@/lib/bot-settings-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { z } from 'zod';
+import { normalizeTtsVoice } from '@/lib/tts-voices';
 
 const botSettingsSchema = z.object({
   personality: z.string().trim().min(1).max(5000).optional(),
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
     // Update in-memory per-tenant store
     const botUpdates: Record<string, string> = {};
     if (personality) botUpdates.personality = personality;
-    if (voice) botUpdates.voice = voice;
+    const normalizedVoice = voice ? normalizeTtsVoice(voice) : undefined;
+    if (normalizedVoice) botUpdates.voice = normalizedVoice;
     if (name) botUpdates.name = name;
     if (interests) botUpdates.interests = interests;
     if (aliases != null) botUpdates.aliases = aliases;
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
     // Persist to user-config.json
     const configUpdates: Record<string, string> = {};
     if (name) { configUpdates.AI_BOT_NAME = name; console.log(`[API] Updated bot name to: ${name}`); }
-    if (voice) { configUpdates.TTS_VOICE = voice; console.log(`[API] Updated bot voice to: ${voice}`); }
+    if (normalizedVoice) { configUpdates.TTS_VOICE = normalizedVoice; console.log(`[API] Updated bot voice to: ${normalizedVoice}`); }
     if (personality) { configUpdates.AI_BOT_PERSONALITY = personality; console.log('[API] Updated bot personality'); }
     if (interests) { configUpdates.AI_BOT_INTERESTS = interests; console.log('[API] Updated bot interests'); }
     if (aliases != null) { configUpdates.AI_BOT_ALIASES = aliases; console.log(`[API] Updated bot aliases to: ${aliases}`); }

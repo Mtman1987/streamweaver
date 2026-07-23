@@ -13,7 +13,9 @@ export type TextToSpeechOutput = {
 export async function textToSpeech(input: TextToSpeechInput): Promise<TextToSpeechOutput> {
   try {
     const processedText = input.text.replace(/\bMt\./g, 'M.T.');
-    const audioDataUri = await generateTTS(processedText, input.voice, input.tenantId);
+    const audioDataUri = await generateTTS(processedText, input.voice, input.tenantId, {
+      requireActiveConsumer: true,
+    });
     return { audioDataUri };
   } catch (error) {
     console.error('TTS error:', error);

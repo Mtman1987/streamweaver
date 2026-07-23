@@ -32,7 +32,7 @@ const defaultDataBySubtype: Record<string, Record<string, any>> = {
   "send-chat": { message: "Hello, {{tags['display-name'] || 'Commander'}}", as: "broadcaster" },
   "send-discord": { message: "Log entry", channelId: "" },
   "ai-response": { input: "{{lastOutput}}", saveAs: "aiResponse" },
-  "tts-broadcast": { text: "{{vars.aiResponse}}", voice: "Algieba" },
+  "tts-broadcast": { text: "{{vars.aiResponse}}", voice: "edenai:openai:nova" },
   "plugin-command": { pluginId: "apollo-station", command: "setScene", payload: { scene: "Starting Soon" } },
   "play-sound": { pluginId: "apollo-station", soundId: "airhorn", command: "playSound" },
   "update-points": { user: "{{tags['display-name'] || 'Commander'}}", amount: 10, operation: "add", saveVar: "pointsTotal" },

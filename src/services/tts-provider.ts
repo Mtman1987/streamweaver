@@ -2,13 +2,15 @@ import { readUserConfigSync } from '@/lib/user-config';
 import { normalizeTextForTTS } from '@/lib/tts-text';
 import {
   TTS_VOICE_OPTIONS,
-  TTSProvider,
+  type TTSProvider,
+  type TTSVoiceOption,
   getTtsVoiceOption,
-  getProviderForVoice,
-  normalizeTtsProvider,
   normalizeTtsVoice,
 } from '@/lib/tts-voices';
-import { GoogleGenAI } from '@google/genai';
+import {
+  hasActiveTtsConsumer,
+  type TtsConsumerScope,
+} from '@/services/tts-consumer-presence';
 
 export interface TTSConfig {
   provider: TTSProvider;
@@ -16,63 +18,63 @@ export interface TTSConfig {
   apiKey: string;
 }
 
-export const TTS_VOICES: Record<string, string[]> = {
-  edenai: TTS_VOICE_OPTIONS.filter((v) => v.provider === 'edenai').map((v) => v.id),
+export type GenerateTTSOptions = {
+  requireActiveConsumer?: boolean;
+  consumerScope?: TtsConsumerScope;
 };
 
-function resolveTTSApiKey(provider: TTSProvider, tenantId?: string): string {
+export const TTS_VOICES: Record<TTSProvider, string[]> = {
+  edenai: TTS_VOICE_OPTIONS.map((voice) => voice.id),
+};
+
+function resolveTTSApiKey(tenantId?: string): string {
   const config = readUserConfigSync(tenantId);
-  if (provider === 'openai') return config.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-  if (provider === 'gemini') return config.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '';
   return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
 }
 
 export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
-  const configuredProvider = normalizeTtsProvider(config.TTS_PROVIDER || process.env.TTS_PROVIDER);
-  const provider = getProviderForVoice(config.TTS_VOICE, configuredProvider);
-  const voice = normalizeTtsVoice(config.TTS_VOICE, provider);
-  const apiKey = resolveTTSApiKey(provider, tenantId);
-  return { provider, voice, apiKey };
+  return {
+    provider: 'edenai',
+    voice: normalizeTtsVoice(config.TTS_VOICE),
+    apiKey: resolveTTSApiKey(tenantId),
+  };
 }
 
 let lastTTSCall = 0;
-const TTS_RATE_LIMIT = 2000;
+const TTS_RATE_LIMIT_MS = 2_000;
 const TTS_FETCH_TIMEOUT_MS = 20_000;
 const TTS_DOWNLOAD_TIMEOUT_MS = 30_000;
 const TTS_AUTH_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const TTS_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
-const providerCooldowns = new Map<string, number>();
-
-const FALLBACK_VOICES: Record<TTSProvider, string> = {
-  gemini: 'Aoede',
-  edenai: 'edenai:google:FEMALE',
-  openai: 'openai:nova',
-};
-
-export function getTTSFallbackProviders(primary: TTSProvider): TTSProvider[] {
-  return (['gemini', 'edenai', 'openai'] as TTSProvider[]).filter((provider) => provider !== primary);
-}
+const voiceCooldowns = new Map<string, number>();
 
 export function getTTSProviderCooldownMs(error: unknown): number {
   const message = String((error as Error)?.message || error || '').toLowerCase();
   if (/\b(?:401|403)\b|api key not valid|key was reported as leaked|permission_denied/.test(message)) {
     return TTS_AUTH_COOLDOWN_MS;
   }
-  if (/\b429\b|resource_exhausted|quota/.test(message)) {
+  if (/\b429\b|resource_exhausted|quota|insufficient_credit/.test(message)) {
     return TTS_QUOTA_COOLDOWN_MS;
   }
   return 0;
 }
 
-function providerCooldownKey(tenantId: string | undefined, provider: TTSProvider): string {
-  return `${tenantId || 'global'}:${provider}`;
-}
+export function getLifelikeFallbackVoices(selectedVoice: string): string[] {
+  const selected = getTtsVoiceOption(selectedVoice);
+  const preferredProviders = selected.gender === 'Male'
+    ? ['openai', 'microsoft', 'amazon', 'google']
+    : ['openai', 'google', 'microsoft', 'amazon'];
 
-async function generateProviderTTS(provider: TTSProvider, text: string, voice: string, apiKey: string): Promise<string> {
-  if (provider === 'openai') return generateOpenAITTS(text, voice, apiKey);
-  if (provider === 'gemini') return generateGeminiTTS(text, voice, apiKey);
-  return generateEdenAITTS(text, voice, apiKey);
+  return preferredProviders
+    .map((provider) => TTS_VOICE_OPTIONS.find((voice) => (
+      voice.gender === selected.gender
+      && voice.edenaiProvider === provider
+      && voice.id !== selected.id
+    )))
+    .filter((voice): voice is TTSVoiceOption => Boolean(voice))
+    .slice(0, 3)
+    .map((voice) => voice.id);
 }
 
 async function fetchWithRetry(
@@ -97,134 +99,96 @@ async function fetchWithRetry(
     } finally {
       clearTimeout(timeout);
     }
-    await new Promise((r) => setTimeout(r, attempt * 1000));
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-export async function generateTTS(text: string, voiceOverride?: string, tenantId?: string): Promise<string> {
+export async function generateTTS(
+  text: string,
+  voiceOverride?: string,
+  tenantId?: string,
+  options: GenerateTTSOptions = {},
+): Promise<string> {
   const normalizedText = normalizeTextForTTS(text);
   if (!normalizedText) return '';
 
-  // Rate limiting
+  if (options.requireActiveConsumer && !hasActiveTtsConsumer(tenantId, options.consumerScope || 'overlay')) {
+    console.log(`[TTS] Skipped paid synthesis for ${tenantId || 'global'}: no active ${options.consumerScope || 'overlay'} listener`);
+    return '';
+  }
+
   const now = Date.now();
-  if (now - lastTTSCall < TTS_RATE_LIMIT) {
-    await new Promise((r) => setTimeout(r, TTS_RATE_LIMIT - (now - lastTTSCall)));
+  if (now - lastTTSCall < TTS_RATE_LIMIT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, TTS_RATE_LIMIT_MS - (now - lastTTSCall)));
   }
   lastTTSCall = Date.now();
 
-  const baseConfig = getTTSConfig(tenantId);
-  const selectedProvider = voiceOverride ? getProviderForVoice(voiceOverride, baseConfig.provider) : baseConfig.provider;
-  const config: TTSConfig = voiceOverride
-    ? { ...baseConfig, provider: selectedProvider, voice: normalizeTtsVoice(voiceOverride, selectedProvider), apiKey: resolveTTSApiKey(selectedProvider, tenantId) }
-    : baseConfig;
+  const config = getTTSConfig(tenantId);
+  if (!config.apiKey) throw new Error('Eden AI TTS is not configured');
 
-  const attempts = [
-    { provider: config.provider, voice: config.voice, apiKey: config.apiKey },
-    ...getTTSFallbackProviders(config.provider).map((provider) => ({
-      provider,
-      voice: FALLBACK_VOICES[provider],
-      apiKey: resolveTTSApiKey(provider, tenantId),
-    })),
-  ];
+  const selectedVoice = normalizeTtsVoice(voiceOverride || config.voice);
+  const attempts = [selectedVoice, ...getLifelikeFallbackVoices(selectedVoice)];
+  const errors: string[] = [];
 
-  for (const [index, attempt] of attempts.entries()) {
-    if (!attempt.apiKey) continue;
-    const cooldownKey = providerCooldownKey(tenantId, attempt.provider);
-    if ((providerCooldowns.get(cooldownKey) || 0) > Date.now()) continue;
+  for (const voiceId of attempts) {
+    const cooldownKey = `${tenantId || 'global'}:${voiceId}`;
+    if ((voiceCooldowns.get(cooldownKey) || 0) > Date.now()) continue;
     try {
-      return await generateProviderTTS(attempt.provider, normalizedText, attempt.voice, attempt.apiKey);
+      return await generateEdenAITTS(normalizedText, getTtsVoiceOption(voiceId), config.apiKey);
     } catch (error) {
       const cooldownMs = getTTSProviderCooldownMs(error);
-      if (cooldownMs) providerCooldowns.set(cooldownKey, Date.now() + cooldownMs);
-      const nextProvider = attempts.slice(index + 1).find((candidate) => Boolean(candidate.apiKey))?.provider;
-      console.warn(
-        `[TTS] ${attempt.provider} failed${nextProvider ? `, trying ${nextProvider} fallback` : ', trying legacy fallback'}:`,
-        (error as Error).message,
-      );
+      if (cooldownMs) voiceCooldowns.set(cooldownKey, Date.now() + cooldownMs);
+      const message = (error as Error).message;
+      errors.push(`${voiceId}: ${message}`);
+      console.warn(`[TTS] Lifelike Eden voice ${voiceId} failed; trying another named Eden voice:`, message);
     }
   }
 
-  return generateFallbackTTS(normalizedText);
+  throw new Error(`Lifelike Eden AI TTS failed; robotic fallback is disabled. ${errors.join(' | ')}`);
 }
 
-async function generateGeminiTTS(text: string, voice: string, apiKey: string): Promise<string> {
-  const voiceName = voice.replace(/^gemini:/i, '') || 'Aoede';
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: [{ parts: [{ text }] }],
-    config: {
-      responseModalities: ['AUDIO'],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
-    },
-  });
-  const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!audioData) throw new Error('Gemini TTS returned no audio data');
-  return `data:audio/wav;base64,${audioData}`;
-}
-
-async function generateOpenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
-  const voiceName = voice.replace(/^openai:/, '') || 'nova';
-  const response = await fetchWithRetry('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model: 'tts-1', voice: voiceName, input: text }),
-  }, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
-  if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    throw new Error(`OpenAI TTS failed: ${response.status} ${errBody}`);
-  }
-  const audioBuffer = await response.arrayBuffer();
-  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
-}
-
-async function generateEdenAITTS(text: string, voice: string, apiKey: string): Promise<string> {
-  const voiceOption = getTtsVoiceOption(voice, 'edenai');
-  const edenaiProvider = voiceOption.edenaiProvider || 'google';
-  const edenaiOption = voiceOption.edenaiOption || (voiceOption.gender === 'Female' ? 'FEMALE' : 'MALE');
-
+async function generateEdenAITTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
   const response = await fetchWithRetry('https://api.edenai.run/v2/audio/text_to_speech', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      providers: edenaiProvider,
+      providers: voice.edenaiProvider,
       language: 'en',
       text,
-      option: edenaiOption,
+      option: voice.edenaiOption,
+      audio_format: 'mp3',
+      settings: {
+        [voice.edenaiProvider]: voice.edenaiVoiceModel,
+      },
     }),
   });
 
   if (!response.ok) {
     const errBody = await response.text().catch(() => '');
-    throw new Error(`EdenAI TTS failed: ${response.status} ${errBody}`);
+    throw new Error(`Eden AI TTS failed: ${response.status} ${errBody}`);
   }
 
   const result = await response.json();
-  const providerResult = result?.[edenaiProvider] || Object.values(result || {}).find((v: any) => v?.audio_resource_url);
+  const providerResult = result?.[voice.edenaiProvider]
+    || Object.values(result || {}).find((value: any) => value?.audio_resource_url || value?.error);
+  const providerError = (providerResult as any)?.error;
+  if (providerError) {
+    const message = typeof providerError === 'string'
+      ? providerError
+      : providerError.message || JSON.stringify(providerError);
+    throw new Error(`${voice.providerLabel} failed: ${message}`);
+  }
+
   const audioUrl = (providerResult as any)?.audio_resource_url;
-  if (!audioUrl) throw new Error(`EdenAI TTS returned no audio for ${edenaiProvider}`);
+  if (!audioUrl) throw new Error(`Eden AI returned no audio for ${voice.id}`);
 
-  const audioRes = await fetchWithRetry(audioUrl, {}, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
-  if (!audioRes.ok) throw new Error(`EdenAI audio download failed: ${audioRes.status}`);
+  const audioResponse = await fetchWithRetry(audioUrl, {}, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
+  if (!audioResponse.ok) throw new Error(`Eden AI audio download failed: ${audioResponse.status}`);
 
-  const audioBuffer = await audioRes.arrayBuffer();
+  const audioBuffer = await audioResponse.arrayBuffer();
   return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
-
-async function generateFallbackTTS(text: string): Promise<string> {
-  // StreamElements TTS — free, no API key, natural sounding
-  const url = `https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=${encodeURIComponent(text.slice(0, 300))}`;
-  const response = await fetchWithRetry(url, {}, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
-  if (!response.ok) throw new Error(`Fallback TTS failed: ${response.status}`);
-  const audioBuffer = await response.arrayBuffer();
-  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
-}
-
-

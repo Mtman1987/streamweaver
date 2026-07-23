@@ -23,6 +23,23 @@ export default function TTSPlayer() {
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
 
+  // A short-lived heartbeat proves that this tenant has an actual playback
+  // consumer before the server spends money generating automatic speech.
+  useEffect(() => {
+    if (!overlayTenant) return;
+    const heartbeat = () => {
+      fetch('/api/tts/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: overlayTenant, kind: 'overlay' }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 10_000);
+    return () => window.clearInterval(interval);
+  }, [overlayTenant]);
+
   // Load avatar settings from server
   useEffect(() => {
     const suffix = overlayTenant ? `&tenant=${encodeURIComponent(overlayTenant)}` : '';

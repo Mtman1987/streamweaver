@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   clearSaySuppressionForTenant,
+  formatSaySpeechText,
   isSaySuppressedForTenant,
   isSayTextSpeakable,
   stripTwitchEmotesFromText,
@@ -39,4 +40,14 @@ test('say TTS can be suppressed during shoutouts', () => {
 
   clearSaySuppressionForTenant(key);
   assert.equal(isSaySuppressedForTenant(key), false);
+});
+
+test('say TTS ignores numbers in speaker names but preserves numbers in messages', () => {
+  const spoken = formatSaySpeechText(
+    'speaker-number-test',
+    'mtman1987',
+    'I have 2 passes left',
+  );
+
+  assert.equal(spoken, 'mtman said: I have 2 passes left');
 });

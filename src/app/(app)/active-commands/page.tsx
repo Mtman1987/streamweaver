@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsVoice } from "@/lib/tts-voices";
 
 const AutomationAIChat = dynamic(() => import("@/components/automation/AutomationAIChat"), { ssr: false });
 
@@ -1644,11 +1645,21 @@ function ActiveCommandsPageClient() {
                     </div>
                     <div className="space-y-2">
                       <div className="text-sm font-medium">Voice</div>
-                      <Input
-                        value={String(subActionDraft.voice || "")}
-                        onChange={(e) => setSubActionDraft((d: any) => ({ ...d, voice: e.target.value }))}
-                        placeholder="Default voice"
-                      />
+                      <Select
+                        value={normalizeTtsVoice(String(subActionDraft.voice || DEFAULT_TTS_VOICE))}
+                        onValueChange={(voice) => setSubActionDraft((draft: any) => ({ ...draft, voice }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a lifelike Eden voice" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TTS_VOICE_OPTIONS.map((voice) => (
+                            <SelectItem key={voice.id} value={voice.id}>
+                              {voice.label} ({voice.providerLabel})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 

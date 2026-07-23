@@ -25,6 +25,21 @@ export default function TTSListenerPage() {
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
 
   useEffect(() => {
+    if (!overlayTenant || !audioEnabled) return;
+    const heartbeat = () => {
+      fetch('/api/tts/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: overlayTenant, kind: 'listener' }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 10_000);
+    return () => window.clearInterval(interval);
+  }, [audioEnabled, overlayTenant]);
+
+  useEffect(() => {
     const suffix = overlayTenant ? `&tenant=${encodeURIComponent(overlayTenant)}` : '';
     fetch(`/api/avatars?type=settings${suffix}`)
       .then((r) => (r.ok ? r.json() : null))

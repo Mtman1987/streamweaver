@@ -1,5 +1,5 @@
 import type { TenantSession } from '@/lib/tenant-context';
-import { cleanSayTextForSpeech } from '@/services/say-tts';
+import { cleanSaySpeakerForSpeech, cleanSayTextForSpeech } from '@/services/say-tts';
 
 export type SayChatIdentity = {
   username: string;
@@ -21,5 +21,6 @@ export function resolveSayChatIdentity(session: TenantSession): SayChatIdentity 
 
 export function buildSayChatSpeech(identity: SayChatIdentity, message: unknown): string {
   const cleanMessage = cleanSayTextForSpeech(message);
-  return `${identity.username} said: ${cleanMessage}`;
+  const cleanSpeaker = cleanSaySpeakerForSpeech(identity.username);
+  return cleanSpeaker ? `${cleanSpeaker} said: ${cleanMessage}` : cleanMessage;
 }

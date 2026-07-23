@@ -122,7 +122,10 @@ function getEffectiveSettings(tenantId?: string) {
 export function setBotSettings(tenantId: string | undefined, updates: Partial<typeof DEFAULTS>) {
   const current = getBotSettings(tenantId);
   const key = tenantId || '__global';
-  tenantBotSettings.set(key, { ...current, ...updates });
+  const normalizedUpdates = updates.voice
+    ? { ...updates, voice: normalizeTtsVoice(updates.voice) }
+    : updates;
+  tenantBotSettings.set(key, { ...current, ...normalizedUpdates });
   explicitlySet.add(key);
   console.log(`[BotSettings] Updated in-memory for ${key}: name=${tenantBotSettings.get(key)?.name}`);
 }

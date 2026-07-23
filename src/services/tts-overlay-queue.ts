@@ -1,4 +1,5 @@
 import { getInternalAppUrl } from '@/lib/runtime-origin';
+import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 export type QueueTtsOverlayResult = {
@@ -9,6 +10,14 @@ export type QueueTtsOverlayResult = {
 };
 
 export async function queueTtsOverlay(text: string, tenantId?: string): Promise<QueueTtsOverlayResult> {
+    if (!hasActiveTtsConsumer(tenantId)) {
+        return {
+            ok: true,
+            generated: false,
+            queued: false,
+            error: 'Skipped paid TTS because no tenant overlay/listener is active',
+        };
+    }
   const cleanText = String(text || '').trim();
   if (!cleanText) return { ok: false, generated: false, queued: false, error: 'empty text' };
 

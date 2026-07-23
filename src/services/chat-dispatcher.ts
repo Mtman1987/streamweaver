@@ -19,6 +19,7 @@ import { getPoints, getPointBalance, setPoints } from './points';
 import { getAIConfig } from './ai-provider';
 import { getBotName } from '../lib/bot-settings-store';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
+import { replaceDiscordUserMentions } from './discord-mentions';
 import { getTenantIdFromChannel } from './twitch-client';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
@@ -279,14 +280,7 @@ async function bridgeDiscordMessageToTwitch(msg: any, tenantId?: string) {
     const rawContent = String(msg.content || '');
     if (rawContent.startsWith('[') || rawContent.startsWith('!')) return;
 
-    let processedContent = String(msg.content || '');
-
-    if (msg.mentions && msg.mentions.users) {
-        for (const [userId, user] of msg.mentions.users) {
-            processedContent = processedContent.replace(new RegExp(`<@!?${userId}>`, 'g'), `@${user.username}`);
-        }
-    }
-
+    let processedContent = replaceDiscordUserMentions(msg.content, msg.mentions);
     processedContent = processedContent.replace(/<:(\w+):(\d+)>/g, ':$1:');
 
     const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
@@ -4642,6 +4636,10 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
     const sourceChannelId = msg.channelId || msg.channel_id;
     if (!sourceChannelId) return { commandHandled: false };
 
+    msg = {
+        ...msg,
+        content: replaceDiscordUserMentions(msg.content, msg.mentions),
+    };
     const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
     const normalizedContent = String(msg.content || '').trim();
 

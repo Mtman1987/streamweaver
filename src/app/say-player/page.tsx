@@ -1,21 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { TTS_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
 
 const VOICE_OPTIONS = [
-  { id: '', label: 'Default (server setting)' },
-  { id: 'openai:nova', label: 'Nova (OpenAI) — bright female' },
-  { id: 'openai:shimmer', label: 'Shimmer (OpenAI) — clear female' },
-  { id: 'openai:alloy', label: 'Alloy (OpenAI) — neutral' },
-  { id: 'openai:echo', label: 'Echo (OpenAI) — warm male' },
-  { id: 'openai:fable', label: 'Fable (OpenAI) — expressive male' },
-  { id: 'openai:onyx', label: 'Onyx (OpenAI) — deep male' },
-  { id: 'edenai:google:FEMALE', label: 'Google Female (EdenAI)' },
-  { id: 'edenai:google:MALE', label: 'Google Male (EdenAI)' },
-  { id: 'edenai:microsoft:FEMALE', label: 'Microsoft Female (EdenAI)' },
-  { id: 'edenai:microsoft:MALE', label: 'Microsoft Male (EdenAI)' },
-  { id: 'edenai:amazon:FEMALE', label: 'Amazon Female (EdenAI)' },
-  { id: 'edenai:amazon:MALE', label: 'Amazon Male (EdenAI)' },
+  { id: '', label: 'Tenant default (lifelike Eden voice)' },
+  ...TTS_VOICE_OPTIONS.map((voice) => ({
+    id: voice.id,
+    label: `${voice.label} — ${voice.providerLabel}`,
+  })),
 ];
 
 export default function SayPlayer() {
@@ -48,9 +41,25 @@ export default function SayPlayer() {
     } catch {}
     try {
       const savedVoice = localStorage.getItem('streamweaver-say-voice') || '';
-      if (savedVoice) setVoice(savedVoice);
+      if (savedVoice) setVoice(normalizeTtsVoice(savedVoice));
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    const streamKey = tenantId || 'global';
+    const heartbeat = () => {
+      fetch('/api/tts/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: streamKey, kind: 'say', scope: 'say' }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 10_000);
+    return () => window.clearInterval(interval);
+  }, [active, tenantId]);
 
   useEffect(() => {
     fetch('/api/say/chat')
