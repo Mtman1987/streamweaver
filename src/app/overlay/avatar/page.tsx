@@ -48,7 +48,7 @@ export default function AvatarOverlayPage() {
 
         // OBS browser sources have separate browser storage, so tenant-owned
         // server settings are the only avatar authority.
-        fetch(`/api/avatars?type=settings${tenantParam}`)
+        const loadSettings = () => fetch(`/api/avatars?type=settings${tenantParam}`, { cache: 'no-store' })
             .then((res) => res.ok ? res.json() : null)
             .then((payload) => {
                 const data = payload?.data;
@@ -75,6 +75,10 @@ export default function AvatarOverlayPage() {
                 }
             })
             .catch(() => {});
+        loadSettings();
+        const settingsInterval = window.setInterval(loadSettings, 15_000);
+        const handleFocus = () => loadSettings();
+        window.addEventListener('focus', handleFocus);
 
         // Connect to WebSocket for real-time updates
         const connectWebSocket = () => {
@@ -149,6 +153,8 @@ export default function AvatarOverlayPage() {
         connectWebSocket();
 
         return () => {
+            window.clearInterval(settingsInterval);
+            window.removeEventListener('focus', handleFocus);
             if (hideTimerRef.current) {
                 clearTimeout(hideTimerRef.current);
             }

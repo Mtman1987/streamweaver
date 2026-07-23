@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
+import { globalPath, tenantPath } from '@/lib/tenant';
+import { mkdir, readFile, rename, writeFile } from 'fs/promises';
+import path from 'path';
 import { z } from 'zod';
 
 const ttsCurrentSchema = z.object({
@@ -29,23 +32,60 @@ function getTtsStateMap(): TtsStateMap {
   return g.__streamweaver_tts_queue_by_tenant as TtsStateMap;
 }
 
+function getTtsLoadMap(): Record<string, Promise<TenantTtsState>> {
+  const g = globalThis as any;
+  if (!g.__streamweaver_tts_load_by_tenant) g.__streamweaver_tts_load_by_tenant = {};
+  return g.__streamweaver_tts_load_by_tenant as Record<string, Promise<TenantTtsState>>;
+}
+
+function stateFile(tenantKey: string) {
+  return tenantKey === 'global'
+    ? globalPath('tts-current-state.json')
+    : tenantPath(tenantKey, 'data/tts-current-state.json');
+}
+
+async function loadTenantState(tenantKey: string): Promise<TenantTtsState> {
+  const map = getTtsStateMap();
+  if (map[tenantKey]) return map[tenantKey];
+  const loads = getTtsLoadMap();
+  if (!loads[tenantKey]) {
+    loads[tenantKey] = (async () => {
+      try {
+        const parsed = JSON.parse(await readFile(stateFile(tenantKey), 'utf8')) as TenantTtsState;
+        map[tenantKey] = {
+          queue: Array.isArray(parsed?.queue) ? parsed.queue.slice(-20) : [],
+          lastServedAt: parsed?.lastServedAt || null,
+        };
+      } catch {
+        map[tenantKey] = { queue: [], lastServedAt: null };
+      }
+      return map[tenantKey];
+    })();
+  }
+  return loads[tenantKey];
+}
+
+async function persistTenantState(tenantKey: string, state: TenantTtsState) {
+  const file = stateFile(tenantKey);
+  await mkdir(path.dirname(file), { recursive: true });
+  const temporary = `${file}.tmp.${process.pid}.${crypto.randomUUID()}`;
+  await writeFile(temporary, JSON.stringify(state), 'utf8');
+  await rename(temporary, file);
+}
+
 function getTenantKey(request: NextRequest): string {
   const session = getTenantFromRequest(request);
   const tenantFromQuery = request.nextUrl.searchParams.get('tenant') || request.nextUrl.searchParams.get('tenantId');
   return session?.tenantId || tenantFromQuery || 'global';
 }
 
-function getTenantState(request: NextRequest): TenantTtsState {
+async function getTenantState(request: NextRequest): Promise<TenantTtsState> {
   const tenantKey = getTenantKey(request);
-  const map = getTtsStateMap();
-  if (!map[tenantKey]) {
-    map[tenantKey] = { queue: [], lastServedAt: null };
-  }
-  return map[tenantKey];
+  return loadTenantState(tenantKey);
 }
 
 export async function GET(request: NextRequest) {
-  const state = getTenantState(request);
+  const state = await getTenantState(request);
   const { searchParams } = new URL(request.url);
 
   // ?poll=1 returns whether there's anything queued (lightweight check)
@@ -95,7 +135,8 @@ export async function POST(request: NextRequest) {
     }
 
     const { audioUrl } = parsed.data;
-    const state = getTenantState(request);
+    const tenantKey = getTenantKey(request);
+    const state = await getTenantState(request);
     const addedAt = new Date().toISOString();
 
     const cursor = crypto.randomUUID();
@@ -105,6 +146,7 @@ export async function POST(request: NextRequest) {
     if (state.queue.length > 20) {
       state.queue = state.queue.slice(-20);
     }
+    await persistTenantState(tenantKey, state);
 
     console.log('[TTS Current] POST queued | queue size:', state.queue.length, '| addedAt:', addedAt);
     return apiOk({ success: true, updatedAt: addedAt, cursor, queueSize: state.queue.length });
