@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-test('loose Discord aliases stay local and foreign bots require explicit addressing', async () => {
+test('Discord plain-name routing can address any configured tenant bot', async () => {
   const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-botshare-'));
   process.env.PERSIST_ROOT = persistRoot;
 
@@ -22,8 +22,8 @@ test('loose Discord aliases stay local and foreign bots require explicit address
 
     const { resolveMentionedBot } = await import('../src/app/api/discord/chat/route');
     assert.equal((await resolveMentionedBot('hello local pal', 'tenant-a'))?.tenantId, 'tenant-a');
-    assert.equal(await resolveMentionedBot('hello foreign pal', 'tenant-a'), null);
-    assert.equal((await resolveMentionedBot('hello @foreignbot', 'tenant-a'))?.tenantId, 'tenant-b');
+    assert.equal((await resolveMentionedBot('hello foreign pal', 'tenant-a'))?.tenantId, 'tenant-b');
+    assert.equal((await resolveMentionedBot('foreignbot tell a joke', 'tenant-a'))?.tenantId, 'tenant-b');
   } finally {
     await rm(persistRoot, { recursive: true, force: true });
   }

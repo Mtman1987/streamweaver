@@ -1292,57 +1292,41 @@ function triggerIndex(message: string, trigger: string) {
   return match?.index ?? -1;
 }
 
-function explicitTriggerIndex(message: string, trigger: string) {
-  const normalized = trigger.replace(/^@/, '').trim();
-  if (!normalized) return -1;
-  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`(^|[^a-z0-9_])@${escaped}([^a-z0-9_]|$)`, 'i').exec(message);
-  return match?.index ?? -1;
-}
-
-export async function resolveMentionedBot(messageLower: string, guildTenantId?: string): Promise<BotMatch | null> {
+export async function resolveMentionedBot(messageLower: string, _guildTenantId?: string): Promise<BotMatch | null> {
   const candidates: BotMatch[] = [];
-  const addCandidate = (tenantId: string | undefined, explicitOnly = false) => {
+  const addCandidate = (tenantId: string | undefined) => {
     const botName = getBotName(tenantId);
     const configAliases = splitAliases(readUserConfigSync(tenantId).AI_BOT_ALIASES);
     const settingAliases = splitAliases(getBotAliases(tenantId));
-    const triggers = explicitOnly
-      ? Array.from(new Set([botName.toLowerCase(), ...configAliases, ...settingAliases].filter(Boolean)))
-      : Array.from(new Set([
-          botName.toLowerCase(),
-          `hey ${botName.toLowerCase()}`,
-          ...configAliases,
-          ...settingAliases,
-        ].filter(Boolean)));
+    const triggers = Array.from(new Set([
+      botName.toLowerCase(),
+      `hey ${botName.toLowerCase()}`,
+      ...configAliases,
+      ...settingAliases,
+    ].filter(Boolean)));
 
     for (const trigger of triggers) {
-      const index = explicitOnly ? explicitTriggerIndex(messageLower, trigger) : triggerIndex(messageLower, trigger);
+      const index = triggerIndex(messageLower, trigger);
       if (index >= 0) {
-        candidates.push({ tenantId, botName, trigger: explicitOnly ? `@${trigger}` : trigger, index });
+        candidates.push({ tenantId, botName, trigger, index });
       }
     }
   };
 
-  addCandidate(guildTenantId);
-  await addLoreCandidate(messageLower, candidates, guildTenantId, false);
-
   for (const tenantId of await listTenants()) {
-    if (tenantId === guildTenantId) continue;
-    // A loose name or pet-name in one tenant's Discord must never invoke a
-    // different tenant's bot. Cross-tenant direct addressing requires @name.
-    addCandidate(tenantId, true);
-    await addLoreCandidate(messageLower, candidates, tenantId, true);
+    addCandidate(tenantId);
+    await addLoreCandidate(messageLower, candidates, tenantId);
   }
 
   candidates.sort((a, b) => a.index - b.index || b.trigger.length - a.trigger.length);
   return candidates[0] || null;
 }
 
-async function addLoreCandidate(messageLower: string, candidates: BotMatch[], tenantId?: string, explicitOnly = false) {
+async function addLoreCandidate(messageLower: string, candidates: BotMatch[], tenantId?: string) {
   if (!tenantId) return;
   const lore = await readWorldLore();
   const characters = Object.values(lore?.characters || {});
-  const tenantCharacters = characters.filter((character) => character.stableId.startsWith(`${tenantId}:`));
+  const tenantCharacters = characters.filter((character) => character.stableId.startsWith(`${tenantId}:`) || character.stableId.startsWith('unknown:'));
 
   for (const character of tenantCharacters) {
     const triggers = Array.from(new Set([
@@ -1352,9 +1336,9 @@ async function addLoreCandidate(messageLower: string, candidates: BotMatch[], te
     ].filter(Boolean).map((value) => value.toLowerCase())));
 
     for (const trigger of triggers) {
-      const index = explicitOnly ? explicitTriggerIndex(messageLower, trigger) : triggerIndex(messageLower, trigger);
+      const index = triggerIndex(messageLower, trigger);
       if (index >= 0) {
-        candidates.push({ tenantId, botName: character.currentName, trigger: explicitOnly ? `@${trigger}` : trigger, index });
+        candidates.push({ tenantId, botName: character.currentName, trigger, index });
       }
     }
   }
