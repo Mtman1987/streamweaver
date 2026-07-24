@@ -38,6 +38,7 @@ import {
 import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
+import { detectOpenBotCommand, runOpenBotCommand } from '@/services/open-bot-commands';
 import {
   applySayState,
   formatSaySpeechText,
@@ -593,6 +594,29 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', images: result.images });
       }
 
+      const openCommand = detectOpenBotCommand(message);
+      if (openCommand) {
+        const botName = getBotName(tenantId);
+        try {
+          const openReply = await runOpenBotCommand(openCommand);
+          if (channelId) {
+            await sendStructuredDiscordReply({
+              channelId,
+              message: openReply,
+              tenantId,
+              botName,
+              sourceMessage: message,
+              sourceUser: userName,
+              isPrivate: true,
+            });
+          }
+          await markHandled();
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, botName, context: `open-${openCommand}` });
+        } catch (error) {
+          console.warn(`[Discord Chat:${tenantId}] Open command ${openCommand} failed:`, error);
+        }
+      }
+
       if (message.trim().startsWith('!')) {
         const dispatchResult = await handleDiscordMessage({
           content: message,
@@ -926,6 +950,45 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: false, ignored: true, botName });
     }
     console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
+
+    const openCommand = detectOpenBotCommand(message);
+    if (openCommand) {
+      try {
+        const openReply = await runOpenBotCommand(openCommand);
+        if (channelId) {
+          if (relayOnly) {
+            collectReply({ content: openReply, username: botName });
+          } else {
+            await sendStructuredDiscordReply({
+              channelId,
+              message: openReply,
+              tenantId: botTenantId || tenantId || undefined,
+              botName,
+              sourceMessage: message,
+              sourceUser: userName,
+              isPrivate: false,
+            });
+          }
+        }
+        logDiscordTrace(traceId, 'open-command', {
+          command: openCommand,
+          botName,
+          tenantId: botTenantId || tenantId || null,
+          delivered: Boolean(channelId),
+        });
+        return apiOk({
+          success: true,
+          botResponded: Boolean(channelId),
+          response: openReply,
+          botName,
+          tenantId: botTenantId || tenantId || null,
+          context: `open-${openCommand}`,
+          replies: relayOnly ? collectedReplies : undefined,
+        });
+      } catch (error) {
+        console.warn(`[Discord Chat:${botTenantId || tenantId || 'global'}] Open command ${openCommand} failed; falling back to AI:`, error);
+      }
+    }
 
     if (await getBotShareMode(botTenantId || tenantId || undefined) === 'on') {
       const lore = await readWorldLore();
