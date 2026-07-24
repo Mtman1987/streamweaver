@@ -122,7 +122,7 @@ export async function detectOpenBotCommandWithAi(
         'Return exactly one action ID or the word none.',
       ].join(' '),
       tenantId,
-      { maxTokens: 120, temperature: 0 },
+      { maxTokens: 300, temperature: 0 },
     );
     const parsed = extractJsonObject(response);
     const parsedCommand = String(parsed?.command || '').trim().toLowerCase();
