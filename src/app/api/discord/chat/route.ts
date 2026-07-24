@@ -38,7 +38,7 @@ import {
 import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
-import { detectOpenBotCommand, runOpenBotCommand } from '@/services/open-bot-commands';
+import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import {
   applySayState,
   formatSaySpeechText,
@@ -594,7 +594,7 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', images: result.images });
       }
 
-      const openCommand = detectOpenBotCommand(message);
+      const openCommand = await detectOpenBotCommandWithAi(message, tenantId);
       if (openCommand) {
         const botName = getBotName(tenantId);
         try {
@@ -951,7 +951,7 @@ export async function POST(request: NextRequest) {
     }
     console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
 
-    const openCommand = detectOpenBotCommand(message);
+    const openCommand = await detectOpenBotCommandWithAi(message, botTenantId || tenantId || undefined);
     if (openCommand) {
       try {
         const openReply = await runOpenBotCommand(openCommand);

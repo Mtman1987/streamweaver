@@ -1,3 +1,5 @@
+import { generateAIResponse } from '@/services/ai-provider';
+
 export type OpenBotCommand =
   | 'live-members'
   | 'chat-tag-current'
@@ -8,6 +10,7 @@ export type OpenBotCommand =
   | 'help';
 
 type FetchLike = typeof fetch;
+type AiResponder = typeof generateAIResponse;
 
 const CHAT_TAG_URL = (process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_CHAT_TAG_URL || 'https://chat-tag-new.fly.dev').replace(/\/+$/, '');
 const SPMT_URL = (process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
@@ -42,6 +45,87 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
     return 'help';
   }
   return null;
+}
+
+const OPEN_COMMAND_CATALOG: Array<{
+  command: OpenBotCommand;
+  meaning: string;
+  examples: string[];
+}> = [
+  {
+    command: 'live-members',
+    meaning: 'List SpaceMountain community members who are live or streaming now.',
+    examples: ["who's live?", 'is anybody streaming?', 'show me the live crew'],
+  },
+  {
+    command: 'chat-tag-current',
+    meaning: 'Say who is currently IT in the ChatTag game.',
+    examples: ["who's it?", 'who has the tag?', 'which player is currently it?'],
+  },
+  {
+    command: 'chat-tag-status',
+    meaning: 'Give the current ChatTag player and activity counts.',
+    examples: ['ChatTag status', 'how many people play ChatTag?', 'is the game active?'],
+  },
+  {
+    command: 'chat-tag-leaderboard',
+    meaning: 'List the highest-ranked ChatTag players.',
+    examples: ['show the ChatTag leaderboard', 'who is winning?', 'give me the top three'],
+  },
+  {
+    command: 'apps',
+    meaning: 'List the apps and tools available in the SpaceMountain ecosystem.',
+    examples: ['what apps are there?', 'which tools can you control?', 'show the app catalog'],
+  },
+  {
+    command: 'hearmeout',
+    meaning: 'Report what HearMeOut is playing now and what is queued.',
+    examples: ["what's playing?", 'what is in the HearMeOut queue?', 'music status'],
+  },
+  {
+    command: 'help',
+    meaning: 'Explain the safe public commands this bot can perform.',
+    examples: ['what can you do?', 'show public commands', 'bot help'],
+  },
+];
+
+export async function detectOpenBotCommandWithAi(
+  message: string,
+  tenantId?: string,
+  aiResponder: AiResponder = generateAIResponse,
+): Promise<OpenBotCommand | null> {
+  const exact = detectOpenBotCommand(message);
+  if (exact) return exact;
+
+  const transcript = String(message || '').replace(/\s+/g, ' ').trim().slice(0, 1000);
+  if (!transcript) return null;
+
+  try {
+    const response = await aiResponder(
+      JSON.stringify({
+        transcript,
+        commands: OPEN_COMMAND_CATALOG,
+      }),
+      [
+        'You are the MountainView-style action router for a Discord bot.',
+        'Infer the user meaning from natural conversation; do not require exact command wording.',
+        'Choose only from the supplied safe public command catalog.',
+        'If the user is chatting, asking something outside the catalog, or their intent is ambiguous, choose null.',
+        'Return JSON only: {"command":"catalog command or null","confidence":0.0,"reason":"short reason"}.',
+      ].join(' '),
+      tenantId,
+      { maxTokens: 140, temperature: 0 },
+    );
+    const parsed = extractJsonObject(response);
+    const command = String(parsed?.command || '') as OpenBotCommand;
+    const confidence = Number(parsed?.confidence || 0);
+    return confidence >= 0.72 && OPEN_COMMAND_CATALOG.some((entry) => entry.command === command)
+      ? command
+      : null;
+  } catch (error) {
+    console.warn('[OpenBotCommands] Natural-language action routing failed:', error);
+    return null;
+  }
 }
 
 export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchLike = fetch): Promise<string> {
@@ -102,6 +186,20 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
     .slice(0, 3);
   if (!leaders.length) return 'ChatTag does not have any ranked players yet.';
   return `🏆 ChatTag top 3: ${leaders.map((player: any, index) => `#${index + 1} ${player.twitchUsername || player.username || 'unknown'} (${Number(player.score || 0)} pts)`).join(' | ')}.`;
+}
+
+function extractJsonObject(text: string): any | null {
+  const raw = String(text || '').trim();
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  const candidate = fenced || raw;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return null;
+  }
 }
 
 async function fetchJson(fetcher: FetchLike, url: string): Promise<any> {

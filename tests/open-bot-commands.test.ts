@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { detectOpenBotCommand, runOpenBotCommand } from '../src/services/open-bot-commands';
+import {
+  detectOpenBotCommand,
+  detectOpenBotCommandWithAi,
+  runOpenBotCommand,
+} from '../src/services/open-bot-commands';
 
 test('detects safe natural-language commands after any tenant bot wake name', () => {
   assert.equal(detectOpenBotCommand("NovaBot, who's live?"), 'live-members');
@@ -21,6 +25,34 @@ test('formats shared live-member data without tenant credentials', async () => {
   }), { status: 200, headers: { 'content-type': 'application/json' } }));
 
   assert.equal(reply, '🟢 2 live: StreamerOne, streamer_two.');
+});
+
+test('uses MountainView-style AI inference when wording is not an exact match', async () => {
+  const command = await detectOpenBotCommandWithAi(
+    'Athena, can you see which of our people are broadcasting tonight?',
+    'tenant-a',
+    async () => JSON.stringify({
+      command: 'live-members',
+      confidence: 0.91,
+      reason: 'The user wants the currently broadcasting community members.',
+    }),
+  );
+
+  assert.equal(command, 'live-members');
+});
+
+test('keeps ordinary conversation out of the action layer', async () => {
+  const command = await detectOpenBotCommandWithAi(
+    'Athena, how has your evening been?',
+    'tenant-a',
+    async () => JSON.stringify({
+      command: null,
+      confidence: 0.98,
+      reason: 'This is casual conversation.',
+    }),
+  );
+
+  assert.equal(command, null);
 });
 
 test('keeps ChatTag status commands read-only and deterministic', async () => {
