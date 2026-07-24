@@ -123,7 +123,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if ((pathname === '/api/ai/shoutout' || pathname === '/api/kick/chat-tag-broadcast') && hasSharedBotAccess(request)) {
+  if ((pathname === '/api/ai/shoutout' || pathname === '/api/kick/chat-tag-broadcast' || pathname === '/api/quackverse/pack-overlay') && hasSharedBotAccess(request)) {
     return NextResponse.next();
   }
 
