@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     const generationSettings = await readGenerationSettings(tenantId);
     const seaartCharacterId = generationSettings.seaartCharacterId;
-    const seaartCharacterToken = process.env.SEAART_CHARACTER_TOKEN || '';
+    const seaartCharacterToken = process.env.SEAART_CHARACTER_TOKEN || process.env.SEAART_TOKEN || '';
     const useSeaArtCharacter = Boolean(seaartCharacterId);
     const edenaiKey = process.env.EDENAI_API_KEY || '';
     if (!useSeaArtCharacter && !edenaiKey) {

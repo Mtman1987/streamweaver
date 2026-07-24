@@ -622,7 +622,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                         <div className="space-y-2">
                             <Label htmlFor="seaart-character-id">SeaArt character ID</Label>
                             <Input id="seaart-character-id" value={genSettings.seaartCharacterId} onChange={(event) => setGenSettings((prev) => ({ ...prev, seaartCharacterId: event.target.value }))} placeholder="Paste the SeaArt character ID" />
-                            <p className="text-xs text-white/50">Paste a character ID or full SeaArt character URL. When set, private app chat and Discord DMs use this character instead of EdenAI. Without a separate character API token, SeaArt's limited tourist chat mode is used.</p>
+                            <p className="text-xs text-white/50">Paste a character ID or full SeaArt character URL. When set, private app chat and Discord DMs use this character instead of EdenAI. StreamWeaver uses the connected SeaArt account when configured; otherwise it falls back to SeaArt&apos;s limited tourist chat mode.</p>
                         </div>
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
