@@ -81,11 +81,11 @@ class BrowserSpeechRecognition {
         resetSilenceTimer();
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
-          results.push({
+          results[i] = {
             transcription: result[0].transcript,
             confidence: result[0].confidence,
             isFinal: result.isFinal,
-          });
+          };
         }
       };
 

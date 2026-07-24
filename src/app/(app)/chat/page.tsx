@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { mergeSpeechRecognitionSegments } from "@/services/speech-transcript";
 
 type DiscordChannelOption = {
   id: string;
@@ -94,11 +95,11 @@ function useSpeechToText() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.onresult = (event: any) => {
-      let next = "";
+      const segments: string[] = [];
       for (let index = 0; index < event.results.length; index += 1) {
-        next += event.results[index][0].transcript;
+        segments.push(event.results[index][0].transcript);
       }
-      setTranscript(next);
+      setTranscript(mergeSpeechRecognitionSegments(segments));
     };
     recognition.onerror = (event: any) => {
       setError(String(event?.error || "Speech recognition failed."));

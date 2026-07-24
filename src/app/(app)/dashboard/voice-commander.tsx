@@ -10,6 +10,7 @@ import { Mic, LoaderCircle, Bot, Send, User, Maximize2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio } from "@/services/speech";
 import { browserSpeechRecognition } from "@/services/browser-speech";
+import { mergeSpeechRecognitionSegments } from "@/services/speech-transcript";
 import { translateToLanguage, type TargetLanguage } from "@/services/translation";
 import { createTwitchClip } from "@/services/twitch-client-api";
 
@@ -992,17 +993,18 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 
                 console.log('[VoiceCommander] Speech recognition completed, results:', results);
                 
-                // Get the best result (final first, then highest confidence)
-                const finalResult = results.find(r => r.isFinal);
-                const bestResult = finalResult || results.reduce((best, current) => 
-                    (current.confidence || 0) > (best.confidence || 0) ? current : best, results[0]
+                const finalTranscript = mergeSpeechRecognitionSegments(
+                    results.filter(result => result.isFinal).map(result => result.transcription)
+                );
+                const completedTranscript = finalTranscript || mergeSpeechRecognitionSegments(
+                    results.map(result => result.transcription)
                 );
                 
-                console.log('[VoiceCommander] Best result:', bestResult);
+                console.log('[VoiceCommander] Completed transcript:', completedTranscript);
                 
-                if (bestResult?.transcription?.trim()) {
-                    console.log('[VoiceCommander] Processing transcription:', bestResult.transcription.trim());
-                    await processTranscription(bestResult.transcription.trim());
+                if (completedTranscript) {
+                    console.log('[VoiceCommander] Processing finalized transcription:', completedTranscript);
+                    await processTranscription(completedTranscript);
                 } else {
                     console.warn('[VoiceCommander] No valid transcription found');
                     toast({ variant: "destructive", title: "No speech detected", description: "Please try speaking more clearly" });
