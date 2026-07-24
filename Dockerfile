@@ -42,6 +42,9 @@ LABEL BUILD_SHA=$BUILD_SHA
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV BUILD_SHA=$BUILD_SHA
+ENV GITHUB_SHA=$GITHUB_SHA
+ENV GH_SHA=$GH_SHA
 
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y python3 python3-pip python3-venv ca-certificates curl && \
