@@ -122,15 +122,19 @@ export async function detectOpenBotCommandWithAi(
         'Return exactly one action ID or the word none.',
       ].join(' '),
       tenantId,
-      { maxTokens: 30, temperature: 0 },
+      { maxTokens: 120, temperature: 0 },
     );
     const parsed = extractJsonObject(response);
     const parsedCommand = String(parsed?.command || '').trim().toLowerCase();
     const normalizedResponse = String(response || '').trim().toLowerCase();
-    const command = OPEN_COMMAND_CATALOG.find((entry) =>
+    let command = OPEN_COMMAND_CATALOG.find((entry) =>
       parsedCommand === entry.command ||
       new RegExp(`(^|[^a-z0-9-])${escapeRegExp(entry.command)}([^a-z0-9-]|$)`).test(normalizedResponse)
     )?.command || null;
+    if (!command && normalizedResponse.length >= 4) {
+      const prefixMatches = OPEN_COMMAND_CATALOG.filter((entry) => entry.command.startsWith(normalizedResponse));
+      if (prefixMatches.length === 1) command = prefixMatches[0].command;
+    }
     console.log(`[OpenBotCommands] ${JSON.stringify({
       tenantId: tenantId || null,
       command,

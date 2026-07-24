@@ -47,6 +47,16 @@ test('keeps ordinary conversation out of the action layer', async () => {
   assert.equal(command, null);
 });
 
+test('accepts an unambiguous action id prefix when the provider truncates output', async () => {
+  const command = await detectOpenBotCommandWithAi(
+    'Which members are broadcasting?',
+    'tenant-a',
+    async () => 'live-',
+  );
+
+  assert.equal(command, 'live-members');
+});
+
 test('keeps ChatTag status commands read-only and deterministic', async () => {
   const fetcher = async () => new Response(JSON.stringify({
     players: [
