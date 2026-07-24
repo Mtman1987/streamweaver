@@ -11,6 +11,7 @@ import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import { readUserConfigSync } from '../lib/user-config';
 import { resolveSayStreamKey, SAY_SHOUTOUT_SUPPRESSION_MS, suppressSayForTenant } from './say-tts';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
+import { isKnownBot } from './known-bots';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -501,6 +502,20 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     const user = username.toLowerCase();
     const realTenantId = normalizeTenantId(tenantId);
     const auditSource = options.source || (skipCooldown ? 'manual' : 'auto-welcome');
+
+    if (await isKnownBot(user, realTenantId)) {
+        console.log(`[WalkOn] Skipping shoutout for ${user} — known/ignored bot.`);
+        await recordShoutoutAudit({
+            status: 'skipped',
+            username: user,
+            displayName,
+            tenantId: realTenantId,
+            source: auditSource,
+            reason: 'known-bot',
+            metadata: { skipCooldown },
+        });
+        return false;
+    }
 
     const shoutoutEligibility = skipCooldown ? { eligible: true as const } : await getShoutoutEligibility(user, realTenantId);
     if (!shoutoutEligibility.eligible) {

@@ -1,5 +1,25 @@
 const EDEN_MODEL = 'google/gemini-2.5-flash';
 
+export function extractShoutoutRequestTarget(message: string): string | null {
+  const input = String(message || '').trim();
+  if (!input) return null;
+
+  const wakeWordStripped = input.replace(/^(?:athena|@[a-z0-9_]+)[,\s]+/i, '');
+  const target = '(@?[a-z0-9_]{2,25})';
+  const patterns = [
+    new RegExp(`^(?:please\\s+)?(?:shout\\s*out|shoutout)\\s+(?:(?:to|for)\\s+)?${target}\\b`, 'i'),
+    new RegExp(`^(?:please\\s+)?(?:give|do|send|run|trigger|play|make)\\s+(?:a\\s+)?(?:shout\\s*out|shoutout)\\s+(?:(?:to|for)\\s+)?${target}\\b`, 'i'),
+    new RegExp(`^(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?(?:give\\s+)?(?:a\\s+)?(?:shout\\s*out|shoutout)\\s+(?:(?:to|for)\\s+)?${target}\\b`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = wakeWordStripped.match(pattern);
+    if (match?.[1]) return match[1].replace(/^@/, '');
+  }
+
+  return null;
+}
+
 function normalizeName(value: string): string {
   return String(value || '')
     .trim()

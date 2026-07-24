@@ -9,7 +9,7 @@ import { givePoints, stealPoints } from './points-transfer';
 import { getWelcomeEligibility, markUserWelcomed, getWelcomeMode } from './welcome-wagon';
 import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
-import { matchShoutoutTarget } from './shoutout-matcher';
+import { extractShoutoutRequestTarget, matchShoutoutTarget } from './shoutout-matcher';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
 import { handleLeaderboardCommand } from './leaderboard-commands';
@@ -4185,7 +4185,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             // Skip messages that look like the formatted shoutout output to prevent re-triggering
             // Skip shoutout processing for known bots to prevent automated messages from triggering shoutouts
             const isShoutoutOutput = lowerMessage.includes('go check out') && lowerMessage.includes('twitch.tv/');
-            if (!botShareEnabled && !isShoutoutOutput && (lowerMessage.includes('shout out') || lowerMessage.includes('shoutout'))) {
+            const requestedShoutoutTarget = extractShoutoutRequestTarget(actualMessage);
+            if (!botShareEnabled && !isShoutoutOutput && requestedShoutoutTarget) {
                 console.log('[Dispatcher] Shoutout command detected');
                 try {
                     const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
@@ -4199,7 +4200,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         console.log('[Dispatcher] Fetched chatters:', chatters.join(', '));
                     }
 
-                    const matchedUsername = await matchShoutoutTarget(actualMessage, chatters);
+                    const matchedUsername = await matchShoutoutTarget(requestedShoutoutTarget, chatters);
                     if (matchedUsername) {
                         console.log(`[Dispatcher] Matched shoutout target: ${matchedUsername}`);
                         const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${matchedUsername}-profile_image-300x300.png`;
