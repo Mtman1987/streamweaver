@@ -37,7 +37,18 @@ export default function TTSPlayer() {
     };
     heartbeat();
     const interval = window.setInterval(heartbeat, 10_000);
-    return () => window.clearInterval(interval);
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') heartbeat();
+    };
+    window.addEventListener('focus', heartbeat);
+    window.addEventListener('online', heartbeat);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', heartbeat);
+      window.removeEventListener('online', heartbeat);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
   }, [overlayTenant]);
 
   // Load avatar settings from server
@@ -180,6 +191,7 @@ export default function TTSPlayer() {
     }
 
     const interval = setInterval(fetchNext, 500);
+    fetchNext();
     return () => {
       clearInterval(interval);
       if (audio) {

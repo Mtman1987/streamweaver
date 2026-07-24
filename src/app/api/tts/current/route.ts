@@ -6,6 +6,7 @@ import { globalPath, tenantPath } from '@/lib/tenant';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import path from 'path';
 import { z } from 'zod';
+import { touchTtsConsumer } from '@/services/tts-consumer-presence';
 
 const ttsCurrentSchema = z.object({
   audioUrl: z.string().min(1, 'audioUrl is required'),
@@ -85,6 +86,12 @@ async function getTenantState(request: NextRequest): Promise<TenantTtsState> {
 }
 
 export async function GET(request: NextRequest) {
+  const tenantKey = getTenantKey(request);
+  if (tenantKey !== 'global') {
+    // Polling this queue is stronger evidence of a real OBS/browser consumer
+    // than a timer heartbeat, which OBS can throttle in background scenes.
+    touchTtsConsumer(tenantKey, 'overlay');
+  }
   const state = await getTenantState(request);
   const { searchParams } = new URL(request.url);
 

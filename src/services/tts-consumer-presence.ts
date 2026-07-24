@@ -6,7 +6,10 @@ type PresenceRecord = {
   kind: TtsConsumerKind;
 };
 
-const TTS_CONSUMER_TTL_MS = 30_000;
+// OBS may throttle browser-source timers while a scene is hidden or during a
+// scene transition. Queue polling renews this presence too, and this grace
+// period prevents a brief throttle/reconnect from disabling paid synthesis.
+const TTS_CONSUMER_TTL_MS = 5 * 60_000;
 
 function presenceMap(): Map<string, PresenceRecord> {
   const globalState = globalThis as typeof globalThis & {

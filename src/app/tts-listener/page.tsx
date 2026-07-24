@@ -19,13 +19,13 @@ export default function TTSListenerPage() {
   const [avatar, setAvatar] = useState<AvatarSettings | null>(null);
   const [alwaysShow, setAlwaysShow] = useState(false);
   const [visible, setVisible] = useState(true);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const hideTimer = useRef<NodeJS.Timeout | null>(null);
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
 
   useEffect(() => {
-    if (!overlayTenant || !audioEnabled) return;
+    if (!overlayTenant) return;
     const heartbeat = () => {
       fetch('/api/tts/presence', {
         method: 'POST',
@@ -36,8 +36,19 @@ export default function TTSListenerPage() {
     };
     heartbeat();
     const interval = window.setInterval(heartbeat, 10_000);
-    return () => window.clearInterval(interval);
-  }, [audioEnabled, overlayTenant]);
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') heartbeat();
+    };
+    window.addEventListener('focus', heartbeat);
+    window.addEventListener('online', heartbeat);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', heartbeat);
+      window.removeEventListener('online', heartbeat);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [overlayTenant]);
 
   useEffect(() => {
     const suffix = overlayTenant ? `&tenant=${encodeURIComponent(overlayTenant)}` : '';
