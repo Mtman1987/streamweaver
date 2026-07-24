@@ -3,6 +3,8 @@ import { getStoredTokens, ensureValidToken, isTwitchAuthFailure } from '../lib/t
 import type { StoredTokens } from '../lib/token-utils.server';
 import { listTenants, communityBotTokensPath, getAdminTwitchId } from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
+import { recordSharedChatEvent } from './shared-chat-ingestion';
+import { normalizeTwitchSharedChatEvent } from './shared-chat-normalizers';
 import { promises as fsp } from 'fs';
 import { getConfiguredAppUrl } from '../lib/runtime-origin';
 
@@ -68,6 +70,20 @@ async function dispatchIncomingTwitchMessage(
         tenantId: msgTenantId,
       },
     }, msgTenantId);
+  }
+
+  if (msgTenantId) {
+    try {
+      await recordSharedChatEvent(normalizeTwitchSharedChatEvent({
+        tenantId: msgTenantId,
+        channel: effectiveChannel,
+        tags,
+        message,
+        self,
+      }));
+    } catch (error) {
+      console.warn('[SharedChat] Twitch ingestion failed:', error instanceof Error ? error.message : String(error));
+    }
   }
 
   await handleTwitchMessage(effectiveChannel, tags, message, self);

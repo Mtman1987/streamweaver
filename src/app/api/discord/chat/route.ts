@@ -39,6 +39,8 @@ import { runImageCommand } from '@/services/image-command';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
+import { recordSharedChatDeadLetter, recordSharedChatEvent } from '@/services/shared-chat-ingestion';
+import { normalizeDiscordSharedChatEvent } from '@/services/shared-chat-normalizers';
 import {
   applySayState,
   formatSaySpeechText,
@@ -331,6 +333,31 @@ export async function POST(request: NextRequest) {
       guildId: guildId || null,
       channelId: channelId || null,
     });
+
+    if (tenantId && message) {
+      try {
+        await recordSharedChatEvent(normalizeDiscordSharedChatEvent({
+          tenantId,
+          payload: data,
+          message,
+          traceId,
+        }));
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn('[SharedChat] Discord ingestion failed:', reason);
+        recordSharedChatDeadLetter({
+          tenantId,
+          source: 'discord',
+          reason,
+          payload: {
+            traceId,
+            messageId: normalized.messageId || null,
+            guildId: guildId || null,
+            channelId: channelId || null,
+          },
+        }).catch((deadLetterError) => console.warn('[SharedChat] Discord dead-letter write failed:', deadLetterError));
+      }
+    }
 
     if (!isPrivateDiscordLane) {
       const mtFixItIntent = detectMtFixItIntent(message);
