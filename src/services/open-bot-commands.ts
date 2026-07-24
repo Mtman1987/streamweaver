@@ -102,26 +102,41 @@ export async function detectOpenBotCommandWithAi(
 
   try {
     const response = await aiResponder(
-      JSON.stringify({
-        transcript,
-        commands: OPEN_COMMAND_CATALOG,
-      }),
       [
-        'You are the MountainView-style action router for a Discord bot.',
-        'Infer the user meaning from natural conversation; do not require exact command wording.',
-        'Choose only from the supplied safe public command catalog.',
-        'If the user is chatting, asking something outside the catalog, or their intent is ambiguous, choose null.',
-        'Return JSON only: {"command":"catalog command or null","confidence":0.0,"reason":"short reason"}.',
+        `Human message: ${transcript}`,
+        '',
+        'Available actions:',
+        ...OPEN_COMMAND_CATALOG.map((entry) => [
+          `${entry.command}: ${entry.meaning}`,
+          `Examples: ${entry.examples.join(' | ')}`,
+        ].join('\n')),
+      ].join('\n'),
+      [
+        'You are the MountainView action router, not the conversational bot.',
+        'Infer what the human wants from meaning and context; wording never has to match an example.',
+        'Polite or indirect requests to look up current information still count as actions.',
+        'For example, asking which of our people are broadcasting means live-members.',
+        'Choose only from the supplied safe public action IDs.',
+        'If this is ordinary conversation, outside the catalog, or genuinely ambiguous, choose none.',
+        'Do not answer the human and do not explain.',
+        'Return exactly one action ID or the word none.',
       ].join(' '),
       tenantId,
-      { maxTokens: 140, temperature: 0 },
+      { maxTokens: 30, temperature: 0 },
     );
     const parsed = extractJsonObject(response);
-    const command = String(parsed?.command || '') as OpenBotCommand;
-    const confidence = Number(parsed?.confidence || 0);
-    return confidence >= 0.72 && OPEN_COMMAND_CATALOG.some((entry) => entry.command === command)
-      ? command
-      : null;
+    const parsedCommand = String(parsed?.command || '').trim().toLowerCase();
+    const normalizedResponse = String(response || '').trim().toLowerCase();
+    const command = OPEN_COMMAND_CATALOG.find((entry) =>
+      parsedCommand === entry.command ||
+      new RegExp(`(^|[^a-z0-9-])${escapeRegExp(entry.command)}([^a-z0-9-]|$)`).test(normalizedResponse)
+    )?.command || null;
+    console.log(`[OpenBotCommands] ${JSON.stringify({
+      tenantId: tenantId || null,
+      command,
+      classifierResponse: normalizedResponse.slice(0, 100),
+    })}`);
+    return command;
   } catch (error) {
     console.warn('[OpenBotCommands] Natural-language action routing failed:', error);
     return null;
@@ -186,6 +201,10 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
     .slice(0, 3);
   if (!leaders.length) return 'ChatTag does not have any ranked players yet.';
   return `🏆 ChatTag top 3: ${leaders.map((player: any, index) => `#${index + 1} ${player.twitchUsername || player.username || 'unknown'} (${Number(player.score || 0)} pts)`).join(' | ')}.`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function extractJsonObject(text: string): any | null {

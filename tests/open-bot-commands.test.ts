@@ -31,11 +31,7 @@ test('uses MountainView-style AI inference when wording is not an exact match', 
   const command = await detectOpenBotCommandWithAi(
     'Athena, can you see which of our people are broadcasting tonight?',
     'tenant-a',
-    async () => JSON.stringify({
-      command: 'live-members',
-      confidence: 0.91,
-      reason: 'The user wants the currently broadcasting community members.',
-    }),
+    async () => 'live-members',
   );
 
   assert.equal(command, 'live-members');
@@ -45,11 +41,7 @@ test('keeps ordinary conversation out of the action layer', async () => {
   const command = await detectOpenBotCommandWithAi(
     'Athena, how has your evening been?',
     'tenant-a',
-    async () => JSON.stringify({
-      command: null,
-      confidence: 0.98,
-      reason: 'This is casual conversation.',
-    }),
+    async () => 'none',
   );
 
   assert.equal(command, null);
