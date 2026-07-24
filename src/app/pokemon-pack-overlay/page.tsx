@@ -12,12 +12,19 @@ interface Card {
   setCode: string;
   imageUrl: string;
   id?: string;
+  hp?: string;
+  types?: string[];
+  attacks?: { name: string; damage: string | number }[];
+  weaknesses?: { type: string }[];
+  username?: string;
+  owned?: number;
 }
 
 export default function PokemonPackOverlay() {
   const [pack, setPack] = useState<Card[]>([]);
   const [setName, setSetName] = useState('');
   const [username, setUsername] = useState('');
+  const [showCard, setShowCard] = useState<Card | null>(null);
   const [phase, setPhase] = useState<'hidden' | 'stack' | 'deal' | 'flip' | 'rare'>('hidden');
   const avatarUrl = useRef('');
 
@@ -58,6 +65,7 @@ export default function PokemonPackOverlay() {
               console.log('[Pokemon Overlay] Pack opened!', data.payload);
               const { pack, setName, username } = data.payload;
               console.log('[Pokemon Overlay] Cards:', pack.map((c: any) => `${c.name} (${c.setCode}-${c.number})`));
+              setShowCard(null);
               setPack(pack);
               setSetName(setName);
               setUsername(username);
@@ -72,6 +80,15 @@ export default function PokemonPackOverlay() {
                 setSetName('');
                 setUsername('');
               }, 12000);
+            }
+            if (data.type === 'pokemon-show-card') {
+              console.log('[Pokemon Overlay] Show card!', data.payload);
+              setPack([]);
+              setSetName('');
+              setUsername('');
+              setPhase('hidden');
+              setShowCard(data.payload);
+              setTimeout(() => setShowCard(null), 12000);
             }
           } catch (error) {
             console.error('Failed to parse message:', error);
@@ -90,6 +107,46 @@ export default function PokemonPackOverlay() {
       if (ws) ws.close();
     };
   }, []);
+
+  if (showCard) {
+    const isHolo = showCard.rarity?.includes('Holo') || showCard.rarity?.includes('Rainbow') || showCard.rarity?.includes('Secret');
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-transparent">
+        <div className="flex items-center gap-10 animate-in fade-in zoom-in duration-500">
+          <div className="relative">
+            {isHolo && (
+              <div className="absolute -inset-3 rounded-2xl bg-gradient-to-br from-yellow-300 via-fuchsia-400 to-cyan-400 opacity-70 blur-xl animate-pulse" />
+            )}
+            <img
+              src={showCard.imageUrl}
+              alt={showCard.name}
+              className="relative z-10 w-[360px] h-[504px] rounded-2xl object-cover shadow-[0_16px_60px_rgba(0,0,0,0.75)]"
+            />
+          </div>
+          <div className="max-w-[520px] text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.95)]">
+            <div className="text-5xl font-black mb-3">{showCard.name}</div>
+            <div className="text-2xl opacity-90 mb-5">
+              {showCard.rarity} • #{showCard.number} • {showCard.setCode}
+            </div>
+            {showCard.hp && <div className="text-3xl mb-2">HP {showCard.hp}</div>}
+            {showCard.types?.length ? <div className="text-2xl mb-2">Type: {showCard.types.join('/')}</div> : null}
+            {showCard.attacks?.length ? (
+              <div className="text-xl mb-2">
+                {showCard.attacks.map((attack) => `${attack.name} (${attack.damage || 0})`).join(' • ')}
+              </div>
+            ) : null}
+            {showCard.weaknesses?.length ? (
+              <div className="text-xl mb-4">Weak: {showCard.weaknesses.map((weakness) => weakness.type).join('/')}</div>
+            ) : null}
+            <div className="text-xl opacity-80">
+              {showCard.username ? `Owned by ${showCard.username}` : 'Owned card'}
+              {showCard.owned ? ` • ${showCard.owned}x` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === 'hidden' || pack.length === 0) return null;
 
