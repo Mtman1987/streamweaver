@@ -5,6 +5,7 @@ import { detectOpenBotCommand, runOpenBotCommand } from '../src/services/open-bo
 
 test('detects safe natural-language commands after any tenant bot wake name', () => {
   assert.equal(detectOpenBotCommand("NovaBot, who's live?"), 'live-members');
+  assert.equal(detectOpenBotCommand('athena whos live right now?'), 'live-members');
   assert.equal(detectOpenBotCommand('Athena who has the tag?'), 'chat-tag-current');
   assert.equal(detectOpenBotCommand('MayaBot, show me the ChatTag leaderboard'), 'chat-tag-leaderboard');
   assert.equal(detectOpenBotCommand("what's playing in HearMeOut?"), 'hearmeout');

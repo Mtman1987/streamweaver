@@ -20,7 +20,7 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
     .replace(/\s+/g, ' ')
     .trim();
 
-  if (/\b(who(?:'s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized)) {
+  if (/\b(who(?:'?s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized)) {
     return 'live-members';
   }
   if (/\b(who(?:'s| is) it|who has the tag|current(?:ly)? it)\b/.test(normalized)) {
