@@ -70,6 +70,7 @@ COPY --from=builder /app/pokemon-tcg-data-master ./pokemon-tcg-data-master
 COPY --from=builder /app/tmp ./tmp
 COPY --from=builder /app/scripts/bootstrap-runtime.js ./scripts/bootstrap-runtime.js
 COPY --from=builder /app/scripts/migrate-discord-config-single-source.ts ./scripts/migrate-discord-config-single-source.ts
+COPY --from=builder /app/scripts/disable-discord-log-mirror-history.ts ./scripts/disable-discord-log-mirror-history.ts
 COPY --from=builder /app/docker-entrypoint.js ./docker-entrypoint.js
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
