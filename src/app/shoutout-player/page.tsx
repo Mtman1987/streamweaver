@@ -48,16 +48,20 @@ export default function ShoutoutPlayer() {
       const src = `${clipData.videoQualities[0].sourceURL}?sig=${clipData.playbackAccessToken.signature}&token=${encodeURIComponent(clipData.playbackAccessToken.value)}`;
 
       if (videoRef.current) {
-        videoRef.current.src = src;
-        videoRef.current.muted = true;
-        videoRef.current.load();
+        const video = videoRef.current;
+        video.src = src;
+        video.muted = false;
+        video.load();
         setVisible(true);
-        // Muted autoplay always succeeds — OBS captures audio from the browser source
-        // via "Control audio via OBS" or the source's audio mixer
-        videoRef.current.play().then(() => {
-          // Try to unmute — works in OBS browser sources, silently fails in regular browsers
-          if (videoRef.current) videoRef.current.muted = false;
-        }).catch(() => {});
+        try {
+          // OBS browser sources permit autoplay with audio in normal operation.
+          await video.play();
+        } catch {
+          // Regular browsers may block unmuted autoplay. Keep the clip moving
+          // instead of leaving a fully loaded video paused on its first frame.
+          video.muted = true;
+          await video.play();
+        }
       }
     } catch (err: any) {
       console.error('[Shoutout] Clip load failed:', err);
