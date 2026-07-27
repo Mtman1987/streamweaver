@@ -97,3 +97,29 @@ test('Perchance preserves every generated output up to the requested count', asy
     global.fetch = originalFetch;
   }
 });
+
+test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
+  const { buildEdenAIImagePayload } = await import('../src/services/image-provider');
+  const payload = buildEdenAIImagePayload({
+    prompt: 'turtle doing disco at a party',
+    resolution: '1024x1024',
+    numImages: 1,
+    providerParams: {
+      cfg: 7,
+      steps: 30,
+      seed: 42,
+      lora: 'anime-detailer',
+      loraStrength: 0.8,
+    },
+  }, 'image/generation/leonardo/Leonardo Phoenix');
+
+  assert.deepEqual(payload, {
+    model: 'image/generation/leonardo/Leonardo Phoenix',
+    input: {
+      text: 'turtle doing disco at a party',
+      resolution: '1024x1024',
+      num_images: 1,
+    },
+  });
+  assert.equal('provider_params' in payload, false);
+});

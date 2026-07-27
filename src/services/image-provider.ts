@@ -211,21 +211,27 @@ function extractImageResult(data: any): ImageGenerationResult {
   };
 }
 
+export function buildEdenAIImagePayload(options: ImageGenerationOptions, defaultModel: string) {
+  return {
+    model: options.model || defaultModel,
+    input: {
+      text: options.prompt,
+      ...(options.resolution ? { resolution: options.resolution } : {}),
+      ...(options.numImages ? { num_images: options.numImages } : {}),
+    },
+  };
+}
+
 export async function generateImageWithEdenAI(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
   const apiKey = getEdenAIKey(options.tenantId);
   if (!apiKey) {
     throw new Error('No EdenAI API key configured for image generation');
   }
 
-  const payload = {
-    model: options.model || getDefaultImageModel(options.tenantId),
-    input: {
-      text: options.prompt,
-      ...(options.resolution ? { resolution: options.resolution } : {}),
-      ...(options.numImages ? { num_images: options.numImages } : {}),
-    },
-    ...(options.providerParams ? { provider_params: options.providerParams } : {}),
-  };
+  // providerParams contains SeaArt-specific controls such as cfg, steps, seed,
+  // and LoRA settings. Eden forwards unknown provider variables to Leonardo,
+  // where they make the entire generation fail instead of being ignored.
+  const payload = buildEdenAIImagePayload(options, getDefaultImageModel(options.tenantId));
 
   const response = await fetch('https://api.edenai.run/v3/universal-ai', {
     method: 'POST',
