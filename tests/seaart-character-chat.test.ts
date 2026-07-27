@@ -122,6 +122,48 @@ test('surfaces an application error returned inside a successful SeaArt stream r
   assert.equal(result.upstreamError, 'Character is unavailable');
 });
 
+test('retries character chat as tourist when SeaArt rejects the account token', async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  let sessionNumber = 0;
+  const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init: init || {} });
+    if (String(url).endsWith('/character/session/create')) {
+      sessionNumber += 1;
+      return new Response(JSON.stringify({
+        status: { code: 10000 },
+        data: { session_id: `session-${sessionNumber}` },
+      }), { status: 200 });
+    }
+    if (String(url).includes('/api/stream/character/session/chat_new')) {
+      return new Response('data: {"status":{"code":401,"msg":"auth token invalid"}}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    if (String(url).includes('/tourist_chat')) {
+      return new Response('data: {"choices":[{"delta":{"content":"Tourist fallback reply"}}]}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  const result = await requestSeaArtCharacterCompletion({
+    token: 'expired-account-token',
+    tenantId: 'tenant-1',
+    characterId: 'character-1',
+    message: 'hello',
+    history: [],
+    fetchImpl: fetchImpl as typeof fetch,
+  });
+
+  assert.equal(result.text, 'Tourist fallback reply');
+  assert.equal(result.authMode, 'tourist');
+  assert.equal(calls.filter((call) => call.url.endsWith('/character/session/create')).length, 2);
+  assert.equal((calls.find((call) => call.url.includes('/tourist_chat'))?.init.headers as Record<string, string>).token, undefined);
+});
+
 test('reports safe stream shape diagnostics when SeaArt returns no visible content', async () => {
   const fetchImpl = async (url: string | URL | Request) => {
     if (String(url).endsWith('/character/session/create')) {

@@ -215,7 +215,7 @@ export function extractSeaArtStreamText(raw: string): string {
   return inspectSeaArtStream(raw).text;
 }
 
-export async function requestSeaArtCharacterCompletion(input: {
+type SeaArtCharacterRequest = {
   token?: string;
   tenantId: string;
   characterId: string;
@@ -223,7 +223,15 @@ export async function requestSeaArtCharacterCompletion(input: {
   history: PrivateChatMessage[];
   characterName?: string;
   fetchImpl?: FetchLike;
-}): Promise<SeaArtCharacterCompletion> {
+};
+
+function isSeaArtAuthenticationError(error: string | undefined): boolean {
+  if (!error) return false;
+  return /\b(?:auth(?:entication)?|login|token|unauthori[sz]ed)\b.*\b(?:invalid|expired|required|failed|denied)\b/i.test(error)
+    || /\b(?:invalid|expired)\b.*\btoken\b/i.test(error);
+}
+
+async function requestSeaArtCharacterCompletionOnce(input: SeaArtCharacterRequest): Promise<SeaArtCharacterCompletion> {
   const fetchImpl = input.fetchImpl || fetch;
   const characterId = normalizeSeaArtCharacterId(input.characterId);
   const token = input.token?.trim() || '';
@@ -307,4 +315,16 @@ export async function requestSeaArtCharacterCompletion(input: {
       }));
     }
   }
+}
+
+export async function requestSeaArtCharacterCompletion(
+  input: SeaArtCharacterRequest,
+): Promise<SeaArtCharacterCompletion> {
+  const accountResult = await requestSeaArtCharacterCompletionOnce(input);
+  if (!input.token?.trim() || !isSeaArtAuthenticationError(accountResult.upstreamError)) {
+    return accountResult;
+  }
+
+  console.warn('[Private Chat API] SeaArt account token rejected; retrying character chat as tourist');
+  return requestSeaArtCharacterCompletionOnce({ ...input, token: undefined });
 }
