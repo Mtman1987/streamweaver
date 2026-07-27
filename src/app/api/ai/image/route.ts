@@ -8,6 +8,7 @@ import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
 import { generateImageWithPerchance } from '@/services/image-provider';
 import { generateImageWithPollinations } from '@/services/image-provider';
+import { isSeaArtModelMismatchError } from '@/services/image-provider';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
         : genMode === 'pollinations'
           ? generateImageWithPollinations
           : generateImageWithEdenAI;
-    const result = await generator({
+    const generationOptions = {
       prompt: parsed.data.prompt,
       tenantId,
       model: parsed.data.model || settings?.model || undefined,
@@ -140,7 +141,21 @@ export async function POST(request: NextRequest) {
         seed: settings?.seed,
         ...(parsed.data.providerParams || {}),
       },
-    });
+    };
+    let effectiveGenMode = genMode;
+    let result;
+    try {
+      result = await generator(generationOptions);
+    } catch (error) {
+      if (genMode !== 'seaart' || !isSeaArtModelMismatchError(error)) throw error;
+      console.warn('[AI Image] SeaArt rejected the saved model version after preset fallback; generating with EdenAI.');
+      result = await generateImageWithEdenAI({
+        ...generationOptions,
+        model: undefined,
+        providerParams: undefined,
+      });
+      effectiveGenMode = 'eden';
+    }
 
     const sources = [
       ...(Array.isArray(result.imageResourceUrls) ? result.imageResourceUrls : []),
@@ -167,10 +182,10 @@ export async function POST(request: NextRequest) {
       visibility: scope === 'private' ? 'private' : 'creator',
       actor: tenantId ? { userId: tenantId, username: tenantId, displayName: tenantId } : undefined,
       payload: {
-        summary: `Generated ${imageUrls.length || 0} image${imageUrls.length === 1 ? '' : 's'} with ${genMode}.`,
+        summary: `Generated ${imageUrls.length || 0} image${imageUrls.length === 1 ? '' : 's'} with ${effectiveGenMode}.`,
         tenantId: tenantId || 'global',
         prompt: parsed.data.prompt,
-        provider: genMode,
+        provider: effectiveGenMode,
         model: parsed.data.model || settings?.model || null,
         resolution: parsed.data.resolution || settings?.resolution || null,
         imageCount: imageUrls.length,
@@ -189,7 +204,7 @@ export async function POST(request: NextRequest) {
       imageResourceUrls: result.imageResourceUrls,
       persistedImageUrl: persistedImageUrls[0] || null,
       persistedImageUrls,
-      provider: genMode,
+      provider: effectiveGenMode,
       scope,
     });
   } catch (error: any) {

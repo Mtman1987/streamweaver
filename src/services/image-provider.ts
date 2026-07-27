@@ -173,6 +173,12 @@ function getSeaArtModel(options: ImageGenerationOptions): { key: string; modelNo
   return { key: preset ? key : hasCompleteExplicitPair ? String(configuredModel || 'custom-seaart-model').trim() : 'seaart-infinity', modelNo, modelVerNo, hd: fallback.hd };
 }
 
+export function isSeaArtModelMismatchError(error: unknown): boolean {
+  return /model version mismatch|model[_\s-]*ver(?:sion)? .* mismatch/i.test(
+    error instanceof Error ? error.message : String(error || ''),
+  );
+}
+
 function normalizeSeaArtDimensions(resolution: string | undefined, hd: boolean): { width: number; height: number } {
   let { width, height } = parseResolution(resolution);
   if (hd && width * height < 3686400) {
@@ -293,15 +299,41 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   const base = process.env.SEAART_API_BASE || 'https://www.seaart.ai';
   const createEndpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/api/v1/task/v2/text-to-img';
   const progressEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/api/v1/task/batch-progress';
-  const { key: modelKey, modelNo, modelVerNo, hd } = getSeaArtModel(options);
+  let { key: modelKey, modelNo, modelVerNo, hd } = getSeaArtModel(options);
   if (process.env.SEAART_CLI_DISABLED !== 'true') {
     try {
       const result = await generateImageWithSeaArtCli(options, { modelNo, modelVerNo });
       console.info(`[SeaArt] official CLI generation succeeded: model=${modelKey}`);
       return result;
     } catch (error) {
-      if (!(error instanceof SeaArtCliUnavailableError)) throw error;
-      console.warn(`[SeaArt] official CLI unavailable; using existing provider adapter: ${error.message}`);
+      if (isSeaArtModelMismatchError(error)) {
+        const fallback = seaArtModels['seaart-infinity'];
+        if (modelKey !== 'seaart-infinity') {
+          console.warn(`[SeaArt] CLI rejected stale model=${modelKey}; retrying with seaart-infinity.`);
+          try {
+            const result = await generateImageWithSeaArtCli(options, {
+              modelNo: fallback.modelNo,
+              modelVerNo: fallback.modelVerNo,
+            });
+            console.info('[SeaArt] official CLI fallback generation succeeded: model=seaart-infinity');
+            return result;
+          } catch (fallbackError) {
+            if (!isSeaArtModelMismatchError(fallbackError) && !(fallbackError instanceof SeaArtCliUnavailableError)) {
+              throw fallbackError;
+            }
+            console.warn(`[SeaArt] CLI fallback could not use the preset; trying the provider adapter: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+          }
+        } else {
+          console.warn('[SeaArt] CLI rejected the seaart-infinity version; trying the provider adapter.');
+        }
+        modelKey = 'seaart-infinity';
+        modelNo = fallback.modelNo;
+        modelVerNo = fallback.modelVerNo;
+        hd = fallback.hd;
+      } else {
+        if (!(error instanceof SeaArtCliUnavailableError)) throw error;
+        console.warn(`[SeaArt] official CLI unavailable; using existing provider adapter: ${error.message}`);
+      }
     }
   }
   const { width, height } = normalizeSeaArtDimensions(options.resolution, hd);

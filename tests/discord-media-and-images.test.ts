@@ -180,6 +180,12 @@ test('EdenAI retries a provider-access 404 with the next supported model', async
   }
 });
 
+test('SeaArt recognizes stale model-version failures that should use the safe preset', async () => {
+  const { isSeaArtModelMismatchError } = await import('../src/services/image-provider');
+  assert.equal(isSeaArtModelMismatchError(new Error('SeaArt CLI failed: Error: model version mismatch')), true);
+  assert.equal(isSeaArtModelMismatchError(new Error('SeaArt CLI failed: account unauthorized')), false);
+});
+
 test('optimized image prompts remain grounded in the exact requested subject and action', async () => {
   const { groundOptimizedImagePrompt } = await import('../src/services/image-command');
   const prompt = groundOptimizedImagePrompt(
