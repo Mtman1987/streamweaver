@@ -31,8 +31,8 @@ let genkitProcess: any = null;
 let pollingService: any = null;
 
 function broadcast(message: object, tenantId?: string) {
+    let count = 0;
     if (wss && wss.clients) {
-        let count = 0;
         wss.clients.forEach(client => {
             if (client.readyState === 1) { // WebSocket.OPEN
                 const clientTenantId = (client as any).__tenantId;
@@ -51,6 +51,11 @@ function broadcast(message: object, tenantId?: string) {
             }
         });
     }
+    const messageType = String((message as any)?.type || '');
+    if (messageType === 'pokemon-pack-opened' || messageType === 'quackverse-pack-opened' || messageType === 'public-image-generated') {
+        console.log(`[Overlay Broadcast] type=${messageType} tenant=${tenantId || 'global'} delivered=${count}`);
+    }
+    return count;
 }
 
 // Add broadcast to global scope for flows

@@ -7,6 +7,7 @@ import { readDiscordConfig } from '../lib/discord-config';
 import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
 import { getAdminTwitchId, tenantPath } from '../lib/tenant';
 import { readUserConfigSync } from '../lib/user-config';
+import { isKnownInternalSecret } from '../lib/internal-service-auth';
 
 function isAuthorized(headers: http.IncomingHttpHeaders): boolean {
     const key = headers['x-api-key'];
@@ -37,6 +38,14 @@ async function getDiscordBridgeTarget(tenantId?: string): Promise<string | null>
     return null;
 }
 
+function isInternalServiceAuthorized(headers: http.IncomingHttpHeaders): boolean {
+    const authorization = String(headers.authorization || '');
+    const bearer = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
+    const botSecretHeader = headers['x-bot-secret'];
+    const botSecret = Array.isArray(botSecretHeader) ? botSecretHeader[0] : String(botSecretHeader || '');
+    return isKnownInternalSecret(bearer || botSecret);
+}
+
 async function mirrorOutboundTwitchMessageToDiscord(input: {
     bridgeToDiscord: unknown;
     tenantId?: string;
@@ -64,7 +73,7 @@ async function mirrorOutboundTwitchMessageToDiscord(input: {
     }
 }
 
-export function createHttpHandler(broadcast: (message: object, tenantId?: string) => void): http.RequestListener {
+export function createHttpHandler(broadcast: (message: object, tenantId?: string) => number | void): http.RequestListener {
     // Import twitch-client at handler creation time (same module instance as server.ts)
     const twitchClientModule = require('../services/twitch-client');
 
@@ -93,6 +102,42 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
         }
         
         try {
+            if (pathname === '/api/overlay/broadcast' && req.method === 'POST') {
+                if (!isInternalServiceAuthorized(req.headers)) {
+                    res.writeHead(401, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Unauthorized' }));
+                    return;
+                }
+
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(body);
+                        const tenantId = String(parsed?.tenantId || '').trim();
+                        const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
+                        const allowedTypes = new Set(['pokemon-pack-opened', 'quackverse-pack-opened', 'public-image-generated']);
+                        if (!tenantId || messages.length === 0 || messages.some((message: any) => !message || !allowedTypes.has(String(message.type || '')))) {
+                            res.writeHead(400, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Invalid overlay broadcast request' }));
+                            return;
+                        }
+
+                        const delivered = messages.reduce(
+                            (total: number, message: object) => total + Number(broadcast(message, tenantId) || 0),
+                            0,
+                        );
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true, tenantId, delivered }));
+                    } catch (error) {
+                        console.error('[HTTP /api/overlay/broadcast] Error:', error);
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Invalid request body' }));
+                    }
+                });
+                return;
+            }
+
             if (pathname === '/api/auth/share' && req.method === 'GET') {
                 if (!isAuthorized(req.headers)) {
                     res.writeHead(401, { 'Content-Type': 'application/json' });
