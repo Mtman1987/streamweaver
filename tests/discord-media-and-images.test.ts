@@ -123,3 +123,21 @@ test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
   });
   assert.equal('provider_params' in payload, false);
 });
+
+test('public image overlay events support cached and current pack overlays', async () => {
+  const { buildPublicImageOverlayMessages } = await import('../src/services/image-command');
+  const messages = buildPublicImageOverlayMessages({
+    prompt: 'optimized turtle',
+    originalPrompt: 'turtle at the disco',
+    optimizedPrompt: 'optimized turtle',
+    provider: 'eden',
+    images: ['https://streamweaver.test/generated/turtle.jpg'],
+  }, 'viewer_name');
+
+  assert.deepEqual(messages.map((message) => message.type), [
+    'pokemon-show-card',
+    'public-image-generated',
+  ]);
+  assert.ok(messages.every((message) => message.payload.imageUrl === 'https://streamweaver.test/generated/turtle.jpg'));
+  assert.equal(messages[1].payload.prompt, 'turtle at the disco');
+});

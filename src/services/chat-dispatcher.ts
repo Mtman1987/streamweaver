@@ -2480,7 +2480,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             await reply(`@${actualUsername}, generating your image now...`, 'bot').catch(() => {});
 
             try {
-                const { runImageCommand } = await import('./image-command');
+                const { buildPublicImageOverlayMessages, runImageCommand } = await import('./image-command');
                 const result = await runImageCommand(actualMessage, tenantId, { scope: 'public' });
                 if (!result.images.length) {
                     await reply(`@${actualUsername}, image generation returned no image.`, 'bot').catch(() => {});
@@ -2489,16 +2489,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
                 const promptLabel = result.originalPrompt.replace(/\s+/g, ' ').trim().slice(0, 120);
                 if (typeof (global as any).broadcast === 'function') {
-                    (global as any).broadcast({
-                        type: 'public-image-generated',
-                        payload: {
-                            username: actualUsername,
-                            prompt: result.originalPrompt,
-                            imageUrl: result.images[0],
-                            images: result.images,
-                            provider: result.provider,
-                        },
-                    }, tenantId);
+                    for (const overlayMessage of buildPublicImageOverlayMessages(result, actualUsername)) {
+                        (global as any).broadcast(overlayMessage, tenantId);
+                    }
                 }
                 for (let index = 0; index < result.images.length; index += 1) {
                     const countLabel = result.images.length > 1 ? ` ${index + 1}/${result.images.length}` : '';
