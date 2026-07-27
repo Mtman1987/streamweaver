@@ -124,14 +124,59 @@ test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
   assert.equal('provider_params' in payload, false);
 });
 
-test('EdenAI replaces the retired Leonardo Phoenix model with the supported default', async () => {
+test('EdenAI replaces retired or inaccessible saved model names with the supported default', async () => {
   const { buildEdenAIImagePayload, DEFAULT_EDEN_IMAGE_MODEL } = await import('../src/services/image-provider');
-  const payload = buildEdenAIImagePayload({
+  const phoenixPayload = buildEdenAIImagePayload({
     prompt: 'astronaut doing the macarena',
   }, 'image/generation/leonardo/Leonardo Phoenix');
+  const seedreamPayload = buildEdenAIImagePayload({
+    prompt: 'astronaut doing the macarena',
+    model: 'image/generation/bytedance/seedream-3-0-t2i-250415',
+  }, DEFAULT_EDEN_IMAGE_MODEL);
 
-  assert.equal(payload.model, DEFAULT_EDEN_IMAGE_MODEL);
-  assert.equal(payload.input.text, 'astronaut doing the macarena');
+  assert.equal(phoenixPayload.model, DEFAULT_EDEN_IMAGE_MODEL);
+  assert.equal(seedreamPayload.model, DEFAULT_EDEN_IMAGE_MODEL);
+  assert.equal(phoenixPayload.input.text, 'astronaut doing the macarena');
+});
+
+test('EdenAI retries a provider-access 404 with the next supported model', async () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.EDENAI_API_KEY;
+  const attemptedModels: string[] = [];
+  process.env.EDENAI_API_KEY = 'test-key';
+
+  try {
+    global.fetch = (async (_input, init) => {
+      const payload = JSON.parse(String(init?.body || '{}'));
+      attemptedModels.push(payload.model);
+      if (attemptedModels.length === 1) {
+        return new Response(JSON.stringify({
+          status: 'fail',
+          output: null,
+          error: {
+            message: 'The model or endpoint custom-model does not exist or you do not have access to it.',
+            provider_status_code: 404,
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({
+        output: { items: [{ image_resource_url: 'https://images.test/fallback.png' }] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const { generateImageWithEdenAI, DEFAULT_EDEN_IMAGE_MODEL } = await import('../src/services/image-provider');
+    const result = await generateImageWithEdenAI({
+      prompt: 'astronaut doing the macarena',
+      model: 'image/generation/example/custom-model',
+    });
+
+    assert.deepEqual(attemptedModels, ['image/generation/example/custom-model', DEFAULT_EDEN_IMAGE_MODEL]);
+    assert.equal(result.imageResourceUrl, 'https://images.test/fallback.png');
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.EDENAI_API_KEY;
+    else process.env.EDENAI_API_KEY = originalKey;
+  }
 });
 
 test('optimized image prompts remain grounded in the exact requested subject and action', async () => {

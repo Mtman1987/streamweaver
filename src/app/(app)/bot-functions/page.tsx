@@ -17,6 +17,7 @@ import botAnimation from "@/lib/bot-animation.json";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS, normalizeTtsProvider, normalizeTtsVoice } from "@/lib/tts-voices";
 import { getClientTenantId } from "@/lib/client-tenant";
+import { generationModels } from "@/lib/generation-catalog";
 
 
 function isValidLottie(data: unknown): data is Record<string, unknown> {
@@ -122,6 +123,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
     const [isSavingMediaSlots, setIsSavingMediaSlots] = useState(false);
     const [genSettings, setGenSettings] = useState<GenerationSettings>(defaultGenSettings);
     const [isSavingGenSettings, setIsSavingGenSettings] = useState(false);
+    const popularImageModels = generationModels.filter((item) => item.provider === genSettings.mode && item.model);
     
     const idleFileInputRef = useRef<HTMLInputElement>(null);
     const talkingFileInputRef = useRef<HTMLInputElement>(null);
@@ -626,8 +628,27 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="image-model">Image model</Label>
-                            <Input id="image-model" value={genSettings.model} onChange={(event) => setGenSettings((prev) => ({ ...prev, model: event.target.value }))} placeholder="wai-ani-ponyxl or modelNo:modelVerNo" />
-                            <p className="text-xs text-white/50">SeaArt accepts saved presets, aliases, or custom modelNo:modelVerNo pairs.</p>
+                            <Select
+                                value={popularImageModels.some((item) => item.model === genSettings.model) ? genSettings.model : '__default'}
+                                onValueChange={(value) => setGenSettings((prev) => ({ ...prev, model: value === '__default' ? '' : value }))}
+                            >
+                                <SelectTrigger id="image-model">
+                                    <SelectValue placeholder="Choose a popular model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__default">Recommended automatic default</SelectItem>
+                                    {popularImageModels.map((item) => (
+                                        <SelectItem key={item.id} value={item.model!}>{item.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Input
+                                aria-label="Custom image model override"
+                                value={popularImageModels.some((item) => item.model === genSettings.model) ? '' : genSettings.model}
+                                onChange={(event) => setGenSettings((prev) => ({ ...prev, model: event.target.value }))}
+                                placeholder={genSettings.mode === 'seaart' ? 'Optional custom modelNo:modelVerNo' : 'Optional advanced model override'}
+                            />
+                            <p className="text-xs text-white/50">Choose a tested popular model above, or enter an advanced provider model override.</p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="seaart-character-id">SeaArt character ID</Label>

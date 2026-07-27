@@ -10,16 +10,16 @@ export default function GenerationModelsPage() {
   const { toast } = useToast();
   const [savingId, setSavingId] = useState('');
 
-  async function applyModel(model: string) {
-    setSavingId(model);
+  async function applyModel(item: (typeof generationModels)[number]) {
+    setSavingId(item.id);
     try {
       const res = await fetch('/api/gen-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
+        body: JSON.stringify({ model: item.model || '', mode: item.provider }),
       });
       if (!res.ok) throw new Error('save failed');
-      toast({ title: 'Model selected', description: `Saved default model: ${model}` });
+      toast({ title: 'Model selected', description: `Saved default model: ${item.name}` });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to save default model' });
     } finally {
@@ -42,7 +42,7 @@ export default function GenerationModelsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {item.recommended ? <p className="text-xs text-muted-foreground">Recommended: {item.recommended}</p> : null}
-              <Button onClick={() => applyModel(item.id)} disabled={savingId === item.id}>
+              <Button onClick={() => applyModel(item)} disabled={savingId === item.id}>
                 {savingId === item.id ? 'Saving...' : 'Use this model'}
               </Button>
             </CardContent>

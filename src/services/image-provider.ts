@@ -188,11 +188,16 @@ function getEdenAIKey(tenantId?: string): string {
   return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
 }
 
-export const DEFAULT_EDEN_IMAGE_MODEL = 'image/generation/bytedance/seedream-3-0-t2i-250415';
+export const DEFAULT_EDEN_IMAGE_MODEL = 'image/generation/leonardo/SDXL 0.9';
+const EDEN_IMAGE_MODEL_FALLBACK = 'image/generation/bytedance';
 
 export function normalizeEdenImageModel(model?: string): string {
   const value = String(model || '').trim();
-  if (!value || /^image\/generation\/leonardo\/leonardo phoenix$/i.test(value)) {
+  if (
+    !value ||
+    /^image\/generation\/leonardo\/leonardo phoenix$/i.test(value) ||
+    /^image\/generation\/bytedance\/seedream-3-0-t2i-250415$/i.test(value)
+  ) {
     return DEFAULT_EDEN_IMAGE_MODEL;
   }
   return value;
@@ -241,28 +246,44 @@ export async function generateImageWithEdenAI(options: ImageGenerationOptions): 
   // providerParams contains SeaArt-specific controls such as cfg, steps, seed,
   // and LoRA settings. Eden forwards unknown provider variables to Leonardo,
   // where they make the entire generation fail instead of being ignored.
-  const payload = buildEdenAIImagePayload(options, getDefaultImageModel(options.tenantId));
+  const requestedModel = normalizeEdenImageModel(options.model || getDefaultImageModel(options.tenantId));
+  const models = [requestedModel, DEFAULT_EDEN_IMAGE_MODEL, EDEN_IMAGE_MODEL_FALLBACK]
+    .filter((model, index, all) => all.indexOf(model) === index);
+  let lastFailure = '';
 
-  const response = await fetch('https://api.edenai.run/v3/universal-ai', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  for (const model of models) {
+    const payload = buildEdenAIImagePayload({ ...options, model }, DEFAULT_EDEN_IMAGE_MODEL);
+    const response = await fetch('https://api.edenai.run/v3/universal-ai', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
-  if (!response.ok) {
-    throw new Error(`EdenAI image generation failed: ${response.status} ${JSON.stringify(data).slice(0, 500)}`);
+    const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+    const result = extractImageResult(data);
+    if (response.ok && (result.image || result.imageResourceUrl)) {
+      if (model !== requestedModel) {
+        console.warn(`[AI Image] EdenAI model unavailable; generated with fallback model=${model}`);
+      }
+      return result;
+    }
+
+    lastFailure = `${response.status} ${JSON.stringify(data).slice(0, 500)}`;
+    const providerStatus = Number(data?.error?.provider_status_code || 0);
+    const errorMessage = String(data?.error?.message || data?.error || '');
+    const modelUnavailable = response.status === 404 ||
+      providerStatus === 404 ||
+      /model or endpoint .* does not exist|do not have access/i.test(errorMessage);
+    if (!modelUnavailable) {
+      const failureKind = response.ok ? 'returned no image' : 'failed';
+      throw new Error(`EdenAI image generation ${failureKind}: ${lastFailure}`);
+    }
   }
 
-  const result = extractImageResult(data);
-  if (!result.image && !result.imageResourceUrl) {
-    throw new Error(`EdenAI image generation returned no image: ${JSON.stringify(data).slice(0, 500)}`);
-  }
-
-  return result;
+  throw new Error(`EdenAI image generation failed after model fallback: ${lastFailure}`);
 }
 
 export async function generateImageWithSeaArt(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
