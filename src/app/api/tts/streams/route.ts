@@ -39,7 +39,10 @@ async function describeTenant(tenantId: string) {
 }
 
 export async function GET() {
-  const tenantIds = await listTenants();
+  const tenantIds = (await listTenants()).filter((tenantId) => (
+    /^\d{5,20}$/.test(tenantId)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)
+  ));
   const streams = await Promise.all(tenantIds.map(describeTenant));
   streams.sort((a, b) => (
     String(b.lastActiveAt || '').localeCompare(String(a.lastActiveAt || ''))
