@@ -28,6 +28,9 @@ const availableVoices = TTS_VOICE_OPTIONS;
 
 interface GenerationSettings {
     mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
+    publicImageAccess: 'everyone' | 'mods' | 'off';
+    publicContentModeration: boolean;
+    privateContentModeration: boolean;
     model: string;
     seaartCharacterId: string;
     lora: string;
@@ -52,6 +55,9 @@ const defaultImagePromptTemplate = [
 
 const defaultGenSettings: GenerationSettings = {
     mode: 'eden',
+    publicImageAccess: 'everyone',
+    publicContentModeration: true,
+    privateContentModeration: false,
     model: '',
     seaartCharacterId: '',
     lora: '',
@@ -591,6 +597,45 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     <CardDescription>Configure the DM image workflow used by !img.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2">
+                            <Label htmlFor="public-image-access">Public !img access</Label>
+                            <Select
+                                value={genSettings.publicImageAccess}
+                                onValueChange={(value) => setGenSettings((prev) => ({ ...prev, publicImageAccess: value as GenerationSettings['publicImageAccess'] }))}
+                            >
+                                <SelectTrigger id="public-image-access">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="everyone">On — everyone</SelectItem>
+                                    <SelectItem value="mods">Mods only</SelectItem>
+                                    <SelectItem value="off">Off</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-white/50">Controls public Twitch and Discord image commands for this broadcaster.</p>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                            <div className="space-y-0.5 pr-3">
+                                <div className="text-sm font-medium">Moderate public prompts</div>
+                                <div className="text-xs text-muted-foreground">Recommended for anything that can appear on stream.</div>
+                            </div>
+                            <Switch
+                                checked={genSettings.publicContentModeration}
+                                onCheckedChange={(checked) => setGenSettings((prev) => ({ ...prev, publicContentModeration: checked }))}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                            <div className="space-y-0.5 pr-3">
+                                <div className="text-sm font-medium">Moderate private prompts</div>
+                                <div className="text-xs text-muted-foreground">Independent from public safety; off by default for private generation.</div>
+                            </div>
+                            <Switch
+                                checked={genSettings.privateContentModeration}
+                                onCheckedChange={(checked) => setGenSettings((prev) => ({ ...prev, privateContentModeration: checked }))}
+                            />
+                        </div>
+                    </div>
                     <div className="grid gap-4 md:grid-cols-3">
                         <div className="space-y-2">
                             <Label htmlFor="image-provider">Provider</Label>

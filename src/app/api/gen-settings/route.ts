@@ -7,6 +7,9 @@ import { z } from 'zod';
 
 const schema = z.object({
   mode: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
+  publicImageAccess: z.enum(['everyone', 'mods', 'off']).optional(),
+  publicContentModeration: z.coerce.boolean().optional(),
+  privateContentModeration: z.coerce.boolean().optional(),
   model: z.string().trim().max(200).optional(),
   seaartCharacterId: z.string().trim().max(200).optional(),
   lora: z.string().trim().max(200).optional(),

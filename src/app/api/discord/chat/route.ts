@@ -35,7 +35,8 @@ import {
   getMtSupportPrompt,
   submitMtSupportReport,
 } from '@/services/mt-support-report';
-import { runImageCommand } from '@/services/image-command';
+import { canUsePublicImageGeneration, runImageCommand } from '@/services/image-command';
+import { isImagePromptModerationError } from '@/services/image-content-moderation';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
@@ -583,7 +584,12 @@ export async function POST(request: NextRequest) {
         } catch (error) {
           console.warn(`[Discord Chat:${tenantId}] !img failed:`, error);
           if (channelId) {
-            await sendDiscordBotMessage(channelId, 'Image generation failed. Try again in a moment.');
+            await sendDiscordBotMessage(
+              channelId,
+              isImagePromptModerationError(error)
+                ? 'That image request was blocked by your private content safety settings.'
+                : 'Image generation failed. Try again in a moment.',
+            );
           }
           await markHandled();
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'image-failed' });
@@ -786,6 +792,20 @@ export async function POST(request: NextRequest) {
         }
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image' });
       }
+      const imageSettings = await readGenerationSettings(tenantId);
+      const canUsePublicImages = canUsePublicImageGeneration(
+        imageSettings.publicImageAccess,
+        Boolean(effectiveIsMod || effectiveIsAdmin || effectiveIsOwner),
+      );
+      if (!canUsePublicImages) {
+        if (channelId) {
+          const accessMessage = imageSettings.publicImageAccess === 'off'
+            ? 'Image generation is turned off here.'
+            : 'Image generation is currently limited to moderators.';
+          await sendDiscordRouteReplyOrCollect(channelId, accessMessage);
+        }
+        return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', error: 'image-access-denied' });
+      }
 
       if (channelId) {
         await sendDiscordRouteReplyOrCollect(channelId, "I'm processing your image now, Commander.");
@@ -797,7 +817,12 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.warn(`[Discord Chat:${tenantId}] !img guild failed:`, error);
         if (channelId) {
-          await sendDiscordRouteReplyOrCollect(channelId, 'Image generation failed. Try again in a moment.');
+          await sendDiscordRouteReplyOrCollect(
+            channelId,
+            isImagePromptModerationError(error)
+              ? 'That image request was blocked by this community’s content safety settings.'
+              : 'Image generation failed. Try again in a moment.',
+          );
         }
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', error: 'image-failed' });
       }

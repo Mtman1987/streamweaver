@@ -57,6 +57,7 @@ test('image command preserves all requested durable image results', async () => 
     await writeFile(path.join(settingsDir, 'gen-settings.json'), JSON.stringify({
       mode: 'pollinations',
       optimizeImagePrompts: false,
+      publicContentModeration: false,
       imageCount: 4,
     }));
 
@@ -66,7 +67,7 @@ test('image command preserves all requested durable image results', async () => 
     }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
 
     const { runImageCommand } = await import('../src/services/image-command');
-    const result = await runImageCommand('!img --count 4 a moonlit station', 'tenant-images');
+    const result = await runImageCommand('!img --count 4 a moonlit station', 'tenant-images', { scope: 'private' });
     assert.equal(result.images.length, 4);
     assert.deepEqual(result.images.map((url) => new URL(url).pathname.split('/').pop()), ['1.png', '2.png', '3.png', '4.png']);
   } finally {
@@ -189,6 +190,41 @@ test('optimized image prompts remain grounded in the exact requested subject and
   assert.match(prompt, /PRIMARY REQUEST \(must be clearly visible\): astronaut doing the macarena/i);
   assert.match(prompt, /every subject and action/i);
   assert.match(prompt, /Do not replace .* with scenery/i);
+});
+
+test('public image access supports everyone, moderator-only, and off modes', async () => {
+  const { canUsePublicImageGeneration } = await import('../src/services/image-command');
+  const { getDefaultGenerationSettings } = await import('../src/lib/gen-settings-store');
+  const defaults = getDefaultGenerationSettings();
+  assert.equal(defaults.publicImageAccess, 'everyone');
+  assert.equal(defaults.publicContentModeration, true);
+  assert.equal(defaults.privateContentModeration, false);
+  assert.equal(canUsePublicImageGeneration('everyone', false), true);
+  assert.equal(canUsePublicImageGeneration('mods', false), false);
+  assert.equal(canUsePublicImageGeneration('mods', true), true);
+  assert.equal(canUsePublicImageGeneration('off', true), false);
+});
+
+test('Eden moderation reports flagged image prompts and their categories', async () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.EDENAI_API_KEY;
+  process.env.EDENAI_API_KEY = 'test-key';
+  try {
+    global.fetch = (async () => new Response(JSON.stringify({
+      results: [{
+        flagged: true,
+        categories: { sexual: true, violence: false },
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    const { moderateImagePrompt } = await import('../src/services/image-content-moderation');
+    const result = await moderateImagePrompt('unsafe test prompt', 'tenant-moderation');
+    assert.deepEqual(result, { flagged: true, categories: ['sexual'] });
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.EDENAI_API_KEY;
+    else process.env.EDENAI_API_KEY = originalKey;
+  }
 });
 
 test('public image overlay events support cached and current pack overlays', async () => {

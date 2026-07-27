@@ -4,6 +4,9 @@ import { tenantPath } from '@/lib/tenant';
 
 export type GenerationSettings = {
   mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
+  publicImageAccess: 'everyone' | 'mods' | 'off';
+  publicContentModeration: boolean;
+  privateContentModeration: boolean;
   model: string;
   seaartCharacterId: string;
   lora: string;
@@ -49,6 +52,9 @@ export const DEFAULT_IMAGE_PROMPT_TEMPLATE = IMAGE_PROMPT_TEMPLATES.general;
 
 const defaults: GenerationSettings = {
   mode: 'eden',
+  publicImageAccess: 'everyone',
+  publicContentModeration: true,
+  privateContentModeration: false,
   model: '',
   seaartCharacterId: '',
   lora: '',
@@ -74,6 +80,9 @@ export function getDefaultGenerationSettings(): GenerationSettings {
 
 function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
   const mode = input.mode === 'seaart' || input.mode === 'perchance' || input.mode === 'pollinations' ? input.mode : 'eden';
+  const publicImageAccess = input.publicImageAccess === 'mods' || input.publicImageAccess === 'off'
+    ? input.publicImageAccess
+    : 'everyone';
   const imageCount = Math.max(1, Math.min(4, Number(input.imageCount || defaults.imageCount) || defaults.imageCount));
   const loraStrength = Math.max(0, Math.min(2, Number(input.loraStrength ?? defaults.loraStrength) || 0));
   const steps = Math.max(1, Math.min(150, Number(input.steps || defaults.steps) || defaults.steps));
@@ -82,6 +91,9 @@ function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
 
   return {
     mode,
+    publicImageAccess,
+    publicContentModeration: input.publicContentModeration !== false,
+    privateContentModeration: input.privateContentModeration === true,
     model: String(input.model || '').trim(),
     seaartCharacterId: String(input.seaartCharacterId || '').trim(),
     lora: String(input.lora || '').trim(),

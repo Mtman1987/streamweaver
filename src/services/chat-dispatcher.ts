@@ -2476,6 +2476,20 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 await reply(`@${actualUsername}, image generation is not connected for this channel.`, 'bot').catch(() => {});
                 return;
             }
+            const { readGenerationSettings } = await import('../lib/gen-settings-store');
+            const { canUsePublicImageGeneration } = await import('./image-command');
+            const imageSettings = await readGenerationSettings(tenantId);
+            const canUsePublicImages = canUsePublicImageGeneration(
+                imageSettings.publicImageAccess,
+                Boolean(tags.mod || tags.badges?.broadcaster),
+            );
+            if (!canUsePublicImages) {
+                const accessMessage = imageSettings.publicImageAccess === 'off'
+                    ? 'image generation is turned off for this channel.'
+                    : 'image generation is currently limited to moderators.';
+                await reply(`@${actualUsername}, ${accessMessage}`, 'bot').catch(() => {});
+                return;
+            }
 
             await reply(`@${actualUsername}, generating your image now...`, 'bot').catch(() => {});
 
@@ -2502,7 +2516,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 }
             } catch (error) {
                 console.warn(`[Dispatcher:${tenantId}] Twitch !img failed for @${actualUsername}:`, error);
-                await reply(`@${actualUsername}, image generation failed. Try again in a moment.`, 'bot').catch(() => {});
+                const { isImagePromptModerationError } = await import('./image-content-moderation');
+                const failureMessage = isImagePromptModerationError(error)
+                    ? `@${actualUsername}, that image request was blocked by this channel's content safety settings.`
+                    : `@${actualUsername}, image generation failed. Try again in a moment.`;
+                await reply(failureMessage, 'bot').catch(() => {});
             }
             return;
         }

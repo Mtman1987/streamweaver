@@ -2,6 +2,7 @@ import { generateAIResponse } from '@/services/ai-provider';
 import { readGenerationSettings, type GenerationSettings } from '@/lib/gen-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { ImagePromptModerationError, moderateImagePrompt } from '@/services/image-content-moderation';
 
 type ProviderMode = GenerationSettings['mode'];
 
@@ -23,6 +24,13 @@ export type ImageCommandResult = {
 export type ImageCommandOptions = {
   scope?: 'public' | 'private';
 };
+
+export function canUsePublicImageGeneration(
+  access: GenerationSettings['publicImageAccess'],
+  isModeratorOrBroadcaster: boolean,
+): boolean {
+  return access === 'everyone' || (access === 'mods' && isModeratorOrBroadcaster);
+}
 
 export function buildPublicImageOverlayMessages(result: ImageCommandResult, username: string) {
   const imageUrl = result.images[0];
@@ -133,6 +141,16 @@ export async function runImageCommand(input: string, tenantId: string, options: 
   }
 
   const settings = await readGenerationSettings(tenantId);
+  const scope = options.scope || 'public';
+  const moderationEnabled = scope === 'private'
+    ? settings.privateContentModeration
+    : settings.publicContentModeration;
+  if (moderationEnabled) {
+    const moderation = await moderateImagePrompt(parsed.prompt, tenantId);
+    if (moderation.flagged) {
+      throw new ImagePromptModerationError(moderation.categories);
+    }
+  }
   const shouldOptimize = settings.optimizeImagePrompts && !parsed.raw;
   const optimizedPrompt = shouldOptimize
     ? await optimizeImagePrompt(parsed.prompt, settings, tenantId).catch((error) => {
@@ -153,7 +171,7 @@ export async function runImageCommand(input: string, tenantId: string, options: 
       model: settings.model || undefined,
       resolution: settings.resolution || undefined,
       numImages: parsed.count || settings.imageCount || 1,
-      scope: options.scope || 'public',
+      scope,
       providerParams: {
         lora: settings.lora || undefined,
         loraStrength: settings.lora ? settings.loraStrength : undefined,
