@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -17,15 +17,30 @@ test('Discord embeds keep the idle avatar in the thumbnail and selected lane GIF
       PRIVATE_DM_GIF_URL: 'https://media.test/private.gif',
       PUBLIC_DISCORD_GIF_URL: 'https://media.test/public.gif',
     }));
+    const avatarDir = path.join(persistRoot, 'tenants', 'tenant-media', 'data', 'avatars');
+    await mkdir(avatarDir, { recursive: true });
+    await writeFile(path.join(avatarDir, 'idle.gif'), await readFile(path.join(process.cwd(), 'public', 'avatars', 'idle.gif')));
 
     const { buildDiscordBotEmbed } = await import('../src/services/discord-branding');
+    const {
+      DISCORD_AVATAR_THUMBNAIL_MAX_BYTES,
+      readDiscordAvatarThumbnail,
+    } = await import('../src/services/discord-avatar-media');
     const privateEmbed = await buildDiscordBotEmbed({ description: 'private', tenantId: 'tenant-media', mediaSlot: 'private' });
     const publicEmbed = await buildDiscordBotEmbed({ description: 'public', tenantId: 'tenant-media', mediaSlot: 'public' });
+    const optimizedAvatar = await readDiscordAvatarThumbnail('tenant-media');
 
-    assert.match(privateEmbed.thumbnail.url, /\/api\/avatars\?type=idle&format=gif&tenant=tenant-media$/);
+    assert.match(privateEmbed.thumbnail.url, /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
     assert.equal(privateEmbed.image?.url, 'https://media.test/private.gif');
-    assert.match(publicEmbed.thumbnail.url, /\/api\/avatars\?type=idle&format=gif&tenant=tenant-media$/);
+    assert.match(publicEmbed.thumbnail.url, /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
     assert.equal(publicEmbed.image?.url, 'https://media.test/public.gif');
+    assert.ok(optimizedAvatar);
+    assert.ok(optimizedAvatar.length < DISCORD_AVATAR_THUMBNAIL_MAX_BYTES);
+    const sharp = (await import('sharp')).default;
+    const metadata = await sharp(optimizedAvatar, { animated: true }).metadata();
+    assert.equal(metadata.format, 'gif');
+    assert.ok((metadata.pages || 1) > 1);
+    assert.ok((metadata.width || 0) <= 128);
   } finally {
     await rm(persistRoot, { recursive: true, force: true });
   }

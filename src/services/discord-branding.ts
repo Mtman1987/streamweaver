@@ -5,6 +5,7 @@ import { listTenants } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getDiscordMediaPublicPath } from '@/lib/discord-media-store';
 import { getTwitchUser } from './twitch';
+import { getDiscordAvatarVersion } from './discord-avatar-media';
 
 const STREAMWEAVER_BRAND_NAME = 'StreamWeaver';
 const DISCORD_BOT_PROFILE_CACHE_MS = 60 * 60 * 1000;
@@ -40,9 +41,13 @@ function firstUrl(...values: unknown[]): string {
 
 export function buildBotAvatarUrl(tenantId?: string): string {
     const baseUrl = getConfiguredAppUrl();
-    const tenantParam = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-    // Use the same direct GIF endpoint as the TTS player instead of the JS overlay page.
-    return `${baseUrl}/api/avatars?type=idle&format=gif${tenantParam}`;
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenant', tenantId);
+    params.set('v', getDiscordAvatarVersion(tenantId));
+    // Discord's image proxy can flatten large extensionless GIF responses.
+    // Give it a compact, versioned media URL that ends in .gif while overlays
+    // continue using the original full-resolution animation.
+    return `${baseUrl}/api/discord-avatar/idle.gif?${params.toString()}`;
 }
 
 type DiscordMediaSlot = 'public' | 'private';
