@@ -3,6 +3,7 @@ import { OBSBridge } from '@/components/obs-bridge';
 import { parseSessionCookie } from '@/lib/session-cookie';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { WorkspaceThemeProvider } from '@/components/workspace-theme-provider';
 
 export default async function AppLayout({
   children,
@@ -17,9 +18,11 @@ export default async function AppLayout({
   if (!session) redirect('/login');
 
   return (
-    <AppShell>
-      <OBSBridge />
-      {children}
-    </AppShell>
+    <WorkspaceThemeProvider>
+      <AppShell>
+        <OBSBridge />
+        {children}
+      </AppShell>
+    </WorkspaceThemeProvider>
   );
 }

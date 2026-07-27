@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
+import { useWorkspaceTheme } from '@/components/workspace-theme-provider';
 
 type Section = 'app' | 'twitch' | 'discord' | 'game' | 'economy' | 'automation' | 'obs' | 'redeems';
 
@@ -49,6 +51,7 @@ function unflattenObject(input: Record<string, string>): Record<string, any> {
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const workspaceTheme = useWorkspaceTheme();
   const [apiKey, setApiKey] = useState('');
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -144,6 +147,38 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>SpaceMountain Workspace Theme</CardTitle>
+          <CardDescription>
+            Apply your signed-in SpaceMountain colors, radius, density, and motion settings throughout StreamWeaver.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <Label htmlFor="follow-workspace-theme">Follow SpaceMountain theme</Label>
+            <Switch
+              id="follow-workspace-theme"
+              checked={workspaceTheme.followWorkspaceTheme}
+              disabled={workspaceTheme.status === 'saving'}
+              onCheckedChange={(checked) => void workspaceTheme.setFollowWorkspaceTheme(checked)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {workspaceTheme.status === 'loading' && 'Loading your shared workspace theme…'}
+            {workspaceTheme.status === 'saving' && 'Saving your theme preference to SPMT…'}
+            {workspaceTheme.status === 'applied' && 'Using your SpaceMountain workspace theme.'}
+            {workspaceTheme.status === 'local' && 'Using StreamWeaver’s local visual theme.'}
+          </p>
+          {workspaceTheme.error && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/50 p-3 text-sm text-destructive">
+              <span>{workspaceTheme.error}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void workspaceTheme.retry()}>Retry</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>App Settings</CardTitle>
