@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpaceMountain Companion</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">SPACEMOUNTAIN</p>
+      <h1>Companion Control Center</h1>
+      <p>Local overlays, OBS, audio, media, and secure cloud commands.</p>
+    </div>
+    <div id="status" class="status-grid"></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Overlay and popouts</h2>
+      <div class="actions">
+        <button data-window-action="overlay.show">Show overlay</button>
+        <button data-window-action="overlay.hide" class="secondary">Hide overlay</button>
+      </div>
+      <label>Overlay URL <input id="overlay-url" type="url"></label>
+      <label class="check"><input id="overlay-click-through" type="checkbox"> Click-through overlay</label>
+      <div id="popouts" class="cards"></div>
+    </section>
+
+    <section>
+      <h2>OBS and audio</h2>
+      <div class="grid two">
+        <label>OBS WebSocket URL <input id="obs-url" placeholder="ws://127.0.0.1:4455"></label>
+        <label>OBS password <input id="obs-password" type="password" autocomplete="new-password" placeholder="Stored with OS encryption"></label>
+      </div>
+      <label class="check"><input id="obs-enabled" type="checkbox"> Enable OBS connection</label>
+      <div class="actions">
+        <select id="obs-scenes"><option value="">Select OBS scene</option></select>
+        <button id="obs-set-scene">Set scene</button>
+      </div>
+      <div class="grid two">
+        <label>Companion volume <input id="audio-volume" type="range" min="0" max="1" step="0.05"></label>
+        <label class="check"><input id="audio-muted" type="checkbox"> Mute managed windows</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Local media and FFmpeg</h2>
+      <div class="actions">
+        <button id="choose-library" class="secondary">Choose library</button>
+        <button id="import-media">Import media</button>
+      </div>
+      <p id="library-path" class="mono"></p>
+      <div id="media-list" class="media-list"></div>
+      <div id="jobs" class="media-list"></div>
+    </section>
+
+    <section>
+      <h2>Secure relay and startup</h2>
+      <div class="grid two">
+        <label>Outbound WSS relay <input id="relay-url" placeholder="wss://spmt.live/api/companion/relay"></label>
+        <label>Paired device ID <input id="relay-device-id" autocomplete="off" placeholder="Shown by SPMT when pairing"></label>
+        <label>Pairing token <input id="relay-token" type="password" autocomplete="new-password" placeholder="Stored with OS encryption"></label>
+      </div>
+      <label class="check"><input id="relay-enabled" type="checkbox"> Enable outbound command relay</label>
+      <label class="check"><input id="open-at-login" type="checkbox"> Start Companion with Windows</label>
+      <label class="check"><input id="start-minimized" type="checkbox"> Start in the system tray</label>
+    </section>
+  </main>
+
+  <footer>
+    <button id="open-streamweaver" class="secondary">Open StreamWeaver</button>
+    <span id="message"></span>
+    <button id="save">Save companion settings</button>
+  </footer>
+  <script src="./renderer.js"></script>
+</body>
+</html>

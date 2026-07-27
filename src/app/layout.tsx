@@ -4,6 +4,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import { OverlayDocumentMode } from '@/components/overlay-document-mode';
+import { SpaceMountainEmbedBridge } from '@/components/spacemountain-embed-bridge';
 
 // import { applyUserConfigToProcessEnvSync } from '@/lib/user-config';
 // import { DashboardConnection } from '@/components/dashboard-connection';
@@ -47,6 +48,7 @@ export default function RootLayout({
         <div className="sw-starfield sw-starfield-b" />
         <div className="sw-starfield sw-starfield-c" />
         <OverlayDocumentMode />
+        <SpaceMountainEmbedBridge />
         {/* <DashboardConnection /> */}
         <SidebarProvider>
         {children}

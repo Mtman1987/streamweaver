@@ -1,0 +1,16 @@
+{
+  "name": "@spmt/companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check ui/renderer.js"
+  },
+  "dependencies": {
+    "electron": "^43.2.0",
+    "obs-websocket-js": "^5.0.6",
+    "ws": "^8.18.3"
+  }
+}

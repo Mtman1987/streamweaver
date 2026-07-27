@@ -2,6 +2,7 @@
 
 # Dependencies
 /node_modules
+/companion/node_modules/
 /.pnp
 .pnp.js
 .yarn/

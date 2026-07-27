@@ -18,6 +18,7 @@ export async function DELETE(request: NextRequest) {
   const response = NextResponse.json({ success: true });
   response.cookies.delete('streamweaver-session');
   response.cookies.delete('streamweaver-spmt-token');
+  response.cookies.delete('streamweaver-spmt-refresh');
   response.cookies.delete('streamweaver-spmt-state');
   return response;
 }

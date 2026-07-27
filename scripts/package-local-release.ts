@@ -20,6 +20,13 @@ const readme = `# StreamWeaver Local App
    - Source distribution: run \`npm start\`
 3. Open http://127.0.0.1:3100 if your browser does not open automatically.
 
+## Tray Companion
+
+The source release includes the \`companion\` folder. From that folder, run
+\`npm install\` and \`npm start\` to supervise StreamWeaver from the system
+tray, manage overlays/popouts, connect OBS, and use the local media library.
+The signed desktop installer remains a separate production release gate.
+
 ## Local-only model
 
 - HTTP and WebSocket services bind to \`127.0.0.1\` only.
@@ -99,6 +106,25 @@ async function stageRelease(platform: PlatformTarget): Promise<void> {
     await copyIfExists(path.join(rootDir, 'public'), path.join(releaseDir, 'public'));
     await copyIfExists(path.join(rootDir, '.next'), path.join(releaseDir, '.next'));
     await copyIfExists(path.join(rootDir, 'next.config.js'), path.join(releaseDir, 'next.config.js'));
+    const companionFiles = [
+      'package.json',
+      'package-lock.json',
+      'main.cjs',
+      'preload.cjs',
+      'README.md',
+      'lib',
+      'ui',
+    ];
+    for (const entry of companionFiles) {
+      await copyIfExists(
+        path.join(rootDir, 'companion', entry),
+        path.join(releaseDir, 'companion', entry),
+      );
+    }
+    await copyIfExists(
+      path.join(rootDir, 'docs', 'COMPANION_CAPABILITY_SECURITY_CONTRACT.md'),
+      path.join(releaseDir, 'docs', 'COMPANION_CAPABILITY_SECURITY_CONTRACT.md'),
+    );
   }
 
   console.log(`[package-local-release] staged ${releaseDir}`);

@@ -92,6 +92,15 @@ export async function GET(request: NextRequest) {
     path: '/',
     maxAge: 7 * 24 * 60 * 60,
   });
+  if (tokenPayload.refresh_token) {
+    response.cookies.set('streamweaver-spmt-refresh', String(tokenPayload.refresh_token), {
+      httpOnly: true,
+      secure: appOrigin.startsWith('https://'),
+      sameSite: 'lax',
+      path: '/',
+      maxAge: Number(tokenPayload.refresh_expires_in || 30 * 24 * 60 * 60),
+    });
+  }
   response.cookies.delete('streamweaver-spmt-state');
   response.cookies.delete('streamweaver-spmt-next');
   console.info('[SPMT OAuth] Login session issued', { tenantId, spmtUserId: String(user.id) });
