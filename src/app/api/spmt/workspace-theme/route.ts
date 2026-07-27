@@ -14,21 +14,25 @@ export async function GET(request: NextRequest) {
     }, { status: 401 });
   }
 
-  const response = await fetch(`${SPMT_BASE_URL}/api/workspace-profile`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    cache: 'no-store',
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.profile) {
-    const expired = response.status === 401 || response.status === 403;
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  const [profileResponse, overlayResponse] = await Promise.all([
+    fetch(`${SPMT_BASE_URL}/api/workspace-profile`, { headers, cache: 'no-store' }),
+    fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store' }),
+  ]);
+  const [payload, overlayPayload] = await Promise.all([
+    profileResponse.json().catch(() => null),
+    overlayResponse.json().catch(() => null),
+  ]);
+  if (!profileResponse.ok || !payload?.profile) {
+    const expired = profileResponse.status === 401 || profileResponse.status === 403;
     return NextResponse.json({
       error: expired ? 'SpaceMountain connection expired' : (payload?.error || 'Workspace theme unavailable'),
       ...(expired ? { reconnectUrl: '/auth/spmt/start?next=/settings' } : {}),
-    }, { status: response.status || 502 });
+    }, { status: profileResponse.status || 502 });
   }
 
   return NextResponse.json({
-    tokens: workspaceThemeTokens(payload.profile, 'streamweaver'),
+    tokens: workspaceThemeTokens(payload.profile, 'streamweaver', overlayResponse.ok ? overlayPayload?.layout || null : null),
     revision: payload.profile.revision,
     updatedAt: payload.profile.updatedAt,
   });
