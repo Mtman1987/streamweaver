@@ -10,6 +10,7 @@ import {
 } from '../src/lib/tts-voices';
 import {
   TTS_CONSUMER_PRESENCE_TTL_MS,
+  forgetTtsConsumerMemoryForTest,
   hasActiveTtsConsumer,
   touchTtsConsumer,
 } from '../src/services/tts-consumer-presence';
@@ -52,6 +53,13 @@ test('automatic paid TTS requires a recent tenant consumer heartbeat', () => {
   assert.equal(touchTtsConsumer(tenantId, 'say'), true);
   assert.equal(hasActiveTtsConsumer(tenantId, 'say', now), true);
   assert.equal(hasActiveTtsConsumer(tenantId, 'overlay', now + (TTS_CONSUMER_PRESENCE_TTL_MS * 2)), false);
+});
+
+test('automatic TTS sees a heartbeat written by another runtime process', () => {
+  const tenantId = `cross-process-presence-${Date.now()}`;
+  assert.equal(touchTtsConsumer(tenantId, 'overlay'), true);
+  forgetTtsConsumerMemoryForTest(tenantId, 'overlay');
+  assert.equal(hasActiveTtsConsumer(tenantId, 'overlay'), true);
 });
 
 test('automatic TTS skips before resolving credentials when nobody is listening', async () => {

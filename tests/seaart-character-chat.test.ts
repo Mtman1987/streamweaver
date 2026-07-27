@@ -47,6 +47,25 @@ test('extracts visible text from SeaArt chunk events', () => {
   assert.equal(extractSeaArtStreamText(stream), 'Hello Commander');
 });
 
+test('extracts delta, cumulative, nested, array, JSON-lines, and plain SSE variants', () => {
+  assert.equal(extractSeaArtStreamText([
+    'data: {"choices":[{"delta":{"content":"Hello "}}]}',
+    'data: {"choices":[{"delta":{"content":"Commander"}}]}',
+    'data: [DONE]',
+  ].join('\n\n')), 'Hello Commander');
+
+  assert.equal(extractSeaArtStreamText([
+    'data: {"result":{"message":{"content":"Hello"}}}',
+    'data: {"result":{"message":{"content":"Hello Commander"}}}',
+  ].join('\n\n')), 'Hello Commander');
+
+  assert.equal(
+    extractSeaArtStreamText('{"data":{"output":{"content":[{"type":"text","text":"Array reply"}]}}}\n{"done":true}'),
+    'Array reply',
+  );
+  assert.equal(extractSeaArtStreamText('event: chunk\ndata: Plain reply\n\ndata: [DONE]'), 'Plain reply');
+});
+
 test('creates, chats, and cleans up a SeaArt character session', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
@@ -74,6 +93,60 @@ test('creates, chats, and cleans up a SeaArt character session', async () => {
   assert.equal(JSON.parse(String(calls[0].init.body)).character_id, 'character-1');
   assert.equal((calls[1].init.headers as Record<string, string>).token, 'secret-token');
   assert.deepEqual(JSON.parse(String(calls[2].init.body)), { id: 'session-1' });
+});
+
+test('surfaces an application error returned inside a successful SeaArt stream response', async () => {
+  const fetchImpl = async (url: string | URL | Request) => {
+    if (String(url).endsWith('/character/session/create')) {
+      return new Response(JSON.stringify({ status: { code: 10000 }, data: { session_id: 'session-1' } }), { status: 200 });
+    }
+    if (String(url).includes('/api/stream/character/session/chat_new')) {
+      return new Response('data: {"status":{"code":40003,"msg":"Character is unavailable"}}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  const result = await requestSeaArtCharacterCompletion({
+    token: 'secret-token',
+    tenantId: 'tenant-1',
+    characterId: 'character-1',
+    message: 'hello',
+    history: [],
+    fetchImpl: fetchImpl as typeof fetch,
+  });
+
+  assert.equal(result.text, '');
+  assert.equal(result.upstreamError, 'Character is unavailable');
+});
+
+test('reports safe stream shape diagnostics when SeaArt returns no visible content', async () => {
+  const fetchImpl = async (url: string | URL | Request) => {
+    if (String(url).endsWith('/character/session/create')) {
+      return new Response(JSON.stringify({ status: { code: 10000 }, data: { session_id: 'session-1' } }), { status: 200 });
+    }
+    if (String(url).includes('/api/stream/character/session/chat_new')) {
+      return new Response('data: {"event":"complete","request_id":"private-value"}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      });
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  const result = await requestSeaArtCharacterCompletion({
+    token: 'secret-token',
+    tenantId: 'tenant-1',
+    characterId: 'character-1',
+    message: 'hello',
+    history: [],
+    fetchImpl: fetchImpl as typeof fetch,
+  });
+
+  assert.match(result.upstreamError || '', /^SeaArt character returned no visible text \(content-type=text\/event-stream, bytes=\d+, frames=1, shapes=event\+request_id\)$/);
+  assert.doesNotMatch(result.upstreamError || '', /private-value/);
 });
 
 test('uses the tourist stream with a stable device ID when no character API token exists', async () => {

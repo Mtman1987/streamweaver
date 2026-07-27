@@ -89,29 +89,130 @@ function envelopeError(payload: any): string {
   return String(payload?.status?.msg || payload?.message || payload?.error || 'SeaArt request failed');
 }
 
-export function extractSeaArtStreamText(raw: string): string {
-  const chunks: string[] = [];
+type SeaArtStreamInspection = {
+  text: string;
+  error?: string;
+  frameCount: number;
+  shapes: string[];
+};
 
-  for (const block of raw.split(/\r?\n\r?\n/)) {
-    const data = block
+function parseSeaArtFrames(raw: string): Array<{ value?: unknown; plainText?: string }> {
+  const frames: Array<{ value?: unknown; plainText?: string }> = [];
+  const blocks = raw.includes('data:')
+    ? raw.split(/\r?\n\r?\n/)
+    : raw.split(/\r?\n/);
+
+  for (const block of blocks) {
+    const dataLines = block
       .split(/\r?\n/)
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trimStart())
-      .join('\n')
-      .trim();
-
+      .filter((line) => line.trimStart().startsWith('data:'))
+      .map((line) => line.trimStart().slice(5).trimStart());
+    const data = (dataLines.length ? dataLines.join('\n') : block).trim();
     if (!data || data === '[DONE]') continue;
 
     try {
-      const parsed = JSON.parse(data);
-      const content = parsed?.choices?.[0]?.message?.content;
-      if (typeof content === 'string' && content) chunks.push(content);
+      frames.push({ value: JSON.parse(data) });
     } catch {
-      // Ignore keepalives and non-JSON SSE events.
+      // Some SeaArt stream variants send the visible token directly after
+      // `data:` rather than wrapping it in JSON.
+      if (dataLines.length) frames.push({ plainText: data });
     }
   }
 
-  return chunks.join('').trim();
+  return frames;
+}
+
+function visibleContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value.map((part) => {
+    if (typeof part === 'string') return part;
+    if (!part || typeof part !== 'object') return '';
+    const record = part as Record<string, unknown>;
+    return visibleContent(record.text ?? record.content ?? record.value);
+  }).join('');
+}
+
+function frameText(value: unknown, depth = 0): string {
+  if (!value || typeof value !== 'object' || depth > 5) return '';
+  const payload = value as Record<string, any>;
+  const choice = Array.isArray(payload.choices) ? payload.choices[0] : undefined;
+  const direct = [
+    choice?.delta?.content,
+    choice?.message?.content,
+    choice?.text,
+    payload.content,
+    payload.text,
+    payload.answer,
+    payload.reply,
+    typeof payload.message === 'string' ? payload.message : undefined,
+  ];
+  for (const candidate of direct) {
+    const text = visibleContent(candidate);
+    if (text) return text;
+  }
+
+  for (const key of ['data', 'result', 'response', 'output', 'msg', 'message']) {
+    const text = frameText(payload[key], depth + 1);
+    if (text) return text;
+  }
+  return '';
+}
+
+function frameError(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const payload = value as Record<string, any>;
+  const code = payload.status?.code ?? payload.code;
+  const error = payload.status?.msg ?? payload.error ?? payload.error_msg ?? payload.errorMessage;
+  if (error && (code === undefined || ![0, 10000, 200].includes(Number(code)))) return String(error);
+  for (const key of ['data', 'result']) {
+    const nested = frameError(payload[key]);
+    if (nested) return nested;
+  }
+  return '';
+}
+
+function appendStreamText(current: string, next: string): string {
+  if (!next) return current;
+  // SeaArt has used both token deltas ("Hel" + "lo") and cumulative snapshots
+  // ("Hel" then "Hello"). Preserve either without duplicating snapshots.
+  if (next.startsWith(current)) return next;
+  if (current.startsWith(next)) return current;
+  return current + next;
+}
+
+function inspectSeaArtStream(raw: string): SeaArtStreamInspection {
+  const frames = parseSeaArtFrames(raw);
+  const shapes = new Set<string>();
+  let text = '';
+  let error = '';
+
+  for (const frame of frames) {
+    if (frame.plainText) {
+      shapes.add('plain');
+      text = appendStreamText(text, frame.plainText);
+      continue;
+    }
+    const value = frame.value;
+    if (value && typeof value === 'object') {
+      shapes.add(Object.keys(value as Record<string, unknown>).sort().slice(0, 6).join('+') || 'object');
+    } else {
+      shapes.add(typeof value);
+    }
+    text = appendStreamText(text, frameText(value));
+    error ||= frameError(value);
+  }
+
+  return {
+    text: text.trim(),
+    error: error || undefined,
+    frameCount: frames.length,
+    shapes: [...shapes].slice(0, 6),
+  };
+}
+
+export function extractSeaArtStreamText(raw: string): string {
+  return inspectSeaArtStream(raw).text;
 }
 
 export async function requestSeaArtCharacterCompletion(input: {
@@ -179,10 +280,19 @@ export async function requestSeaArtCharacterCompletion(input: {
       return { text: '', upstreamStatus: streamResponse.status, upstreamError: streamText.slice(0, 500) };
     }
 
-    const text = extractSeaArtStreamText(streamText);
-    return text
-      ? { text, authMode }
-      : { text: '', authMode, upstreamStatus: streamResponse.status, upstreamError: 'SeaArt character returned no visible text' };
+    const inspected = inspectSeaArtStream(streamText);
+    if (inspected.text) return { text: inspected.text, authMode };
+    if (inspected.error) {
+      return { text: '', authMode, upstreamStatus: streamResponse.status, upstreamError: inspected.error };
+    }
+
+    const contentType = streamResponse.headers.get('content-type')?.split(';')[0] || 'unknown';
+    return {
+      text: '',
+      authMode,
+      upstreamStatus: streamResponse.status,
+      upstreamError: `SeaArt character returned no visible text (content-type=${contentType}, bytes=${Buffer.byteLength(streamText)}, frames=${inspected.frameCount}, shapes=${inspected.shapes.join('|') || 'none'})`,
+    };
   } catch (error) {
     return { text: '', upstreamError: error instanceof Error ? error.message : String(error) };
   } finally {
