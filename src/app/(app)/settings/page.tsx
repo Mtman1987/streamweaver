@@ -173,7 +173,14 @@ export default function SettingsPage() {
           {workspaceTheme.error && (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/50 p-3 text-sm text-destructive">
               <span>{workspaceTheme.error}</span>
-              <Button type="button" variant="outline" size="sm" onClick={() => void workspaceTheme.retry()}>Retry</Button>
+              <div className="flex items-center gap-2">
+                {workspaceTheme.reconnectUrl && (
+                  <Button type="button" variant="default" size="sm" asChild>
+                    <a href={workspaceTheme.reconnectUrl}>Reconnect SpaceMountain</a>
+                  </Button>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={() => void workspaceTheme.retry()}>Retry</Button>
+              </div>
             </div>
           )}
         </CardContent>

@@ -45,6 +45,7 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname === '/api/integrations/social-stream') return true;
   if (pathname.startsWith('/api/say/')) return true;
   if (pathname === '/api/tts/presence') return true;
+  if (pathname === '/api/tts/streams') return true;
 
   if (method !== 'GET') return false;
 

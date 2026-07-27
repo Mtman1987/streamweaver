@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
   const state = String(request.nextUrl.searchParams.get('state') || '');
   const code = String(request.nextUrl.searchParams.get('code') || '');
   const expectedState = request.cookies.get('streamweaver-spmt-state')?.value || '';
+  const requestedNext = request.cookies.get('streamweaver-spmt-next')?.value || '/dashboard';
+  const nextPath = requestedNext.startsWith('/') && !requestedNext.startsWith('//')
+    ? requestedNext
+    : '/dashboard';
   const clientSecret = String(process.env.STREAMWEAVER_CLIENT_SECRET || '').trim();
 
   if (!state || !code || !expectedState || !safeEqual(state, expectedState)) {
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest) {
   const tenantId = String(user.twitchId || user.twitch_id || user.id);
   await bootstrapTenant(tenantId, String(user.twitchUsername || user.twitch_username || user.username));
 
-  const response = NextResponse.redirect(`${appOrigin}/dashboard`);
+  const response = NextResponse.redirect(`${appOrigin}${nextPath}`);
   response.cookies.set('streamweaver-session', serializeSessionCookie({
     id: tenantId,
     spmtUserId: String(user.id),
@@ -89,6 +93,7 @@ export async function GET(request: NextRequest) {
     maxAge: 7 * 24 * 60 * 60,
   });
   response.cookies.delete('streamweaver-spmt-state');
+  response.cookies.delete('streamweaver-spmt-next');
   console.info('[SPMT OAuth] Login session issued', { tenantId, spmtUserId: String(user.id) });
   return response;
 }

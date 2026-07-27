@@ -101,6 +101,16 @@ export async function GET(request: NextRequest) {
     return apiOk({ updatedAt: hasItems ? state.queue[0].addedAt : state.lastServedAt });
   }
 
+  if (searchParams.get('latest') === '1') {
+    const latest = state.queue[state.queue.length - 1];
+    return apiOk({
+      audioUrl: null,
+      updatedAt: latest?.addedAt || state.lastServedAt,
+      cursor: latest?.cursor || null,
+      remaining: 0,
+    });
+  }
+
   // Public overlay reads are cursor-based and non-destructive. One player must not
   // be able to consume audio before another player for the same tenant receives it.
   if (searchParams.get('next')) {
