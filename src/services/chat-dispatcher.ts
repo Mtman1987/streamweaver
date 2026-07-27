@@ -2458,6 +2458,61 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (isCommand && !isBot) {
         console.log(`[Dispatcher] Processing command: ${actualMessage} from ${actualUsername}`);
         const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
+
+        // Public Twitch image generation belongs to the broadcaster whose chat
+        // received the command. The chatter is attribution only; they do not
+        // need a linked StreamWeaver account or their own provider settings.
+        if (cmdName === 'img') {
+            const prompt = actualMessage.substring('!img'.length).trim();
+            if (!prompt) {
+                await reply(`@${actualUsername}, usage: !img <description>`, 'bot').catch(() => {});
+                return;
+            }
+            if (!tenantId) {
+                console.warn('[Dispatcher] Cannot run Twitch !img without broadcaster tenant context', {
+                    channel: replyChannel,
+                    username: actualUsername,
+                });
+                await reply(`@${actualUsername}, image generation is not connected for this channel.`, 'bot').catch(() => {});
+                return;
+            }
+
+            await reply(`@${actualUsername}, generating your image now...`, 'bot').catch(() => {});
+
+            try {
+                const { runImageCommand } = await import('./image-command');
+                const result = await runImageCommand(actualMessage, tenantId, { scope: 'public' });
+                if (!result.images.length) {
+                    await reply(`@${actualUsername}, image generation returned no image.`, 'bot').catch(() => {});
+                    return;
+                }
+
+                const promptLabel = result.originalPrompt.replace(/\s+/g, ' ').trim().slice(0, 120);
+                if (typeof (global as any).broadcast === 'function') {
+                    (global as any).broadcast({
+                        type: 'public-image-generated',
+                        payload: {
+                            username: actualUsername,
+                            prompt: result.originalPrompt,
+                            imageUrl: result.images[0],
+                            images: result.images,
+                            provider: result.provider,
+                        },
+                    }, tenantId);
+                }
+                for (let index = 0; index < result.images.length; index += 1) {
+                    const countLabel = result.images.length > 1 ? ` ${index + 1}/${result.images.length}` : '';
+                    await reply(
+                        `@${actualUsername} generated image${countLabel} for "${promptLabel}": ${result.images[index]}`,
+                        'bot',
+                    ).catch(() => {});
+                }
+            } catch (error) {
+                console.warn(`[Dispatcher:${tenantId}] Twitch !img failed for @${actualUsername}:`, error);
+                await reply(`@${actualUsername}, image generation failed. Try again in a moment.`, 'bot').catch(() => {});
+            }
+            return;
+        }
         
         // Handle !collection command
         if (actualMessage.toLowerCase() === '!collection') {
