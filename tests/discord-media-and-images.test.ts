@@ -99,7 +99,7 @@ test('Perchance preserves every generated output up to the requested count', asy
 });
 
 test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
-  const { buildEdenAIImagePayload } = await import('../src/services/image-provider');
+  const { buildEdenAIImagePayload, DEFAULT_EDEN_IMAGE_MODEL } = await import('../src/services/image-provider');
   const payload = buildEdenAIImagePayload({
     prompt: 'turtle doing disco at a party',
     resolution: '1024x1024',
@@ -111,10 +111,10 @@ test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
       lora: 'anime-detailer',
       loraStrength: 0.8,
     },
-  }, 'image/generation/leonardo/Leonardo Phoenix');
+  }, DEFAULT_EDEN_IMAGE_MODEL);
 
   assert.deepEqual(payload, {
-    model: 'image/generation/leonardo/Leonardo Phoenix',
+    model: DEFAULT_EDEN_IMAGE_MODEL,
     input: {
       text: 'turtle doing disco at a party',
       resolution: '1024x1024',
@@ -122,6 +122,28 @@ test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
     },
   });
   assert.equal('provider_params' in payload, false);
+});
+
+test('EdenAI replaces the retired Leonardo Phoenix model with the supported default', async () => {
+  const { buildEdenAIImagePayload, DEFAULT_EDEN_IMAGE_MODEL } = await import('../src/services/image-provider');
+  const payload = buildEdenAIImagePayload({
+    prompt: 'astronaut doing the macarena',
+  }, 'image/generation/leonardo/Leonardo Phoenix');
+
+  assert.equal(payload.model, DEFAULT_EDEN_IMAGE_MODEL);
+  assert.equal(payload.input.text, 'astronaut doing the macarena');
+});
+
+test('optimized image prompts remain grounded in the exact requested subject and action', async () => {
+  const { groundOptimizedImagePrompt } = await import('../src/services/image-command');
+  const prompt = groundOptimizedImagePrompt(
+    'astronaut doing the macarena',
+    'cinematic lighting, dramatic wide-angle composition',
+  );
+
+  assert.match(prompt, /PRIMARY REQUEST \(must be clearly visible\): astronaut doing the macarena/i);
+  assert.match(prompt, /every subject and action/i);
+  assert.match(prompt, /Do not replace .* with scenery/i);
 });
 
 test('public image overlay events support cached and current pack overlays', async () => {

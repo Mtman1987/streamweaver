@@ -188,12 +188,22 @@ function getEdenAIKey(tenantId?: string): string {
   return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
 }
 
+export const DEFAULT_EDEN_IMAGE_MODEL = 'image/generation/bytedance/seedream-3-0-t2i-250415';
+
+export function normalizeEdenImageModel(model?: string): string {
+  const value = String(model || '').trim();
+  if (!value || /^image\/generation\/leonardo\/leonardo phoenix$/i.test(value)) {
+    return DEFAULT_EDEN_IMAGE_MODEL;
+  }
+  return value;
+}
+
 function getDefaultImageModel(tenantId?: string): string {
   const config = readUserConfigSync(tenantId);
-  return (
+  return normalizeEdenImageModel(
     config.EDENAI_IMAGE_MODEL ||
     process.env.EDENAI_IMAGE_MODEL ||
-    'image/generation/leonardo/Leonardo Phoenix'
+    DEFAULT_EDEN_IMAGE_MODEL
   );
 }
 
@@ -213,7 +223,7 @@ function extractImageResult(data: any): ImageGenerationResult {
 
 export function buildEdenAIImagePayload(options: ImageGenerationOptions, defaultModel: string) {
   return {
-    model: options.model || defaultModel,
+    model: normalizeEdenImageModel(options.model || defaultModel),
     input: {
       text: options.prompt,
       ...(options.resolution ? { resolution: options.resolution } : {}),

@@ -106,6 +106,21 @@ export async function optimizeImagePrompt(
   return cleaned.slice(0, 3000);
 }
 
+export function groundOptimizedImagePrompt(originalPrompt: string, optimizedPrompt: string): string {
+  const original = originalPrompt.replace(/\s+/g, ' ').trim();
+  const optimized = optimizedPrompt.replace(/\s+/g, ' ').trim();
+  if (!optimized || optimized.toLocaleLowerCase() === original.toLocaleLowerCase()) {
+    return original;
+  }
+
+  return [
+    `PRIMARY REQUEST (must be clearly visible): ${original}.`,
+    'Create one image that visibly depicts every subject and action in the primary request.',
+    'Do not replace the requested subject or action with scenery, symbols, or an unrelated scene.',
+    `Additional visual direction: ${optimized}`,
+  ].join(' ').slice(0, 3000);
+}
+
 export async function runImageCommand(input: string, tenantId: string, options: ImageCommandOptions = {}): Promise<ImageCommandResult> {
   const parsed = parseImageCommand(input);
   if (!parsed.prompt) {
@@ -119,11 +134,14 @@ export async function runImageCommand(input: string, tenantId: string, options: 
 
   const settings = await readGenerationSettings(tenantId);
   const shouldOptimize = settings.optimizeImagePrompts && !parsed.raw;
-  const finalPrompt = shouldOptimize
+  const optimizedPrompt = shouldOptimize
     ? await optimizeImagePrompt(parsed.prompt, settings, tenantId).catch((error) => {
         console.warn('[Image Command] prompt optimization failed:', error);
         return parsed.prompt;
       })
+    : parsed.prompt;
+  const finalPrompt = shouldOptimize
+    ? groundOptimizedImagePrompt(parsed.prompt, optimizedPrompt)
     : parsed.prompt;
 
   const imageRes = await fetch(`${getInternalAppUrl()}/api/ai/image`, {
