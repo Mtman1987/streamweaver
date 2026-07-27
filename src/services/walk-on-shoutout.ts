@@ -12,6 +12,7 @@ import { readUserConfigSync } from '../lib/user-config';
 import { resolveSayStreamKey, SAY_SHOUTOUT_SUPPRESSION_MS, suppressSayForTenant } from './say-tts';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { isKnownBot } from './known-bots';
+import { resolveShoutoutMode, type ShoutoutMode } from './shoutout-mode';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -35,8 +36,6 @@ interface TwitchClip {
     duration: number;
     broadcasterName: string;
 }
-
-type ShoutoutMode = 'full' | 'overlay' | 'chat';
 
 type ShoutoutOptions = {
     chatReply?: (message: string) => Promise<void>;
@@ -94,20 +93,18 @@ async function suppressSayDuringShoutout(tenantId?: string): Promise<void> {
 
 async function getShoutoutMode(tenantId?: string): Promise<ShoutoutMode> {
     tenantId = normalizeTenantId(tenantId);
-    // Legacy check
-    const cfg = readUserConfigSync(tenantId);
-    if (cfg.SKIP_SHOUTOUT_OVERLAY === 'true' || process.env.SKIP_SHOUTOUT_OVERLAY === 'true') {
-        return 'chat';
-    }
+    let persistedMode: string | undefined;
     try {
         const { getMode } = await import('./modes-manager');
-        const mode = await getMode('greetingmode', tenantId);
-        if (mode === 'full' || mode === 'overlay' || mode === 'chat') return mode;
-        // Migrate legacy values
-        if (mode === 'on') return 'full';
-        if (mode === 'off') return 'chat';
+        persistedMode = await getMode('greetingmode', tenantId);
     } catch {}
-    return 'full';
+    const cfg = readUserConfigSync(tenantId);
+    return resolveShoutoutMode({
+        persistedMode,
+        legacySkipOverlay:
+            cfg.SKIP_SHOUTOUT_OVERLAY === 'true'
+            || process.env.SKIP_SHOUTOUT_OVERLAY === 'true',
+    });
 }
 
 // ============================

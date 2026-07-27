@@ -89,8 +89,8 @@ export default function ActionsPage() {
   }, [error, toast]);
 
   useEffect(() => {
-    fetch('/api/user-config').then(r => r.ok ? r.json() : null).then(payload => {
-      setSkipShoutoutOverlay(payload?.config?.SKIP_SHOUTOUT_OVERLAY === 'true');
+    fetch('/api/bot-settings').then(r => r.ok ? r.json() : null).then(payload => {
+      setSkipShoutoutOverlay(payload?.skipShoutoutOverlay === true);
     }).catch(() => {});
   }, []);
 

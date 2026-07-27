@@ -42,6 +42,15 @@ function cacheKey(tenantId?: string): string {
   return tenantId || '__global__';
 }
 
+async function syncLegacyGreetingFlag(mode: StreamWeaverModes['greetingmode'], tenantId?: string): Promise<void> {
+  try {
+    const { writeUserConfig } = await import('../lib/user-config');
+    await writeUserConfig({ SKIP_SHOUTOUT_OVERLAY: mode === 'chat' ? 'true' : 'false' }, tenantId);
+  } catch (error) {
+    console.warn('[Modes] Failed to sync legacy shoutout flag:', error);
+  }
+}
+
 export async function loadModes(tenantId?: string): Promise<StreamWeaverModes> {
   const key = cacheKey(tenantId);
   const cached = modeCache.get(key);
@@ -87,6 +96,9 @@ export async function toggleMode(
   
   (modes as Record<keyof StreamWeaverModes, string>)[modeName] = next;
   await saveModes(modes, tenantId);
+  if (modeName === 'greetingmode') {
+    await syncLegacyGreetingFlag(modes.greetingmode, tenantId);
+  }
   
   // Broadcast to overlays/dashboard
   if (typeof (global as any).broadcast === 'function') {
@@ -113,6 +125,9 @@ export async function setMode(
   const previous = modes[modeName] as string;
   (modes as Record<keyof StreamWeaverModes, string>)[modeName] = value;
   await saveModes(modes, tenantId);
+  if (modeName === 'greetingmode') {
+    await syncLegacyGreetingFlag(modes.greetingmode, tenantId);
+  }
 
   if (typeof (global as any).broadcast === 'function') {
     (global as any).broadcast(
@@ -142,6 +157,7 @@ export async function toggleMasterChatmode(tenantId?: string): Promise<void> {
   (modes as any).clipmode = nextMaster.includes('overlay') ? 'viewer' : 'broadcaster';
   
   await saveModes(modes, tenantId);
+  await syncLegacyGreetingFlag(modes.greetingmode, tenantId);
   
   // Broadcast
   if (typeof (global as any).broadcast === 'function') {

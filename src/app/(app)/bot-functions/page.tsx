@@ -155,6 +155,16 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
             }
 
             try {
+                const modeRes = await fetch('/api/bot-settings');
+                if (modeRes.ok) {
+                    const modeData = await modeRes.json();
+                    setSkipShoutoutOverlay(modeData.skipShoutoutOverlay === true);
+                }
+            } catch (error) {
+                console.warn('Failed to load shoutout mode from server:', error);
+            }
+
+            try {
                 const genRes = await fetch('/api/gen-settings');
                 if (genRes.ok) {
                     const data = await genRes.json();

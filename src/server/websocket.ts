@@ -338,7 +338,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         console.log(`[WebSocket] Updated bot interests`);
                     }
                     if (typeof skipShoutoutOverlay === 'boolean') {
-                        updates.SKIP_SHOUTOUT_OVERLAY = skipShoutoutOverlay ? 'true' : 'false';
+                        const { setMode } = require('../services/modes-manager');
+                        setMode('greetingmode', skipShoutoutOverlay ? 'chat' : 'full', tid)
+                          .catch((e: any) => console.error('[WebSocket] Failed to persist shoutout mode:', e));
                         console.log(`[WebSocket] Updated skip shoutout overlay to: ${skipShoutoutOverlay}`);
                     }
                     if (Object.keys(botUpdates).length > 0) {

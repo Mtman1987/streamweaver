@@ -5,6 +5,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { z } from 'zod';
 import { normalizeTtsVoice } from '@/lib/tts-voices';
+import { getMode, setMode } from '@/services/modes-manager';
 
 const botSettingsSchema = z.object({
   personality: z.string().trim().min(1).max(5000).optional(),
@@ -14,6 +15,19 @@ const botSettingsSchema = z.object({
   aliases: z.string().trim().max(500).optional(),
   skipShoutoutOverlay: z.boolean().optional(),
 });
+
+export async function GET(request: NextRequest) {
+  const session = getTenantFromRequest(request);
+  if (!session?.tenantId) {
+    return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+  }
+
+  const greetingMode = await getMode('greetingmode', session.tenantId);
+  return apiOk({
+    greetingMode,
+    skipShoutoutOverlay: greetingMode === 'chat',
+  });
+}
 
 /**
  * Auto-optimize personality if it's missing the --- delimiter.
@@ -91,7 +105,7 @@ export async function POST(request: NextRequest) {
     if (interests) { configUpdates.AI_BOT_INTERESTS = interests; console.log('[API] Updated bot interests'); }
     if (aliases != null) { configUpdates.AI_BOT_ALIASES = aliases; console.log(`[API] Updated bot aliases to: ${aliases}`); }
     if (skipShoutoutOverlay != null) {
-      configUpdates.SKIP_SHOUTOUT_OVERLAY = skipShoutoutOverlay ? 'true' : 'false';
+      await setMode('greetingmode', skipShoutoutOverlay ? 'chat' : 'full', tid);
       console.log(`[API] Updated skip shoutout overlay to: ${skipShoutoutOverlay}`);
     }
 

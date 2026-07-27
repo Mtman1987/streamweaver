@@ -94,8 +94,8 @@ export default function CommandsPage() {
   }, [error, toast]);
 
   useEffect(() => {
-    fetch('/api/user-config').then(r => r.ok ? r.json() : null).then(payload => {
-      setSkipShoutoutOverlay(payload?.config?.SKIP_SHOUTOUT_OVERLAY === 'true');
+    fetch('/api/bot-settings').then(r => r.ok ? r.json() : null).then(payload => {
+      setSkipShoutoutOverlay(payload?.skipShoutoutOverlay === true);
     }).catch(() => {});
   }, []);
 
@@ -348,7 +348,7 @@ export default function CommandsPage() {
             <div className="hidden items-center gap-2 md:flex">
               <div className="flex items-center justify-between rounded-full border border-border/70 bg-background/40 px-3 py-1.5 text-xs text-muted-foreground">
                 <span className="mr-2 h-2 w-2 rounded-full bg-accent" />
-                Overlay shoutouts {skipShoutoutOverlay ? "on" : "off"}
+                Shoutout overlay {skipShoutoutOverlay ? "off" : "on"}
               </div>
               <Switch
                 checked={skipShoutoutOverlay}
