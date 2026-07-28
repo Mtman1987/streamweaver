@@ -16,10 +16,12 @@ contextBridge.exposeInMainWorld('companion', {
   obsScenes: () => ipcRenderer.invoke('companion:obs-scenes'),
   setObsScene: (sceneName) => ipcRenderer.invoke('companion:obs-set-scene', sceneName),
   setAudio: (payload) => ipcRenderer.invoke('companion:audio', payload),
+  checkForUpdates: () => ipcRenderer.invoke('companion:update-check'),
   openExternal: (url) => ipcRenderer.invoke('companion:open-external', url),
   onStatus: (handler) => ipcRenderer.on('companion:status', (_event, status) => handler(status)),
   onMediaJob: (handler) => ipcRenderer.on('companion:media-job', (_event, job) => handler(job))
   ,
   onWorkflowJob: (handler) => ipcRenderer.on('companion:workflow-job', (_event, job) => handler(job)),
+  onUpdate: (handler) => ipcRenderer.on('companion:update', (_event, update) => handler(update)),
   onConfirmation: (handler) => ipcRenderer.on('companion:confirmation', (_event, command) => handler(command))
 });

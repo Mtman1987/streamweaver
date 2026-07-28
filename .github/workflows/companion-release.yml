@@ -23,8 +23,20 @@ jobs:
         working-directory: companion
       - run: npm run package:companion-runtime
       - run: npm run smoke:companion-runtime
+      - name: Require Windows signing certificate
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw "Trusted Windows signing credentials are required: WINDOWS_CERTIFICATE_P12 and WINDOWS_CERTIFICATE_PASSWORD"
+          }
       - run: npm run dist:win
         working-directory: companion
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       - name: Write checksum
         shell: pwsh
         run: |
@@ -43,11 +55,14 @@ jobs:
 
           Download the setup executable, run it, and launch SpaceMountain Companion from the Start menu or desktop shortcut.
 
-          This first public build is not code-signed, so Windows may show an Unknown publisher warning.
+          This installer is Authenticode signed. Installed builds check this GitHub release channel
+          for signed updates and ask before restarting to install one.
           "@
           gh release create $tag `
             "dist/companion/SpaceMountain-Companion-Setup-*.exe" `
+            "dist/companion/SpaceMountain-Companion-Setup-*.exe.blockmap" `
             "dist/companion/SpaceMountain-Companion-Setup-*.exe.sha256" `
+            "dist/companion/latest.yml" `
             --title "SpaceMountain Companion $tag" `
             --notes $notes `
             --verify-tag

@@ -1,12 +1,12 @@
 {
   "name": "@spmt/companion",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
     "dist:win": "electron-builder --win nsis --x64"
   },
   "build": {
@@ -54,6 +54,14 @@
         "nsis"
       ]
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Mtman1987",
+        "repo": "streamweaver",
+        "releaseType": "release"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -63,6 +71,7 @@
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "obs-websocket-js": "^5.0.6",
     "ws": "^8.18.3"
   },

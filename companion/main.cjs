@@ -12,9 +12,11 @@ const {
   Tray
 } = require('electron');
 const OBSWebSocket = require('obs-websocket-js').default;
+const { autoUpdater } = require('electron-updater');
 const { ConfigStore } = require('./lib/config-store.cjs');
 const { MediaJobs } = require('./lib/media-jobs.cjs');
 const { RelayClient } = require('./lib/relay-client.cjs');
+const { createUpdateManager } = require('./lib/update-manager.cjs');
 const { WorkflowJobs } = require('./lib/workflow-jobs.cjs');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -35,6 +37,7 @@ let obsStatus = { state: 'disabled' };
 let relay;
 let mediaJobs;
 let workflowJobs;
+let updateManager;
 let obs;
 const popoutWindows = new Map();
 let quitting = false;
@@ -372,6 +375,7 @@ function rebuildTrayMenu() {
     { type: 'separator' },
     { label: 'Open StreamWeaver', click: () => shell.openExternal(`http://127.0.0.1:${config.server.port}/dashboard`) },
     { label: 'Restart Local Service', click: () => { stopManagedServer(); setTimeout(startManagedServer, 800); } },
+    { label: 'Check for Updates', click: () => void updateManager?.check({ manual: true }) },
     { type: 'separator' },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } }
   ]));
@@ -386,7 +390,8 @@ function setupIpc() {
     workflowCatalog: workflowJobs.catalog(),
     workflowJobs: workflowJobs.snapshot(),
     confirmations: relay.confirmations(),
-    obs: await getObsScenes()
+    obs: await getObsScenes(),
+    update: updateManager?.snapshot() || { state: 'unavailable', currentVersion: app.getVersion() }
   }));
   ipcMain.handle('companion:save-config', async (_event, updates) => {
     const next = updates && typeof updates === 'object' ? updates : {};
@@ -466,6 +471,7 @@ function setupIpc() {
   ipcMain.handle('companion:obs-scenes', getObsScenes);
   ipcMain.handle('companion:obs-set-scene', (_event, sceneName) => setObsScene({ sceneName }));
   ipcMain.handle('companion:audio', (_event, payload) => applyAudio(payload));
+  ipcMain.handle('companion:update-check', () => updateManager?.check({ manual: true }));
   ipcMain.handle('companion:open-external', (_event, url) => {
     if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Only HTTP(S) URLs are allowed');
     return shell.openExternal(url);
@@ -526,6 +532,7 @@ app.on('before-quit', () => {
   quitting = true;
   clearTimeout(serverRestartTimer);
   relay?.stop();
+  updateManager?.stop();
   stopManagedServer();
   void obs?.disconnect().catch(() => {});
 });
@@ -539,6 +546,15 @@ app.whenReady().then(async () => {
   mediaJobs = createMediaJobs();
   workflowJobs = createWorkflowJobs();
   relay = createRelay();
+  updateManager = createUpdateManager({
+    updater: autoUpdater,
+    dialog,
+    isPackaged: app.isPackaged,
+    currentVersion: app.getVersion(),
+    getWindow: () => settingsWindow,
+    onStatus: (update) => settingsWindow?.webContents.send('companion:update', update),
+    log: logCompanion
+  });
   setupIpc();
 
   const iconPath = app.isPackaged
@@ -553,6 +569,7 @@ app.whenReady().then(async () => {
   app.setLoginItemSettings({ openAtLogin: Boolean(config.startup.openAtLogin), args: ['--hidden'] });
   startManagedServer();
   relay.start();
+  updateManager.start();
   await connectObs();
   if (config.windows.overlay.visible) showOverlay();
   if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();

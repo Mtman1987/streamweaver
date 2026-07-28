@@ -1,5 +1,14 @@
 # Changelog
 
+## Companion 0.3.0 - 2026-07-28
+
+- Added signed GitHub-release auto-update metadata, startup and six-hour checks,
+  a manual tray/settings check, download progress, and approval before restart.
+- Made the Windows release fail closed unless the trusted Authenticode
+  certificate and password secrets are configured.
+- Added updater lifecycle tests and verified the staged StreamWeaver runtime
+  against the exact dependency lockfile before installer creation.
+
 ## 0.2.0 - 2026-03-09
 
 ### Added

@@ -64,6 +64,7 @@ async function load() {
   state = await window.companion.getState();
   const config = state.config;
   renderStatus(state.status);
+  byId('update-status').textContent = state.update?.message || `Companion ${state.update?.currentVersion || ''}`.trim();
   byId('overlay-url').value = config.windows.overlay.url;
   byId('overlay-click-through').checked = config.windows.overlay.clickThrough !== false;
   byId('overlay-always-on-top').checked = config.windows.overlay.alwaysOnTop !== false;
@@ -225,6 +226,7 @@ byId('create-song-job').addEventListener('click', async () => {
 byId('audio-volume').addEventListener('input', () => window.companion.setAudio({ volume: Number(byId('audio-volume').value) }));
 byId('audio-muted').addEventListener('change', () => window.companion.setAudio({ muted: byId('audio-muted').checked }));
 byId('open-streamweaver').addEventListener('click', () => window.companion.openExternal('http://127.0.0.1:3100/dashboard'));
+byId('check-updates').addEventListener('click', () => window.companion.checkForUpdates());
 window.companion.onStatus(renderStatus);
 window.companion.onMediaJob((job) => {
   const index = jobs.findIndex((item) => item.id === job.id);
@@ -243,6 +245,9 @@ window.companion.onConfirmation((command) => {
   if (index >= 0) confirmations[index] = command;
   else confirmations.push(command);
   renderWorkflows();
+});
+window.companion.onUpdate((update) => {
+  byId('update-status').textContent = update.message || `Companion ${update.currentVersion || ''}`.trim();
 });
 
 const sections = Array.from(document.querySelectorAll('main section[id]'));
