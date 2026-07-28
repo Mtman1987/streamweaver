@@ -44,7 +44,7 @@ export function SimpleChatLog() {
     }, []);
 
     return (
-        <div className="w-full max-w-md p-4 border rounded-lg bg-slate-900 text-slate-100 shadow-lg my-4">
+        <div className="w-full max-w-md p-4 border rounded-lg bg-slate-900 text-slate-100 shadow-lg my-4" data-workspace-chat-surface>
             <div className="flex items-center justify-between mb-3 border-b border-slate-700 pb-2">
                 <h3 className="font-bold text-sm">Raw Chat Log</h3>
                 <div className="flex items-center gap-2">

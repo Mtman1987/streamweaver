@@ -205,3 +205,11 @@ Build args (in `fly.toml`):
 - [Suite production roadmap](https://github.com/Mtman1987/spmt-live/blob/main/docs/ecosystem/PRODUCTION_ROADMAP.md) — canonical backlog, including StreamWeaver tenant and app-track work
 - [Research and reviewed creative workflows](docs/RESEARCH_AND_CREATIVE_WORKFLOWS.md) — shared bot Research Mode, knowledge packs, Companion review jobs, OBS playback, and current release gates
 - [SpaceMountain Companion](companion/README.md) — tray host setup, pairing, and implemented local capabilities
+## Shared SpaceMountain appearance
+
+StreamWeaver can follow the signed-in account's `WorkspaceProfileV1` appearance
+while retaining its own local visual trims. Shared settings affect the app
+shell, sidebar, top bar, Radix tabs, avatars, marked chat surfaces, particles,
+and motion. OBS/player routes remain transparent and are not restyled by the
+dashboard shell adapter. Turn off follow mode in Settings to use StreamWeaver's
+app-owned fallback.

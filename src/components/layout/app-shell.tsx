@@ -79,11 +79,11 @@ export default function AppShell({
     <Suspense fallback={null}>
       <LogPanelProviderLazy>
         <LiveStreamersProvider>
-          <div className="app-frame overflow-hidden">
+          <div className="app-frame overflow-hidden" data-workspace-shell>
             <AppSidebar userProfile={userProfile} />
             <SidebarInset className="overflow-hidden bg-transparent">
               <Header />
-              <main className="app-surface flex-1 min-h-0 overflow-y-auto px-3 pb-4 pt-3 sm:px-5 lg:px-6">
+              <main className="app-surface flex-1 min-h-0 overflow-y-auto px-3 pb-4 pt-3 sm:px-5 lg:px-6" data-workspace-main>
                 <div className="mx-auto flex min-h-0 w-full max-w-[1900px] flex-1 flex-col gap-6">
                   <div className="app-shell-content flex-1">
                     <div className="flex-1 px-4 pb-5 pt-4 sm:px-6 sm:pb-6">
