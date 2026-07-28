@@ -38,6 +38,17 @@ class MediaJobs {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
+  has(inputName) {
+    const inputPath = path.resolve(this.libraryPath, safeName(inputName));
+    return within(this.libraryPath, inputPath) && fs.existsSync(inputPath);
+  }
+
+  resolve(inputName) {
+    const inputPath = path.resolve(this.libraryPath, safeName(inputName));
+    if (!within(this.libraryPath, inputPath) || !fs.existsSync(inputPath)) throw new Error('Media input is outside the library');
+    return inputPath;
+  }
+
   importFile(sourcePath) {
     const source = path.resolve(sourcePath);
     const target = path.join(this.libraryPath, `${Date.now()}-${safeName(source)}`);
@@ -45,10 +56,20 @@ class MediaJobs {
     return { name: path.basename(target), bytes: fs.statSync(target).size };
   }
 
+  writeJson(name, value) {
+    const fileName = safeName(name);
+    if (!fileName.endsWith('.json')) throw new Error('Manifest name must end in .json');
+    const target = path.resolve(this.libraryPath, fileName);
+    if (!within(this.libraryPath, target)) throw new Error('Manifest target is outside the library');
+    const temporary = `${target}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    fs.renameSync(temporary, target);
+    return { name: fileName, bytes: fs.statSync(target).size };
+  }
+
   transcode(inputName, preset) {
     if (!PRESETS[preset]) throw new Error('Unsupported media preset');
-    const inputPath = path.resolve(this.libraryPath, safeName(inputName));
-    if (!within(this.libraryPath, inputPath) || !fs.existsSync(inputPath)) throw new Error('Media input is outside the library');
+    const inputPath = this.resolve(inputName);
     const extension = preset === 'audio-mp3' ? '.mp3' : preset === 'gif' ? '.gif' : '.mp4';
     const outputName = `${path.parse(inputPath).name}-${preset}-${Date.now()}${extension}`;
     const outputPath = path.join(this.libraryPath, outputName);

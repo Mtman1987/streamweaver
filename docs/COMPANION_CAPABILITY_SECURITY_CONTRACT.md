@@ -46,6 +46,12 @@ hardware selection, encrypted pairing credentials, and resumable local jobs.
 Capabilities are deny-by-default. `*.read` never implies a corresponding
 control scope.
 
+Implemented `workflow.run` identifiers are `test.echo`,
+`audio.jingle.play`, and `song.render.request`. The latter two always require
+local approval. Workflow IDs and payloads are schema-checked by SPMT and again
+by the Companion. `workflow.run` does not grant a shell, arbitrary executable,
+arbitrary filesystem path, or unreviewed upload.
+
 ## Command envelope
 
 ```json
@@ -83,11 +89,17 @@ Always require local confirmation for:
 Scene changes, source toggles, volume, PTT, playback, and previously approved
 downloads may be configured as “allow while paired”.
 
+Current implementation note: `obs.media.play`, `audio.jingle.play`, and
+`song.render.request` require local approval. Commands waiting for approval
+receive a longer bounded expiry than non-interactive commands. Rejection and
+expiry are returned to SPMT as failed command results.
+
 ## Local storage
 
 - Pairing and provider secrets: Electron `safeStorage` or OS credential store.
 - Public device configuration: JSON under the Electron user-data directory.
 - Local media: user-selected library directory.
+- Reviewed creative jobs: bounded `workflow-jobs.json` in Electron user data.
 - Portable workspace/app state: SPMT APIs, never local JSON as the authority.
 - Logs: rotating local files with credentials, query tokens, and filesystem
   home paths redacted.
@@ -114,3 +126,16 @@ HttpOnly, Secure, SameSite=None, Partitioned cookies. Raw profile data sent by
 Capability and command envelopes are versioned independently from UI releases.
 Unknown schema versions must be rejected. Additive response fields are allowed;
 new mutating actions require a capability-contract revision and tests.
+
+## Implemented action map
+
+| Action | Capability | Confirmation |
+|---|---|---:|
+| `companion.status` | `companion.status` | No |
+| `overlay.show`, `overlay.hide`, `popout.show`, `popout.hide` | `overlay.control` | No |
+| `obs.scene.set` | `obs.control` | No |
+| `obs.media.play` | `obs.control` | Yes |
+| `audio.mute`, `audio.volume` | `audio.control` | No |
+| `media.transcode` | `media.write` | No |
+| `workflow.run` / `test.echo` | `workflow.run` | No |
+| `workflow.run` / reviewed creative workflows | `workflow.run` | Yes |

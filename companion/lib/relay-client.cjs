@@ -9,18 +9,22 @@ const ACTION_CAPABILITIES = {
   'audio.mute': 'audio.control',
   'audio.volume': 'audio.control',
   'media.transcode': 'media.write',
+  'obs.media.play': 'obs.control',
+  'workflow.run': 'workflow.run',
   'companion.status': 'companion.status'
 };
 
 class RelayClient {
-  constructor({ getConfig, getToken, handlers, onStatus = () => {} }) {
+  constructor({ getConfig, getToken, handlers, onStatus = () => {}, onConfirmationRequired = () => {} }) {
     this.getConfig = getConfig;
     this.getToken = getToken;
     this.handlers = handlers;
     this.onStatus = onStatus;
+    this.onConfirmationRequired = onConfirmationRequired;
     this.socket = null;
     this.timer = null;
     this.seen = new Set();
+    this.pendingConfirmations = new Map();
     this.stopped = true;
   }
 
@@ -90,8 +94,16 @@ class RelayClient {
     this.seen.add(id);
     if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value);
     if (command.requiresConfirmation) {
-      return this.reply(id, false, null, 'Local confirmation is required but not available for this action');
+      this.pendingConfirmations.set(id, command);
+      this.onConfirmationRequired(command);
+      return;
     }
+    return this.execute(command);
+  }
+
+  async execute(command) {
+    const id = String(command?.id || '');
+    const action = String(command?.action || '');
     try {
       const handler = this.handlers[action];
       if (!handler) throw new Error('Action is not available on this device');
@@ -100,6 +112,32 @@ class RelayClient {
     } catch (error) {
       this.reply(id, false, null, error instanceof Error ? error.message : 'Command failed');
     }
+  }
+
+  async resolveConfirmation(id, approved) {
+    const command = this.pendingConfirmations.get(String(id));
+    if (!command) throw new Error('Confirmation request was not found');
+    this.pendingConfirmations.delete(String(id));
+    if (!approved) {
+      this.reply(String(id), false, null, 'Rejected by the local operator');
+      return { id: String(id), approved: false };
+    }
+    if (Date.parse(String(command.expiresAt || '')) <= Date.now()) {
+      this.reply(String(id), false, null, 'Command expired before local approval');
+      return { id: String(id), approved: false, expired: true };
+    }
+    await this.execute(command);
+    return { id: String(id), approved: true };
+  }
+
+  confirmations() {
+    return Array.from(this.pendingConfirmations.values()).map((command) => ({
+      id: command.id,
+      source: command.source,
+      action: command.action,
+      payload: command.payload,
+      expiresAt: command.expiresAt
+    }));
   }
 
   reply(id, ok, result, error) {

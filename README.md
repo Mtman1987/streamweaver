@@ -203,3 +203,5 @@ Build args (in `fly.toml`):
 
 - `docs/SHARED-CHAT.md` — How shared chat detection and source-only messaging works
 - [Suite production roadmap](https://github.com/Mtman1987/spmt-live/blob/main/docs/ecosystem/PRODUCTION_ROADMAP.md) — canonical backlog, including StreamWeaver tenant and app-track work
+- [Research and reviewed creative workflows](docs/RESEARCH_AND_CREATIVE_WORKFLOWS.md) — shared bot Research Mode, knowledge packs, Companion review jobs, OBS playback, and current release gates
+- [SpaceMountain Companion](companion/README.md) — tray host setup, pairing, and implemented local capabilities

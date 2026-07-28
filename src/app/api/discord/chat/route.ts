@@ -479,7 +479,23 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: Boolean(replyChannelId), mode, replies: relayOnly ? collectedReplies : undefined });
     }
 
-    const botMatch = await resolveMentionedBot(msgLower, tenantId);
+    let botMatch = await resolveMentionedBot(msgLower, tenantId);
+    if (!botMatch && tenantId && !isPrivateDiscordLane) {
+      const { hasPendingResearchMode } = await import('@/services/research-mode');
+      if (hasPendingResearchMode({
+        tenantId,
+        platform: 'discord',
+        channelId,
+        username: normalized.username || userName,
+      })) {
+        botMatch = {
+          tenantId,
+          botName: getBotName(tenantId),
+          trigger: 'research-follow-up',
+          index: 0,
+        };
+      }
+    }
     const botMentioned = Boolean(botMatch);
     logDiscordTrace(traceId, 'mention-decision', {
       mentioned: botMentioned,

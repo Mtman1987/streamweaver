@@ -15,6 +15,7 @@ const OBSWebSocket = require('obs-websocket-js').default;
 const { ConfigStore } = require('./lib/config-store.cjs');
 const { MediaJobs } = require('./lib/media-jobs.cjs');
 const { RelayClient } = require('./lib/relay-client.cjs');
+const { WorkflowJobs } = require('./lib/workflow-jobs.cjs');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const hasLock = app.requestSingleInstanceLock();
@@ -26,11 +27,14 @@ let settingsWindow;
 let overlayWindow;
 let tray;
 let serverProcess;
+let serverRestartTimer;
+let serverStopRequested = false;
 let serverStatus = { state: 'stopped' };
 let relayStatus = { state: 'disabled' };
 let obsStatus = { state: 'disabled' };
 let relay;
 let mediaJobs;
+let workflowJobs;
 let obs;
 const popoutWindows = new Map();
 let quitting = false;
@@ -178,8 +182,9 @@ function applyAudio(payload = {}) {
   for (const window of windows) {
     window.webContents.setAudioMuted(Boolean(config.audio.muted));
     const volume = Number(config.audio.volume);
+    const outputDeviceId = String(config.audio.outputDeviceId || '');
     void window.webContents.executeJavaScript(
-      `document.querySelectorAll('audio,video').forEach((item)=>{item.volume=${JSON.stringify(volume)}})`,
+      `document.querySelectorAll('audio,video').forEach((item)=>{item.volume=${JSON.stringify(volume)};if(${JSON.stringify(outputDeviceId)}&&typeof item.setSinkId==='function'){item.setSinkId(${JSON.stringify(outputDeviceId)}).catch(()=>{})}})`,
       true
     ).catch(() => {});
   }
@@ -229,8 +234,28 @@ async function getObsScenes() {
   return { connected: true, currentScene: response.currentProgramSceneName, scenes: response.scenes || [] };
 }
 
+async function playObsMedia(payload) {
+  if (!obs) throw new Error('OBS is not connected');
+  const inputName = String(payload.obsInputName || config.obs.mediaInputName || '').trim();
+  if (!inputName) throw new Error('An OBS media input name is required');
+  const mediaName = path.basename(String(payload.mediaName || ''));
+  const localFile = mediaJobs.resolve(mediaName);
+  await obs.call('SetInputSettings', {
+    inputName,
+    inputSettings: { is_local_file: true, local_file: localFile },
+    overlay: true
+  });
+  await obs.call('TriggerMediaInputAction', {
+    inputName,
+    mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART'
+  });
+  return { inputName, mediaName, playing: true };
+}
+
 function startManagedServer() {
   if (serverProcess && serverProcess.exitCode == null) return;
+  clearTimeout(serverRestartTimer);
+  serverStopRequested = false;
   const command = process.env.STREAMWEAVER_SERVER_COMMAND || (process.platform === 'win32' ? 'npm.cmd' : 'npm');
   const args = process.env.STREAMWEAVER_SERVER_ARGS
     ? JSON.parse(process.env.STREAMWEAVER_SERVER_ARGS)
@@ -263,14 +288,21 @@ function startManagedServer() {
     emitStatus();
   });
   serverProcess.on('exit', (code) => {
+    const requested = serverStopRequested;
     serverStatus = { state: 'stopped', code };
     serverProcess = null;
     emitStatus();
+    if (!quitting && !requested) {
+      serverStatus = { state: 'restarting', code };
+      emitStatus();
+      serverRestartTimer = setTimeout(startManagedServer, 2_000);
+    }
   });
 }
 
 function stopManagedServer() {
   if (!serverProcess || serverProcess.exitCode != null) return;
+  serverStopRequested = true;
   serverProcess.kill();
 }
 
@@ -326,6 +358,9 @@ function setupIpc() {
     status: { server: serverStatus, relay: relayStatus, obs: obsStatus },
     media: mediaJobs.list(),
     jobs: mediaJobs.snapshot(),
+    workflowCatalog: workflowJobs.catalog(),
+    workflowJobs: workflowJobs.snapshot(),
+    confirmations: relay.confirmations(),
     obs: await getObsScenes()
   }));
   ipcMain.handle('companion:save-config', async (_event, updates) => {
@@ -379,12 +414,18 @@ function setupIpc() {
     return mediaJobs.importFile(selection.filePaths[0]);
   });
   ipcMain.handle('companion:media-transcode', (_event, inputName, preset) => mediaJobs.transcode(inputName, preset));
+  ipcMain.handle('companion:obs-play-media', (_event, mediaName, obsInputName) => playObsMedia({ mediaName, obsInputName }));
+  ipcMain.handle('companion:workflow-create', (_event, workflowId, payload) => workflowJobs.createReviewRequest(workflowId, payload, 'local'));
+  ipcMain.handle('companion:workflow-review', (_event, jobId, approved) => workflowJobs.review(jobId, Boolean(approved)));
+  ipcMain.handle('companion:workflow-test', () => workflowJobs.run('test.echo', { message: 'Companion workflow test passed' }, 'local'));
+  ipcMain.handle('companion:confirmation-resolve', (_event, commandId, approved) => relay.resolveConfirmation(commandId, Boolean(approved)));
   ipcMain.handle('companion:choose-library', async () => {
     const selection = await dialog.showOpenDialog(settingsWindow, { properties: ['openDirectory', 'createDirectory'] });
     if (selection.canceled || !selection.filePaths[0]) return null;
     config.media.libraryPath = selection.filePaths[0];
     saveConfig();
     mediaJobs = createMediaJobs();
+    workflowJobs = createWorkflowJobs();
     return config.media.libraryPath;
   });
   ipcMain.handle('companion:obs-scenes', getObsScenes);
@@ -404,6 +445,15 @@ function createMediaJobs() {
   });
 }
 
+function createWorkflowJobs() {
+  return new WorkflowJobs({
+    rootPath: app.getPath('userData'),
+    mediaJobs,
+    playObsMedia,
+    onUpdate: (job) => settingsWindow?.webContents.send('companion:workflow-job', job)
+  });
+}
+
 function createRelay() {
   return new RelayClient({
     getConfig: () => config,
@@ -411,6 +461,10 @@ function createRelay() {
     onStatus: (status) => {
       relayStatus = status;
       emitStatus();
+    },
+    onConfirmationRequired: (command) => {
+      settingsWindow?.webContents.send('companion:confirmation', command);
+      showSettings();
     },
     handlers: {
       'companion.status': async () => ({ server: serverStatus, relay: relayStatus, obs: obsStatus }),
@@ -421,7 +475,13 @@ function createRelay() {
       'obs.scene.set': setObsScene,
       'audio.mute': async (payload) => applyAudio({ muted: payload.muted }),
       'audio.volume': async (payload) => applyAudio({ volume: payload.volume }),
-      'media.transcode': async (payload) => mediaJobs.transcode(payload.inputName, payload.preset)
+      'media.transcode': async (payload) => mediaJobs.transcode(payload.inputName, payload.preset),
+      'obs.media.play': playObsMedia,
+      'workflow.run': async (payload) => {
+        const workflowId = String(payload.workflowId || '');
+        const workflowPayload = payload.input && typeof payload.input === 'object' ? payload.input : {};
+        return workflowJobs.runApproved(workflowId, workflowPayload, 'relay');
+      }
     }
   });
 }
@@ -429,6 +489,7 @@ function createRelay() {
 app.on('second-instance', () => showSettings());
 app.on('before-quit', () => {
   quitting = true;
+  clearTimeout(serverRestartTimer);
   relay?.stop();
   stopManagedServer();
   void obs?.disconnect().catch(() => {});
@@ -440,6 +501,7 @@ app.whenReady().then(async () => {
   config = configStore.read();
   saveConfig();
   mediaJobs = createMediaJobs();
+  workflowJobs = createWorkflowJobs();
   relay = createRelay();
   setupIpc();
 

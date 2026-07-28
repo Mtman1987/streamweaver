@@ -66,6 +66,25 @@ test('extracts delta, cumulative, nested, array, JSON-lines, and plain SSE varia
   assert.equal(extractSeaArtStreamText('event: chunk\ndata: Plain reply\n\ndata: [DONE]'), 'Plain reply');
 });
 
+test('removes SeaArt animation and voice timing tuples appended to character dialogue', () => {
+  const dialogue = 'She smiles softly. I am glad you think so.';
+  const leakedMetadata = [
+    '[0.9,0.1,0.9,0.1]',
+    '[5521,3.90,125,0.40]',
+    '[5575,4.00,152,0.50]',
+    '[7385,5.30,589,[8819,6.20,600,1.80]',
+  ].join('');
+
+  assert.equal(
+    extractSeaArtStreamText(`data: ${dialogue}${leakedMetadata}\n\n`),
+    dialogue,
+  );
+  assert.equal(
+    extractSeaArtStreamText('data: Meet me between chapters [1, 2, 3, 4].\n\n'),
+    'Meet me between chapters [1, 2, 3, 4].',
+  );
+});
+
 test('creates, chats, and cleans up a SeaArt character session', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {

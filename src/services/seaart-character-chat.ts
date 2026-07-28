@@ -181,6 +181,24 @@ function appendStreamText(current: string, next: string): string {
   return current + next;
 }
 
+function stripSeaArtControlMetadata(value: string): string {
+  // Character streams can append animation/voice timing tuples directly to
+  // the dialogue, sometimes ending with a truncated tuple. Only remove a
+  // suffix when it starts with a complete numeric tuple, contains another
+  // tuple, and the entire remainder is numeric punctuation.
+  const tuple = /\[\s*[+-]?\d+(?:\.\d+)?(?:\s*,\s*[+-]?\d+(?:\.\d+)?){3}\s*\]/g;
+  for (const match of value.matchAll(tuple)) {
+    const index = match.index ?? -1;
+    if (index < 0) continue;
+    const suffix = value.slice(index).trim();
+    const tupleStarts = suffix.match(/\[/g)?.length || 0;
+    if (tupleStarts >= 2 && /^[\d+\-.,eE\s[\]]+$/.test(suffix)) {
+      return value.slice(0, index).trimEnd();
+    }
+  }
+  return value;
+}
+
 function inspectSeaArtStream(raw: string): SeaArtStreamInspection {
   const frames = parseSeaArtFrames(raw);
   const shapes = new Set<string>();
@@ -204,7 +222,7 @@ function inspectSeaArtStream(raw: string): SeaArtStreamInspection {
   }
 
   return {
-    text: text.trim(),
+    text: stripSeaArtControlMetadata(text.trim()),
     error: error || undefined,
     frameCount: frames.length,
     shapes: [...shapes].slice(0, 6),

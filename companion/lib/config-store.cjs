@@ -7,8 +7,8 @@ const DEFAULT_CONFIG = {
   server: { host: '127.0.0.1', port: 3100, wsPort: 8090 },
   startup: { openAtLogin: false, startMinimized: true },
   relay: { url: 'wss://spmt.live/api/companion/relay', deviceId: '', enabled: false },
-  obs: { url: 'ws://127.0.0.1:4455', enabled: false },
-  audio: { muted: false, volume: 0.7, pttKey: 'Space' },
+  obs: { url: 'ws://127.0.0.1:4455', enabled: false, mediaInputName: 'SpaceMountain Jingles' },
+  audio: { muted: false, volume: 0.7, pttKey: 'Space', outputDeviceId: '' },
   windows: {
     overlay: { url: 'http://127.0.0.1:3100/tts-mixer', visible: false, clickThrough: true },
     popouts: [

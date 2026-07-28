@@ -7,6 +7,7 @@ import { formatBotInteractionHistoryForPrompt } from '@/lib/bot-interactions-sto
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
+import { resolveResearchMode } from '@/services/research-mode';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -126,6 +127,24 @@ export async function POST(request: NextRequest) {
       || (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
       || defaultPersonality;
 
+    const research = await resolveResearchMode({
+      tenantId,
+      botName: botResponseName,
+      username,
+      platform: context,
+      channelId,
+      message,
+    });
+
+    if (research.kind === 'prompt') {
+      const timestamp = new Date().toISOString();
+      await appendPublicChatMessages([
+        { type: 'user', username, message, timestamp },
+        { type: 'ai', username: botResponseName, message: research.response, timestamp },
+      ], 100, tenantId);
+      return apiOk({ response: research.response, research: { state: 'awaiting-query', sources: [] } });
+    }
+
     // Two-tier split: above --- is compact system identity, below is extended guidance
     let systemIdentity: string;
     let extendedGuidance: string;
@@ -188,6 +207,7 @@ export async function POST(request: NextRequest) {
       contextFlag,
       discordMetadata,
       historyText,
+      research.kind === 'research' ? research.context : '',
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : speakerDisplayName}: ${message}`,
       'Important: use the exact Discord identity context above. Do not rename the user to M.T. unless the Discord username itself belongs to the Commander.',
       `Respond as ${botResponseName}:`,
@@ -263,7 +283,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (VERBOSE_LOGS) console.log('[AI Chat Memory] Successfully saved messages to public chat file');
-    return apiOk({ response: cleanResponse });
+    return apiOk({
+      response: cleanResponse,
+      research: research.kind === 'research'
+        ? { state: 'completed', query: research.query, sources: research.sources }
+        : undefined,
+    });
   } catch (error) {
     console.error('[AI Chat Memory] API error:', error);
     return apiError('Failed to generate AI response with memory', { status: 500, code: 'INTERNAL_ERROR' });
