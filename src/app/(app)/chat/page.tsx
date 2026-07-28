@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { Loader2, MessageSquare, Mic, MicOff, Monitor, MonitorOff, RefreshCw, Send, Volume2, VolumeX } from "lucide-react";
+import { Command, Loader2, MessageSquare, Mic, MicOff, Monitor, MonitorOff, Pause, Play, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,6 +76,13 @@ type AppMemoryMessage = {
 
 const APP_PRIVATE_CHANNEL_ID = "__app_private__";
 const APP_PUBLIC_CHANNEL_ID = "__app_public__";
+const CHAT_PREFERENCES_KEY = "streamweaver-chat-preferences-v1";
+const CHAT_DRAFTS_KEY = "streamweaver-chat-drafts-v1";
+const QUICK_MESSAGES = [
+  { label: "Generate image", value: "!img " },
+  { label: "Say on stream", value: "!say " },
+  { label: "SpaceMountain", value: "!spacemountain" },
+];
 
 function useSpeechToText() {
   const [isListening, setIsListening] = React.useState(false);
@@ -290,6 +297,7 @@ export default function ChatPage() {
   const [selectedDiscordChannel, setSelectedDiscordChannel] = React.useState("");
   const [messages, setMessages] = React.useState<DiscordMessage[]>([]);
   const [messageText, setMessageText] = React.useState("");
+  const [messageFilter, setMessageFilter] = React.useState("");
   const [isLoadingMessages, setIsLoadingMessages] = React.useState(false);
   const [isSending, setIsSending] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -297,13 +305,84 @@ export default function ChatPage() {
   const [twitchSender, setTwitchSender] = React.useState<"broadcaster" | "bot">("broadcaster");
   const [showTwitchVideo, setShowTwitchVideo] = React.useState(false);
   const [twitchMuted, setTwitchMuted] = React.useState(false);
+  const [autoRefresh, setAutoRefresh] = React.useState(true);
   const [profile, setProfile] = React.useState<{ name?: string; avatar?: string }>({});
   const speech = useSpeechToText();
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const skipNextPreferenceWrite = React.useRef(true);
+  const skipNextDraftWrite = React.useRef(true);
   const activeChannel = React.useMemo(
     () => discordChannels.find((channel) => channel.id === selectedDiscordChannel),
     [discordChannels, selectedDiscordChannel],
   );
+  const isPublicMemory = selectedDiscordChannel === APP_PUBLIC_CHANNEL_ID;
+  const isPrivateMemory = selectedDiscordChannel === APP_PRIVATE_CHANNEL_ID;
+  const isReadOnlyDestination = target === "discord" && isPublicMemory;
+  const messageLimit = target === "twitch" ? 500 : isPrivateMemory ? 4000 : 2000;
+  const draftKey = `${target}:${target === "discord" ? selectedDiscordChannel : twitchChannel}:${twitchSender}`;
+  const filteredMessages = React.useMemo(() => {
+    const query = messageFilter.trim().toLowerCase();
+    if (!query) return messages;
+    return messages.filter((message) => {
+      const author = message.author?.global_name || message.author?.username || "";
+      const attachmentNames = message.attachments?.map((attachment) => attachment.filename).join(" ") || "";
+      const embedText = message.embeds?.map((embed) => `${embed.title || ""} ${embed.description || ""}`).join(" ") || "";
+      return `${author} ${message.content || ""} ${attachmentNames} ${embedText}`.toLowerCase().includes(query);
+    });
+  }, [messageFilter, messages]);
+
+  React.useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(CHAT_PREFERENCES_KEY) || "{}");
+      if (saved.target === "discord" || saved.target === "twitch") setTarget(saved.target);
+      if (typeof saved.selectedDiscordChannel === "string") setSelectedDiscordChannel(saved.selectedDiscordChannel);
+      if (typeof saved.twitchChannel === "string") setTwitchChannel(saved.twitchChannel);
+      if (saved.twitchSender === "broadcaster" || saved.twitchSender === "bot") setTwitchSender(saved.twitchSender);
+      if (typeof saved.autoRefresh === "boolean") setAutoRefresh(saved.autoRefresh);
+    } catch {
+      // Ignore stale browser preferences.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (skipNextPreferenceWrite.current) {
+      skipNextPreferenceWrite.current = false;
+      return;
+    }
+    window.localStorage.setItem(CHAT_PREFERENCES_KEY, JSON.stringify({
+      target,
+      selectedDiscordChannel,
+      twitchChannel,
+      twitchSender,
+      autoRefresh,
+    }));
+  }, [autoRefresh, selectedDiscordChannel, target, twitchChannel, twitchSender]);
+
+  React.useEffect(() => {
+    try {
+      const drafts = JSON.parse(window.localStorage.getItem(CHAT_DRAFTS_KEY) || "{}");
+      skipNextDraftWrite.current = true;
+      setMessageText(typeof drafts[draftKey] === "string" ? drafts[draftKey] : "");
+    } catch {
+      skipNextDraftWrite.current = true;
+      setMessageText("");
+    }
+  }, [draftKey]);
+
+  React.useEffect(() => {
+    if (skipNextDraftWrite.current) {
+      skipNextDraftWrite.current = false;
+      return;
+    }
+    try {
+      const drafts = JSON.parse(window.localStorage.getItem(CHAT_DRAFTS_KEY) || "{}");
+      if (messageText) drafts[draftKey] = messageText;
+      else delete drafts[draftKey];
+      window.localStorage.setItem(CHAT_DRAFTS_KEY, JSON.stringify(drafts));
+    } catch {
+      // Draft persistence is a convenience; chat remains usable without it.
+    }
+  }, [draftKey, messageText]);
 
   const loadChatConfig = React.useCallback(async () => {
     const [settingsResponse, profileResponse] = await Promise.all([
@@ -409,9 +488,10 @@ export default function ChatPage() {
   React.useEffect(() => {
     if (!selectedDiscordChannel) return;
     void fetchDiscordMessages();
-    const timer = window.setInterval(() => void fetchDiscordMessages(true), 20000);
+    if (!autoRefresh) return;
+    const timer = window.setInterval(() => void fetchDiscordMessages(true), 10000);
     return () => window.clearInterval(timer);
-  }, [fetchDiscordMessages, selectedDiscordChannel]);
+  }, [autoRefresh, fetchDiscordMessages, selectedDiscordChannel]);
 
   React.useEffect(() => {
     const viewport = scrollRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null;
@@ -430,6 +510,22 @@ export default function ChatPage() {
   const sendMessage = async () => {
     const text = messageText.trim();
     if (!text || isSending) return;
+    if (isReadOnlyDestination) {
+      toast({
+        variant: "destructive",
+        title: "Public memory is browse-only",
+        description: "Choose a real Discord channel above or switch the composer to Twitch.",
+      });
+      return;
+    }
+    if (text.length > messageLimit) {
+      toast({
+        variant: "destructive",
+        title: "Message is too long",
+        description: `Shorten it to ${messageLimit.toLocaleString()} characters before sending.`,
+      });
+      return;
+    }
 
     setIsSending(true);
     try {
@@ -509,7 +605,7 @@ export default function ChatPage() {
         </div>
       ) : null}
 
-      <Card className="border-border/70 bg-card/80">
+      <Card className="overflow-hidden border-white/10 bg-[linear-gradient(135deg,rgba(139,92,246,0.12),rgba(34,211,238,0.05)_48%,rgba(13,17,33,0.82))] shadow-[0_24px_70px_rgba(3,8,24,0.3)]">
         <CardHeader className="pb-3">
           <CardTitle>Messaging</CardTitle>
           <CardDescription>Browse real Discord channels, keep Twitch chat open beside it, and send through one shared composer.</CardDescription>
@@ -571,7 +667,40 @@ export default function ChatPage() {
                       : "Choose a Discord channel above."}
               </CardDescription>
             </div>
-            <Badge variant="outline">{messages.length} loaded</Badge>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="relative w-48 max-w-full">
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={messageFilter}
+                  onChange={(event) => setMessageFilter(event.target.value)}
+                  placeholder="Search messages"
+                  aria-label="Search loaded messages"
+                  className="h-9 pl-8 pr-8"
+                />
+                {messageFilter ? (
+                  <button
+                    type="button"
+                    aria-label="Clear message search"
+                    onClick={() => setMessageFilter("")}
+                    className="absolute right-2 top-2 rounded text-muted-foreground transition hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAutoRefresh((current) => !current)}
+                title={autoRefresh ? "Pause automatic refresh" : "Resume automatic refresh"}
+              >
+                {autoRefresh ? <Pause className="mr-1.5 h-3.5 w-3.5" /> : <Play className="mr-1.5 h-3.5 w-3.5" />}
+                {autoRefresh ? "Live" : "Paused"}
+              </Button>
+              <Badge variant="outline">
+                {messageFilter ? `${filteredMessages.length} of ${messages.length}` : `${messages.length} loaded`}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent className="min-h-0 flex-1">
             <ScrollArea ref={scrollRef} className="h-full pr-4">
@@ -584,9 +713,13 @@ export default function ChatPage() {
                 <div className="flex h-full min-h-[28rem] items-center justify-center rounded-2xl border border-dashed text-sm text-muted-foreground">
                   No messages loaded.
                 </div>
+              ) : filteredMessages.length === 0 ? (
+                <div className="flex h-full min-h-[28rem] items-center justify-center rounded-2xl border border-dashed text-sm text-muted-foreground">
+                  No loaded messages match “{messageFilter}”.
+                </div>
               ) : (
                 <div className="space-y-4 pb-2">
-                  {messages.map((message) => {
+                  {filteredMessages.map((message) => {
                     const author = message.author?.global_name || message.author?.username || "Unknown";
                     return (
                       <div key={message.id} className="flex gap-3 rounded-2xl border border-border/70 bg-background/35 p-3">
@@ -625,9 +758,6 @@ export default function ChatPage() {
             </Badge>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
-            {showTwitchVideo && twitchPlayerUrl ? (
-              <iframe src={twitchPlayerUrl} title={`Twitch player for ${twitchChannel}`} className="h-[240px] w-full rounded-2xl border border-border/70 bg-background" allowFullScreen allow="autoplay" />
-            ) : null}
             {twitchChatUrl ? (
               <iframe src={twitchChatUrl} title={`Twitch chat for ${twitchChannel}`} className="min-h-0 flex-1 rounded-2xl border border-border/70 bg-background" />
             ) : (
@@ -639,21 +769,60 @@ export default function ChatPage() {
         </Card>
       </div>
 
-      <Card className="sticky bottom-4 z-10 border-border/70 bg-card/95 shadow-lg backdrop-blur">
+      <Card className="sticky bottom-4 z-10 overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(14,18,35,0.98),rgba(9,12,25,0.96))] shadow-[0_24px_70px_rgba(3,8,24,0.55)] backdrop-blur-xl">
         <CardContent className="grid gap-3 p-3 lg:grid-cols-[1fr_240px]">
-          <Textarea
-            value={messageText}
-            onChange={(event) => setMessageText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void sendMessage();
-              }
-            }}
-            rows={2}
-            placeholder={`Type or dictate a message for ${target === "discord" ? "Discord" : "Twitch"}...`}
-            className="min-h-16 resize-none"
-          />
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_MESSAGES.map((quickMessage) => (
+                  <Button
+                    key={quickMessage.label}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-full px-2.5 text-xs"
+                    disabled={isReadOnlyDestination}
+                    onClick={() => setMessageText((current) => current || quickMessage.value)}
+                  >
+                    <Command className="mr-1 h-3 w-3" />
+                    {quickMessage.label}
+                  </Button>
+                ))}
+              </div>
+              <span className={messageText.length > messageLimit ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+                {messageText.length.toLocaleString()} / {messageLimit.toLocaleString()}
+              </span>
+            </div>
+            <Textarea
+              value={messageText}
+              onChange={(event) => setMessageText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              rows={2}
+              maxLength={messageLimit + 250}
+              disabled={isReadOnlyDestination}
+              placeholder={isReadOnlyDestination
+                ? "Public memory is browse-only. Choose a Discord channel or switch to Twitch."
+                : `Type or dictate a message for ${target === "discord" ? "Discord" : "Twitch"}...`}
+              className="min-h-16 resize-none"
+            />
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>
+                {target === "discord"
+                  ? isPrivateMemory
+                    ? "Private app conversation with persistent memory"
+                    : isPublicMemory
+                      ? "Combined public history · browse-only"
+                      : `Sending to #${activeChannel?.name || "selected channel"}`
+                  : `Sending to twitch.tv/${twitchChannel || "channel"} as ${twitchSender}`}
+              </span>
+              <span className="hidden sm:inline">Enter to send · Shift+Enter for a new line · drafts save automatically</span>
+            </div>
+          </div>
           <div className="grid gap-2">
             <div className="grid grid-cols-2 gap-2">
               <Tabs value={target} onValueChange={(value) => setTarget(value as ChatTarget)} className="w-full">
@@ -672,7 +841,7 @@ export default function ChatPage() {
                 {speech.isListening ? <MicOff className="mr-2 h-4 w-4 text-red-500" /> : <Mic className="mr-2 h-4 w-4" />}
                 {speech.isListening ? "Stop" : "Voice"}
               </Button>
-              <Button onClick={() => void sendMessage()} disabled={isSending || !messageText.trim()}>
+              <Button onClick={() => void sendMessage()} disabled={isSending || !messageText.trim() || isReadOnlyDestination || messageText.length > messageLimit}>
                 {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Send
               </Button>
@@ -690,7 +859,7 @@ export default function ChatPage() {
             ) : (
               <div className="flex items-center gap-2 rounded-xl border border-border/70 px-3 py-2 text-xs text-muted-foreground">
                 <MessageSquare className="h-3.5 w-3.5" />
-                Sending to the selected Discord channel.
+                {isReadOnlyDestination ? "Public memory is browse-only." : "Sending to the selected Discord channel."}
               </div>
             )}
           </div>

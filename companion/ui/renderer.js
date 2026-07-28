@@ -7,7 +7,7 @@ let confirmations = [];
 
 function renderStatus(status) {
   byId('status').innerHTML = Object.entries(status).map(([name, value]) =>
-    `<span class="status-pill ${String(value?.state || '')}">${name}: ${value?.state || 'unknown'}</span>`
+    `<span class="status-pill ${String(value?.state || '')}" title="${escapeHtml(value?.detail || '')}">${escapeHtml(name.replace(/([A-Z])/g, ' $1'))}: ${escapeHtml(value?.state || 'unknown')}</span>`
   ).join('');
 }
 
@@ -131,6 +131,11 @@ document.addEventListener('click', async (event) => {
 });
 
 byId('save').addEventListener('click', async () => {
+  const saveButton = byId('save');
+  saveButton.disabled = true;
+  saveButton.textContent = 'Saving...';
+  byId('message').classList.remove('error');
+  byId('message').textContent = '';
   const updates = {
     startup: { openAtLogin: byId('open-at-login').checked, startMinimized: byId('start-minimized').checked },
     relay: {
@@ -153,16 +158,24 @@ byId('save').addEventListener('click', async () => {
       popouts: collectPopouts()
     }
   };
-  await window.companion.saveConfig(updates);
-  const secrets = {};
-  if (byId('obs-password').value) secrets.obsPassword = byId('obs-password').value;
-  if (byId('relay-token').value) secrets.relayToken = byId('relay-token').value;
-  if (Object.keys(secrets).length) await window.companion.saveSecrets(secrets);
-  byId('obs-password').value = '';
-  byId('relay-token').value = '';
-  byId('message').textContent = 'Saved';
-  setTimeout(() => { byId('message').textContent = ''; }, 2000);
-  await load();
+  try {
+    await window.companion.saveConfig(updates);
+    const secrets = {};
+    if (byId('obs-password').value) secrets.obsPassword = byId('obs-password').value;
+    if (byId('relay-token').value) secrets.relayToken = byId('relay-token').value;
+    if (Object.keys(secrets).length) await window.companion.saveSecrets(secrets);
+    byId('obs-password').value = '';
+    byId('relay-token').value = '';
+    byId('message').textContent = 'Settings saved';
+    setTimeout(() => { byId('message').textContent = ''; }, 2400);
+    await load();
+  } catch (error) {
+    byId('message').classList.add('error');
+    byId('message').textContent = `Save failed: ${error?.message || 'unknown error'}`;
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = 'Save companion settings';
+  }
 });
 
 byId('import-media').addEventListener('click', async () => {
@@ -223,4 +236,16 @@ window.companion.onConfirmation((command) => {
   else confirmations.push(command);
   renderWorkflows();
 });
+
+const sections = Array.from(document.querySelectorAll('main section[id]'));
+const sectionLinks = Array.from(document.querySelectorAll('.app-nav a[href^="#"]'));
+const sectionObserver = new IntersectionObserver((entries) => {
+  const visible = entries
+    .filter((entry) => entry.isIntersecting)
+    .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+  if (!visible) return;
+  sectionLinks.forEach((link) => link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`));
+}, { rootMargin: '-15% 0px -70% 0px', threshold: [0.05, 0.4] });
+sections.forEach((section) => sectionObserver.observe(section));
+
 void load();

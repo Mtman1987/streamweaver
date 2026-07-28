@@ -7,18 +7,36 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header>
-    <div>
+  <div class="starfield" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="brand-lockup">
+      <img src="../../public/app-icon.png" alt="" class="app-icon">
+      <div>
       <p class="eyebrow">SPACEMOUNTAIN</p>
       <h1>Companion Control Center</h1>
-      <p>Local overlays, OBS, audio, media, and secure cloud commands.</p>
+      <p class="subtitle">Your local bridge for overlays, OBS, audio, media, and reviewed cloud commands.</p>
+      </div>
     </div>
     <div id="status" class="status-grid"></div>
   </header>
 
+  <nav class="app-nav" aria-label="Companion sections">
+    <a href="#windows">Windows</a>
+    <a href="#studio">Studio</a>
+    <a href="#media">Media</a>
+    <a href="#workflows">Workflows</a>
+    <a href="#connection">Connection</a>
+    <span class="nav-spacer"></span>
+    <span class="local-pill"><i></i> Local companion</span>
+  </nav>
+
   <main>
-    <section>
-      <h2>Overlay and popouts</h2>
+    <section id="windows">
+      <div class="section-heading">
+        <span class="section-icon">01</span>
+        <div><p class="kicker">On-screen control</p><h2>Overlay and popouts</h2></div>
+      </div>
+      <p class="section-copy">Launch and position the local surfaces your viewers see without reopening OBS.</p>
       <div class="actions">
         <button data-window-action="overlay.show">Show overlay</button>
         <button data-window-action="overlay.hide" class="secondary">Hide overlay</button>
@@ -28,8 +46,12 @@
       <div id="popouts" class="cards"></div>
     </section>
 
-    <section>
-      <h2>OBS and audio</h2>
+    <section id="studio">
+      <div class="section-heading">
+        <span class="section-icon">02</span>
+        <div><p class="kicker">Live production</p><h2>OBS and audio</h2></div>
+      </div>
+      <p class="section-copy">Connect your local studio, switch scenes, and control managed playback from one place.</p>
       <div class="grid two">
         <label>OBS WebSocket URL <input id="obs-url" placeholder="ws://127.0.0.1:4455"></label>
         <label>OBS password <input id="obs-password" type="password" autocomplete="new-password" placeholder="Stored with OS encryption"></label>
@@ -47,8 +69,12 @@
       </div>
     </section>
 
-    <section>
-      <h2>Local media and FFmpeg</h2>
+    <section id="media">
+      <div class="section-heading">
+        <span class="section-icon">03</span>
+        <div><p class="kicker">Asset library</p><h2>Local media and FFmpeg</h2></div>
+      </div>
+      <p class="section-copy">Import stream assets, prepare delivery formats, and send approved media straight to OBS.</p>
       <div class="actions">
         <button id="choose-library" class="secondary">Choose library</button>
         <button id="import-media">Import media</button>
@@ -58,8 +84,11 @@
       <div id="jobs" class="media-list"></div>
     </section>
 
-    <section class="wide">
-      <h2>Reviewed creative workflows</h2>
+    <section id="workflows" class="wide feature-section">
+      <div class="section-heading">
+        <span class="section-icon">04</span>
+        <div><p class="kicker">Human-in-the-loop tools</p><h2>Reviewed creative workflows</h2></div>
+      </div>
       <p class="muted">Workflows are allowlisted and bounded. Song briefs do not execute arbitrary tools; they become reviewed jobs for a locally installed renderer.</p>
       <div class="actions">
         <button id="test-workflow" class="secondary">Run harmless workflow test</button>
@@ -79,8 +108,12 @@
       <div id="confirmations" class="media-list"></div>
     </section>
 
-    <section>
-      <h2>Secure relay and startup</h2>
+    <section id="connection">
+      <div class="section-heading">
+        <span class="section-icon">05</span>
+        <div><p class="kicker">Device settings</p><h2>Secure relay and startup</h2></div>
+      </div>
+      <p class="section-copy">Pair this computer with SpaceMountain and choose how the companion starts with Windows.</p>
       <div class="grid two">
         <label>Outbound WSS relay <input id="relay-url" placeholder="wss://spmt.live/api/companion/relay"></label>
         <label>Paired device ID <input id="relay-device-id" autocomplete="off" placeholder="Shown by SPMT when pairing"></label>
@@ -93,8 +126,11 @@
   </main>
 
   <footer>
-    <button id="open-streamweaver" class="secondary">Open StreamWeaver</button>
-    <span id="message"></span>
+    <div class="footer-context">
+      <button id="open-streamweaver" class="secondary">Open StreamWeaver</button>
+      <span class="footer-note">Secrets stay protected by the operating system.</span>
+    </div>
+    <span id="message" role="status" aria-live="polite"></span>
     <button id="save">Save companion settings</button>
   </footer>
   <script src="./renderer.js"></script>
