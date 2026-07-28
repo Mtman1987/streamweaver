@@ -1,7 +1,7 @@
 # Research and Reviewed Creative Workflows
 
-Status: implemented source contract, pending production certification
-Updated: 2026-07-27
+Status: cloud contract deployed; local-device production certification pending
+Updated: 2026-07-28
 
 This document owns StreamWeaver's bot-research and Companion creative-workflow implementation details. The cross-suite execution order remains in SPMT's `docs/ecosystem/PRODUCTION_ROADMAP.md`.
 
@@ -13,8 +13,8 @@ This document owns StreamWeaver's bot-research and Companion creative-workflow i
 - A question included in the same message runs immediately.
 - Explicit `research`, `look up`, `search for`, and `find out about` requests also run immediately.
 - Ordinary mentions and ordinary chat do not trigger retrieval.
-- Curated knowledge-pack search runs before optional live web search.
-- Live search uses `BRAVE_SEARCH_API_KEY` when present, strict safe search, a six-second timeout, result limits, optional domain allowlisting, and a bounded cache.
+- Curated knowledge-pack search runs without an external API key and before optional live web search.
+- Live search is an optional enhancement. When an operator enables it and provides `BRAVE_SEARCH_API_KEY`, it uses strict safe search, a six-second timeout, result limits, optional domain allowlisting, and a bounded cache. A missing provider key does not disable knowledge-pack Research Mode.
 - Retrieved text is labeled as untrusted evidence. The answer prompt requires uncertainty, compact citations, and no assumption that discovered media is licensed for rebroadcast.
 - Tenant settings are available in Bot Functions under **Research and Knowledge**.
 
@@ -36,7 +36,7 @@ The Companion UI contains the local review queue, cloud-command confirmations, h
 
 | Value | Classification | Owner |
 |---|---|---|
-| Search provider credential | Secret | `BRAVE_SEARCH_API_KEY` in environment/Fly secret |
+| Optional live-search provider credential | Secret | `BRAVE_SEARCH_API_KEY` in environment/Fly secret; not required for curated packs |
 | Research enabled, selected packs, allowlist, limits, cache policy | Public runtime config | Tenant volume JSON at `config/research.json` |
 | Curated built-in pack content | Versioned product content | Git-tracked `src/data/knowledge-packs/*.json` |
 | Pending two-step question window | Ephemeral request state | Process memory, two-minute expiry |
@@ -65,3 +65,12 @@ npm run companion:check
 ```
 
 Production certification additionally requires the SPMT relay tests, a real paired-device test, an OBS media-input playback test, a tenant-isolation matrix, exact deployed SHA parity, and a licensed-renderer operator proof.
+
+### Current production evidence — 2026-07-28
+
+- StreamWeaver production health reports current SHA `9ad0ff20b3f7b57e4ab1bf04f0cb2656a0fbd142`; the research/Companion merge `776d51299ed4d5a5556ccc68173796d26ceb41c1` is in its ancestry.
+- SPMT readiness and its Fly image label report SHA `48615d9c665a793bab58a36177a4edde6564033d`.
+- SPMT exposes SDK `0.2.1`, and the versioned SDK tarball returns HTTP 200.
+- Current-main StreamWeaver typecheck, the 15 focused Research Mode and SeaArt tests, the four Companion tests, and the SPMT 175-check smoke suite pass.
+- `BRAVE_SEARCH_API_KEY` is intentionally unconfigured. Curated packs remain available; live internet retrieval is optional and unproven.
+- Companion and OBS were not running on the operator PC during this verification, so paired-device delivery, real OBS playback, and licensed-renderer execution remain operator evidence rather than completed production claims.

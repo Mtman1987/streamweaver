@@ -56,7 +56,7 @@ interface ResearchSettings {
 
 const defaultResearchSettings: ResearchSettings = {
     enabled: true,
-    liveSearchEnabled: true,
+    liveSearchEnabled: false,
     knowledgePacks: [],
     sourceAllowlist: [],
     maxResults: 5,
@@ -646,7 +646,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 <CardHeader>
                     <CardTitle>Research and Knowledge</CardTitle>
                     <CardDescription>
-                        Let viewers say “Hey {botName}, I have a question,” then ask a researched follow-up. Knowledge packs provide curated expertise; live search uses the server&apos;s configured provider key.
+                        Let viewers say “Hey {botName}, I have a question,” then ask a researched follow-up. Knowledge packs need no API key; optional live search uses the server&apos;s configured provider key.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
@@ -663,7 +663,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     <div className="flex items-center justify-between rounded-md border px-3 py-2">
                         <div className="space-y-0.5">
                             <div className="text-sm font-medium">Live web search</div>
-                            <div className="text-xs text-muted-foreground">Falls back to curated packs when the search provider is unavailable.</div>
+                            <div className="text-xs text-muted-foreground">Optional and off by default. Curated packs continue working without a provider key.</div>
                         </div>
                         <Switch
                             checked={researchSettings.liveSearchEnabled}
