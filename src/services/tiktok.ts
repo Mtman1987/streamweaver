@@ -4,7 +4,6 @@
  */
 
 import { EventEmitter } from 'events';
-import { WebcastPushConnection } from 'tiktok-live-connector';
 
 export interface TikTokMessage {
   id: string;
@@ -56,11 +55,10 @@ export class TikTokService extends EventEmitter {
       this.username = username;
 
       // Create connection to TikTok Live
+      const { WebcastPushConnection } = await import('tiktok-live-connector/legacy');
       this.connection = new WebcastPushConnection(username, {
         processInitialData: true,
-        enableExtendedGiftInfo: true,
-        enableWebsocketUpgrade: true,
-        requestPollingIntervalMs: 1000
+        enableExtendedGiftInfo: true
       });
 
       // Chat messages

@@ -12,6 +12,7 @@ installRuntimeLogBuffer();
 
 import * as http from 'http';
 import { spawn } from 'child_process';
+import { resolve } from 'path';
 import { WebSocketServer } from 'ws';
 import { PortManager } from './src/lib/port-manager';
 import { waitForNextJsReady, waitForProcessOutput } from './src/lib/process-utils';
@@ -229,7 +230,12 @@ async function startServer() {
             ? ['start', '-p', String(uiPort), '-H', serverHost]
             : ['dev', '-p', String(uiPort), '-H', serverHost];
 
-        nextJsProcess = spawn('npx', [nextCommand, ...nextArgs], {
+        const packagedRuntime = process.env.STREAMWEAVER_PACKAGED_RUNTIME === '1';
+        const nextProcessCommand = packagedRuntime ? process.execPath : 'npx';
+        const nextProcessArgs = packagedRuntime
+            ? [resolve(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next'), ...nextArgs]
+            : [nextCommand, ...nextArgs];
+        nextJsProcess = spawn(nextProcessCommand, nextProcessArgs, {
             cwd: process.cwd(),
             env: {
                 ...process.env,
@@ -241,7 +247,7 @@ async function startServer() {
                 NEXT_PUBLIC_STREAMWEAVE_WS_HOST: serverHost,
             },
             stdio: ['pipe', 'pipe', 'pipe'],
-            shell: true
+            shell: !packagedRuntime
         });
         
         nextJsProcess.stdout?.on('data', (data: Buffer) => {

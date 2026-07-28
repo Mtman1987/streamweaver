@@ -39,12 +39,23 @@ let obs;
 const popoutWindows = new Map();
 let quitting = false;
 
+function logCompanion(message, error) {
+  const detail = error instanceof Error ? `${error.stack || error.message}` : error ? String(error) : '';
+  const line = `[${new Date().toISOString()}] ${message}${detail ? `: ${detail}` : ''}\n`;
+  try {
+    fs.appendFileSync(path.join(app.getPath('userData'), 'companion.log'), line, 'utf8');
+  } catch {
+    // Logging must never prevent the tray app from starting.
+  }
+}
+
 function repoRoot() {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'runtime');
   return path.resolve(__dirname, '..');
 }
 
 function emitStatus() {
-  if (!settingsWindow?.isDestroyed()) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('companion:status', {
       server: serverStatus,
       relay: relayStatus,
@@ -256,10 +267,13 @@ function startManagedServer() {
   if (serverProcess && serverProcess.exitCode == null) return;
   clearTimeout(serverRestartTimer);
   serverStopRequested = false;
-  const command = process.env.STREAMWEAVER_SERVER_COMMAND || (process.platform === 'win32' ? 'npm.cmd' : 'npm');
+  const packagedNode = path.join(repoRoot(), process.platform === 'win32' ? 'node.exe' : 'bin/node');
+  const usePackagedRuntime = app.isPackaged && fs.existsSync(packagedNode);
+  const command = process.env.STREAMWEAVER_SERVER_COMMAND
+    || (usePackagedRuntime ? packagedNode : (process.platform === 'win32' ? 'npm.cmd' : 'npm'));
   const args = process.env.STREAMWEAVER_SERVER_ARGS
     ? JSON.parse(process.env.STREAMWEAVER_SERVER_ARGS)
-    : ['run', 'start:local'];
+    : (usePackagedRuntime ? ['node_modules/tsx/dist/cli.mjs', 'server.ts'] : ['run', 'start:local']);
   serverStatus = { state: 'starting' };
   emitStatus();
   serverProcess = spawn(command, args, {
@@ -268,6 +282,8 @@ function startManagedServer() {
     shell: false,
     env: {
       ...process.env,
+      NODE_ENV: usePackagedRuntime ? 'production' : (process.env.NODE_ENV || 'development'),
+      STREAMWEAVER_PACKAGED_RUNTIME: usePackagedRuntime ? '1' : '',
       OPEN_BROWSER: 'false',
       PORT: String(config.server.port),
       WS_PORT: String(config.server.wsPort),
@@ -275,6 +291,7 @@ function startManagedServer() {
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
+  serverProcess.on('spawn', () => logCompanion(`Managed server started (pid ${serverProcess.pid})`));
   serverProcess.stdout.on('data', (chunk) => {
     serverStatus = { state: 'running', detail: String(chunk).trim().slice(-300) };
     emitStatus();
@@ -284,6 +301,7 @@ function startManagedServer() {
     emitStatus();
   });
   serverProcess.on('error', (error) => {
+    logCompanion('Managed server failed to start', error);
     serverStatus = { state: 'error', message: error.message };
     emitStatus();
   });
@@ -497,6 +515,7 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => {});
 
 app.whenReady().then(async () => {
+  logCompanion('Companion starting');
   configStore = new ConfigStore(app.getPath('userData'));
   config = configStore.read();
   saveConfig();
@@ -505,7 +524,9 @@ app.whenReady().then(async () => {
   relay = createRelay();
   setupIpc();
 
-  const iconPath = path.join(repoRoot(), 'assets', 'tray-icon.png');
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'app-icon.png')
+    : path.join(repoRoot(), 'public', 'app-icon.png');
   const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip('SpaceMountain Companion');
@@ -517,4 +538,7 @@ app.whenReady().then(async () => {
   relay.start();
   await connectObs();
   if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();
+  logCompanion('Companion ready');
+}).catch((error) => {
+  logCompanion('Companion startup failed', error);
 });

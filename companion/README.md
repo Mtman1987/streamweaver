@@ -26,6 +26,17 @@ npm install
 npm start
 ```
 
+## Install on Windows
+
+Download `SpaceMountain-Companion-Setup-<version>.exe` from the
+[StreamWeaver releases page](https://github.com/Mtman1987/streamweaver/releases),
+run the installer, and launch **SpaceMountain Companion** from the Start menu
+or desktop shortcut.
+
+The installer includes the local StreamWeaver runtime, so Node.js is not
+required for the installed build. This first public release is not code-signed;
+Windows may display an **Unknown publisher** warning.
+
 The application uses a single-instance lock. Closing its settings window hides
 it; it continues running in the tray and does not remain in the taskbar.
 

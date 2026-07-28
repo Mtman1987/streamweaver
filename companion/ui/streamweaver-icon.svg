@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SpaceMountain Companion">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9b6cff"/>
+      <stop offset="1" stop-color="#31dcec"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#090a17"/>
+  <path d="M14 43 26 20l7 13 6-9 11 19H14Z" fill="url(#bg)" opacity=".96"/>
+  <path d="M21 43h24" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+  <circle cx="47" cy="15" r="3" fill="#31dcec"/>
+  <circle cx="16" cy="18" r="1.8" fill="#fff"/>
+  <circle cx="51" cy="31" r="1.4" fill="#fff" opacity=".8"/>
+</svg>

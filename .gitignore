@@ -11,6 +11,7 @@
 /dist
 /build
 /.next/
+/.next-release/
 /out/
 
 # Local Environment Variables
