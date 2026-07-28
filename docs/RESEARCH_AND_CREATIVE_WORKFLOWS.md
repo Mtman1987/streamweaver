@@ -68,9 +68,10 @@ Production certification additionally requires the SPMT relay tests, a real pair
 
 ### Current production evidence — 2026-07-28
 
-- StreamWeaver production health reports current SHA `9ad0ff20b3f7b57e4ab1bf04f0cb2656a0fbd142`; the research/Companion merge `776d51299ed4d5a5556ccc68173796d26ceb41c1` is in its ancestry.
-- SPMT readiness and its Fly image label report SHA `48615d9c665a793bab58a36177a4edde6564033d`.
+- The research/Companion merge `776d51299ed4d5a5556ccc68173796d26ceb41c1` and no-key default merge `d91af1723cdbee923c6a4d3a8dd2ca42ac4fee70` are deployed in StreamWeaver current-main ancestry.
+- SPMT relay/SDK merge `48615d9c665a793bab58a36177a4edde6564033d` is deployed in SPMT current-main ancestry.
 - SPMT exposes SDK `0.2.1`, and the versioned SDK tarball returns HTTP 200.
 - Current-main StreamWeaver typecheck, the 15 focused Research Mode and SeaArt tests, the four Companion tests, and the SPMT 175-check smoke suite pass.
 - `BRAVE_SEARCH_API_KEY` is intentionally unconfigured. Curated packs remain available; live internet retrieval is optional and unproven.
 - Companion and OBS were not running on the operator PC during this verification, so paired-device delivery, real OBS playback, and licensed-renderer execution remain operator evidence rather than completed production claims.
+- Exact current SHA is checked dynamically by comparing `origin/main` with the live health/build label; it is not frozen into this document because a documentation commit advances `main`. That comparison passed for both affected apps on 2026-07-28.
