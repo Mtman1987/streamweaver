@@ -6,11 +6,68 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
+    "dist:win": "electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "live.spmt.companion",
+    "productName": "SpaceMountain Companion",
+    "artifactName": "SpaceMountain-Companion-Setup-${version}.${ext}",
+    "asar": true,
+    "compression": "normal",
+    "npmRebuild": false,
+    "directories": {
+      "output": "../dist/companion"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "lib/**/*",
+      "ui/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/companion-runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*",
+          "!node_modules/**/*",
+          "!smoke.*.log"
+        ]
+      },
+      {
+        "from": "../dist/companion-runtime/node_modules",
+        "to": "runtime/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../public/app-icon.png",
+        "to": "assets/app-icon.png"
+      }
+    ],
+    "win": {
+      "icon": "../public/favicon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SpaceMountain Companion"
+    }
   },
   "dependencies": {
-    "electron": "^43.2.0",
     "obs-websocket-js": "^5.0.6",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.0.12"
   }
 }
