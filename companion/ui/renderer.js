@@ -2,6 +2,8 @@ const byId = (id) => document.getElementById(id);
 let state;
 let media = [];
 let jobs = [];
+let workflowJobs = [];
+let confirmations = [];
 
 function renderStatus(status) {
   byId('status').innerHTML = Object.entries(status).map(([name, value]) =>
@@ -30,11 +32,32 @@ function renderMedia() {
     `<div class="media-row"><span><strong>${escapeHtml(item.name)}</strong><br><small>${Math.round(item.bytes / 1024)} KB</small></span>
       <span><button data-transcode="${escapeHtml(item.name)}" data-preset="mp4-web" class="secondary">MP4</button>
       <button data-transcode="${escapeHtml(item.name)}" data-preset="audio-mp3" class="secondary">MP3</button>
-      <button data-transcode="${escapeHtml(item.name)}" data-preset="gif" class="secondary">GIF</button></span></div>`
+      <button data-transcode="${escapeHtml(item.name)}" data-preset="gif" class="secondary">GIF</button>
+      <button data-play-media="${escapeHtml(item.name)}">Play in OBS</button></span></div>`
   ).join('') : '<p>No local media yet.</p>';
   byId('jobs').innerHTML = jobs.length ? jobs.slice().reverse().map((job) =>
     `<div class="media-row"><span>${escapeHtml(job.outputName || job.inputName)}</span><strong>${escapeHtml(job.status)}</strong></div>`
   ).join('') : '';
+}
+
+function renderWorkflows() {
+  byId('workflow-jobs').innerHTML = workflowJobs.length ? workflowJobs.slice().reverse().map((job) => {
+    const review = job.status === 'awaiting_review'
+      ? `<span><button data-review-job="${escapeHtml(job.id)}" data-approved="true">Approve</button>
+          <button data-review-job="${escapeHtml(job.id)}" data-approved="false" class="danger">Reject</button></span>`
+      : `<strong>${escapeHtml(job.status)}</strong>`;
+    const details = job.payload?.brief || job.payload?.message || job.payload?.mediaName || '';
+    return `<div class="media-row workflow-row"><span><strong>${escapeHtml(job.payload?.title || job.title || job.workflowId)}</strong>
+      <br><small>${escapeHtml(job.workflowId)} · ${escapeHtml(job.source || 'local')}</small>
+      ${details ? `<br><small>${escapeHtml(details)}</small>` : ''}</span>${review}</div>`;
+  }).join('') : '<p>No reviewed creative jobs yet.</p>';
+  byId('confirmations').innerHTML = confirmations.length ? confirmations.map((command) =>
+    `<div class="media-row workflow-row"><span><strong>${escapeHtml(command.action)}</strong>
+      <br><small>${escapeHtml(command.source)} · expires ${escapeHtml(command.expiresAt)}</small>
+      <br><small>${escapeHtml(JSON.stringify(command.payload || {}))}</small></span>
+      <span><button data-confirm-command="${escapeHtml(command.id)}" data-approved="true">Approve</button>
+      <button data-confirm-command="${escapeHtml(command.id)}" data-approved="false" class="danger">Reject</button></span></div>`
+  ).join('') : '<p>No cloud commands are waiting for local approval.</p>';
 }
 
 async function load() {
@@ -46,8 +69,10 @@ async function load() {
   byId('popouts').innerHTML = config.windows.popouts.map(popoutCard).join('');
   byId('obs-url').value = config.obs.url;
   byId('obs-enabled').checked = config.obs.enabled;
+  byId('obs-media-input').value = config.obs.mediaInputName || 'SpaceMountain Jingles';
   byId('audio-volume').value = config.audio.volume;
   byId('audio-muted').checked = config.audio.muted;
+  byId('audio-output-device').value = config.audio.outputDeviceId || '';
   byId('relay-url').value = config.relay.url;
   byId('relay-device-id').value = config.relay.deviceId;
   byId('relay-enabled').checked = config.relay.enabled;
@@ -56,7 +81,10 @@ async function load() {
   byId('library-path').textContent = config.media.libraryPath || 'Using Companion-managed media folder';
   media = state.media || [];
   jobs = state.jobs || [];
+  workflowJobs = state.workflowJobs || [];
+  confirmations = state.confirmations || [];
   renderMedia();
+  renderWorkflows();
   await refreshObsScenes();
 }
 
@@ -88,6 +116,18 @@ document.addEventListener('click', async (event) => {
     jobs.push(job);
     renderMedia();
   }
+  if (target.dataset.playMedia) {
+    await window.companion.playObsMedia(target.dataset.playMedia, byId('obs-media-input').value.trim());
+  }
+  if (target.dataset.reviewJob) {
+    await window.companion.reviewWorkflow(target.dataset.reviewJob, target.dataset.approved === 'true');
+    await load();
+  }
+  if (target.dataset.confirmCommand) {
+    await window.companion.resolveConfirmation(target.dataset.confirmCommand, target.dataset.approved === 'true');
+    confirmations = confirmations.filter((item) => item.id !== target.dataset.confirmCommand);
+    renderWorkflows();
+  }
 });
 
 byId('save').addEventListener('click', async () => {
@@ -98,8 +138,16 @@ byId('save').addEventListener('click', async () => {
       deviceId: byId('relay-device-id').value.trim(),
       enabled: byId('relay-enabled').checked
     },
-    obs: { url: byId('obs-url').value.trim(), enabled: byId('obs-enabled').checked },
-    audio: { volume: Number(byId('audio-volume').value), muted: byId('audio-muted').checked },
+    obs: {
+      url: byId('obs-url').value.trim(),
+      enabled: byId('obs-enabled').checked,
+      mediaInputName: byId('obs-media-input').value.trim(),
+    },
+    audio: {
+      volume: Number(byId('audio-volume').value),
+      muted: byId('audio-muted').checked,
+      outputDeviceId: byId('audio-output-device').value.trim(),
+    },
     windows: {
       overlay: { ...state.config.windows.overlay, url: byId('overlay-url').value.trim(), clickThrough: byId('overlay-click-through').checked },
       popouts: collectPopouts()
@@ -129,6 +177,30 @@ byId('obs-set-scene').addEventListener('click', async () => {
   const sceneName = byId('obs-scenes').value;
   if (sceneName) await window.companion.setObsScene(sceneName);
 });
+byId('test-workflow').addEventListener('click', async () => {
+  await window.companion.testWorkflow();
+  await load();
+});
+byId('create-song-job').addEventListener('click', async () => {
+  const title = byId('song-title').value.trim();
+  const brief = byId('song-brief').value.trim();
+  if (!title || !brief) {
+    byId('message').textContent = 'Song title and brief are required';
+    return;
+  }
+  await window.companion.createWorkflow('song.render.request', {
+    title,
+    brief,
+    engine: byId('song-engine').value.trim(),
+    voice: byId('song-voice').value.trim(),
+    genre: byId('song-genre').value.trim(),
+    lyrics: byId('song-lyrics').value.trim(),
+  });
+  byId('song-title').value = '';
+  byId('song-brief').value = '';
+  byId('song-lyrics').value = '';
+  await load();
+});
 byId('audio-volume').addEventListener('input', () => window.companion.setAudio({ volume: Number(byId('audio-volume').value) }));
 byId('audio-muted').addEventListener('change', () => window.companion.setAudio({ muted: byId('audio-muted').checked }));
 byId('open-streamweaver').addEventListener('click', () => window.companion.openExternal('http://127.0.0.1:3100/dashboard'));
@@ -138,5 +210,17 @@ window.companion.onMediaJob((job) => {
   if (index >= 0) jobs[index] = job;
   else jobs.push(job);
   renderMedia();
+});
+window.companion.onWorkflowJob((job) => {
+  const index = workflowJobs.findIndex((item) => item.id === job.id);
+  if (index >= 0) workflowJobs[index] = job;
+  else workflowJobs.push(job);
+  renderWorkflows();
+});
+window.companion.onConfirmation((command) => {
+  const index = confirmations.findIndex((item) => item.id === command.id);
+  if (index >= 0) confirmations[index] = command;
+  else confirmations.push(command);
+  renderWorkflows();
 });
 void load();

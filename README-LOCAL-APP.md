@@ -1,12 +1,14 @@
-# StreamWeaver Local App
+# StreamWeaver Local Runtime
 
-StreamWeaver runs entirely on your machine as a local Node server with a browser UI.
+This file describes the source/local runtime. The supported desktop host is the
+SpaceMountain Companion in `companion/`; it supervises this runtime, stays in
+the system tray, and owns OBS, local audio/media, and approved local workflows.
 
 ## What users do
 
 1. Download the release zip.
 2. Extract it to a normal folder.
-3. Run `StreamWeaver.exe` on Windows, `./StreamWeaver` on macOS/Linux, or `npm start` for a source build.
+3. Run the packaged Companion on Windows, or use `npm run companion:start` for a source build.
 4. The app starts on `http://127.0.0.1:3100`.
 5. Open the Settings page and enter the API key from `config/app.json`.
 
@@ -18,4 +20,10 @@ The release keeps editable and persistent files outside the app code:
 - `data/`
 - `logs/`
 
-Secrets stay on the local machine and are masked in the UI after they are saved.
+Provider secrets used by the local runtime stay local. Companion pairing and
+OBS secrets use Electron `safeStorage`; public device settings and local job
+state use Electron's user-data directory.
+
+See `companion/README.md` for pairing and current capabilities. The former
+standalone executable packaging scripts remain development tools and are not a
+signed production installer claim.

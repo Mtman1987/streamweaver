@@ -9,10 +9,13 @@ h2 { font-size: 17px; }
 .eyebrow { color: #52e7ff; font-size: 11px; font-weight: 900; letter-spacing: .2em; }
 main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 24px 32px 36px; }
 section { min-width: 0; padding: 20px; background: #0d1422dd; border: 1px solid #26344c; border-radius: 18px; box-shadow: 0 14px 40px #0007; }
+section.wide { grid-column: 1 / -1; }
 label { display: grid; gap: 6px; margin: 12px 0; color: #aabbd2; font-size: 12px; }
-input, select, button { border: 1px solid #344563; border-radius: 9px; background: #09101d; color: #eef6ff; padding: 10px 12px; }
+input, select, textarea, button { border: 1px solid #344563; border-radius: 9px; background: #09101d; color: #eef6ff; padding: 10px 12px; }
+textarea { width: 100%; resize: vertical; }
 button { border-color: #3fd7ef; background: #13b7d4; color: #031119; font-weight: 800; cursor: pointer; }
 button.secondary { color: #d9edff; border-color: #344563; background: #101a2b; }
+button.danger { color: #fff; border-color: #9c3f50; background: #6f2635; }
 .check { display: flex; align-items: center; gap: 9px; }
 .check input { width: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 10px 0; }
@@ -26,6 +29,8 @@ button.secondary { color: #d9edff; border-color: #344563; background: #101a2b; }
 .status-pill.error { color: #ff8f9d; border-color: #9c3f50; }
 .mono { overflow: hidden; text-overflow: ellipsis; color: #7f96b4; font-family: ui-monospace, monospace; font-size: 11px; }
 .media-list { display: grid; gap: 8px; margin-top: 12px; max-height: 220px; overflow: auto; }
+.media-list.tall { max-height: 380px; }
+.workflow-row small { display: inline-block; max-width: 680px; color: #8ea3bd; overflow-wrap: anywhere; }
+.muted { color: #8ea3bd; font-size: 13px; }
 #message { color: #72f4ba; font-size: 12px; }
 @media (max-width: 760px) { main, .grid.two { grid-template-columns: 1fr; } header { align-items: flex-start; flex-direction: column; } }
-

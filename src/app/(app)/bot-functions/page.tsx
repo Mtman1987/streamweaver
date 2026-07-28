@@ -45,6 +45,24 @@ interface GenerationSettings {
     imagePromptTemplate: string;
 }
 
+interface ResearchSettings {
+    enabled: boolean;
+    liveSearchEnabled: boolean;
+    knowledgePacks: string[];
+    sourceAllowlist: string[];
+    maxResults: number;
+    cacheMinutes: number;
+}
+
+const defaultResearchSettings: ResearchSettings = {
+    enabled: true,
+    liveSearchEnabled: true,
+    knowledgePacks: [],
+    sourceAllowlist: [],
+    maxResults: 5,
+    cacheMinutes: 15,
+};
+
 const defaultImagePromptTemplate = [
     'Rewrite the user idea into one concise image-generation prompt.',
     'Preserve the user intent and do not add unrelated subjects.',
@@ -129,6 +147,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
     const [isSavingMediaSlots, setIsSavingMediaSlots] = useState(false);
     const [genSettings, setGenSettings] = useState<GenerationSettings>(defaultGenSettings);
     const [isSavingGenSettings, setIsSavingGenSettings] = useState(false);
+    const [researchSettings, setResearchSettings] = useState<ResearchSettings>(defaultResearchSettings);
+    const [isSavingResearch, setIsSavingResearch] = useState(false);
     const popularImageModels = generationModels.filter((item) => item.provider === genSettings.mode && item.model);
     
     const idleFileInputRef = useRef<HTMLInputElement>(null);
@@ -180,6 +200,17 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 }
             } catch (error) {
                 console.warn('Failed to load image generation settings:', error);
+            }
+
+            try {
+                const researchRes = await fetch('/api/research-settings');
+                if (researchRes.ok) {
+                    const payload = await researchRes.json();
+                    const settings = payload.settings || payload.data?.settings;
+                    if (settings) setResearchSettings({ ...defaultResearchSettings, ...settings });
+                }
+            } catch (error) {
+                console.warn('Failed to load research settings:', error);
             }
 
             // Try to load avatar settings from server
@@ -250,6 +281,26 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
             console.error('Failed to update server settings:', error);
         }
     }
+
+    const handleSaveResearch = async () => {
+        setIsSavingResearch(true);
+        try {
+            const response = await fetch('/api/research-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(researchSettings),
+            });
+            if (!response.ok) throw new Error('Server rejected the research settings');
+            const payload = await response.json();
+            const settings = payload.settings || payload.data?.settings;
+            if (settings) setResearchSettings({ ...defaultResearchSettings, ...settings });
+            toast({ title: 'Research mode saved' });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Research mode was not saved', description: String(error) });
+        } finally {
+            setIsSavingResearch(false);
+        }
+    };
 
     const handleAvatarUploadClick = (type: 'idle' | 'talking') => {
         if (type === 'idle') {
@@ -588,6 +639,70 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     >
                         {isOptimizing ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
                         Optimize Personality
+                    </Button>
+                </CardFooter>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Research and Knowledge</CardTitle>
+                    <CardDescription>
+                        Let viewers say “Hey {botName}, I have a question,” then ask a researched follow-up. Knowledge packs provide curated expertise; live search uses the server&apos;s configured provider key.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                        <div className="space-y-0.5">
+                            <div className="text-sm font-medium">Research mode</div>
+                            <div className="text-xs text-muted-foreground">Only explicit question or search phrases start research.</div>
+                        </div>
+                        <Switch
+                            checked={researchSettings.enabled}
+                            onCheckedChange={(enabled) => setResearchSettings((current) => ({ ...current, enabled }))}
+                        />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                        <div className="space-y-0.5">
+                            <div className="text-sm font-medium">Live web search</div>
+                            <div className="text-xs text-muted-foreground">Falls back to curated packs when the search provider is unavailable.</div>
+                        </div>
+                        <Switch
+                            checked={researchSettings.liveSearchEnabled}
+                            onCheckedChange={(liveSearchEnabled) => setResearchSettings((current) => ({ ...current, liveSearchEnabled }))}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="knowledge-packs">Knowledge packs</Label>
+                        <Input
+                            id="knowledge-packs"
+                            value={researchSettings.knowledgePacks.join(', ')}
+                            onChange={(event) => setResearchSettings((current) => ({
+                                ...current,
+                                knowledgePacks: event.target.value.split(',').map((value) => value.trim()).filter(Boolean),
+                            }))}
+                            placeholder="e.g., vocaloid"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Professor Eevee automatically receives the Vocaloid pack. Packs are tenant-selectable and can cover any subject.
+                        </p>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="research-allowlist">Optional live-source allowlist</Label>
+                        <Input
+                            id="research-allowlist"
+                            value={researchSettings.sourceAllowlist.join(', ')}
+                            onChange={(event) => setResearchSettings((current) => ({
+                                ...current,
+                                sourceAllowlist: event.target.value.split(',').map((value) => value.trim()).filter(Boolean),
+                            }))}
+                            placeholder="vocaloid.com, piapro.net, vocadb.net"
+                        />
+                        <p className="text-xs text-muted-foreground">Leave empty to use all HTTPS results returned by the configured search provider.</p>
+                    </div>
+                </CardContent>
+                <CardFooter>
+                    <Button onClick={handleSaveResearch} disabled={isSavingResearch}>
+                        {isSavingResearch ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                        Save Research Settings
                     </Button>
                 </CardFooter>
             </Card>

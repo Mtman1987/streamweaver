@@ -4555,6 +4555,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
 
             let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
+            if (!mentionsBot && responseTenantId) {
+                const { hasPendingResearchMode } = await import('./research-mode');
+                mentionsBot = hasPendingResearchMode({
+                    tenantId: responseTenantId,
+                    platform: 'twitch',
+                    channelId: replyChannel,
+                    username: actualUsername,
+                });
+                if (mentionsBot) {
+                    console.log(`[Dispatcher] Continuing pending research question for ${actualUsername} in #${replyChannel}`);
+                }
+            }
             
             // Remove hardcoded Athena check - only use dynamic bot name
             if (mentionsBot) {
@@ -4589,6 +4601,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             username: actualUsername,
                             message: messageToSend,
                             tenantId: responseTenantId || undefined,
+                            channelId: replyChannel,
                             context: message.includes('🌟') ? 'voice' : 'twitch',
                         })
                     });

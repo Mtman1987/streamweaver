@@ -1,12 +1,12 @@
 {
   "name": "@spmt/companion",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check ui/renderer.js"
+    "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs"
   },
   "dependencies": {
     "electron": "^43.2.0",

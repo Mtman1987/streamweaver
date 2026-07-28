@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "id": "vocaloid",
+  "title": "Vocaloid and virtual singer fundamentals",
+  "description": "Curated foundational knowledge for bots that discuss Vocaloid, virtual singers, producers, creation tools, and stream-safe use.",
+  "documents": [
+    {
+      "id": "vocaloid-core",
+      "title": "What Vocaloid is",
+      "tags": ["vocaloid", "yamaha", "voicebank", "editor", "singing synthesis"],
+      "content": "VOCALOID is Yamaha singing-voice synthesis technology and a family of editors and voicebanks. A creator enters melody and lyrics, selects a licensed voicebank, and directs timing, pitch, expression, vibrato, dynamics, and pronunciation. VOCALOID is primarily for singing production, not ordinary conversational text-to-speech.",
+      "sources": [
+        {
+          "title": "Official VOCALOID website",
+          "url": "https://www.vocaloid.com/en/"
+        }
+      ]
+    },
+    {
+      "id": "vocaloid6",
+      "title": "VOCALOID6 capabilities",
+      "tags": ["vocaloid6", "vocaloid ai", "multilingual", "vocalo changer", "harmony"],
+      "content": "VOCALOID6 includes VOCALOID:AI voices, multilingual Japanese-English-Chinese singing for compatible AI voicebanks, harmony and doubling tools, expression editing, MIDI export, DAW integration, and VOCALO CHANGER for transforming a recorded human singing performance with supported AI voicebanks. Exact included voicebanks and versions change, so current product questions should use live official sources.",
+      "sources": [
+        {
+          "title": "VOCALOID6 official product page",
+          "url": "https://www.vocaloid.com/en/vocaloid6/"
+        }
+      ]
+    },
+    {
+      "id": "piapro-characters",
+      "title": "Piapro Characters",
+      "tags": ["hatsune miku", "kagamine rin", "kagamine len", "megurine luka", "meiko", "kaito", "piapro"],
+      "content": "Crypton Future Media's Piapro Characters are Hatsune Miku, Kagamine Rin, Kagamine Len, Megurine Luka, MEIKO, and KAITO. The characters represent virtual singer software, but character rights, a voicebank license, a song composition, a sound recording, artwork, and a video are separate rights layers.",
+      "sources": [
+        {
+          "title": "Official Piapro Characters",
+          "url": "https://piapro.net/intl/en_character.html"
+        }
+      ]
+    },
+    {
+      "id": "miku",
+      "title": "Hatsune Miku",
+      "tags": ["hatsune miku", "miku", "crypton", "virtual singer"],
+      "content": "Hatsune Miku began as virtual singer software from Crypton Future Media and became a creator-led cultural phenomenon through songs, videos, illustrations, games, merchandise, and concerts. When answering current product-version questions, distinguish the character, the software product, the synthesis engine, and the individual songs made by independent producers.",
+      "sources": [
+        {
+          "title": "Official Hatsune Miku and Piapro Characters",
+          "url": "https://piapro.net/intl/en_character.html"
+        }
+      ]
+    },
+    {
+      "id": "ecosystem-terms",
+      "title": "Common creator and fandom terms",
+      "tags": ["vocalo p", "producer", "pv", "vsq", "vpr", "cover", "tuning"],
+      "content": "A producer, often styled with a P suffix in the Japanese scene, may compose, arrange, tune, mix, illustrate, or publish a virtual-singer work. Tuning means directing the synthesized performance. VSQ, VSQX, and VPR are project or sequence formats from different VOCALOID generations. A PV is a promotional or music video. A cover uses an existing composition and needs different rights analysis from an original song.",
+      "sources": [
+        {
+          "title": "VOCALOID learn",
+          "url": "https://www.vocaloid.com/en/learn/"
+        }
+      ]
+    },
+    {
+      "id": "adjacent-synths",
+      "title": "Adjacent singing synthesizers",
+      "tags": ["synthesizer v", "cevio", "utau", "openutau", "piapro studio", "kasane teto"],
+      "content": "Not every virtual singer is a VOCALOID product. Synthesizer V, CeVIO, UTAU and OpenUTAU, Piapro Studio NT, and other engines have their own formats, licenses, voice databases, and terminology. A knowledgeable answer should say virtual singer or singing synthesizer when the specific engine is uncertain instead of calling every character a Vocaloid.",
+      "sources": []
+    },
+    {
+      "id": "discovery",
+      "title": "Song, artist, and producer discovery",
+      "tags": ["vocadb", "songs", "artists", "albums", "discovery", "youtube"],
+      "content": "VocaDB provides structured community-maintained metadata for virtual-singer songs, artists, albums, tags, and related entities. YouTube can be used to discover public videos and channels. Search metadata is useful for recommendations, but finding a video or song does not grant permission to rebroadcast it.",
+      "sources": [
+        {
+          "title": "VocaDB public API",
+          "url": "https://wiki.vocadb.net/docs/public-api"
+        },
+        {
+          "title": "YouTube Data API search",
+          "url": "https://developers.google.com/youtube/v3/docs/search/list"
+        }
+      ]
+    },
+    {
+      "id": "stream-ideas",
+      "title": "Streamer-friendly virtual singer activities",
+      "tags": ["streaming", "trivia", "song request", "overlay", "jingle", "redeem"],
+      "content": "Low-risk interactive formats include sourced question answering, producer or voicebank spotlights, trivia, polls, guessing games using authorized clips, creation breakdowns, viewer-selected themes for original jingles, and overlays showing credits and source links. Original or explicitly licensed media should be favored for playback and reusable stream assets.",
+      "sources": []
+    },
+    {
+      "id": "rights",
+      "title": "Music and character rights on streams",
+      "tags": ["copyright", "license", "twitch", "commercial", "character art", "lyrics"],
+      "content": "A voicebank purchase, character illustration permission, composition license, sound-recording license, and livestream platform permission are separate. Do not assume that buying software, buying a song, or finding a video grants broadcast rights. Avoid reproducing full copyrighted lyrics. Monetized character branding may require permission beyond noncommercial fan-use guidelines.",
+      "sources": [
+        {
+          "title": "Twitch music guidelines",
+          "url": "https://www.twitch.tv/p/en/legal/community-guidelines/music/"
+        },
+        {
+          "title": "Piapro creator guidelines",
+          "url": "https://piapro.net/intl/en_for_creators.html"
+        }
+      ]
+    },
+    {
+      "id": "space-mountain",
+      "title": "Space Mountain presentation",
+      "tags": ["space mountain", "professor eevee", "lesson", "academy"],
+      "content": "Inside Space Mountain lore, Professor Eevee may present virtual-singer topics as lessons from a Virtual Vocal Arts course at the Witches' Academy. The classroom framing is fictional flavor only. Factual claims, dates, products, licenses, artists, and songs must remain clearly sourced and must not be invented as lore.",
+      "sources": []
+    }
+  ]
+}
