@@ -12,6 +12,7 @@ import { GET as getFeatured } from '../src/app/api/shared-chat/featured/route';
 import { GET as getStream } from '../src/app/api/shared-chat/stream/route';
 import { GET as getUserState, PUT as putUserState } from '../src/app/api/shared-chat/user-state/route';
 import { normalizeSocialStreamBridgeConfig } from '../scripts/social-stream-supervisor';
+import { middleware } from '../src/middleware';
 
 function signedRequest(url: string, tenantId: string, body?: unknown, signal?: AbortSignal): NextRequest {
   const cookie = serializeSessionCookie({ id: tenantId, username: 'operator-one' });
@@ -151,4 +152,17 @@ test('Social Stream supervisor accepts one safe public mapping per tenant', () =
   ]);
   assert.deepEqual(configs.map((config) => config.tenantId), ['tenant-a', 'tenant-c']);
   assert.equal(configs[1]?.visibility, 'private');
+});
+
+test('featured OBS data is public only when an explicit tenant is present', async () => {
+  const allowed = await middleware(new NextRequest(
+    'https://streamweaver-new.fly.dev/api/shared-chat/featured?tenant=tenant-overlay',
+  ));
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.headers.get('x-middleware-next'), '1');
+
+  const denied = await middleware(new NextRequest(
+    'https://streamweaver-new.fly.dev/api/shared-chat/featured',
+  ));
+  assert.equal(denied.status, 401);
 });
