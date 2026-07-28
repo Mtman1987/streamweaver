@@ -44,7 +44,7 @@ export async function publishSpmtEvent(event: SpmtEventInput) {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      console.warn('[SPMT] event publish failed', { status: response.status, body });
+      console.warn('[SPMT] event publish failed', JSON.stringify({ status: response.status, body }));
       return { skipped: false, ok: false, status: response.status };
     }
 

@@ -234,7 +234,6 @@ function publishMountainViewVoiceEvent(type: string, input: {
 }) {
   void publishSpmtEvent({
     type,
-    sourceApp: 'mountainview',
     visibility: input.destination === 'private' ? 'private' : 'creator',
     actor: { userId: input.tenantId || input.username, username: input.username, displayName: input.username },
     payload: {

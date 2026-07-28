@@ -142,7 +142,8 @@ async function fetchPartnerSource(tenantId?: string): Promise<CheckinSourceResul
 
 async function fetchCrewSource(tenantId?: string): Promise<CheckinSourceResult> {
   const redeemsConfig = await getConfigSection('redeems', tenantId);
-  const guildId = String(redeemsConfig.crewCheckin?.discordGuildId || redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
+  const configuredGuildId = String(redeemsConfig.crewCheckin?.discordGuildId || redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
+  const guildId = configuredGuildId || await getDiscordStreamHubDefaultGuildId();
   const apiUrl = String(redeemsConfig.crewCheckin?.apiUrl || '').trim();
   if (!guildId && !apiUrl) {
     return { kind: 'crew', label: 'Crew Check-In', sourceLabel: 'Crew', selectionMode: 'pick', entries: [], error: 'Set the Discord server ID for Crew Check-In.' };

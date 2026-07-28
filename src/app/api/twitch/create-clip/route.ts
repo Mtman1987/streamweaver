@@ -64,12 +64,12 @@ export async function POST(req: NextRequest) {
 
         if (!clipResponse.ok) {
             const errorData = await clipResponse.json().catch(async () => ({ message: await clipResponse.text().catch(() => '') }));
-            console.error('[Twitch] Failed to create clip:', {
+            console.error('[Twitch] Failed to create clip:', JSON.stringify({
                 tenantId: tenantId || 'global',
                 broadcasterId,
                 status: clipResponse.status,
                 error: errorData,
-            });
+            }));
             return apiError('Failed to create clip', {
                 status: clipResponse.status,
                 code: 'TWITCH_CLIP_CREATE_FAILED',
