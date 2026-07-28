@@ -43,7 +43,7 @@ export type ResearchResolution =
 const DEFAULT_SETTINGS: ResearchSettings = {
   schemaVersion: 1,
   enabled: true,
-  liveSearchEnabled: true,
+  liveSearchEnabled: false,
   knowledgePacks: [],
   sourceAllowlist: [],
   maxResults: 5,
@@ -74,7 +74,9 @@ export function normalizeResearchSettings(value: unknown): ResearchSettings {
   return {
     schemaVersion: 1,
     enabled: input.enabled !== false,
-    liveSearchEnabled: input.liveSearchEnabled !== false,
+    liveSearchEnabled: typeof input.liveSearchEnabled === 'boolean'
+      ? input.liveSearchEnabled
+      : DEFAULT_SETTINGS.liveSearchEnabled,
     knowledgePacks: normalizeStringList(input.knowledgePacks).filter((packId) => /^[a-z0-9][a-z0-9_-]*$/.test(packId)),
     sourceAllowlist: normalizeStringList(input.sourceAllowlist, 50),
     maxResults: clampInteger(input.maxResults, DEFAULT_SETTINGS.maxResults, 1, 8),

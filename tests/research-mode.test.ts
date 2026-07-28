@@ -19,6 +19,7 @@ test('research mode recognizes explicit search requests but not ordinary chat', 
 });
 
 test('research settings are bounded and normalized', () => {
+  assert.equal(normalizeResearchSettings({}).liveSearchEnabled, false);
   const settings = normalizeResearchSettings({
     enabled: true,
     liveSearchEnabled: false,
@@ -32,6 +33,7 @@ test('research settings are bounded and normalized', () => {
   assert.deepEqual(settings.sourceAllowlist, ['vocaloid.com']);
   assert.equal(settings.maxResults, 8);
   assert.equal(settings.cacheMinutes, 1);
+  assert.equal(normalizeResearchSettings({ liveSearchEnabled: true }).liveSearchEnabled, true);
   clearResearchModeStateForTests();
 });
 
