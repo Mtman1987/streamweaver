@@ -8,9 +8,17 @@ interface OverlayInfo {
   path: string;
   description: string;
   recommended?: string;
+  xpnCompatible?: boolean;
 }
 
 const OVERLAYS: OverlayInfo[] = [
+  {
+    name: 'Featured Live Chat Message',
+    path: '/overlay/shared-chat-featured',
+    description: 'Transparent selected-message output from the Live Chat Dock, including platform, channel, sender, donation/member labels, duration, and queue advance.',
+    recommended: '1920x1080',
+    xpnCompatible: false,
+  },
   {
     name: 'TTS Player',
     path: '/tts-player',
@@ -180,16 +188,17 @@ export default function OverlayUrlsPage() {
                 </div>
               </div>
 
-              {/* XPN / Lightstream URL */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">XPN / Lightstream URL</span>
-                  <CopyButton text={xpnUrl} />
+              {overlay.xpnCompatible !== false && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">XPN / Lightstream URL</span>
+                    <CopyButton text={xpnUrl} />
+                  </div>
+                  <div className="bg-muted rounded px-3 py-2">
+                    <code className="text-xs break-all select-all">{xpnUrl}</code>
+                  </div>
                 </div>
-                <div className="bg-muted rounded px-3 py-2">
-                  <code className="text-xs break-all select-all">{xpnUrl}</code>
-                </div>
-              </div>
+              )}
             </div>
           );
         })}

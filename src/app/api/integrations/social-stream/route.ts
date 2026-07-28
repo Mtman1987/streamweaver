@@ -5,9 +5,11 @@ import { appendPublicChatMessages } from '@/lib/public-chat-store';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import {
   normalizeSocialStreamMessage,
+  normalizeSocialStreamSharedChatEvent,
   toPrivateChatMessage,
   toPublicChatMessage,
 } from '@/lib/social-stream-normalizer';
+import { recordSharedChatDeadLetter, recordSharedChatEvent } from '@/services/shared-chat-ingestion';
 
 function hasBridgeAccess(request: NextRequest): boolean {
   const configuredToken = String(process.env.SOCIAL_STREAM_BRIDGE_TOKEN || process.env.BOT_SECRET_KEY || '').trim();
@@ -48,15 +50,31 @@ export async function POST(request: NextRequest) {
     const payloadTenant = typeof (body as Record<string, unknown>).tenantId === 'string'
       ? String((body as Record<string, unknown>).tenantId).trim()
       : '';
-    const tenantId = session?.tenantId || payloadTenant || undefined;
+    const headerTenant = String(request.headers.get('x-streamweaver-tenant-id') || '').trim();
+    const tenantId = session?.tenantId || headerTenant || payloadTenant;
+    if (!tenantId) {
+      return apiError('A tenant id is required for Social Stream ingestion', { status: 400, code: 'TENANT_REQUIRED' });
+    }
+
+    const sharedEvent = normalizeSocialStreamSharedChatEvent(body, tenantId);
+    if (!sharedEvent) {
+      await recordSharedChatDeadLetter({
+        tenantId,
+        source: 'social-stream',
+        reason: 'Payload could not be normalized as SharedChatEventV1',
+        payload: body,
+      });
+      return apiError('Social Stream payload could not be normalized', { status: 400, code: 'INVALID_EVENT' });
+    }
+    await recordSharedChatEvent(sharedEvent);
 
     if (isPrivateTarget(request, body as Record<string, unknown>)) {
       await appendPrivateChatMessages([toPrivateChatMessage(normalized)], 100, tenantId);
-      return apiOk({ stored: true, target: 'private', source: normalized.source, tenantId });
+      return apiOk({ stored: true, replayStored: true, target: 'private', source: normalized.source, tenantId, eventId: sharedEvent.eventId });
     }
 
     await appendPublicChatMessages([toPublicChatMessage(normalized)], 100, tenantId);
-    return apiOk({ stored: true, target: 'public', source: normalized.source, tenantId });
+    return apiOk({ stored: true, replayStored: true, target: 'public', source: normalized.source, tenantId, eventId: sharedEvent.eventId });
   } catch (error) {
     console.error('[Social Stream Bridge] Failed to ingest payload:', error);
     return apiError('Failed to ingest Social Stream payload', { status: 500, code: 'INTERNAL_ERROR' });

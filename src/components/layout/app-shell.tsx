@@ -26,8 +26,10 @@ export default function AppShell({
   children: React.ReactNode
 }) {
   const [userProfile, setUserProfile] = useState<UserProfile>({});
+  const [isEmbedded, setIsEmbedded] = useState(false);
 
   useEffect(() => {
+    setIsEmbedded(window.self !== window.top);
     async function fetchUserProfile() {
         try {
             const response = await fetch('/api/user-profile');
@@ -64,6 +66,14 @@ export default function AppShell({
     fetchUserProfile();
     ensureConfigured();
   }, []);
+
+  if (isEmbedded) {
+    return (
+      <div className="min-h-screen bg-background p-3 text-foreground">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <Suspense fallback={null}>

@@ -17,12 +17,20 @@ StreamWeaver accepts normalized Social Stream-style chat payloads at:
 POST /api/integrations/social-stream
 ```
 
+Accepted bridge events are normalized into tenant-scoped
+`SharedChatEventV1` replay before the legacy public/private chat-memory copy is
+written. The authenticated Live Chat Dock reads that replay at `/shared-chat`.
+
 Authentication:
 
 - Prefer `Authorization: Bearer $SOCIAL_STREAM_BRIDGE_TOKEN`.
 - `x-streamweaver-bridge-token: $SOCIAL_STREAM_BRIDGE_TOKEN` also works.
+- The included bridge sends `x-streamweaver-tenant-id` from
+  `SOCIAL_STREAM_TENANT_ID`.
 - If `SOCIAL_STREAM_BRIDGE_TOKEN` is unset, `BOT_SECRET_KEY` is accepted.
 - Localhost is allowed without a token for local smoke tests only.
+- Production requests must identify a tenant. A signed browser session wins
+  over the bridge header or body.
 
 Targeting:
 
@@ -86,7 +94,41 @@ Optional environment variables:
 - `SOCIAL_STREAM_WS_URL`: overrides the generated `wss://io.socialstream.ninja/join/{session}/4` URL.
 - `SOCIAL_STREAM_VISIBILITY`: defaults to `public`; set to `private` to write private chat memory.
 
-The bridge runner is implemented in `scripts/social-stream-bridge.ts`.
+The bridge runner is implemented in `scripts/social-stream-bridge.ts`. It
+reconnects with bounded exponential backoff, performs WebSocket ping/pong
+health checks, and persists a bounded dedupe cursor and safe health record
+under `PERSIST_ROOT/data`.
+
+For the local helper, copy
+`config/social-stream-bridges.example.json` to the volume-backed
+`config/social-stream-bridges.json` and add one entry per tenant. `start:local`
+detects that file and launches `scripts/social-stream-supervisor.ts`, which
+starts, restarts, and removes tenant listeners as the file changes. The JSON
+contains public runtime mappings only. Keep `SOCIAL_STREAM_BRIDGE_TOKEN` in the
+environment or Fly secrets; never put it in the JSON.
+
+The signed status route
+`GET /api/integrations/social-stream/status` reports connectivity, staleness,
+reconnect count, last message, last pong, and the last forwarded cursor without
+returning credentials.
+
+## Live Chat Dock
+
+Open `/shared-chat` through a StreamWeaver session or the SpaceMountain
+Commlink signed embed. The current production slice includes:
+
+- Twitch, YouTube, Kick, Discord, and Social Stream source filters.
+- Text/viewer search and a bounded tenant replay window.
+- Authenticated SSE updates with automatic reconnect and a polling fallback.
+- Source/channel labels, roles, badges, donations, memberships, and media links.
+- Tenant-persisted pin, queue, feature, next, clear, and auto-show state.
+- Per-user saved views/read cursors, manual TTS, and verified Twitch replies.
+- A transparent featured-message OBS source at
+  `/overlay/shared-chat-featured?tenant=<TENANT_ID>`.
+
+Discord, YouTube, Kick, and Social Stream replies plus all moderation actions
+remain view-only until each adapter proves its destination and authorization.
+The UI labels that state and does not guess.
 
 A custom bridge can also post directly:
 

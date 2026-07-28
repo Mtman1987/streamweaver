@@ -47,6 +47,20 @@ function start(): void {
     shell: true,
     stdio: 'inherit',
   });
+  const socialStreamConfigPath = resolve(
+    process.env.SOCIAL_STREAM_CONFIG_PATH
+      || process.env.PERSIST_ROOT
+      || process.cwd(),
+    process.env.SOCIAL_STREAM_CONFIG_PATH ? '' : 'config/social-stream-bridges.json',
+  );
+  const socialStreamSupervisor = existsSync(socialStreamConfigPath)
+    ? spawn('npx', ['tsx', 'scripts/social-stream-supervisor.ts'], {
+        cwd: process.cwd(),
+        env: { ...process.env, SOCIAL_STREAM_CONFIG_PATH: socialStreamConfigPath },
+        shell: true,
+        stdio: 'inherit',
+      })
+    : null;
 
   const shouldOpenBrowser = process.env.OPEN_BROWSER !== 'false' && appConfig.openBrowserOnStart;
   if (shouldOpenBrowser) {
@@ -54,6 +68,7 @@ function start(): void {
   }
 
   child.on('exit', (code) => {
+    socialStreamSupervisor?.kill();
     process.exit(code ?? 0);
   });
 }

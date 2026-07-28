@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { normalizeDiscordSharedChatEvent, normalizeKickSharedChatEvent, normalizeTwitchSharedChatEvent, normalizeYouTubeSharedChatEvent } from '../src/services/shared-chat-normalizers';
+import { normalizeSocialStreamSharedChatEvent } from '../src/lib/social-stream-normalizer';
 
 test('normalizes Twitch IRC payloads into tenant-isolated shared chat events', () => {
   const event = normalizeTwitchSharedChatEvent({
@@ -86,4 +87,27 @@ test('normalizes YouTube and Kick messages without inventing missing money curre
   });
   assert.equal(kick.sourceId, 'kick:space_mountain');
   assert.equal(kick.sender.roles.includes('moderator'), true);
+});
+
+test('normalizes Social Stream Ninja messages into the shared tenant contract', () => {
+  const event = normalizeSocialStreamSharedChatEvent({
+    id: 'ssn-message-1',
+    type: 'youtube',
+    chatname: 'VocaloidFan',
+    chatmessage: 'Miku time https://example.com/song',
+    channelId: 'live-chat-123',
+    channelName: 'Professor Eevee',
+    timestamp: 1785191755000,
+    chatimg: 'https://example.com/avatar.png',
+  }, 'tenant-eevee');
+
+  assert.ok(event);
+  assert.equal(event.tenantId, 'tenant-eevee');
+  assert.equal(event.platform, 'social-stream');
+  assert.equal(event.sourceId, 'social-stream:youtube');
+  assert.equal(event.channelId, 'live-chat-123');
+  assert.equal(event.sender.displayName, 'VocaloidFan');
+  assert.equal(event.links[0]?.url, 'https://example.com/song');
+  assert.equal(event.routing.canReply, false);
+  assert.equal(event.routing.tenantIsolationKey, 'tenant-eevee');
 });
