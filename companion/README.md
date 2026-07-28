@@ -58,7 +58,10 @@ startup choices, and other non-secret settings are stored in
 ## Current capability surface
 
 - Start and supervise `npm run start:local` without opening a console window.
-- Show or hide one click-through overlay and three configurable popouts.
+- Show or hide the SpaceMountain personal overlay in a transparent Electron
+  window with click-through, opacity, always-on-top, and remembered bounds.
+- Restore the personal overlay after Companion restarts when it was previously
+  visible, plus manage three configurable popouts.
 - Connect to local OBS WebSocket and set the current program scene.
 - Mute and set volume for Companion-managed windows.
 - Route managed HTML media to an explicitly configured output-device ID.

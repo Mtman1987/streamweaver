@@ -34,15 +34,20 @@
     <section id="windows">
       <div class="section-heading">
         <span class="section-icon">01</span>
-        <div><p class="kicker">On-screen control</p><h2>Overlay and popouts</h2></div>
+        <div><p class="kicker">On-screen control</p><h2>Personal overlay and popouts</h2></div>
       </div>
-      <p class="section-copy">Launch and position the local surfaces your viewers see without reopening OBS.</p>
+      <p class="section-copy">The personal overlay is a real transparent Electron window. It can stay above other apps while SpaceMountain supplies the account-backed widget layout.</p>
       <div class="actions">
         <button data-window-action="overlay.show">Show overlay</button>
         <button data-window-action="overlay.hide" class="secondary">Hide overlay</button>
       </div>
-      <label>Overlay URL <input id="overlay-url" type="url"></label>
-      <label class="check"><input id="overlay-click-through" type="checkbox"> Click-through overlay</label>
+      <label>Personal overlay URL <input id="overlay-url" type="url"></label>
+      <div class="grid two">
+        <label class="check"><input id="overlay-click-through" type="checkbox"> Click through to apps underneath</label>
+        <label class="check"><input id="overlay-always-on-top" type="checkbox"> Keep above other apps</label>
+        <label>Overlay opacity <input id="overlay-opacity" type="range" min="20" max="100" step="1"></label>
+      </div>
+      <p class="section-copy">Turn click-through off temporarily if the SpaceMountain window asks you to sign in. Window size and position are remembered locally.</p>
       <div id="popouts" class="cards"></div>
     </section>
 
