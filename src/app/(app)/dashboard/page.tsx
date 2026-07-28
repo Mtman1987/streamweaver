@@ -219,7 +219,7 @@ export default function DashboardPage() {
     setIsLoading(true);
     try {
       const [healthResponse, metricsResponse] = await Promise.all([
-        fetch("/api/__health", { cache: "no-store" }).catch(() => null),
+        fetch("/api/health", { cache: "no-store" }).catch(() => null),
         fetch("/api/metrics", { cache: "no-store" }).catch(() => null),
       ]);
       const setupResponse = await fetch("/api/dashboard/setup-status", { cache: "no-store" }).catch(() => null);

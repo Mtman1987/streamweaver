@@ -113,7 +113,7 @@ export default function Header() {
     let active = true;
     const run = async () => {
       try {
-        const response = await fetch("/api/__health", { cache: "no-store" });
+        const response = await fetch("/api/health", { cache: "no-store" });
         if (!active) return;
         setHealthLabel(response.ok ? "Healthy" : "Degraded");
       } catch {
@@ -129,7 +129,7 @@ export default function Header() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await fetch("/api/__health", { cache: "no-store" });
+      await fetch("/api/health", { cache: "no-store" });
       window.location.reload();
     } finally {
       setIsRefreshing(false);
