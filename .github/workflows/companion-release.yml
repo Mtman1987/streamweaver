@@ -22,6 +22,7 @@ jobs:
       - run: npm ci
         working-directory: companion
       - run: npm run package:companion-runtime
+      - run: npm run smoke:companion-runtime
       - run: npm run dist:win
         working-directory: companion
       - name: Write checksum

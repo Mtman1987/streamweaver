@@ -3,14 +3,20 @@ const path = require('node:path');
 const { safeStorage } = require('electron');
 
 const DEFAULT_CONFIG = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   server: { host: '127.0.0.1', port: 3100, wsPort: 8090 },
   startup: { openAtLogin: false, startMinimized: true },
   relay: { url: 'wss://spmt.live/api/companion/relay', deviceId: '', enabled: false },
   obs: { url: 'ws://127.0.0.1:4455', enabled: false, mediaInputName: 'SpaceMountain Jingles' },
   audio: { muted: false, volume: 0.7, pttKey: 'Space', outputDeviceId: '' },
   windows: {
-    overlay: { url: 'http://127.0.0.1:3100/tts-mixer', visible: false, clickThrough: true },
+    overlay: {
+      url: 'https://spacemountain.live/?desktopOverlay=1',
+      visible: false,
+      clickThrough: true,
+      alwaysOnTop: true,
+      opacity: 1
+    },
     popouts: [
       { id: 1, title: 'ChatTag Overlay', url: 'https://chat-tag-new.fly.dev/overlay', visible: false },
       { id: 2, title: 'All-Tenant TTS Studio', url: 'http://127.0.0.1:3100/tts-mixer', visible: false },
@@ -37,9 +43,14 @@ class ConfigStore {
     try {
       stored = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
     } catch {}
+    if (Number(stored.schemaVersion || 1) < 2
+      && stored.windows?.overlay?.url === 'http://127.0.0.1:3100/tts-mixer') {
+      stored.windows.overlay.url = DEFAULT_CONFIG.windows.overlay.url;
+    }
     return {
       ...clone(DEFAULT_CONFIG),
       ...stored,
+      schemaVersion: DEFAULT_CONFIG.schemaVersion,
       server: { ...DEFAULT_CONFIG.server, ...(stored.server || {}) },
       startup: { ...DEFAULT_CONFIG.startup, ...(stored.startup || {}) },
       relay: { ...DEFAULT_CONFIG.relay, ...(stored.relay || {}) },

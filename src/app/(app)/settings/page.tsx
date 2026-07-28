@@ -183,6 +183,34 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+          <div className="grid gap-4 border-t pt-4 md:grid-cols-3">
+            {([
+              ['glowStrength', 'Glow trim', 40, 160],
+              ['surfaceOpacity', 'Panel opacity trim', 45, 125],
+              ['uiScale', 'UI scale', 85, 115],
+            ] as const).map(([key, label, min, max]) => (
+              <label key={key} className="space-y-2 text-xs font-medium">
+                <span className="flex justify-between gap-3">
+                  <span>{label}</span>
+                  <span className="text-muted-foreground">{workspaceTheme.visualTuning[key]}%</span>
+                </span>
+                <input
+                  className="w-full accent-primary"
+                  type="range"
+                  min={min}
+                  max={max}
+                  value={workspaceTheme.visualTuning[key]}
+                  onChange={(event) => void workspaceTheme.setVisualTuning({
+                    ...workspaceTheme.visualTuning,
+                    [key]: Number(event.target.value),
+                  })}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            These trims belong to StreamWeaver. They layer over the shared SpaceMountain theme so this app can compensate for a monitor or embed without changing the rest of the suite.
+          </p>
         </CardContent>
       </Card>
 

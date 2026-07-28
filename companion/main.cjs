@@ -97,7 +97,7 @@ function managedWindowOptions(kind, id = '') {
     backgroundColor: kind === 'overlay' ? '#00000000' : '#080b14',
     transparent: kind === 'overlay',
     frame: kind !== 'overlay',
-    alwaysOnTop: kind === 'overlay',
+    alwaysOnTop: kind === 'overlay' && config.windows.overlay.alwaysOnTop !== false,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -115,6 +115,11 @@ function loadManagedUrl(window, value) {
 function ensureOverlayWindow() {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
   overlayWindow = new BrowserWindow(managedWindowOptions('overlay'));
+  overlayWindow.setTitle('SpaceMountain Personal Overlay');
+  overlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'floating');
+  overlayWindow.setVisibleOnAllWorkspaces(config.windows.overlay.alwaysOnTop !== false);
+  overlayWindow.setFullScreenable(false);
+  overlayWindow.setOpacity(Math.max(0.2, Math.min(1, Number(config.windows.overlay.opacity) || 1)));
   overlayWindow.setIgnoreMouseEvents(config.windows.overlay.clickThrough !== false, { forward: true });
   rememberBounds(overlayWindow, 'overlay');
   overlayWindow.on('close', (event) => {
@@ -157,6 +162,7 @@ function showOverlay() {
   window.showInactive();
   config.windows.overlay.visible = true;
   saveConfig();
+  rebuildTrayMenu();
   return { visible: true };
 }
 
@@ -164,6 +170,7 @@ function hideOverlay() {
   overlayWindow?.hide();
   config.windows.overlay.visible = false;
   saveConfig();
+  rebuildTrayMenu();
   return { visible: false };
 }
 
@@ -383,6 +390,7 @@ function setupIpc() {
   }));
   ipcMain.handle('companion:save-config', async (_event, updates) => {
     const next = updates && typeof updates === 'object' ? updates : {};
+    const previousOverlayUrl = config.windows.overlay.url;
     config = {
       ...config,
       ...next,
@@ -400,6 +408,15 @@ function setupIpc() {
       media: { ...config.media, ...(next.media || {}) }
     };
     saveConfig();
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'floating');
+      overlayWindow.setVisibleOnAllWorkspaces(config.windows.overlay.alwaysOnTop !== false);
+      overlayWindow.setOpacity(Math.max(0.2, Math.min(1, Number(config.windows.overlay.opacity) || 1)));
+      overlayWindow.setIgnoreMouseEvents(config.windows.overlay.clickThrough !== false, { forward: true });
+      if (previousOverlayUrl !== config.windows.overlay.url) {
+        await loadManagedUrl(overlayWindow, config.windows.overlay.url);
+      }
+    }
     app.setLoginItemSettings({ openAtLogin: Boolean(config.startup.openAtLogin), args: ['--hidden'] });
     applyAudio(config.audio);
     await connectObs();
@@ -537,6 +554,7 @@ app.whenReady().then(async () => {
   startManagedServer();
   relay.start();
   await connectObs();
+  if (config.windows.overlay.visible) showOverlay();
   if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();
   logCompanion('Companion ready');
 }).catch((error) => {

@@ -331,11 +331,11 @@ async function startServer() {
         try {
             const { listTenants: listTenantsForKick } = require('./src/lib/tenant');
             const { tenantPath: kickTenantPath } = require('./src/lib/tenant');
-            const { getMultiPlatformManager } = require('./src/services/multi-platform');
             const fsKick = require('fs').promises;
 
             // Register global connect function for API routes to call
             (global as any).__kickConnect = async (channelName: string, tenantId?: string) => {
+                const { getMultiPlatformManager } = require('./src/services/multi-platform');
                 const mp = getMultiPlatformManager();
                 await mp.connectKick(channelName, tenantId);
                 console.log(`[Kick] ✅ Connected via API trigger: ${channelName}`);
@@ -369,6 +369,7 @@ async function startServer() {
 
                     // Connect if we have username + chatroomId (token not required for listening)
                     if (data.broadcasterUsername && data.broadcasterChatroomId) {
+                        const { getMultiPlatformManager } = require('./src/services/multi-platform');
                         const mp = getMultiPlatformManager();
                         await mp.connectKick(data.broadcasterUsername, tid);
                         console.log(`[STEP 3.6] ✅ Kick connected for ${data.broadcasterUsername}`);
@@ -381,10 +382,10 @@ async function startServer() {
 
         // Connect to community Kick channels (players without StreamWeaver)
         try {
-            const { getMultiPlatformManager } = require('./src/services/multi-platform');
             const COMMUNITY_KICK_CHANNELS: string[] = [];
             for (const slug of COMMUNITY_KICK_CHANNELS) {
                 try {
+                    const { getMultiPlatformManager } = require('./src/services/multi-platform');
                     const mp = getMultiPlatformManager();
                     await mp.connectKick(slug, `kick_community_${slug}`);
                     console.log(`[STEP 3.6] ✅ Kick community channel connected: ${slug}`);

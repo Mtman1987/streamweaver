@@ -1,6 +1,6 @@
 {
   "name": "@spmt/companion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
   "main": "main.cjs",

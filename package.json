@@ -33,6 +33,7 @@
     "start:local": "cross-env NODE_ENV=production WS_PORT=8090 PORT=3100 NEXT_PUBLIC_STREAMWEAVE_PORT=3100 npx dotenv-cli -e .env -- tsx scripts/start-local.ts",
     "package:release": "npx tsx scripts/package-local-release.ts source",
     "package:companion-runtime": "cross-env NEXT_DIST_DIR=.next-release npm run build:simple && npx tsx scripts/stage-companion-runtime.ts",
+    "smoke:companion-runtime": "node scripts/smoke-companion-runtime.mjs",
     "package:win": "npm run package:companion-runtime && npm --prefix companion run dist:win",
     "package:mac": "npm run build:simple && npx pkg . --targets node20-macos-x64 --output dist/bin/StreamWeaver && npx tsx scripts/package-local-release.ts mac",
     "package:linux": "npm run build:simple && npx pkg . --targets node20-linux-x64 --output dist/bin/StreamWeaver && npx tsx scripts/package-local-release.ts linux",
