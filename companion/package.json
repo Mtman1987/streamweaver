@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check main.cjs && node --check preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
-    "dist:win": "electron-builder --win nsis --x64"
+    "dist:win": "electron-builder --config electron-builder.config.cjs --win nsis --x64"
   },
   "build": {
     "appId": "live.spmt.companion",

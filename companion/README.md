@@ -1,6 +1,6 @@
 # SpaceMountain Companion
 
-Current source version: `0.2.0` (research/workflow integration slice).
+Current source version: `0.3.0`.
 
 The Companion is the local desktop host for StreamWeaver. It lives in the
 system tray, owns the local Next.js/WebSocket process, and manages windows,
@@ -28,14 +28,15 @@ npm start
 
 ## Install on Windows
 
-Download `SpaceMountain-Companion-Setup-<version>.exe` from the
-[StreamWeaver releases page](https://github.com/Mtman1987/streamweaver/releases),
+Download the signed installer from the **SpaceMountain Companion** card on
+[SPMT](https://spmt.live) or [SpaceMountain](https://spacemountain.live),
 run the installer, and launch **SpaceMountain Companion** from the Start menu
 or desktop shortcut.
 
 The installer includes the local StreamWeaver runtime, so Node.js is not
-required for the installed build. This first public release is not code-signed;
-Windows may display an **Unknown publisher** warning.
+required for the installed build. Public downloads stay unavailable until the
+release workflow verifies the installer and application Authenticode signatures,
+timestamp, update metadata, blockmap, and checksum.
 
 The application uses a single-instance lock. Closing its settings window hides
 it; it continues running in the tray and does not remain in the taskbar.
@@ -75,11 +76,33 @@ startup choices, and other non-secret settings are stored in
 - Maintain an outbound-only authenticated WSS connection to SPMT.
 - Restart the managed local service after an unexpected exit.
 
-Installer signing, auto-update, global hold-to-talk capture, friendly
-audio-device enumeration, resumable downloads/uploads, destructive media
-actions, and a documented licensed singing-renderer adapter remain release
-gates. Tenant uploads/downloads and viewer-submitted jobs are intentionally
-deferred.
+Global hold-to-talk capture, friendly audio-device enumeration, resumable
+downloads/uploads, destructive media actions, and a documented licensed
+singing-renderer adapter remain release gates. Tenant uploads/downloads and
+viewer-submitted jobs are intentionally deferred.
+
+## Trusted Windows release setup
+
+The release workflow uses Microsoft Artifact Signing through GitHub OIDC. No
+certificate file, password, or Azure client secret belongs in the repository.
+
+1. In Azure, create an Artifact Signing account, complete identity validation,
+   and create a `PublicTrust` certificate profile.
+2. Create an Entra application/service principal with a GitHub federated
+   credential for `Mtman1987/streamweaver` and grant it **Artifact Signing
+   Certificate Profile Signer** on the certificate profile.
+3. Add these non-secret GitHub repository variables:
+   `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+   `COMPANION_SIGNING_ENDPOINT`, `COMPANION_SIGNING_ACCOUNT`,
+   `COMPANION_CERTIFICATE_PROFILE`, and `COMPANION_PUBLISHER_NAME`.
+4. Push the version tag. The workflow signs during Electron packaging, verifies
+   the installer and unpacked application with `Get-AuthenticodeSignature`, and
+   publishes only after both signatures and timestamps are valid.
+
+The two website download buttons resolve through
+`https://spmt.live/downloads/companion/windows`. That endpoint only redirects
+when the latest GitHub release contains the installer, blockmap, `latest.yml`,
+checksum, and workflow-produced `companion-signature.json`.
 
 The current research/workflow contract and truthful limitations are documented
 in [`../docs/RESEARCH_AND_CREATIVE_WORKFLOWS.md`](../docs/RESEARCH_AND_CREATIVE_WORKFLOWS.md).

@@ -6,11 +6,12 @@ the system tray, and owns OBS, local audio/media, and approved local workflows.
 
 ## What users do
 
-1. Download `SpaceMountain-Companion-Setup-<version>.exe` from
-   [GitHub Releases](https://github.com/Mtman1987/streamweaver/releases).
+1. Download `SpaceMountain-Companion-Setup-<version>.exe` from the Companion
+   card on [SPMT](https://spmt.live) or
+   [SpaceMountain](https://spacemountain.live).
 2. Run the installer and launch **SpaceMountain Companion** from the Start menu
-   or desktop shortcut. The first public build is not code-signed, so Windows
-   may show an **Unknown publisher** warning.
+   or desktop shortcut. Public download delivery is gated on a verified
+   Authenticode signature and timestamp.
 3. For a source build instead, use `npm run companion:start`.
 4. The app starts on `http://127.0.0.1:3100`.
 5. Open the Settings page and enter the API key from `config/app.json`.
