@@ -48,6 +48,7 @@ async function main(): Promise<void> {
 
   await copyFile(process.execPath, path.join(runtimeDir, process.platform === 'win32' ? 'node.exe' : 'bin/node'));
   await copyFile(path.join(rootDir, 'server.ts'), path.join(runtimeDir, 'server.ts'));
+  await copyFile(path.join(rootDir, 'tsconfig.json'), path.join(runtimeDir, 'tsconfig.json'));
   await copyFile(path.join(rootDir, 'next.config.js'), path.join(runtimeDir, 'next.config.js'));
   await copyFile(path.join(rootDir, 'app-urls.json'), path.join(runtimeDir, 'app-urls.json'));
   await copyFile(path.join(rootDir, 'package-lock.json'), path.join(runtimeDir, 'package-lock.json'));
@@ -98,6 +99,9 @@ async function main(): Promise<void> {
   const files = await fsp.readdir(runtimeDir);
   if (!files.includes(process.platform === 'win32' ? 'node.exe' : 'bin')) {
     throw new Error('Runtime Node executable was not staged');
+  }
+  if (!files.includes('tsconfig.json')) {
+    throw new Error('Runtime TypeScript path-alias configuration was not staged');
   }
   console.log(`[stage-companion-runtime] staged ${runtimeDir}`);
 }
