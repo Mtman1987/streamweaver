@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Languages, Bot, Upload, Waves, Music, ArrowRight, LoaderCircle, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { DISCORD_MEDIA_MAX_FILE_BYTES, DISCORD_MEDIA_MAX_FILE_MB } from "@/lib/discord-media-limits";
 import Lottie from "lottie-react";
 import botAnimation from "@/lib/bot-animation.json";
 import { cn } from "@/lib/utils";
@@ -439,6 +440,14 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 variant: 'destructive',
                 title: 'Invalid file',
                 description: 'Pick a GIF file for this Discord media slot.',
+            });
+            return;
+        }
+        if (file.size > DISCORD_MEDIA_MAX_FILE_BYTES) {
+            toast({
+                variant: 'destructive',
+                title: 'GIF is too large',
+                description: `Pick a GIF no larger than ${DISCORD_MEDIA_MAX_FILE_MB} MB.`,
             });
             return;
         }

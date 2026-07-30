@@ -8,6 +8,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 import { resolveResearchMode } from '@/services/research-mode';
+import { isEdenContentPolicyRejection } from '@/services/eden-policy';
 import { z } from 'zod';
 
 type RequestBody = {
@@ -246,7 +247,11 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[AI Chat Memory] EdenAI error:', response.status, errorText);
+      if (isEdenContentPolicyRejection(response.status, errorText)) {
+        console.warn('[AI Chat Memory] EdenAI rejected content under its safety policy; asking the user to rephrase.');
+      } else {
+        console.error('[AI Chat Memory] EdenAI error:', response.status, errorText);
+      }
       return apiOk({ response: 'Hmm, let me think about that differently... Could you rephrase?' });
     }
 
