@@ -4,6 +4,7 @@ import {
   extractPrivateChatResponseText,
   requestPrivateChatCompletion,
 } from '../src/services/private-chat-ai';
+import { isEdenContentPolicyRejection } from '../src/services/eden-policy';
 
 test('extracts text from string and structured EdenAI message content', () => {
   assert.equal(extractPrivateChatResponseText({
@@ -80,4 +81,11 @@ test('recognizes EdenAI policy rejection errors as filtered results', async () =
   assert.equal(result.filtered, true);
   assert.equal(result.finishReason, 'content_filter');
   assert.equal(result.upstreamStatus, 400);
+  assert.equal(isEdenContentPolicyRejection(400, JSON.stringify({
+    error: {
+      message: 'Content rejected due to the violation of the following policies: violence.',
+      code: 'invalid_parameter',
+    },
+  })), true);
+  assert.equal(isEdenContentPolicyRejection(500, 'Content rejected due to the violation code invalid_parameter'), false);
 });

@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { NextRequest } from 'next/server';
+import { serializeSessionCookie } from '../src/lib/session-cookie';
+import {
+  DISCORD_MEDIA_MAX_FILE_MB,
+  DISCORD_MEDIA_MAX_REQUEST_BYTES,
+} from '../src/lib/discord-media-limits';
 
 test('Discord embeds keep the idle avatar in the thumbnail and selected lane GIF in the large image slot', async () => {
   const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-discord-media-'));
@@ -44,6 +50,35 @@ test('Discord embeds keep the idle avatar in the thumbnail and selected lane GIF
   } finally {
     await rm(persistRoot, { recursive: true, force: true });
   }
+});
+
+test('Discord media upload rejects oversized and malformed multipart requests without throwing', async () => {
+  process.env.STREAMWEAVER_SESSION_SECRET = 'discord-media-test-secret';
+  const cookie = serializeSessionCookie({ id: 'tenant-media-upload', username: 'owner' });
+  const { POST } = await import('../src/app/api/discord-media/route');
+
+  const oversized = await POST(new NextRequest('http://localhost/api/discord-media', {
+    method: 'POST',
+    headers: {
+      cookie: `streamweaver-session=${cookie}`,
+      'content-type': 'multipart/form-data; boundary=oversized',
+      'content-length': String(DISCORD_MEDIA_MAX_REQUEST_BYTES + 1),
+    },
+    body: '--oversized--',
+  }));
+  assert.equal(oversized.status, 413);
+  assert.match(JSON.stringify(await oversized.json()), new RegExp(`${DISCORD_MEDIA_MAX_FILE_MB} MB`));
+
+  const malformed = await POST(new NextRequest('http://localhost/api/discord-media', {
+    method: 'POST',
+    headers: {
+      cookie: `streamweaver-session=${cookie}`,
+      'content-type': 'multipart/form-data; boundary=missing',
+    },
+    body: 'not multipart data',
+  }));
+  assert.equal(malformed.status, 400);
+  assert.match(JSON.stringify(await malformed.json()), /multipart/i);
 });
 
 test('image command preserves all requested durable image results', async () => {
