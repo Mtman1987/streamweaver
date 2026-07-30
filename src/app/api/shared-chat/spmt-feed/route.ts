@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import type { SharedChatEventV1, SharedChatPlatform } from '@/contracts/shared-chat-event';
+import { getAllCommands } from '@/lib/commands-store';
 import { getMultiPlatformManager } from '@/services/multi-platform';
 import { getKickServiceForTenant } from '@/services/kick';
+import { getPoints } from '@/services/points';
 import { readSharedChatReplay } from '@/services/shared-chat-ingestion';
 import { getTwitchStatus } from '@/services/twitch-client';
+import { getUser } from '@/services/user-stats';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const FEED_PLATFORMS = ['twitch', 'discord', 'kick', 'youtube', 'app', 'social-stream'] as const;
+const FEED_PLATFORMS = ['twitch', 'discord', 'kick', 'youtube', 'tiktok', 'app', 'social-stream'] as const;
 
 function hasSpmtAccess(request: NextRequest): boolean {
   const supplied = String(request.headers.get('x-spmt-key') || '').trim();
@@ -30,7 +33,7 @@ function timestampMs(value: string | undefined): number {
 function canonicalPlatform(event: SharedChatEventV1): string {
   if (event.platform !== 'social-stream') return event.platform;
   const rawProvider = String(event.meta?.rawProvider || '').trim().toLowerCase();
-  return ['twitch', 'discord', 'kick', 'youtube'].includes(rawProvider) ? rawProvider : event.platform;
+  return ['twitch', 'discord', 'kick', 'youtube', 'tiktok'].includes(rawProvider) ? rawProvider : event.platform;
 }
 
 function eventFingerprint(event: SharedChatEventV1): string {
@@ -54,6 +57,15 @@ function dedupeEvents(events: SharedChatEventV1[]): SharedChatEventV1[] {
   return Array.from(byFingerprint.values()).sort((a, b) => (
     timestampMs(a.originalTimestamp) - timestampMs(b.originalTimestamp)
   ));
+}
+
+function commandMatches(text: string, candidate: string): boolean {
+  const normalizedText = text.trim().toLowerCase();
+  const normalizedCandidate = String(candidate || '').trim().toLowerCase();
+  return Boolean(normalizedCandidate) && (
+    normalizedText === normalizedCandidate
+    || normalizedText.startsWith(`${normalizedCandidate} `)
+  );
 }
 
 function sourceStatus(
@@ -91,13 +103,68 @@ export async function GET(request: NextRequest) {
     if (query && !`${event.sender.displayName} ${event.sender.login || ''} ${event.text} ${event.channelName || ''}`.toLowerCase().includes(query)) return false;
     return true;
   });
-  const events = filtered.slice(-limit);
+  const commands = (await getAllCommands(tenantId))
+    .filter((command) => command.enabled)
+    .map((command) => ({
+      id: command.id,
+      name: command.name,
+      command: command.command,
+      description: command.description || '',
+      aliases: command.aliases || [],
+      permissions: command.permissions || [],
+      group: command.group || 'custom',
+    }))
+    .slice(0, 250);
+  const enrichmentCache = new Map<string, Record<string, unknown>>();
+  const events = await Promise.all(filtered.slice(-limit).map(async (event) => {
+    const username = String(event.sender.login || event.sender.displayName || '').trim().replace(/^@/, '').toLowerCase();
+    const storageUsername = String(event.channelName || event.sourceName || event.channelId || 'default').trim().replace(/^#/, '').toLowerCase();
+    const enrichmentKey = `${storageUsername}:${username}`;
+    let enrichment = enrichmentCache.get(enrichmentKey);
+    if (!enrichment) {
+      try {
+        const ctx = { tenantId, username: storageUsername };
+        const [points, stats] = await Promise.all([getPoints(username, ctx), getUser(username, ctx)]);
+        enrichment = {
+          points: points.points,
+          pointsRaw: points.pointsRaw,
+          pointsDisplay: points.pointsDisplay,
+          level: points.level,
+          globalBadges: stats.badges || [],
+          cards: {
+            total: Number(stats.totalCards || 0),
+            rare: Number(stats.rareCards || 0),
+            ownedIds: (stats.cardCollection || []).slice(0, 100),
+          },
+        };
+      } catch {
+        enrichment = {};
+      }
+      enrichmentCache.set(enrichmentKey, enrichment);
+    }
+    const invokedCommand = event.text.trim().startsWith('!')
+      ? commands.find((command) => [command.command, ...(command.aliases || [])]
+        .some((candidate) => commandMatches(event.text, candidate)))
+      : null;
+    return {
+      ...event,
+      meta: {
+        ...(event.meta || {}),
+        streamweaver: {
+          tenantId,
+          ...enrichment,
+          ...(invokedCommand ? { command: invokedCommand } : {}),
+        },
+      },
+    };
+  }));
 
   const runtime = getMultiPlatformManager().getStatus();
   const runtimeConnected: Record<string, boolean> = {
     twitch: getTwitchStatus(tenantId) === 'connected',
     kick: Boolean(getKickServiceForTenant(tenantId)?.isConnected()),
     youtube: Boolean(runtime.youtube),
+    tiktok: Boolean(runtime.tiktok),
     discord: Boolean(process.env.DISCORD_BOT_TOKEN),
     app: true,
     'social-stream': false,
@@ -138,6 +205,7 @@ export async function GET(request: NextRequest) {
     hasMore: filtered.length > events.length,
     generatedAt: new Date().toISOString(),
     nextSince: events.at(-1)?.originalTimestamp || request.nextUrl.searchParams.get('since') || null,
+    commands,
     sources,
     channels,
     events,

@@ -201,9 +201,15 @@ test('SPMT feed requires the service key, stays tenant-isolated, and dedupes bri
     assert.equal(body.mode, 'read-only');
     assert.equal(body.count, 1);
     assert.equal(body.events[0].text, 'one real message');
+    assert.equal(body.events[0].meta.streamweaver.tenantId, 'tenant-feed-a');
+    assert.equal(typeof body.events[0].meta.streamweaver.points, 'number');
+    assert.equal(Array.isArray(body.events[0].meta.streamweaver.globalBadges), true);
+    assert.equal(typeof body.events[0].meta.streamweaver.cards.total, 'number');
     assert.equal(body.events.some((event: any) => event.text === 'other tenant'), false);
     assert.equal(body.channels.some((channel: any) => channel.platform === 'youtube'), true);
+    assert.equal(body.sources.some((source: any) => source.platform === 'tiktok' && source.readOnly === true), true);
     assert.equal(body.sources.every((source: any) => source.readOnly === true), true);
+    assert.equal(Array.isArray(body.commands), true);
   } finally {
     if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
     if (priorKey == null) delete process.env.SPMT_SYSTEM_KEY; else process.env.SPMT_SYSTEM_KEY = priorKey;

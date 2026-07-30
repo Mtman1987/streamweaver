@@ -155,9 +155,11 @@ export async function getUser(username: string, ctx?: StorageContext): Promise<U
     // Refresh badges and cards from real stores
     try {
       const { getUserBadges: getBadges } = require('./badge-storage-discord');
-      statsCache[username].badges = await getBadges(username);
+      const globalBadges = await getBadges(username);
+      statsCache[username].badges = Array.from(new Set([...(statsCache[username].badges || []), ...globalBadges]));
     } catch {}
     try {
+      if (ctx?.tenantId) throw new Error('tenant stats are authoritative');
       const { getUserCards } = require('./pokemon-collection');
       const cards = await getUserCards(username);
       statsCache[username].totalCards = cards.length;
