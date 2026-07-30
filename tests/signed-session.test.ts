@@ -35,7 +35,7 @@ test('middleware limits SPMT service access to the feed and dispatch routes', as
   const original = process.env.SPMT_SYSTEM_KEY;
   process.env.SPMT_SYSTEM_KEY = 'test-spmt-system-key';
   try {
-    for (const pathname of ['/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch']) {
+    for (const pathname of ['/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator']) {
       const allowed = await middleware(new NextRequest(`https://streamweaver-new.fly.dev${pathname}`, {
         headers: { 'x-spmt-key': 'test-spmt-system-key' },
       }));
