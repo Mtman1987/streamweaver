@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getYouTubeService } from '@/services/youtube';
 import { getMultiPlatformManager } from '@/services/multi-platform';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 
 /**
  * YouTube OAuth callback handler
  */
 export async function GET(request: NextRequest) {
   try {
+    const session = getTenantFromRequest(request);
+    if (!session?.tenantId) {
+      return NextResponse.redirect(new URL('/login?error=session_required', request.url));
+    }
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
     const error = searchParams.get('error');
@@ -34,7 +39,8 @@ export async function GET(request: NextRequest) {
     const multiPlatform = getMultiPlatformManager();
     await multiPlatform.connectYouTube(
       tokens.access_token,
-      tokens.refresh_token
+      tokens.refresh_token,
+      session.tenantId,
     );
 
     // Redirect back to integrations page with success

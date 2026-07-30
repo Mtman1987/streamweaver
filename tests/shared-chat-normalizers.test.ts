@@ -18,6 +18,7 @@ test('normalizes Twitch IRC payloads into tenant-isolated shared chat events', (
       'display-name': 'Mtman1987',
       'tmi-sent-ts': '1784910000000',
       badges: { broadcaster: '1', founder: '0' },
+      emotes: { '25': ['0-4'] },
     },
   });
 
@@ -28,7 +29,52 @@ test('normalizes Twitch IRC payloads into tenant-isolated shared chat events', (
   assert.equal(event.sender.roles.includes('broadcaster'), true);
   assert.equal(event.sender.roles.includes('subscriber'), true);
   assert.equal(event.links[0]?.url, 'https://spacemountain.live');
+  assert.equal(event.media[0]?.type, 'emote');
+  assert.match(event.media[0]?.url || '', /emoticons\/v2\/25/);
   assert.equal(event.routing.tenantIsolationKey, '94371278');
+});
+
+test('preserves Twitch channel-point, bits, and reply fidelity', () => {
+  const reward = normalizeTwitchSharedChatEvent({
+    tenantId: 'tenant-reward',
+    channel: '#alpha',
+    message: 'hydrate',
+    tags: {
+      id: 'reward-message',
+      username: 'viewer',
+      'custom-reward-id': 'reward-1',
+      'custom-reward-title': 'Hydrate',
+    },
+  });
+  assert.equal(reward.type, 'reward');
+  assert.equal(reward.reward?.id, 'reward-1');
+  assert.equal(reward.reward?.title, 'Hydrate');
+
+  const bits = normalizeTwitchSharedChatEvent({
+    tenantId: 'tenant-bits',
+    channel: '#alpha',
+    message: 'cheer100',
+    tags: { id: 'bits-message', username: 'viewer', bits: '100' },
+  });
+  assert.equal(bits.type, 'donation');
+  assert.equal(bits.donation?.amount, 100);
+  assert.equal(bits.donation?.currency, 'BITS');
+
+  const reply = normalizeTwitchSharedChatEvent({
+    tenantId: 'tenant-reply',
+    channel: '#alpha',
+    message: 'yes',
+    tags: {
+      id: 'reply-message',
+      username: 'viewer',
+      'reply-parent-msg-id': 'parent-1',
+      'reply-parent-display-name': 'Other Viewer',
+      'reply-parent-msg-body': 'are you ready?',
+    },
+  });
+  assert.equal(reply.type, 'reply');
+  assert.equal(reply.reply?.eventId, 'parent-1');
+  assert.equal(reply.reply?.senderName, 'Other Viewer');
 });
 
 test('normalizes Discord only with explicit tenant id and keeps guild id as source metadata', () => {
@@ -45,6 +91,7 @@ test('normalizes Discord only with explicit tenant id and keeps guild id as sour
       displayName: 'Mtman',
       isOwner: true,
       createdAt: '2026-07-24T12:00:00.000Z',
+      attachments: [{ url: 'https://example.com/image.png', content_type: 'image/png', filename: 'image.png' }],
     },
   });
 
@@ -52,6 +99,7 @@ test('normalizes Discord only with explicit tenant id and keeps guild id as sour
   assert.equal(event.sourceId, 'discord:62633402');
   assert.equal(event.channelId, 'discord:1529967135605129369');
   assert.equal(event.meta.guildId, '62633402');
+  assert.equal(event.media[0]?.url, 'https://example.com/image.png');
   assert.equal(event.routing.tenantIsolationKey, '94371278');
   assert.notEqual(event.tenantId, event.meta.guildId);
 });

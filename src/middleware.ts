@@ -81,6 +81,12 @@ function hasSharedBotAccess(request: NextRequest): boolean {
   return Boolean(sharedSecret && token && token === sharedSecret);
 }
 
+function hasSpmtServiceAccess(request: NextRequest): boolean {
+  const supplied = String(request.headers.get('x-spmt-key') || '').trim();
+  const expected = String(process.env.SPMT_SYSTEM_KEY || '').trim();
+  return Boolean(supplied && expected && supplied === expected);
+}
+
 function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
 
@@ -127,6 +133,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if ((pathname === '/api/ai/shoutout' || pathname === '/api/kick/chat-tag-broadcast' || pathname === '/api/quackverse/pack-overlay') && hasSharedBotAccess(request)) {
+    return NextResponse.next();
+  }
+
+  if (pathname === '/api/shared-chat/spmt-feed' && hasSpmtServiceAccess(request)) {
     return NextResponse.next();
   }
 

@@ -10,6 +10,9 @@ import { serializeSessionCookie } from '../src/lib/session-cookie';
 import { normalizeTwitchSharedChatEvent } from '../src/services/shared-chat-normalizers';
 import { GET as getDeadLetters } from '../src/app/api/shared-chat/dead-letters/route';
 import { GET as getReplay } from '../src/app/api/shared-chat/replay/route';
+import { GET as getSpmtFeed } from '../src/app/api/shared-chat/spmt-feed/route';
+import { normalizeSocialStreamSharedChatEvent } from '../src/lib/social-stream-normalizer';
+import { normalizeYouTubeSharedChatEvent } from '../src/services/shared-chat-normalizers';
 
 function signedTenantRequest(url: string, tenantId: string): NextRequest {
   const cookie = serializeSessionCookie({ id: tenantId, username: 'owner' });
@@ -133,6 +136,76 @@ test('shared chat dead-letter API requires auth and redacts raw payloads by defa
   } finally {
     if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
     if (priorSecret == null) delete process.env.STREAMWEAVER_SESSION_SECRET; else process.env.STREAMWEAVER_SESSION_SECRET = priorSecret;
+    await rm(persistRoot, { recursive: true, force: true });
+  }
+});
+
+test('SPMT feed requires the service key, stays tenant-isolated, and dedupes bridge copies', async () => {
+  const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-spmt-feed-'));
+  const priorRoot = process.env.PERSIST_ROOT;
+  const priorKey = process.env.SPMT_SYSTEM_KEY;
+  process.env.PERSIST_ROOT = persistRoot;
+  process.env.SPMT_SYSTEM_KEY = 'test-spmt-system-key';
+
+  try {
+    const unauthorized = await getSpmtFeed(new NextRequest('https://streamweaver-new.fly.dev/api/shared-chat/spmt-feed'));
+    assert.equal(unauthorized.status, 401);
+
+    const { recordSharedChatEvent } = await import('../src/services/shared-chat-ingestion');
+    const native = normalizeYouTubeSharedChatEvent({
+      tenantId: 'tenant-feed-a',
+      liveChatId: 'live-chat-1',
+      message: {
+        id: 'yt-upstream-1',
+        authorChannelId: 'viewer-1',
+        authorDisplayName: 'Viewer One',
+        message: 'one real message',
+        timestamp: '2026-07-30T01:00:00.000Z',
+        isSuperChat: false,
+        isMembership: false,
+      },
+    });
+    const bridge = normalizeSocialStreamSharedChatEvent({
+      id: 'yt-upstream-1',
+      type: 'youtube',
+      chatname: 'Viewer One',
+      userid: 'viewer-1',
+      chatmessage: 'one real message',
+      channelId: 'live-chat-1',
+      timestamp: '2026-07-30T01:00:00.000Z',
+    }, 'tenant-feed-a');
+    assert.ok(bridge);
+    await recordSharedChatEvent(native);
+    await recordSharedChatEvent(bridge);
+    await recordSharedChatEvent(normalizeTwitchSharedChatEvent({
+      tenantId: 'tenant-feed-b',
+      channel: '#hidden',
+      message: 'other tenant',
+      tags: { id: 'hidden-1', username: 'other-viewer' },
+    }));
+
+    const response = await getSpmtFeed(new NextRequest(
+      'https://streamweaver-new.fly.dev/api/shared-chat/spmt-feed?limit=25&q=real',
+      {
+        headers: {
+          'x-spmt-key': 'test-spmt-system-key',
+          'x-spmt-tenant-id': 'tenant-feed-a',
+        },
+      },
+    ));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.tenantId, 'tenant-feed-a');
+    assert.equal(body.mode, 'read-only');
+    assert.equal(body.count, 1);
+    assert.equal(body.events[0].text, 'one real message');
+    assert.equal(body.events.some((event: any) => event.text === 'other tenant'), false);
+    assert.equal(body.channels.some((channel: any) => channel.platform === 'youtube'), true);
+    assert.equal(body.sources.every((source: any) => source.readOnly === true), true);
+  } finally {
+    if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
+    if (priorKey == null) delete process.env.SPMT_SYSTEM_KEY; else process.env.SPMT_SYSTEM_KEY = priorKey;
     await rm(persistRoot, { recursive: true, force: true });
   }
 });

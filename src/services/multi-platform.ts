@@ -9,6 +9,8 @@ import { getKickService, KickMessage } from './kick';
 import { getTikTokService, TikTokMessage, TikTokGift, TikTokFollow } from './tiktok';
 import { handleKickMessage } from './chat-dispatcher';
 import { sendKickReauthNotice } from './kick-reauth-notice';
+import { recordSharedChatEvent } from './shared-chat-ingestion';
+import { normalizeKickSharedChatEvent, normalizeYouTubeSharedChatEvent } from './shared-chat-normalizers';
 
 export interface UnifiedMessage {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok' | 'discord';
@@ -45,7 +47,7 @@ export class MultiPlatformChatManager extends EventEmitter {
   /**
    * Connect to YouTube Live Chat
    */
-  async connectYouTube(accessToken: string, refreshToken?: string): Promise<void> {
+  async connectYouTube(accessToken: string, refreshToken?: string, tenantId?: string): Promise<void> {
     try {
       const youtube = getYouTubeService();
       
@@ -64,6 +66,19 @@ export class MultiPlatformChatManager extends EventEmitter {
         };
 
         this.emit('message', unified);
+        if (tenantId) {
+          recordSharedChatEvent(normalizeYouTubeSharedChatEvent({
+            tenantId,
+            liveChatId: 'active',
+            message: {
+              ...msg,
+              superChatCurrency: msg.superChatCurrency,
+              superChatDisplay: msg.superChatDisplay,
+            },
+          })).catch((error) => {
+            console.warn('[SharedChat] YouTube ingestion failed:', error instanceof Error ? error.message : String(error));
+          });
+        }
 
         // Emit special events for super chats
         if (msg.isSuperChat) {
@@ -134,6 +149,15 @@ export class MultiPlatformChatManager extends EventEmitter {
         };
 
         this.emit('message', unified);
+        if (tenantId) {
+          recordSharedChatEvent(normalizeKickSharedChatEvent({
+            tenantId,
+            channelName,
+            message: msg,
+          })).catch((error) => {
+            console.warn('[SharedChat] Kick ingestion failed:', error instanceof Error ? error.message : String(error));
+          });
+        }
 
         // Route through Kick command dispatcher
         if (tenantId) {

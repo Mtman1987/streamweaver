@@ -120,8 +120,34 @@ function twitchBadges(tags: Record<string, any>): SharedChatBadge[] {
   const rawBadges = tags.badges && typeof tags.badges === 'object' ? tags.badges : {};
   return Object.entries(rawBadges).map(([id, version]) => ({
     id,
+    label: id.replaceAll('_', ' '),
     meta: { version: String(version ?? '') },
   }));
+}
+
+function twitchEmotes(tags: Record<string, any>) {
+  const rawEmotes = tags.emotes && typeof tags.emotes === 'object' ? tags.emotes : {};
+  return Object.entries(rawEmotes).map(([id, ranges]) => ({
+    type: 'emote' as const,
+    url: `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0`,
+    alt: `Twitch emote ${id}`,
+    meta: { id, ranges: Array.isArray(ranges) ? ranges : [] },
+  }));
+}
+
+function twitchReply(tags: Record<string, any>) {
+  const eventId = firstString(tags['reply-parent-msg-id']);
+  const senderId = firstString(tags['reply-parent-user-id']);
+  const senderName = firstString(tags['reply-parent-display-name'], tags['reply-parent-user-login']);
+  const text = firstString(tags['reply-parent-msg-body']);
+  return eventId || senderId || senderName || text
+    ? {
+        eventId: eventId || undefined,
+        senderId: senderId || undefined,
+        senderName: senderName || undefined,
+        text: text || undefined,
+      }
+    : undefined;
 }
 
 function twitchRoles(tags: Record<string, any>, self?: boolean): SharedChatRole[] {
@@ -148,6 +174,17 @@ export function normalizeTwitchSharedChatEvent(input: TwitchSharedChatInput): Sh
   const sourceId = `twitch:${channelName}`;
   const channelId = firstString(input.tags['room-id'], channelName);
   const displayName = firstString(input.tags['display-name'], input.tags.username, 'Unknown');
+  const rewardId = firstString(input.tags['custom-reward-id']);
+  const bits = Number(firstString(input.tags.bits));
+  const type: SharedChatEventType = rewardId
+    ? 'reward'
+    : Number.isFinite(bits) && bits > 0
+      ? 'donation'
+      : twitchReply(input.tags)
+        ? 'reply'
+        : input.tags['message-type'] === 'action'
+          ? 'action'
+          : 'message';
   const event = {
     version: SHARED_CHAT_EVENT_VERSION,
     eventId: eventIdFor('twitch', tenantId, upstreamId),
@@ -158,7 +195,7 @@ export function normalizeTwitchSharedChatEvent(input: TwitchSharedChatInput): Sh
     sourceName: channelName,
     channelId,
     channelName,
-    type: 'message',
+    type,
     sender: {
       id: firstString(input.tags['user-id'], input.tags.username, 'unknown'),
       login: firstString(input.tags.username) || undefined,
@@ -168,8 +205,15 @@ export function normalizeTwitchSharedChatEvent(input: TwitchSharedChatInput): Sh
     },
     text: input.message,
     sanitizedHtml: escapeHtml(input.message),
-    media: [],
+    media: twitchEmotes(input.tags),
     links: linksFromText(input.message),
+    donation: type === 'donation'
+      ? { amount: bits, currency: 'BITS', display: `${bits.toLocaleString()} bits` }
+      : undefined,
+    reward: type === 'reward'
+      ? { id: rewardId, title: firstString(input.tags['custom-reward-title']) || 'Channel point redeem' }
+      : undefined,
+    reply: twitchReply(input.tags),
     originalTimestamp,
     receivedTimestamp,
     meta: {
@@ -200,6 +244,33 @@ function discordRoles(payload: UnknownRecord): SharedChatRole[] {
   if (payload.bot || payload.isBot || author.bot) roles.add('bot');
   if (roles.size === 0) roles.add('viewer');
   return Array.from(roles);
+}
+
+function discordMedia(payload: UnknownRecord) {
+  const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
+  const embeds = Array.isArray(payload.embeds) ? payload.embeds : [];
+  const candidates = [...attachments, ...embeds].flatMap((value) => {
+    if (!value || typeof value !== 'object') return [];
+    const entry = value as UnknownRecord;
+    const url = firstString(entry.url, entry.proxy_url, entry.proxyUrl, entry.image);
+    if (!url || !/^https?:\/\//i.test(url)) return [];
+    const contentType = firstString(entry.content_type, entry.contentType, entry.type).toLowerCase();
+    const type = contentType.startsWith('video')
+      ? 'video'
+      : contentType.startsWith('audio')
+        ? 'audio'
+        : contentType.includes('sticker')
+          ? 'sticker'
+          : 'image';
+    const thumbnailUrl = firstString(entry.thumbnail_url, entry.thumbnailUrl);
+    return [{
+      type: type as 'image' | 'video' | 'audio' | 'sticker',
+      url,
+      thumbnailUrl: /^https?:\/\//i.test(thumbnailUrl) ? thumbnailUrl : undefined,
+      alt: firstString(entry.description, entry.filename, entry.title) || undefined,
+    }];
+  });
+  return candidates.slice(0, 20);
 }
 
 export function normalizeDiscordSharedChatEvent(input: DiscordSharedChatInput): SharedChatEventV1 {
@@ -243,7 +314,7 @@ export function normalizeDiscordSharedChatEvent(input: DiscordSharedChatInput): 
     },
     text,
     sanitizedHtml: escapeHtml(text),
-    media: [],
+    media: discordMedia(payload),
     links: linksFromText(text),
     originalTimestamp,
     receivedTimestamp,

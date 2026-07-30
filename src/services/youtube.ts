@@ -15,6 +15,8 @@ export interface YouTubeMessage {
   timestamp: Date;
   isSuperChat: boolean;
   superChatAmount?: number;
+  superChatCurrency?: string;
+  superChatDisplay?: string;
   isMembership: boolean;
   membershipLevel?: string;
 }
@@ -160,6 +162,8 @@ export class YouTubeService extends EventEmitter {
       superChatAmount: snippet.superChatDetails?.amountMicros
         ? Number(snippet.superChatDetails.amountMicros) / 1_000_000
         : undefined,
+      superChatCurrency: snippet.superChatDetails?.currency || undefined,
+      superChatDisplay: snippet.superChatDetails?.amountDisplayString || undefined,
       isMembership: snippet.type === 'newSponsorEvent',
       membershipLevel: snippet.type === 'newSponsorEvent' ? 
         (snippet as any).memberMilestoneChatDetails?.memberLevel : undefined
