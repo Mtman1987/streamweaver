@@ -227,6 +227,7 @@ byId('create-song-job').addEventListener('click', async () => {
 });
 byId('audio-volume').addEventListener('input', () => window.companion.setAudio({ volume: Number(byId('audio-volume').value) }));
 byId('audio-muted').addEventListener('change', () => window.companion.setAudio({ muted: byId('audio-muted').checked }));
+byId('open-spacemountain').addEventListener('click', () => window.companion.windowAction('spacemountain.show'));
 byId('open-streamweaver').addEventListener('click', () => window.companion.windowAction('workspace.show'));
 byId('check-updates').addEventListener('click', () => window.companion.checkForUpdates());
 window.companion.onStatus(renderStatus);

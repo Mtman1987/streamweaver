@@ -28,6 +28,7 @@ if (!hasLock) app.quit();
 let configStore;
 let config;
 let settingsWindow;
+let spaceMountainWindow;
 let workspaceWindow;
 let overlayWindow;
 let tray;
@@ -106,13 +107,14 @@ function managedWindowOptions(kind, id = '') {
     ? screen.getDisplayMatching(Object.keys(saved).length ? saved : screen.getPrimaryDisplay().bounds)
     : null;
   const bounds = overlayDisplay?.bounds || saved;
+  const appWindow = kind === 'workspace' || kind === 'spaceMountain';
   return {
     x: bounds.x,
     y: bounds.y,
-    width: bounds.width || (kind === 'overlay' ? 1280 : kind === 'workspace' ? 1280 : 520),
-    height: bounds.height || (kind === 'overlay' ? 720 : kind === 'workspace' ? 820 : 420),
+    width: bounds.width || (kind === 'overlay' ? 1280 : appWindow ? 1280 : 520),
+    height: bounds.height || (kind === 'overlay' ? 720 : appWindow ? 820 : 420),
     show: false,
-    skipTaskbar: kind !== 'workspace',
+    skipTaskbar: !appWindow,
     autoHideMenuBar: true,
     backgroundColor: kind === 'overlay' ? '#00000000' : '#080b14',
     transparent: kind === 'overlay',
@@ -181,6 +183,43 @@ function ensureWorkspaceWindow() {
 
 function showWorkspace() {
   const window = ensureWorkspaceWindow();
+  window.show();
+  window.focus();
+  return { visible: true };
+}
+
+function ensureSpaceMountainWindow() {
+  if (spaceMountainWindow && !spaceMountainWindow.isDestroyed()) return spaceMountainWindow;
+  spaceMountainWindow = new BrowserWindow(managedWindowOptions('spaceMountain'));
+  spaceMountainWindow.setTitle('SpaceMountain · Companion');
+  rememberBounds(spaceMountainWindow, 'spaceMountain');
+  spaceMountainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isTrustedWorkspaceUrl(url)) {
+      void spaceMountainWindow.loadURL(url);
+    } else if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  spaceMountainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isTrustedWorkspaceUrl(url)) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+  });
+  spaceMountainWindow.webContents.on('did-navigate', (_event, url) => {
+    if (url.startsWith('https://spacemountain.live/')) overlayWindow?.webContents.reload();
+  });
+  spaceMountainWindow.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    spaceMountainWindow.hide();
+  });
+  void loadManagedUrl(spaceMountainWindow, config.windows.spaceMountain.url);
+  return spaceMountainWindow;
+}
+
+function showSpaceMountain() {
+  const window = ensureSpaceMountainWindow();
   window.show();
   window.focus();
   return { visible: true };
@@ -506,6 +545,7 @@ function rebuildTrayMenu() {
       click: () => entry.visible ? hidePopout(entry.id) : showPopout(entry.id)
     })),
     { type: 'separator' },
+    { label: 'Open SpaceMountain Crew Desk', click: showSpaceMountain },
     { label: 'Open StreamWeaver', click: showWorkspace },
     { label: 'Restart Local Service', click: () => { stopManagedServer(); setTimeout(startManagedServer, 800); } },
     { label: 'Check for Updates', click: () => void updateManager?.check({ manual: true }) },
@@ -548,6 +588,7 @@ function setupIpc() {
       windows: {
         ...config.windows,
         ...(next.windows || {}),
+        spaceMountain: { ...config.windows.spaceMountain, ...(next.windows?.spaceMountain || {}) },
         workspace: { ...config.windows.workspace, ...(next.windows?.workspace || {}) },
         overlay: { ...config.windows.overlay, ...(next.windows?.overlay || {}) },
         popouts: Array.isArray(next.windows?.popouts) ? next.windows.popouts.slice(0, 3) : config.windows.popouts
@@ -586,6 +627,7 @@ function setupIpc() {
     return { ok: true };
   });
   ipcMain.handle('companion:window', (_event, action, id) => {
+    if (action === 'spacemountain.show') return showSpaceMountain();
     if (action === 'workspace.show') return showWorkspace();
     if (action === 'overlay.show') return showOverlay();
     if (action === 'overlay.hide') return hideOverlay();
@@ -683,7 +725,8 @@ function createRelay() {
 }
 
 app.on('second-instance', (_event, argv) => {
-  if (argv.includes('--workspace')) showWorkspace();
+  if (argv.includes('--spacemountain')) showSpaceMountain();
+  else if (argv.includes('--workspace')) showWorkspace();
   else if (argv.includes('--overlay-interact')) setOverlayInteraction(true);
   else showSettings();
 });
@@ -743,7 +786,8 @@ app.whenReady().then(async () => {
   updateManager.start();
   await connectObs();
   if (config.windows.overlay.visible) showOverlay();
-  if (process.argv.includes('--workspace')) showWorkspace();
+  if (process.argv.includes('--spacemountain')) showSpaceMountain();
+  else if (process.argv.includes('--workspace')) showWorkspace();
   else if (process.argv.includes('--overlay-interact')) setOverlayInteraction(true);
   else if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();
   logCompanion('Companion ready');
