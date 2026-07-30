@@ -10,6 +10,9 @@ const DEFAULT_CONFIG = {
   obs: { url: 'ws://127.0.0.1:4455', enabled: false, mediaInputName: 'SpaceMountain Jingles' },
   audio: { muted: false, volume: 0.7, pttKey: 'Space', outputDeviceId: '' },
   windows: {
+    workspace: {
+      url: 'https://spacemountain.live/?companionWorkspace=streamweaver'
+    },
     overlay: {
       url: 'https://spacemountain.live/?desktopOverlay=1',
       visible: false,
@@ -59,6 +62,7 @@ class ConfigStore {
       windows: {
         ...clone(DEFAULT_CONFIG.windows),
         ...(stored.windows || {}),
+        workspace: { ...DEFAULT_CONFIG.windows.workspace, ...(stored.windows?.workspace || {}) },
         overlay: { ...DEFAULT_CONFIG.windows.overlay, ...(stored.windows?.overlay || {}) },
         popouts: Array.isArray(stored.windows?.popouts) ? stored.windows.popouts.slice(0, 3) : clone(DEFAULT_CONFIG.windows.popouts)
       },

@@ -225,7 +225,7 @@ byId('create-song-job').addEventListener('click', async () => {
 });
 byId('audio-volume').addEventListener('input', () => window.companion.setAudio({ volume: Number(byId('audio-volume').value) }));
 byId('audio-muted').addEventListener('change', () => window.companion.setAudio({ muted: byId('audio-muted').checked }));
-byId('open-streamweaver').addEventListener('click', () => window.companion.openExternal('http://127.0.0.1:3100/dashboard'));
+byId('open-streamweaver').addEventListener('click', () => window.companion.windowAction('workspace.show'));
 byId('check-updates').addEventListener('click', () => window.companion.checkForUpdates());
 window.companion.onStatus(renderStatus);
 window.companion.onMediaJob((job) => {

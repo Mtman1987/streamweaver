@@ -26,6 +26,7 @@ if (!hasLock) app.quit();
 let configStore;
 let config;
 let settingsWindow;
+let workspaceWindow;
 let overlayWindow;
 let tray;
 let serverProcess;
@@ -92,10 +93,10 @@ function managedWindowOptions(kind, id = '') {
   return {
     x: saved.x,
     y: saved.y,
-    width: saved.width || (kind === 'overlay' ? 1280 : 520),
-    height: saved.height || (kind === 'overlay' ? 720 : 420),
+    width: saved.width || (kind === 'overlay' ? 1280 : kind === 'workspace' ? 1280 : 520),
+    height: saved.height || (kind === 'overlay' ? 720 : kind === 'workspace' ? 820 : 420),
     show: false,
-    skipTaskbar: true,
+    skipTaskbar: kind !== 'workspace',
     autoHideMenuBar: true,
     backgroundColor: kind === 'overlay' ? '#00000000' : '#080b14',
     transparent: kind === 'overlay',
@@ -109,10 +110,63 @@ function managedWindowOptions(kind, id = '') {
   };
 }
 
+function isTrustedWorkspaceUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && new Set([
+      'spacemountain.live',
+      'spacemountain-live.fly.dev',
+      'spmt.live',
+      'streamweaver-new.fly.dev'
+    ]).has(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function loadManagedUrl(window, value) {
   const url = String(value || '').trim();
   if (!/^(https?:\/\/)/i.test(url)) throw new Error('Managed window URL must use HTTP or HTTPS');
   return window.loadURL(url);
+}
+
+function ensureWorkspaceWindow() {
+  if (workspaceWindow && !workspaceWindow.isDestroyed()) return workspaceWindow;
+  workspaceWindow = new BrowserWindow(managedWindowOptions('workspace'));
+  workspaceWindow.setTitle('StreamWeaver · SpaceMountain Companion');
+  rememberBounds(workspaceWindow, 'workspace');
+  workspaceWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isTrustedWorkspaceUrl(url)) {
+      void workspaceWindow.loadURL(url);
+    } else if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+  workspaceWindow.webContents.on('will-navigate', (event, url) => {
+    if (isTrustedWorkspaceUrl(url)) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+  });
+  workspaceWindow.webContents.on('did-navigate', (_event, url) => {
+    if (url.startsWith('https://spacemountain.live/')) {
+      overlayWindow?.webContents.reload();
+    }
+  });
+  workspaceWindow.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    workspaceWindow.hide();
+  });
+  void loadManagedUrl(workspaceWindow, config.windows.workspace.url);
+  return workspaceWindow;
+}
+
+function showWorkspace() {
+  const window = ensureWorkspaceWindow();
+  window.show();
+  window.focus();
+  return { visible: true };
 }
 
 function ensureOverlayWindow() {
@@ -373,7 +427,7 @@ function rebuildTrayMenu() {
       click: () => entry.visible ? hidePopout(entry.id) : showPopout(entry.id)
     })),
     { type: 'separator' },
-    { label: 'Open StreamWeaver', click: () => shell.openExternal(`http://127.0.0.1:${config.server.port}/dashboard`) },
+    { label: 'Open StreamWeaver', click: showWorkspace },
     { label: 'Restart Local Service', click: () => { stopManagedServer(); setTimeout(startManagedServer, 800); } },
     { label: 'Check for Updates', click: () => void updateManager?.check({ manual: true }) },
     { type: 'separator' },
@@ -407,6 +461,7 @@ function setupIpc() {
       windows: {
         ...config.windows,
         ...(next.windows || {}),
+        workspace: { ...config.windows.workspace, ...(next.windows?.workspace || {}) },
         overlay: { ...config.windows.overlay, ...(next.windows?.overlay || {}) },
         popouts: Array.isArray(next.windows?.popouts) ? next.windows.popouts.slice(0, 3) : config.windows.popouts
       },
@@ -439,6 +494,7 @@ function setupIpc() {
     return { ok: true };
   });
   ipcMain.handle('companion:window', (_event, action, id) => {
+    if (action === 'workspace.show') return showWorkspace();
     if (action === 'overlay.show') return showOverlay();
     if (action === 'overlay.hide') return hideOverlay();
     if (action === 'popout.show') return showPopout(id);

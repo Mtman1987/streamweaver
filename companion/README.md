@@ -59,8 +59,12 @@ startup choices, and other non-secret settings are stored in
 ## Current capability surface
 
 - Start and supervise `npm run start:local` without opening a console window.
+- Open a persistent Companion-owned StreamWeaver workspace. SpaceMountain signs
+  the user in once inside Electron, then passes StreamWeaver a short-lived,
+  single-use embed code without exposing session tokens to the renderer.
 - Show or hide the SpaceMountain personal overlay in a transparent Electron
-  window with click-through, opacity, always-on-top, and remembered bounds.
+  window with the account's three dock slots and personal widgets, plus
+  click-through, opacity, always-on-top, and remembered bounds.
 - Restore the personal overlay after Companion restarts when it was previously
   visible, plus manage three configurable popouts.
 - Connect to local OBS WebSocket and set the current program scene.
