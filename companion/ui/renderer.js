@@ -68,7 +68,8 @@ async function load() {
   byId('overlay-url').value = config.windows.overlay.url;
   byId('overlay-click-through').checked = config.windows.overlay.clickThrough !== false;
   byId('overlay-always-on-top').checked = config.windows.overlay.alwaysOnTop !== false;
-  byId('overlay-opacity').value = Math.round((Number(config.windows.overlay.opacity) || 1) * 100);
+  byId('overlay-fit-display').checked = config.windows.overlay.fitToDisplay !== false;
+  byId('overlay-hotkey').value = config.windows.overlay.interactionHotkey || 'CommandOrControl+Shift+O';
   byId('popouts').innerHTML = config.windows.popouts.map(popoutCard).join('');
   byId('obs-url').value = config.obs.url;
   byId('obs-enabled').checked = config.obs.enabled;
@@ -162,7 +163,8 @@ byId('save').addEventListener('click', async () => {
         url: byId('overlay-url').value.trim(),
         clickThrough: byId('overlay-click-through').checked,
         alwaysOnTop: byId('overlay-always-on-top').checked,
-        opacity: Number(byId('overlay-opacity').value) / 100
+        fitToDisplay: byId('overlay-fit-display').checked,
+        interactionHotkey: byId('overlay-hotkey').value.trim()
       },
       popouts: collectPopouts()
     }

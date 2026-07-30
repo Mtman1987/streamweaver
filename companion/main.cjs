@@ -5,9 +5,11 @@ const {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
+  screen,
   shell,
   Tray
 } = require('electron');
@@ -42,6 +44,9 @@ let updateManager;
 let obs;
 const popoutWindows = new Map();
 let quitting = false;
+let overlayInteractionActive = false;
+let overlayHotkeyRegistered = false;
+let overlayHotkeyAccelerator = '';
 
 function logCompanion(message, error) {
   const detail = error instanceof Error ? `${error.stack || error.message}` : error ? String(error) : '';
@@ -63,7 +68,13 @@ function emitStatus() {
     settingsWindow.webContents.send('companion:status', {
       server: serverStatus,
       relay: relayStatus,
-      obs: obsStatus
+      obs: obsStatus,
+      overlay: {
+        state: overlayInteractionActive ? 'interactive' : overlayHotkeyRegistered ? 'ready' : 'hotkey-error',
+        detail: overlayHotkeyRegistered
+          ? `Interaction hotkey: ${config.windows.overlay.interactionHotkey}`
+          : `Could not register: ${config.windows.overlay.interactionHotkey || 'empty hotkey'}`
+      }
     });
   }
 }
@@ -80,6 +91,7 @@ function rememberBounds(window, kind, id = '') {
   const key = windowBoundsKey(kind, id);
   const persist = () => {
     if (window.isDestroyed() || window.isMinimized()) return;
+    if (kind === 'overlay' && config.windows.overlay.fitToDisplay !== false) return;
     config.windowBounds = { ...(config.windowBounds || {}), [key]: window.getBounds() };
     saveConfig();
   };
@@ -90,11 +102,15 @@ function rememberBounds(window, kind, id = '') {
 function managedWindowOptions(kind, id = '') {
   const key = windowBoundsKey(kind, id);
   const saved = config.windowBounds?.[key] || {};
+  const overlayDisplay = kind === 'overlay' && config.windows.overlay.fitToDisplay !== false
+    ? screen.getDisplayMatching(Object.keys(saved).length ? saved : screen.getPrimaryDisplay().bounds)
+    : null;
+  const bounds = overlayDisplay?.bounds || saved;
   return {
-    x: saved.x,
-    y: saved.y,
-    width: saved.width || (kind === 'overlay' ? 1280 : kind === 'workspace' ? 1280 : 520),
-    height: saved.height || (kind === 'overlay' ? 720 : kind === 'workspace' ? 820 : 420),
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width || (kind === 'overlay' ? 1280 : kind === 'workspace' ? 1280 : 520),
+    height: bounds.height || (kind === 'overlay' ? 720 : kind === 'workspace' ? 820 : 420),
     show: false,
     skipTaskbar: kind !== 'workspace',
     autoHideMenuBar: true,
@@ -103,6 +119,7 @@ function managedWindowOptions(kind, id = '') {
     frame: kind !== 'overlay',
     alwaysOnTop: kind === 'overlay' && config.windows.overlay.alwaysOnTop !== false,
     webPreferences: {
+      preload: kind === 'overlay' ? path.join(__dirname, 'overlay-preload.cjs') : undefined,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
@@ -169,6 +186,59 @@ function showWorkspace() {
   return { visible: true };
 }
 
+function fitOverlayToDisplay() {
+  const window = ensureOverlayWindow();
+  const display = screen.getDisplayMatching(window.getBounds());
+  window.setBounds(display.bounds);
+  config.windowBounds = { ...(config.windowBounds || {}), overlay: { ...display.bounds } };
+  saveConfig();
+  return { displayId: display.id, bounds: display.bounds };
+}
+
+function emitOverlayInteractionState() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayWindow.webContents.send('companion:overlay-interaction', {
+    active: overlayInteractionActive,
+    hotkey: config.windows.overlay.interactionHotkey
+  });
+}
+
+function setOverlayInteraction(active) {
+  const window = ensureOverlayWindow();
+  overlayInteractionActive = Boolean(active);
+  if (overlayInteractionActive) {
+    if (config.windows.overlay.fitToDisplay !== false) fitOverlayToDisplay();
+    window.setIgnoreMouseEvents(false);
+    window.show();
+    window.focus();
+    config.windows.overlay.visible = true;
+  } else {
+    window.setIgnoreMouseEvents(config.windows.overlay.clickThrough !== false, { forward: true });
+    if (config.windows.overlay.visible) window.showInactive();
+  }
+  emitOverlayInteractionState();
+  saveConfig();
+  rebuildTrayMenu();
+  emitStatus();
+  return { active: overlayInteractionActive, hotkey: config.windows.overlay.interactionHotkey };
+}
+
+function toggleOverlayInteraction() {
+  return setOverlayInteraction(!overlayInteractionActive);
+}
+
+function registerOverlayHotkey() {
+  const accelerator = String(config.windows.overlay.interactionHotkey || '').trim();
+  if (overlayHotkeyAccelerator) globalShortcut.unregister(overlayHotkeyAccelerator);
+  overlayHotkeyRegistered = Boolean(accelerator) && globalShortcut.register(accelerator, toggleOverlayInteraction);
+  overlayHotkeyAccelerator = overlayHotkeyRegistered ? accelerator : '';
+  if (!overlayHotkeyRegistered) {
+    logCompanion(`Overlay interaction hotkey could not be registered (${accelerator || 'empty'})`);
+  }
+  emitStatus();
+  return overlayHotkeyRegistered;
+}
+
 function ensureOverlayWindow() {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
   overlayWindow = new BrowserWindow(managedWindowOptions('overlay'));
@@ -176,12 +246,17 @@ function ensureOverlayWindow() {
   overlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'floating');
   overlayWindow.setVisibleOnAllWorkspaces(config.windows.overlay.alwaysOnTop !== false);
   overlayWindow.setFullScreenable(false);
-  overlayWindow.setOpacity(Math.max(0.2, Math.min(1, Number(config.windows.overlay.opacity) || 1)));
-  overlayWindow.setIgnoreMouseEvents(config.windows.overlay.clickThrough !== false, { forward: true });
+  overlayWindow.setOpacity(1);
+  overlayWindow.setIgnoreMouseEvents(
+    overlayInteractionActive ? false : config.windows.overlay.clickThrough !== false,
+    { forward: true }
+  );
   rememberBounds(overlayWindow, 'overlay');
+  overlayWindow.webContents.on('did-finish-load', emitOverlayInteractionState);
   overlayWindow.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();
+    overlayInteractionActive = false;
     overlayWindow.hide();
     config.windows.overlay.visible = false;
     saveConfig();
@@ -216,6 +291,7 @@ function ensurePopoutWindow(id) {
 
 function showOverlay() {
   const window = ensureOverlayWindow();
+  if (config.windows.overlay.fitToDisplay !== false) fitOverlayToDisplay();
   window.showInactive();
   config.windows.overlay.visible = true;
   saveConfig();
@@ -224,6 +300,7 @@ function showOverlay() {
 }
 
 function hideOverlay() {
+  overlayInteractionActive = false;
   overlayWindow?.hide();
   config.windows.overlay.visible = false;
   saveConfig();
@@ -422,6 +499,8 @@ function rebuildTrayMenu() {
     { label: 'Open Companion Settings', click: showSettings },
     { type: 'separator' },
     { label: config.windows.overlay.visible ? 'Hide Overlay' : 'Show Overlay', click: () => config.windows.overlay.visible ? hideOverlay() : showOverlay() },
+    { label: overlayInteractionActive ? 'Finish Overlay Interaction' : `Interact With Overlay (${config.windows.overlay.interactionHotkey})`, click: toggleOverlayInteraction },
+    { label: 'Fit Overlay to Current Screen', click: fitOverlayToDisplay },
     ...config.windows.popouts.map((entry) => ({
       label: `${entry.visible ? 'Hide' : 'Show'} Popout ${entry.id}: ${entry.title}`,
       click: () => entry.visible ? hidePopout(entry.id) : showPopout(entry.id)
@@ -438,7 +517,15 @@ function rebuildTrayMenu() {
 function setupIpc() {
   ipcMain.handle('companion:get-state', async () => ({
     config,
-    status: { server: serverStatus, relay: relayStatus, obs: obsStatus },
+    status: {
+      server: serverStatus,
+      relay: relayStatus,
+      obs: obsStatus,
+      overlay: {
+        state: overlayInteractionActive ? 'interactive' : overlayHotkeyRegistered ? 'ready' : 'hotkey-error',
+        detail: `Interaction hotkey: ${config.windows.overlay.interactionHotkey}`
+      }
+    },
     media: mediaJobs.list(),
     jobs: mediaJobs.snapshot(),
     workflowCatalog: workflowJobs.catalog(),
@@ -471,12 +558,17 @@ function setupIpc() {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'floating');
       overlayWindow.setVisibleOnAllWorkspaces(config.windows.overlay.alwaysOnTop !== false);
-      overlayWindow.setOpacity(Math.max(0.2, Math.min(1, Number(config.windows.overlay.opacity) || 1)));
-      overlayWindow.setIgnoreMouseEvents(config.windows.overlay.clickThrough !== false, { forward: true });
+      overlayWindow.setOpacity(1);
+      overlayWindow.setIgnoreMouseEvents(
+        overlayInteractionActive ? false : config.windows.overlay.clickThrough !== false,
+        { forward: true }
+      );
+      if (config.windows.overlay.fitToDisplay !== false) fitOverlayToDisplay();
       if (previousOverlayUrl !== config.windows.overlay.url) {
         await loadManagedUrl(overlayWindow, config.windows.overlay.url);
       }
     }
+    registerOverlayHotkey();
     app.setLoginItemSettings({ openAtLogin: Boolean(config.startup.openAtLogin), args: ['--hidden'] });
     applyAudio(config.audio);
     await connectObs();
@@ -497,10 +589,17 @@ function setupIpc() {
     if (action === 'workspace.show') return showWorkspace();
     if (action === 'overlay.show') return showOverlay();
     if (action === 'overlay.hide') return hideOverlay();
+    if (action === 'overlay.interact') return setOverlayInteraction(true);
+    if (action === 'overlay.fit') return fitOverlayToDisplay();
     if (action === 'popout.show') return showPopout(id);
     if (action === 'popout.hide') return hidePopout(id);
     throw new Error('Unsupported window action');
   });
+  ipcMain.handle('companion:overlay-interaction-get', () => ({
+    active: overlayInteractionActive,
+    hotkey: config.windows.overlay.interactionHotkey
+  }));
+  ipcMain.handle('companion:overlay-interaction-set', (_event, active) => setOverlayInteraction(active));
   ipcMain.handle('companion:media-import', async () => {
     const selection = await dialog.showOpenDialog(settingsWindow, {
       properties: ['openFile'],
@@ -585,10 +684,12 @@ function createRelay() {
 
 app.on('second-instance', (_event, argv) => {
   if (argv.includes('--workspace')) showWorkspace();
+  else if (argv.includes('--overlay-interact')) setOverlayInteraction(true);
   else showSettings();
 });
 app.on('before-quit', () => {
   quitting = true;
+  globalShortcut.unregisterAll();
   clearTimeout(serverRestartTimer);
   relay?.stop();
   updateManager?.stop();
@@ -623,7 +724,18 @@ app.whenReady().then(async () => {
   tray = new Tray(icon);
   tray.setToolTip('SpaceMountain Companion');
   tray.on('double-click', showSettings);
+  registerOverlayHotkey();
   rebuildTrayMenu();
+  screen.on('display-metrics-changed', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && config.windows.overlay.fitToDisplay !== false) {
+      fitOverlayToDisplay();
+    }
+  });
+  screen.on('display-removed', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && config.windows.overlay.fitToDisplay !== false) {
+      fitOverlayToDisplay();
+    }
+  });
 
   app.setLoginItemSettings({ openAtLogin: Boolean(config.startup.openAtLogin), args: ['--hidden'] });
   startManagedServer();
@@ -632,6 +744,7 @@ app.whenReady().then(async () => {
   await connectObs();
   if (config.windows.overlay.visible) showOverlay();
   if (process.argv.includes('--workspace')) showWorkspace();
+  else if (process.argv.includes('--overlay-interact')) setOverlayInteraction(true);
   else if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();
   logCompanion('Companion ready');
 }).catch((error) => {
