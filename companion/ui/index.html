@@ -40,14 +40,17 @@
       <div class="actions">
         <button data-window-action="overlay.show">Show overlay</button>
         <button data-window-action="overlay.hide" class="secondary">Hide overlay</button>
+        <button data-window-action="overlay.interact">Enter interaction mode</button>
+        <button data-window-action="overlay.fit" class="secondary">Fit to current screen</button>
       </div>
       <label>Personal overlay URL <input id="overlay-url" type="url"></label>
       <div class="grid two">
-        <label class="check"><input id="overlay-click-through" type="checkbox"> Click through to apps underneath</label>
+        <label class="check"><input id="overlay-click-through" type="checkbox"> Click through outside interaction mode</label>
         <label class="check"><input id="overlay-always-on-top" type="checkbox"> Keep above other apps</label>
-        <label>Overlay opacity <input id="overlay-opacity" type="range" min="20" max="100" step="1"></label>
+        <label class="check"><input id="overlay-fit-display" type="checkbox"> Fit to the current Windows display</label>
+        <label>Interaction hotkey <input id="overlay-hotkey" placeholder="CommandOrControl+Shift+O"></label>
       </div>
-      <p class="section-copy">Turn click-through off temporarily if the SpaceMountain window asks you to sign in. Window size and position are remembered locally.</p>
+      <p class="section-copy">Widget visibility, widget opacity, dock visibility, and glass opacity come from your SpaceMountain workspace. Use the hotkey to focus the overlay, then press it again or choose Done. Fit-to-display follows the full bounds of the Windows screen containing the overlay.</p>
       <div id="popouts" class="cards"></div>
     </section>
 

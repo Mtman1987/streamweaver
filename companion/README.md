@@ -62,9 +62,20 @@ startup choices, and other non-secret settings are stored in
 - Open a persistent Companion-owned StreamWeaver workspace. SpaceMountain signs
   the user in once inside Electron, then passes StreamWeaver a short-lived,
   single-use embed code without exposing session tokens to the renderer.
-- Show or hide the SpaceMountain personal overlay in a transparent Electron
-  window with the account's three dock slots and personal widgets, plus
-  click-through, opacity, always-on-top, and remembered bounds.
+- Show or hide the SpaceMountain personal overlay in a genuinely transparent
+  Electron window with the account's three dock slots and personal widgets.
+  Fit-to-display uses the full bounds of the Windows monitor containing the
+  overlay instead of restoring a fixed 1280x720 canvas.
+- Register a configurable global interaction hotkey (default
+  `CommandOrControl+Shift+O`). Interaction mode focuses the overlay, enables
+  its controls, and stays visibly highlighted until the hotkey is pressed
+  again or the on-overlay **Done** control is selected.
+- Keep native window opacity at 100 percent so SpaceMountain remains the source
+  of truth for widget visibility and opacity, dock collapsed state, shared
+  glass opacity and blur, while Companion owns click-through and always-on-top.
+- Offer Commlink Live Chat as both a SpaceMountain dock preset and a personal
+  overlay widget. Its iframe uses the same single-use StreamWeaver embed bridge
+  as the other authenticated Companion surfaces.
 - Restore the personal overlay after Companion restarts when it was previously
   visible, plus manage three configurable popouts.
 - Connect to local OBS WebSocket and set the current program scene.

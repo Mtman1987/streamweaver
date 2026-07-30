@@ -18,7 +18,9 @@ const DEFAULT_CONFIG = {
       visible: false,
       clickThrough: true,
       alwaysOnTop: true,
-      opacity: 1
+      opacity: 1,
+      fitToDisplay: true,
+      interactionHotkey: 'CommandOrControl+Shift+O'
     },
     popouts: [
       { id: 1, title: 'ChatTag Overlay', url: 'https://chat-tag-new.fly.dev/overlay', visible: false },
