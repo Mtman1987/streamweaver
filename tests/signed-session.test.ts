@@ -31,6 +31,26 @@ test('middleware rejects requests without a signed session candidate', async () 
   assert.equal(new URL(String(response.headers.get('location'))).pathname, '/login');
 });
 
+test('middleware limits SPMT service access to the feed and dispatch routes', async () => {
+  const original = process.env.SPMT_SYSTEM_KEY;
+  process.env.SPMT_SYSTEM_KEY = 'test-spmt-system-key';
+  try {
+    for (const pathname of ['/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch']) {
+      const allowed = await middleware(new NextRequest(`https://streamweaver-new.fly.dev${pathname}`, {
+        headers: { 'x-spmt-key': 'test-spmt-system-key' },
+      }));
+      assert.equal(allowed.headers.get('x-middleware-next'), '1');
+    }
+    const denied = await middleware(new NextRequest('https://streamweaver-new.fly.dev/api/shared-chat/spmt-dispatch', {
+      headers: { 'x-spmt-key': 'wrong' },
+    }));
+    assert.equal(denied.status, 401);
+  } finally {
+    if (original === undefined) delete process.env.SPMT_SYSTEM_KEY;
+    else process.env.SPMT_SYSTEM_KEY = original;
+  }
+});
+
 test('legacy SPMT migration verifies the provider identity and signs in Node runtime', async () => {
   const originalFetch = global.fetch;
   const originalAppUrl = process.env.NEXT_PUBLIC_BASE_URL;

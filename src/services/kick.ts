@@ -476,8 +476,7 @@ export class KickService extends EventEmitter {
     // Resolve broadcaster_user_id from Kick API (channelId stored in tokens is NOT the same)
     const broadcasterId = await this.getBroadcasterUserId();
     if (!broadcasterId) {
-      console.warn('[Kick] ⚠️ No broadcaster_user_id — cannot send');
-      return;
+      throw new Error('Kick broadcaster identity is unavailable');
     }
 
     // 1. Try global bot token (sends as streamweaverbot)
@@ -528,8 +527,7 @@ export class KickService extends EventEmitter {
     // 2. Fallback: broadcaster token
     const token = await this.getValidToken();
     if (!token) {
-      console.warn('[Kick] ⚠️ No valid token — cannot send message');
-      return;
+      throw new Error('Kick outbound token is unavailable');
     }
 
     const res = await fetch('https://api.kick.com/public/v1/chat', {
@@ -540,6 +538,7 @@ export class KickService extends EventEmitter {
 
     if (res.ok) {
       console.log('[Kick] ✅ Message sent (broadcaster token)');
+      return;
     } else {
       const errText = await res.text();
       console.error(`[Kick] Send failed (${res.status}):`, errText);
@@ -551,11 +550,15 @@ export class KickService extends EventEmitter {
             headers: { 'Authorization': `Bearer ${this.tokens!.accessToken}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: message, type: 'user', broadcaster_user_id: broadcasterId }),
           });
-          if (retry.ok) console.log('[Kick] ✅ Message sent on retry');
-          else console.error('[Kick] Retry failed:', retry.status);
+          if (retry.ok) {
+            console.log('[Kick] ✅ Message sent on retry');
+            return;
+          }
+          console.error('[Kick] Retry failed:', retry.status);
         }
       }
     }
+    throw new Error(`Kick rejected the outbound message (${res.status})`);
   }
 
   async timeoutUser(username: string, duration: number = 600): Promise<void> {

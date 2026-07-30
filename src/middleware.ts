@@ -136,7 +136,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname === '/api/shared-chat/spmt-feed' && hasSpmtServiceAccess(request)) {
+  if (['/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch'].includes(pathname) && hasSpmtServiceAccess(request)) {
     return NextResponse.next();
   }
 

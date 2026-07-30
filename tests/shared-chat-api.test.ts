@@ -11,6 +11,7 @@ import { normalizeTwitchSharedChatEvent } from '../src/services/shared-chat-norm
 import { GET as getDeadLetters } from '../src/app/api/shared-chat/dead-letters/route';
 import { GET as getReplay } from '../src/app/api/shared-chat/replay/route';
 import { GET as getSpmtFeed } from '../src/app/api/shared-chat/spmt-feed/route';
+import { POST as dispatchSpmtMessage } from '../src/app/api/shared-chat/spmt-dispatch/route';
 import { normalizeSocialStreamSharedChatEvent } from '../src/lib/social-stream-normalizer';
 import { normalizeYouTubeSharedChatEvent } from '../src/services/shared-chat-normalizers';
 
@@ -203,6 +204,71 @@ test('SPMT feed requires the service key, stays tenant-isolated, and dedupes bri
     assert.equal(body.events.some((event: any) => event.text === 'other tenant'), false);
     assert.equal(body.channels.some((channel: any) => channel.platform === 'youtube'), true);
     assert.equal(body.sources.every((source: any) => source.readOnly === true), true);
+  } finally {
+    if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
+    if (priorKey == null) delete process.env.SPMT_SYSTEM_KEY; else process.env.SPMT_SYSTEM_KEY = priorKey;
+    await rm(persistRoot, { recursive: true, force: true });
+  }
+});
+
+test('SPMT dispatch rejects unverified destinations and reports unproven adapters truthfully', async () => {
+  const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-spmt-dispatch-'));
+  const priorRoot = process.env.PERSIST_ROOT;
+  const priorKey = process.env.SPMT_SYSTEM_KEY;
+  process.env.PERSIST_ROOT = persistRoot;
+  process.env.SPMT_SYSTEM_KEY = 'test-spmt-system-key';
+
+  const request = (body: unknown, key = 'test-spmt-system-key') => new NextRequest(
+    'https://streamweaver-new.fly.dev/api/shared-chat/spmt-dispatch',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-spmt-key': key,
+        'x-spmt-tenant-id': 'tenant-dispatch',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+
+  try {
+    const unauthorized = await dispatchSpmtMessage(request({
+      idempotencyKey: 'dispatch-unauthorized',
+      destination: { platform: 'twitch', channelId: 'alpha', channelName: 'alpha' },
+      message: 'no',
+    }, 'wrong'));
+    assert.equal(unauthorized.status, 401);
+
+    const unverified = await dispatchSpmtMessage(request({
+      idempotencyKey: 'dispatch-unverified',
+      destination: { platform: 'twitch', channelId: 'alpha', channelName: 'alpha' },
+      message: 'no',
+    }));
+    assert.equal(unverified.status, 409);
+    assert.equal((await unverified.json()).code, 'DESTINATION_NOT_VERIFIED');
+
+    const { recordSharedChatEvent } = await import('../src/services/shared-chat-ingestion');
+    await recordSharedChatEvent(normalizeYouTubeSharedChatEvent({
+      tenantId: 'tenant-dispatch',
+      liveChatId: 'youtube-live-1',
+      channelName: 'youtube-live-1',
+      message: {
+        id: 'youtube-message-1',
+        authorChannelId: 'viewer-1',
+        authorDisplayName: 'Viewer One',
+        message: 'hello',
+        timestamp: '2026-07-30T02:00:00.000Z',
+        isSuperChat: false,
+        isMembership: false,
+      },
+    }));
+    const unavailable = await dispatchSpmtMessage(request({
+      idempotencyKey: 'dispatch-youtube-unavailable',
+      destination: { platform: 'youtube', channelId: 'youtube-live-1', channelName: 'youtube-live-1' },
+      message: 'safe refusal',
+    }));
+    assert.equal(unavailable.status, 409);
+    assert.equal((await unavailable.json()).code, 'ADAPTER_UNAVAILABLE');
   } finally {
     if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
     if (priorKey == null) delete process.env.SPMT_SYSTEM_KEY; else process.env.SPMT_SYSTEM_KEY = priorKey;
