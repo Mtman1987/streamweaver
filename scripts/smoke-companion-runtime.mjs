@@ -8,6 +8,12 @@ const runtimeNode = path.join(runtimeDir, process.platform === 'win32' ? 'node.e
 const stdoutPath = path.join(runtimeDir, 'smoke.stdout.log');
 const stderrPath = path.join(runtimeDir, 'smoke.stderr.log');
 
+const tsconfig = JSON.parse(await fsp.readFile(path.join(runtimeDir, 'tsconfig.json'), 'utf8'));
+if (!Array.isArray(tsconfig?.compilerOptions?.paths?.['@/*'])
+  || !tsconfig.compilerOptions.paths['@/*'].includes('./src/*')) {
+  throw new Error('Packaged runtime is missing the @/* TypeScript path alias');
+}
+
 const stdoutHandle = await fsp.open(stdoutPath, 'w');
 const stderrHandle = await fsp.open(stderrPath, 'w');
 const child = spawn(runtimeNode, ['node_modules/tsx/dist/cli.mjs', 'server.ts'], {
