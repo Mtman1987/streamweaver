@@ -62,6 +62,9 @@ startup choices, and other non-secret settings are stored in
 - Open a persistent Companion-owned StreamWeaver workspace. SpaceMountain signs
   the user in once inside Electron, then passes StreamWeaver a short-lived,
   single-use embed code without exposing session tokens to the renderer.
+- Open SpaceMountain itself as a separate Companion-owned app window at the
+  Crew Desk, where the user can edit personal widgets, Commlink choices, dock
+  slots, visibility, opacity, and shared appearance without leaving Companion.
 - Show or hide the SpaceMountain personal overlay in a genuinely transparent
   Electron window with the account's three dock slots and personal widgets.
   Fit-to-display uses the full bounds of the Windows monitor containing the
