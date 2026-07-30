@@ -583,7 +583,10 @@ function createRelay() {
   });
 }
 
-app.on('second-instance', () => showSettings());
+app.on('second-instance', (_event, argv) => {
+  if (argv.includes('--workspace')) showWorkspace();
+  else showSettings();
+});
 app.on('before-quit', () => {
   quitting = true;
   clearTimeout(serverRestartTimer);
@@ -628,7 +631,8 @@ app.whenReady().then(async () => {
   updateManager.start();
   await connectObs();
   if (config.windows.overlay.visible) showOverlay();
-  if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();
+  if (process.argv.includes('--workspace')) showWorkspace();
+  else if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();
   logCompanion('Companion ready');
 }).catch((error) => {
   logCompanion('Companion startup failed', error);
