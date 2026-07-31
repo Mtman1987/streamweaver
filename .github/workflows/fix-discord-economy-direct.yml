@@ -1,0 +1,115 @@
+name: Fix Discord Economy Direct
+
+on:
+  push:
+    branches:
+      - fix/discord-economy-direct
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add isolated Discord economy repair runner'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Patch Discord command routing
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('src/services/chat-dispatcher.ts')
+          s = p.read_text()
+
+          owner_block = """const PERMANENT_APP_OWNER_DISCORD_IDS = new Set([
+    '767875979561009173',
+    String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),
+    String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),
+].filter(Boolean));
+
+function isPermanentDiscordOwner(msg: any): boolean {
+    const userId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
+    return Boolean(userId && PERMANENT_APP_OWNER_DISCORD_IDS.has(userId));
+}
+
+"""
+          s = s.replace(owner_block, '', 1)
+          s = s.replace("""    // The application owner must never depend on a network permission lookup.
+    if (isPermanentDiscordOwner(msg)) return true;
+""", '', 1)
+          s = s.replace(
+              """        : (isPermanentDiscordOwner(msg) || hasDiscordModAccess(msg));
+""",
+              """        : hasDiscordModAccess(msg);
+""",
+              1,
+          )
+
+          old_mod = """    const isMod = await hasEffectiveDiscordModAccess(msg);
+    const discordServerId = msg.guildId || msg.guild_id;
+"""
+          new_mod = """    const discordServerId = msg.guildId || msg.guild_id;
+    const requiresDiscordRoleCheck =
+        DISCORD_PRIVILEGED_ROUTED_COMMANDS.has(cmdName) ||
+        /^!say(?:\\s|$)/i.test(actualMessage);
+    const isMod = requiresDiscordRoleCheck
+        ? await hasEffectiveDiscordModAccess(msg)
+        : hasDiscordModAccess(msg);
+"""
+          if old_mod not in s:
+              raise SystemExit('dispatcher unconditional mod lookup block not found')
+          s = s.replace(old_mod, new_mod, 1)
+
+          old_points = """    if (/^!points(?:\\s|$)/i.test(actualMessage)) {
+        msg.content = actualMessage.replace(/^!points/i, '!pleader');
+        return routeDiscordCommandThroughTwitchRuntime(msg, tenantId);
+    }
+"""
+          new_points = """    if (/^!points(?:\\s|$)/i.test(actualMessage)) {
+        try {
+            const balance = await getDiscordStreamHubPoints({
+                userId: msg.author?.id || msg.userId || msg.user_id,
+                username: msg.author?.username || actualUsername,
+                displayName: msg.author?.globalName || msg.author?.global_name || actualUsername,
+                serverId: discordServerId,
+            });
+            await reply(`@${actualUsername} has ${Number(balance.points || 0).toLocaleString()} points!`);
+        } catch (error) {
+            console.error('[Discord Dispatcher] !points failed:', error);
+            await reply(`@${actualUsername}, I couldn't load your points right now.`);
+        }
+        return true;
+    }
+
+    if (cmdName === 'pleader' || cmdName === 'leader') {
+        try {
+            const entries = await getDiscordStreamHubPointsLeaderboard({
+                serverId: discordServerId,
+                limit: 10,
+            });
+            await reply(formatDiscordLeaderboard(entries, 'No Discord points have been recorded yet.'));
+        } catch (error) {
+            console.error(`[Discord Dispatcher] !${cmdName} failed:`, error);
+            await reply(`@${actualUsername}, I couldn't load the points leaderboard right now.`);
+        }
+        return true;
+    }
+"""
+          if old_points not in s:
+              raise SystemExit('Discord points routing block not found')
+          s = s.replace(old_points, new_points, 1)
+
+          p.write_text(s)
+          Path('.github/workflows/fix-discord-economy-direct.yml').unlink()
+          PY
+
+          npm ci
+          npm run build
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/services/chat-dispatcher.ts .github/workflows/fix-discord-economy-direct.yml
+          git commit -m "Fix Discord public economy routing and role checks"
+          git push origin HEAD:fix/discord-economy-direct
