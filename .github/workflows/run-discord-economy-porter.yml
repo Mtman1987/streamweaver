@@ -1,4 +1,4 @@
-name: Fix Discord Ingress Permissions
+name: Fix Discord Role-Gated Ingress
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   patch:
@@ -16,15 +15,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Patch and validate Discord ingress
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Patch role-gated Discord permissions
         run: |
-          git switch -C fix/discord-ingress-public-permissions
+          git switch -C fix/discord-role-gated-ingress
           python3 <<'PY'
           from pathlib import Path
-          p = Path('src/app/api/discord/chat/route.ts')
-          s = p.read_text()
+
+          route = Path('src/app/api/discord/chat/route.ts')
+          s = route.read_text()
           old = """    const dshAccess = await checkDiscordStreamHubAdminAccess({ guildId, userId });
     const effectiveIsAdmin = Boolean(normalized.isAdmin || dshAccess?.isAdmin);
     const effectiveIsMod = Boolean(normalized.isMod || dshAccess?.isMod);
@@ -45,19 +43,13 @@ jobs:
       'greetingmode', 'welcomemode', 'clipmode', 'chatmode', 'athenaeverywhere',
       'addflow', 'approveflow', 'disableflow', 'deleteflow',
     ]);
-    const permanentOwnerIds = new Set([
-      '767875979561009173',
-      String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),
-      String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),
-    ].filter(Boolean));
-    const isPermanentOwner = permanentOwnerIds.has(String(userId || '').trim());
-    const shouldResolveDshAccess = ingressPrivilegedCommands.has(normalizedCommandName) && !isPermanentOwner;
+    const shouldResolveDshAccess = ingressPrivilegedCommands.has(normalizedCommandName);
     const dshAccess = shouldResolveDshAccess
       ? await checkDiscordStreamHubAdminAccess({ guildId, userId })
       : null;
-    const effectiveIsAdmin = Boolean(normalized.isAdmin || isPermanentOwner || dshAccess?.isAdmin);
-    const effectiveIsMod = Boolean(normalized.isMod || isPermanentOwner || dshAccess?.isMod);
-    const effectiveIsOwner = Boolean(normalized.isOwner || isPermanentOwner || dshAccess?.isOwner);
+    const effectiveIsAdmin = Boolean(normalized.isAdmin || dshAccess?.isAdmin);
+    const effectiveIsMod = Boolean(normalized.isMod || dshAccess?.isMod);
+    const effectiveIsOwner = Boolean(normalized.isOwner || dshAccess?.isOwner);
     const canManageBotShare = !permissionFieldsPresent || hasDiscordModAccess({
       isAdmin: effectiveIsAdmin,
       isMod: effectiveIsMod,
@@ -68,20 +60,37 @@ jobs:
           if old not in s:
               raise SystemExit('ingress permission block not found')
           s = s.replace(old, new, 1)
-          old2 = """    if (!tenantId && !isPrivateDiscordLane && dshAccess?.isOwner) {
+          route.write_text(s)
+
+          dispatcher = Path('src/services/chat-dispatcher.ts')
+          d = dispatcher.read_text()
+          old_owner = """const PERMANENT_APP_OWNER_DISCORD_IDS = new Set([
+    '767875979561009173',
+    String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),
+    String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),
+].filter(Boolean));
+
+function isPermanentDiscordOwner(msg: any): boolean {
+    const userId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
+    return Boolean(userId && PERMANENT_APP_OWNER_DISCORD_IDS.has(userId));
+}
+
 """
-          new2 = """    if (!tenantId && !isPrivateDiscordLane && effectiveIsOwner) {
-"""
-          if old2 not in s:
-              raise SystemExit('owner tenant block not found')
-          s = s.replace(old2, new2, 1)
-          p.write_text(s)
+          d = d.replace(old_owner, '', 1)
+          d = d.replace("""    // The application owner must never depend on a network permission lookup.
+    if (isPermanentDiscordOwner(msg)) return true;
+""", '', 1)
+          d = d.replace("""        : (isPermanentDiscordOwner(msg) || hasDiscordModAccess(msg));
+""", """        : hasDiscordModAccess(msg);
+""", 1)
+          dispatcher.write_text(d)
+
           Path('.github/workflows/run-discord-economy-porter.yml').unlink()
           PY
           npm ci
           npm run build
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/app/api/discord/chat/route.ts .github/workflows/run-discord-economy-porter.yml
-          git commit -m "Fix Discord ingress permission routing"
-          git push --force-with-lease origin fix/discord-ingress-public-permissions
+          git add src/app/api/discord/chat/route.ts src/services/chat-dispatcher.ts .github/workflows/run-discord-economy-porter.yml
+          git commit -m "Fix Discord role-gated ingress permissions"
+          git push --force-with-lease origin fix/discord-role-gated-ingress
