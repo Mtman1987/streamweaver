@@ -1,61 +1,87 @@
-name: Run Discord Economy Porter
+name: Fix Discord Ingress Permissions
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  port:
+  patch:
     if: github.event.head_commit.message == 'Run Discord economy batch porter'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Fix public command checks and permanent owner access
+      - name: Patch and validate Discord ingress
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git switch -C fix/discord-owner-admin-routing
+          git switch -C fix/discord-ingress-public-permissions
           python3 <<'PY'
           from pathlib import Path
-
-          path = Path('src/services/chat-dispatcher.ts')
-          text = path.read_text()
-
-          anchor = "async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {\n    if (hasDiscordModAccess(msg)) return true;\n\n    const guildId = msg.guildId || msg.guild_id;\n    const userId = msg.author?.id || msg.userId || msg.user_id;\n    const access = await checkDiscordStreamHubAdminAccess({ guildId, userId });\n    return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);\n}\n"
-          replacement = "const PERMANENT_APP_OWNER_DISCORD_IDS = new Set([\n    '767875979561009173',\n    String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),\n    String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),\n].filter(Boolean));\n\nfunction isPermanentDiscordOwner(msg: any): boolean {\n    const userId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();\n    return Boolean(userId && PERMANENT_APP_OWNER_DISCORD_IDS.has(userId));\n}\n\nasync function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {\n    if (isPermanentDiscordOwner(msg)) return true;\n    if (hasDiscordModAccess(msg)) return true;\n\n    const guildId = msg.guildId || msg.guild_id;\n    const userId = msg.author?.id || msg.userId || msg.user_id;\n    const access = await checkDiscordStreamHubAdminAccess({ guildId, userId });\n    return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);\n}\n\nconst DISCORD_PRIVILEGED_ROUTED_COMMANDS = new Set([\n    'admin', 'ignore', 'timeout',\n    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',\n    'greetingmode', 'welcomemode', 'clipmode', 'chatmode', 'athenaeverywhere',\n    'addflow', 'approveflow', 'disableflow', 'deleteflow',\n]);\n"
-          if anchor not in text:
-              raise SystemExit('permission helper anchor not found')
-          text = text.replace(anchor, replacement, 1)
-
-          old = "    const isMod = await hasEffectiveDiscordModAccess(msg);\n\n    const tags = {"
-          new = "    const isMod = DISCORD_PRIVILEGED_ROUTED_COMMANDS.has(cmdName)\n        ? await hasEffectiveDiscordModAccess(msg)\n        : (isPermanentDiscordOwner(msg) || hasDiscordModAccess(msg));\n\n    const tags = {"
-          if old not in text:
-              raise SystemExit('route permission anchor not found')
-          text = text.replace(old, new, 1)
-
-          path.write_text(text)
-          Path('.github/workflows/fix-discord-owner-admin-routing.yml').unlink(missing_ok=True)
+          p = Path('src/app/api/discord/chat/route.ts')
+          s = p.read_text()
+          old = """    const dshAccess = await checkDiscordStreamHubAdminAccess({ guildId, userId });
+    const effectiveIsAdmin = Boolean(normalized.isAdmin || dshAccess?.isAdmin);
+    const effectiveIsMod = Boolean(normalized.isMod || dshAccess?.isMod);
+    const effectiveIsOwner = Boolean(normalized.isOwner || dshAccess?.isOwner);
+    const canManageBotShare = !permissionFieldsPresent || hasDiscordModAccess({
+      isAdmin: effectiveIsAdmin,
+      isMod: effectiveIsMod,
+      isOwner: effectiveIsOwner,
+      memberPermissions: permissions,
+    });
+"""
+          new = """    const normalizedCommandName = message.trim().startsWith('!')
+      ? message.trim().slice(1).split(/\\s+/)[0]?.toLowerCase() || ''
+      : '';
+    const ingressPrivilegedCommands = new Set([
+      'admin', 'ignore', 'timeout', 'botshare',
+      'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',
+      'greetingmode', 'welcomemode', 'clipmode', 'chatmode', 'athenaeverywhere',
+      'addflow', 'approveflow', 'disableflow', 'deleteflow',
+    ]);
+    const permanentOwnerIds = new Set([
+      '767875979561009173',
+      String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),
+      String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),
+    ].filter(Boolean));
+    const isPermanentOwner = permanentOwnerIds.has(String(userId || '').trim());
+    const shouldResolveDshAccess = ingressPrivilegedCommands.has(normalizedCommandName) && !isPermanentOwner;
+    const dshAccess = shouldResolveDshAccess
+      ? await checkDiscordStreamHubAdminAccess({ guildId, userId })
+      : null;
+    const effectiveIsAdmin = Boolean(normalized.isAdmin || isPermanentOwner || dshAccess?.isAdmin);
+    const effectiveIsMod = Boolean(normalized.isMod || isPermanentOwner || dshAccess?.isMod);
+    const effectiveIsOwner = Boolean(normalized.isOwner || isPermanentOwner || dshAccess?.isOwner);
+    const canManageBotShare = !permissionFieldsPresent || hasDiscordModAccess({
+      isAdmin: effectiveIsAdmin,
+      isMod: effectiveIsMod,
+      isOwner: effectiveIsOwner,
+      memberPermissions: permissions,
+    });
+"""
+          if old not in s:
+              raise SystemExit('ingress permission block not found')
+          s = s.replace(old, new, 1)
+          old2 = """    if (!tenantId && !isPrivateDiscordLane && dshAccess?.isOwner) {
+"""
+          new2 = """    if (!tenantId && !isPrivateDiscordLane && effectiveIsOwner) {
+"""
+          if old2 not in s:
+              raise SystemExit('owner tenant block not found')
+          s = s.replace(old2, new2, 1)
+          p.write_text(s)
           Path('.github/workflows/run-discord-economy-porter.yml').unlink()
           PY
-
           npm ci
           npm run build
-
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/services/chat-dispatcher.ts .github/workflows/run-discord-economy-porter.yml .github/workflows/fix-discord-owner-admin-routing.yml
-          git commit -m "Fix Discord owner and public command permission routing"
-          git push --force-with-lease origin fix/discord-owner-admin-routing
-
-          pr_url=$(gh pr create --base main --head fix/discord-owner-admin-routing --title "Fix Discord owner and public command permission routing" --body "Public routed commands such as !points and !pleader no longer call DiscordStreamHub admin lookup. Only privileged commands perform the remote permission check. Discord user 767875979561009173 and configured owner IDs bypass all network permission checks permanently. Production build passed before PR creation.")
-          gh pr merge "$pr_url" --squash --delete-branch
-
-# trigger refresh
+          git add src/app/api/discord/chat/route.ts .github/workflows/run-discord-economy-porter.yml
+          git commit -m "Fix Discord ingress permission routing"
+          git push --force-with-lease origin fix/discord-ingress-public-permissions
