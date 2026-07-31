@@ -2,7 +2,7 @@ import { listTenants } from '@/lib/tenant';
 import { readWorldLore } from '@/lib/world-lore-store';
 import { getBotName } from '@/lib/bot-settings-store';
 import { deleteMessage } from './discord-local';
-import { buildDiscordBotEmbed, getDiscordBotProfileAvatarUrl, getDiscordBotWebhookIdentity } from './discord-branding';
+import { buildDiscordBotEmbed, buildStreamWeaverLogoUrl, getDiscordBotWebhookIdentity } from './discord-branding';
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
 import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from './discord-message-cleanup';
 import { sendWebhookMessage } from './discord-webhooks';
@@ -139,7 +139,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const payload = await buildStructuredDiscordReplyPayload(input);
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
-  const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(speaker.tenantId);
+  const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrlForTenant(speaker.tenantId) || buildStreamWeaverLogoUrl();
   const sent = input.components?.length
     ? await sendDiscordEmbed(input.channelId, {
         content: '',
