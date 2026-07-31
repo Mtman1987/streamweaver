@@ -169,7 +169,7 @@ function getDiscordOutputContext() {
 
 export async function getPoints(userId: string, ctx?: StorageContext): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const result = await getDiscordStreamHubPoints();
     const points = BigInt(Math.max(0, Math.trunc(Number(result.points || 0))));
     return {
@@ -200,7 +200,7 @@ export async function getPoints(userId: string, ctx?: StorageContext): Promise<{
 
 export async function getPointBalance(userId: string, ctx?: StorageContext): Promise<bigint> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const result = await getDiscordStreamHubPoints();
     return BigInt(Math.max(0, Math.trunc(Number(result.points || 0))));
   }
@@ -216,7 +216,7 @@ export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {
 
 export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const delta = parsePointAmount(amount);
     const result = await addDiscordStreamHubPointsToAll({
       points: Number(delta),
@@ -256,7 +256,7 @@ export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext):
 
 export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const points = normalizePoints(amount);
     const result = await setDiscordStreamHubPointsToAll({
       points: Number(points),
@@ -291,7 +291,7 @@ export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext):
 
 export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const result = await setDiscordStreamHubPointsToAll({
       points: 0,
       serverId: discordContext.guildId,
@@ -328,7 +328,7 @@ export async function addPoints(
   ctx?: StorageContext
 ): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const current = await getDiscordStreamHubPoints();
     const delta = parsePointAmount(amount);
     const next = current.points + Number(delta);
@@ -388,7 +388,7 @@ export async function setPoints(
   ctx?: StorageContext
 ): Promise<{ points: number; pointsRaw: string; pointsDisplay: string; level: number; totalEarned: number; totalEarnedRaw: string }> {
   const discordContext = getDiscordOutputContext();
-  if (discordContext) {
+  if (discordContext && !ctx) {
     const normalized = normalizePoints(value);
     const updated = await setDiscordStreamHubPoints({
       userId: discordContext.userId!,

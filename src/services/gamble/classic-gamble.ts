@@ -42,9 +42,9 @@ const DEFAULT_SETTINGS: GambleSettings = {
   defaultBet: 1234,
   minBet: 0,
   maxBet: 0,
-  jackpotPercent: 3,
-  jackpotMultiplier: 43,
-  winPercent: 38,
+  jackpotPercent: 1,
+  jackpotMultiplier: 1,
+  winPercent: 28,
   blockedGroups: '',
   numberSeparator: ',',
   useOverlay: true,
@@ -54,6 +54,27 @@ const DEFAULT_SETTINGS: GambleSettings = {
 };
 
 const DEFAULT_MAX_BET = '1000000000000000000000';
+const GLOBAL_JACKPOT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
+function globalJackpotStatePath(): string {
+  return path.resolve(process.cwd(), 'data', 'global-gamble-jackpot.json');
+}
+
+async function claimGlobalJackpotSlot(): Promise<boolean> {
+  const filePath = globalJackpotStatePath();
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  let lastJackpotAt = 0;
+  try {
+    const state = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+    lastJackpotAt = Number(state?.lastJackpotAt || 0);
+  } catch {}
+  const now = Date.now();
+  if (lastJackpotAt > 0 && now - lastJackpotAt < GLOBAL_JACKPOT_COOLDOWN_MS) return false;
+  const tempPath = filePath + '.tmp.' + process.pid + '.' + now;
+  await fs.writeFile(tempPath, JSON.stringify({ lastJackpotAt: now }, null, 2));
+  await fs.rename(tempPath, filePath);
+  return true;
+}
 const settingsCache = new Map<string, GambleSettings>();
 
 // ════════════════════════════════════════════════
@@ -155,7 +176,7 @@ interface DoubleResult {
   newTotalDisplay: string;
 }
 
-function determineOutcome(betAmount: bigint, settings: GambleSettings): { outcome: GambleOutcome; change: bigint } {
+async function determineOutcome(betAmount: bigint, settings: GambleSettings): Promise<{ outcome: GambleOutcome; change: bigint }> {
   const jp = Math.max(1, settings.jackpotPercent);
   let wp = Math.max(1, settings.winPercent);
   if (wp < jp) wp = jp;
@@ -164,14 +185,14 @@ function determineOutcome(betAmount: bigint, settings: GambleSettings): { outcom
   const jm = Math.max(1, settings.jackpotMultiplier);
   const roll = Math.floor(Math.random() * 100) + 1;
   
-  if (roll <= jp) {
-    // Jackpot
+  if (roll <= jp && await claimGlobalJackpotSlot()) {
+    // Community jackpot: at most one every 12 hours. Profit is 150-249% of wager.
     const winPercent = BigInt(Math.floor(150 + Math.random() * 100));
     const change = (betAmount * winPercent * BigInt(jm)) / 100n;
     return { outcome: GambleOutcome.Jackpot, change };
   } else if (roll <= wp) {
-    // Win
-    const winPercent = BigInt(Math.floor(150 + Math.random() * 100));
+    // Normal profit is 25-75% of wager. A blocked jackpot roll becomes a normal win.
+    const winPercent = BigInt(Math.floor(25 + Math.random() * 51));
     const change = (betAmount * winPercent) / 100n;
     return { outcome: GambleOutcome.Win, change };
   } else {
@@ -189,11 +210,11 @@ function determineRollOutcome(roll: number, betAmount: bigint): { outcome: strin
     case 3:
       return { outcome: 'Break even', change: 0n };
     case 4:
-      return { outcome: 'Partial win!', change: betAmount / 2n };
+      return { outcome: 'Small win!', change: betAmount / 4n };
     case 5:
-      return { outcome: 'Nice win!', change: betAmount };
+      return { outcome: 'Nice win!', change: betAmount / 2n };
     case 6:
-      return { outcome: 'JACKPOT! Double win!', change: betAmount * 2n };
+      return { outcome: 'Big win!', change: betAmount };
     default:
       return { outcome: 'Error', change: 0n };
   }
@@ -311,7 +332,7 @@ export async function handleGamble(
   }
   
   // Process gamble
-  const { outcome, change } = determineOutcome(betAmount, settings);
+  const { outcome, change } = await determineOutcome(betAmount, settings);
   const newTotal = currentPoints + change < 0n ? 0n : currentPoints + change;
   const rawDisplayAmount = outcome === GambleOutcome.Loss ? betAmount : change;
   const displayAmount = rawDisplayAmount < 0n ? -rawDisplayAmount : rawDisplayAmount;
