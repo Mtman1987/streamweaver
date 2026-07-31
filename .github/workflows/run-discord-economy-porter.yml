@@ -18,80 +18,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create tested economy port branch
+      - name: Fix public command checks and permanent owner access
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git switch -C fix/discord-economy-runtime-port
+          git switch -C fix/discord-owner-admin-routing
           python3 <<'PY'
           from pathlib import Path
 
-          catalog_path = Path('src/services/discord-command-catalog.ts')
-          catalog = catalog_path.read_text()
-          catalog = catalog.replace(
-              "  '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!time', '!followers', '!uptime', '!stats',\n",
-              "  '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!cleader', '!bleader', '!bitsleader', '!time', '!followers', '!uptime', '!stats',\n"
-          )
-          catalog = catalog.replace(
-              "  '!commands', '!so <user>', '!trade @user', '!offer <card>', '!botshare', '!mtfixit', '!raidmessage <msg>',\n",
-              "  '!commands', '!so <user>', '!trade @user', '!offer <card>', '!givepoints @user <amount>', '!stealpoints @user <amount>', '!gamble <amount>', '!roll <amount>', '!double <amount>', '!botshare', '!mtfixit', '!raidmessage <msg>',\n"
-          )
-          for line in [
-              "  gamble: 'Discord gambling is disabled until Discord points are wired correctly.',\n",
-              "  roll: 'Discord roll is disabled until Discord points are wired correctly.',\n",
-              "  double: 'Discord double is disabled until Discord points are wired correctly.',\n",
-              "  cleader: 'Discord leaderboards need Discord-native point and activity data first.',\n",
-              "  bleader: 'Discord leaderboards need Discord-native point and activity data first.',\n",
-              "  bitsleader: 'Discord leaderboards need Discord-native point and activity data first.',\n",
-          ]:
-              catalog = catalog.replace(line, '')
-          catalog_path.write_text(catalog)
+          path = Path('src/services/chat-dispatcher.ts')
+          text = path.read_text()
 
-          points_path = Path('src/services/points.ts')
-          points = points_path.read_text()
-          points = points.replace('if (discordContext) {', 'if (discordContext && !ctx) {')
-          points_path.write_text(points)
+          anchor = "async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {\n    if (hasDiscordModAccess(msg)) return true;\n\n    const guildId = msg.guildId || msg.guild_id;\n    const userId = msg.author?.id || msg.userId || msg.user_id;\n    const access = await checkDiscordStreamHubAdminAccess({ guildId, userId });\n    return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);\n}\n"
+          replacement = "const PERMANENT_APP_OWNER_DISCORD_IDS = new Set([\n    '767875979561009173',\n    String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),\n    String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),\n].filter(Boolean));\n\nfunction isPermanentDiscordOwner(msg: any): boolean {\n    const userId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();\n    return Boolean(userId && PERMANENT_APP_OWNER_DISCORD_IDS.has(userId));\n}\n\nasync function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {\n    if (isPermanentDiscordOwner(msg)) return true;\n    if (hasDiscordModAccess(msg)) return true;\n\n    const guildId = msg.guildId || msg.guild_id;\n    const userId = msg.author?.id || msg.userId || msg.user_id;\n    const access = await checkDiscordStreamHubAdminAccess({ guildId, userId });\n    return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);\n}\n\nconst DISCORD_PRIVILEGED_ROUTED_COMMANDS = new Set([\n    'admin', 'ignore', 'timeout',\n    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',\n    'greetingmode', 'welcomemode', 'clipmode', 'chatmode', 'athenaeverywhere',\n    'addflow', 'approveflow', 'disableflow', 'deleteflow',\n]);\n"
+          if anchor not in text:
+              raise SystemExit('permission helper anchor not found')
+          text = text.replace(anchor, replacement, 1)
 
-          dispatcher_path = Path('src/services/chat-dispatcher.ts')
-          dispatcher = dispatcher_path.read_text()
-          dispatcher = dispatcher.replace(
-              "    lookupDiscordStreamHubTwitchTarget,\n",
-              "    lookupDiscordStreamHubTwitchTarget,\n    resolveDiscordStreamHubTwitchIdentity,\n"
-          )
-          dispatcher = dispatcher.replace(
-              "    'commands', 'admin', 'so', 'points', 'watchtime', 'time', 'coinflip',\n    'leader', 'pleader', 'wleader',\n    'followers', 'uptime', 'stats',\n    'timeout', 'raidmessage', 'mtfixit',\n    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',\n",
-              "    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip',\n    'followers', 'uptime', 'stats',\n    'timeout', 'raidmessage', 'mtfixit',\n"
-          )
-          old_username = "    const username = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'DiscordUser';\n    const isMod = await hasEffectiveDiscordModAccess(msg);\n"
-          new_username = "    const discordUserId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();\n    const guildId = String(msg.guildId || msg.guild_id || '').trim();\n    const linkedIdentity = discordUserId && guildId\n        ? await resolveDiscordStreamHubTwitchIdentity(discordUserId, guildId).catch(() => null)\n        : null;\n    const username = String(\n        linkedIdentity?.twitchLogin ||\n        msg.author?.username ||\n        msg.author?.globalName ||\n        msg.author?.global_name ||\n        'DiscordUser'\n    ).trim().toLowerCase();\n    const isMod = await hasEffectiveDiscordModAccess(msg);\n"
-          if old_username in dispatcher:
-              dispatcher = dispatcher.replace(old_username, new_username, 1)
+          old = "    const isMod = await hasEffectiveDiscordModAccess(msg);\n\n    const tags = {"
+          new = "    const isMod = DISCORD_PRIVILEGED_ROUTED_COMMANDS.has(cmdName)\n        ? await hasEffectiveDiscordModAccess(msg)\n        : (isPermanentDiscordOwner(msg) || hasDiscordModAccess(msg));\n\n    const tags = {"
+          if old not in text:
+              raise SystemExit('route permission anchor not found')
+          text = text.replace(old, new, 1)
 
-          start = dispatcher.find("    if (actualMessage.toLowerCase() === '!leader' || actualMessage.toLowerCase() === '!pleader') {")
-          pokemon = dispatcher.find("    if (await handleDiscordPokemonCommand(msg, tenantId)) {", start)
-          if start != -1 and pokemon != -1:
-              dispatcher = dispatcher[:start] + dispatcher[pokemon:]
-
-          points_start = dispatcher.find("    if (actualMessage.toLowerCase() === '!points') {")
-          points_end = dispatcher.find("    if (actualMessage.toLowerCase() === '!watchtime'", points_start)
-          if points_start != -1 and points_end != -1:
-              replacement = "    if (/^!points(?:\\s|$)/i.test(actualMessage)) {\n        msg.content = actualMessage.replace(/^!points/i, '!pleader');\n        return routeDiscordCommandThroughTwitchRuntime(msg, tenantId);\n    }\n\n"
-              dispatcher = dispatcher[:points_start] + replacement + dispatcher[points_end:]
-          dispatcher_path.write_text(dispatcher)
-
-          gamble_path = Path('src/services/gamble/classic-gamble.ts')
-          gamble = gamble_path.read_text()
-          gamble = gamble.replace('  jackpotPercent: 3,\n  jackpotMultiplier: 43,\n  winPercent: 38,', '  jackpotPercent: 1,\n  jackpotMultiplier: 1,\n  winPercent: 28,')
-          gamble = gamble.replace("const DEFAULT_MAX_BET = '1000000000000000000000';", "const DEFAULT_MAX_BET = '1000000000000000000000';\nconst GLOBAL_JACKPOT_COOLDOWN_MS = 12 * 60 * 60 * 1000;\n\nfunction globalJackpotStatePath(): string {\n  return path.resolve(process.cwd(), 'data', 'global-gamble-jackpot.json');\n}\n\nasync function claimGlobalJackpotSlot(): Promise<boolean> {\n  const filePath = globalJackpotStatePath();\n  await fs.mkdir(path.dirname(filePath), { recursive: true });\n  let lastJackpotAt = 0;\n  try {\n    const state = JSON.parse(await fs.readFile(filePath, 'utf-8'));\n    lastJackpotAt = Number(state?.lastJackpotAt || 0);\n  } catch {}\n  const now = Date.now();\n  if (lastJackpotAt > 0 && now - lastJackpotAt < GLOBAL_JACKPOT_COOLDOWN_MS) return false;\n  const tempPath = filePath + '.tmp.' + process.pid + '.' + now;\n  await fs.writeFile(tempPath, JSON.stringify({ lastJackpotAt: now }, null, 2));\n  await fs.rename(tempPath, filePath);\n  return true;\n}")
-          gamble = gamble.replace('function determineOutcome(betAmount: bigint, settings: GambleSettings): { outcome: GambleOutcome; change: bigint } {', 'async function determineOutcome(betAmount: bigint, settings: GambleSettings): Promise<{ outcome: GambleOutcome; change: bigint }> {')
-          old_outcome = "  if (roll <= jp) {\n    // Jackpot\n    const winPercent = BigInt(Math.floor(150 + Math.random() * 100));\n    const change = (betAmount * winPercent * BigInt(jm)) / 100n;\n    return { outcome: GambleOutcome.Jackpot, change };\n  } else if (roll <= wp) {\n    // Win\n    const winPercent = BigInt(Math.floor(150 + Math.random() * 100));\n    const change = (betAmount * winPercent) / 100n;\n    return { outcome: GambleOutcome.Win, change };\n  } else {"
-          new_outcome = "  if (roll <= jp && await claimGlobalJackpotSlot()) {\n    // Community jackpot: at most one every 12 hours. Profit is 150-249% of wager.\n    const winPercent = BigInt(Math.floor(150 + Math.random() * 100));\n    const change = (betAmount * winPercent * BigInt(jm)) / 100n;\n    return { outcome: GambleOutcome.Jackpot, change };\n  } else if (roll <= wp) {\n    // Normal profit is 25-75% of wager. A blocked jackpot roll becomes a normal win.\n    const winPercent = BigInt(Math.floor(25 + Math.random() * 51));\n    const change = (betAmount * winPercent) / 100n;\n    return { outcome: GambleOutcome.Win, change };\n  } else {"
-          if old_outcome not in gamble:
-              raise SystemExit('gamble outcome anchor not found')
-          gamble = gamble.replace(old_outcome, new_outcome)
-          gamble = gamble.replace("    case 4:\n      return { outcome: 'Partial win!', change: betAmount / 2n };\n    case 5:\n      return { outcome: 'Nice win!', change: betAmount };\n    case 6:\n      return { outcome: 'JACKPOT! Double win!', change: betAmount * 2n };", "    case 4:\n      return { outcome: 'Small win!', change: betAmount / 4n };\n    case 5:\n      return { outcome: 'Nice win!', change: betAmount / 2n };\n    case 6:\n      return { outcome: 'Big win!', change: betAmount };")
-          gamble = gamble.replace('  const { outcome, change } = determineOutcome(betAmount, settings);', '  const { outcome, change } = await determineOutcome(betAmount, settings);')
-          gamble_path.write_text(gamble)
+          path.write_text(text)
+          Path('.github/workflows/fix-discord-owner-admin-routing.yml').unlink(missing_ok=True)
+          Path('.github/workflows/run-discord-economy-porter.yml').unlink()
           PY
 
           npm ci
@@ -99,12 +51,9 @@ jobs:
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/services/chat-dispatcher.ts src/services/discord-command-catalog.ts src/services/points.ts src/services/gamble/classic-gamble.ts
-          git commit -m "Port and rebalance Discord economy commands"
-          git push --force-with-lease origin fix/discord-economy-runtime-port
+          git add src/services/chat-dispatcher.ts .github/workflows/run-discord-economy-porter.yml .github/workflows/fix-discord-owner-admin-routing.yml
+          git commit -m "Fix Discord owner and public command permission routing"
+          git push --force-with-lease origin fix/discord-owner-admin-routing
 
-          pr_url=$(gh pr list --head fix/discord-economy-runtime-port --json url --jq '.[0].url')
-          if [ -z "$pr_url" ]; then
-            pr_url=$(gh pr create --base main --head fix/discord-economy-runtime-port --title "Port and rebalance Discord economy commands" --body "Ports the Twitch economy command family into Discord in one batch and rebalances gamble/roll. Normal gamble profits are 25-75%, jackpot profits are 150-249%, jackpot chance is 1%, community jackpots are limited to one every 12 hours, and roll profits are capped at 25%, 50%, or 100%. Build must pass before PR creation.")
-          fi
+          pr_url=$(gh pr create --base main --head fix/discord-owner-admin-routing --title "Fix Discord owner and public command permission routing" --body "Public routed commands such as !points and !pleader no longer call DiscordStreamHub admin lookup. Only privileged commands perform the remote permission check. Discord user 767875979561009173 and configured owner IDs bypass all network permission checks permanently. Production build passed before PR creation.")
           gh pr merge "$pr_url" --squash --delete-branch
