@@ -602,14 +602,24 @@ async function startServer() {
                     if (!clientId || !clientSecret) return;
 
                     const { listTenants, communityBotTokensPath } = require('./src/lib/tenant');
-                    const { getStoredTokens, ensureValidToken } = require('./src/lib/token-utils.server');
+                    const {
+                        getStoredTokens,
+                        ensureValidToken,
+                        isTwitchAuthFailure,
+                        ProactiveTwitchRefreshGate,
+                    } = require('./src/lib/token-utils.server');
                     const fsRefresh = require('fs').promises;
+                    const runtimeGlobal = global as any;
+                    runtimeGlobal.__proactiveTwitchRefreshGate = runtimeGlobal.__proactiveTwitchRefreshGate || new ProactiveTwitchRefreshGate();
+                    const proactiveRefreshGate = runtimeGlobal.__proactiveTwitchRefreshGate;
 
                     const tenantIds = await listTenants();
                     for (const tid of tenantIds) {
+                        let tokens;
                         try {
-                            const tokens = await getStoredTokens(tid);
+                            tokens = await getStoredTokens(tid);
                             if (!tokens) continue;
+                            if (!proactiveRefreshGate.shouldAttempt(tid, tokens)) continue;
 
                             if (tokens.broadcasterToken && tokens.broadcasterRefreshToken) {
                                 await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tid);
@@ -617,8 +627,14 @@ async function startServer() {
                             if (tokens.botToken && tokens.botRefreshToken) {
                                 await ensureValidToken(clientId, clientSecret, 'bot', tokens, tid);
                             }
+                            proactiveRefreshGate.markSuccessful(tid);
                         } catch (error: any) {
-                            console.warn(`[Twitch:${tid}] Proactive token refresh failed:`, error?.message || error);
+                            if (tokens && isTwitchAuthFailure(error)) {
+                                proactiveRefreshGate.markReauthorizationRequired(tid, tokens);
+                                console.warn(`[Twitch:${tid}] Proactive token refresh paused until re-authorized:`, error?.message || error);
+                            } else {
+                                console.warn(`[Twitch:${tid}] Proactive token refresh failed:`, error?.message || error);
+                            }
                         }
                     }
 
