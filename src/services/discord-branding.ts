@@ -11,9 +11,15 @@ const STREAMWEAVER_BRAND_NAME = 'StreamWeaver';
 const DISCORD_BOT_PROFILE_CACHE_MS = 60 * 60 * 1000;
 
 export type DiscordBotEmbed = {
+    title: string;
     description: string;
     thumbnail: { url: string };
     image?: { url: string };
+    fields?: Array<{
+        name: string;
+        value: string;
+        inline?: boolean;
+    }>;
     author: {
         name: string;
         icon_url?: string;
@@ -24,6 +30,7 @@ export type DiscordBotEmbed = {
         icon_url: string;
     };
     color: number;
+    timestamp: string;
 };
 
 const profileImageCache = new Map<string, { url: string; expiresAt: number }>();
@@ -174,6 +181,32 @@ function formatDeleteCountdown(deleteAt?: string): string {
     return `deletes in ${remainingMinutes}m`;
 }
 
+function truncateDiscordText(value: string, limit: number): string {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= limit) return normalized;
+    return `${normalized.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
+
+function inferResponseType(sourceMessage?: string): string {
+    const source = String(sourceMessage || '').trim();
+    if (!source.startsWith('!')) return 'AI Answer';
+
+    const command = source.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
+    const knownTitles: Record<string, string> = {
+        ask: 'AI Answer',
+        ai: 'AI Answer',
+        img: 'Image Generated',
+        image: 'Image Generated',
+        say: 'TTS Request',
+        status: 'Channel Status',
+        help: 'Command Help',
+        commands: 'Command Help',
+        shoutout: 'Shoutout Created',
+        so: 'Shoutout Created',
+    };
+    return knownTitles[command] || 'Command Response';
+}
+
 export async function getDiscordBotProfileAvatarUrl(): Promise<string> {
     if (discordBotAvatarCache && discordBotAvatarCache.expiresAt > Date.now()) {
         return discordBotAvatarCache.url;
@@ -207,43 +240,71 @@ export async function buildDiscordBotEmbed(input: {
     description: string;
     tenantId?: string;
     botName?: string;
+    title?: string;
+    responseType?: string;
+    sourceMessage?: string;
+    sourceUser?: string;
+    sourceUserAvatarUrl?: string;
     footerText?: string;
     deleteAt?: string;
     authorUrl?: string;
-    authorName?: string;
-    authorIconUrl?: string;
     mediaSlot?: DiscordMediaSlot;
+    includeConfiguredMedia?: boolean;
+    imageUrl?: string;
 }): Promise<DiscordBotEmbed> {
     const resolvedTenantId = input.tenantId || await resolveTenantByBotName(input.botName);
     const owner = await getTenantOwnerBranding(resolvedTenantId, input.botName);
     const defaultBotName = input.botName || getBotName(resolvedTenantId);
-    const authorName = input.authorName || defaultBotName || owner.name;
-    const authorIconUrl = input.authorIconUrl
-        || owner.iconUrl;
     const avatarMediaUrl = buildBotAvatarUrl(resolvedTenantId);
-    const embedMediaUrl = getConfiguredDiscordEmbedMediaUrl(resolvedTenantId, input.mediaSlot);
-    const footerParts = [STREAMWEAVER_BRAND_NAME];
-    if (owner.name && owner.name !== STREAMWEAVER_BRAND_NAME) {
-        footerParts.push(owner.name);
+    const configuredMediaUrl = input.includeConfiguredMedia
+        ? getConfiguredDiscordEmbedMediaUrl(resolvedTenantId, input.mediaSlot)
+        : '';
+    const embedMediaUrl = firstUrl(input.imageUrl, configuredMediaUrl);
+    const responseType = input.responseType || inferResponseType(input.sourceMessage);
+    const title = truncateDiscordText(
+        input.title || `${defaultBotName || owner.name || STREAMWEAVER_BRAND_NAME} • ${responseType}`,
+        256,
+    );
+    const footerParts: string[] = [];
+    if (input.sourceUser) {
+        footerParts.push(`Requested by ${truncateDiscordText(input.sourceUser, 80)}`);
+    } else {
+        footerParts.push(STREAMWEAVER_BRAND_NAME);
+    }
+    if (input.sourceMessage) {
+        footerParts.push(truncateDiscordText(input.sourceMessage, 240));
     }
     const deleteCountdown = formatDeleteCountdown(input.deleteAt);
     if (deleteCountdown) {
         footerParts.push(deleteCountdown);
     }
+    const isAiAnswer = responseType.toLowerCase() === 'ai answer';
+    const question = isAiAnswer && input.sourceMessage
+        ? truncateDiscordText(input.sourceMessage, 1024)
+        : '';
     return {
+        title,
         description: input.description,
         thumbnail: { url: avatarMediaUrl },
         ...(embedMediaUrl ? { image: { url: embedMediaUrl } } : {}),
+        ...(question ? {
+            fields: [{
+                name: 'Question',
+                value: question,
+                inline: false,
+            }],
+        } : {}),
         author: {
-            name: authorName,
-            ...(authorIconUrl ? { icon_url: authorIconUrl } : {}),
+            name: STREAMWEAVER_BRAND_NAME,
+            icon_url: buildStreamWeaverLogoUrl(),
             url: input.authorUrl || buildTtsOverlayUrl(resolvedTenantId),
         },
         footer: {
             text: input.footerText || footerParts.join(' • '),
-            icon_url: buildStreamWeaverLogoUrl(),
+            icon_url: firstUrl(input.sourceUserAvatarUrl) || buildStreamWeaverLogoUrl(),
         },
         color: 0x5865F2,
+        timestamp: new Date().toISOString(),
     };
 }
 

@@ -6,8 +6,7 @@ import { isDiscordApiError } from './discord-local';
 import { readDiscordConfig } from '@/lib/discord-config';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
-import { buildDiscordBotEmbed, buildTtsOverlayUrl } from './discord-branding';
-import { getBotName } from '@/lib/bot-settings-store';
+import { sendStructuredDiscordReply } from './discord-structured-replies';
 import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-state';
 import { runImageCommand } from './image-command';
 import { queueTtsOverlay } from './tts-overlay-queue';
@@ -232,7 +231,7 @@ export async function checkDmChannelActivity(): Promise<void> {
     isCheckingDmChannelActivity = true;
     const { listTenants } = await import('../lib/tenant');
     const { getChannelMessages } = require('./discord');
-    const { sendDiscordMessage, sendDiscordEmbed } = require('./discord-local');
+    const { sendDiscordMessage } = require('./discord-local');
     const { getGenMode, setGenMode, toggleGenMode } = await import('../lib/gen-mode-store');
 
     try {
@@ -352,18 +351,20 @@ export async function checkDmChannelActivity(): Promise<void> {
                 const reply = data.response || data.data?.response || '';
                 if (!reply) continue;
 
-                const ttsUrl = buildTtsOverlayUrl(tenantId);
                 await queueTtsOverlay(reply, tenantId).then((result) => {
                     if (!result.ok) console.warn(`[DM Sweep:${tenantId || 'global'}] TTS overlay queue failed:`, result.error);
                 });
-                await sendDiscordEmbed(dmChannelId, {
-                    embeds: [await buildDiscordBotEmbed({
-                        description: reply,
-                        tenantId,
-                        authorUrl: ttsUrl,
-                        authorName: getBotName(tenantId),
-                        mediaSlot: 'private',
-                    })],
+                const requester = msg.author?.global_name || msg.author?.globalName || msg.author?.username || 'DiscordUser';
+                await sendStructuredDiscordReply({
+                    channelId: dmChannelId,
+                    message: reply,
+                    tenantId,
+                    responseType: 'AI Answer',
+                    sourceMessageId: msg.id,
+                    sourceMessage: messageText,
+                    sourceUser: requester,
+                    sourceUserAvatarUrl: msg.author?.avatarUrl || msg.author?.displayAvatarURL,
+                    isPrivate: true,
                 });
             } catch (error) {
                 console.warn(`[DM Sweep:${tenantId}] Failed to process DM message`, error);

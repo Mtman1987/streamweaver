@@ -89,6 +89,7 @@ export async function sendChatMessage(
       sourceMessageId: outputContext.messageId,
       sourceMessage: outputContext.messageContent,
       sourceUser: outputContext.displayName || outputContext.username,
+      sourceUserAvatarUrl: outputContext.userAvatarUrl,
     });
     return;
   }
