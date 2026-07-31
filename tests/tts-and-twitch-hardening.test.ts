@@ -15,6 +15,7 @@ import {
   touchTtsConsumer,
 } from '../src/services/tts-consumer-presence';
 import { normalizeTwitchUserIdentifier } from '../src/services/twitch';
+import { ProactiveTwitchRefreshGate } from '../src/lib/token-utils.server';
 
 test('TTS catalog is Eden-only and contains named voice models', () => {
   assert.equal(normalizeTtsProvider('gemini'), 'edenai');
@@ -100,4 +101,15 @@ test('Twitch user identifiers are normalized before Helix lookup', () => {
   assert.equal(normalizeTwitchUserIdentifier('CaptainSlasher1:'), 'captainslasher1');
   assert.equal(normalizeTwitchUserIdentifier(' 47145728 ', 'id'), '47145728');
   assert.equal(normalizeTwitchUserIdentifier('not-a-twitch-login'), '');
+});
+
+test('proactive Twitch refresh pauses only for the unchanged token revision', () => {
+  const gate = new ProactiveTwitchRefreshGate();
+  const stale = { lastUpdated: '2026-07-01T00:00:00.000Z', broadcasterTokenExpiry: 1 };
+  assert.equal(gate.shouldAttempt('tenant-1', stale), true);
+  gate.markReauthorizationRequired('tenant-1', stale);
+  assert.equal(gate.shouldAttempt('tenant-1', stale), false);
+
+  const reauthorized = { ...stale, lastUpdated: '2026-07-31T00:00:00.000Z', broadcasterTokenExpiry: 2 };
+  assert.equal(gate.shouldAttempt('tenant-1', reauthorized), true);
 });

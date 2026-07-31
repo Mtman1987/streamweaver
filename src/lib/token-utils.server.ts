@@ -41,6 +41,30 @@ export interface StoredTokens {
 
 const refreshLocks = new Map<string, Promise<string>>();
 
+export class ProactiveTwitchRefreshGate {
+  private readonly blockedRevisions = new Map<string, string>();
+
+  revision(tokens: StoredTokens): string {
+    return [
+      tokens.lastUpdated || '',
+      tokens.broadcasterTokenExpiry || '',
+      tokens.botTokenExpiry || '',
+    ].join(':');
+  }
+
+  shouldAttempt(tenantId: string, tokens: StoredTokens): boolean {
+    return this.blockedRevisions.get(tenantId) !== this.revision(tokens);
+  }
+
+  markReauthorizationRequired(tenantId: string, tokens: StoredTokens): void {
+    this.blockedRevisions.set(tenantId, this.revision(tokens));
+  }
+
+  markSuccessful(tenantId: string): void {
+    this.blockedRevisions.delete(tenantId);
+  }
+}
+
 function tokensFilePath(tenantId?: string): string {
   if (tenantId) {
     return tenantPath(tenantId, 'tokens/twitch-tokens.json');
