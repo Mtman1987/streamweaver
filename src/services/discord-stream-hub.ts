@@ -218,11 +218,21 @@ export async function setDiscordStreamHubPointsToAll(payload: { points: number; 
   };
 }
 
+function isDiscordIngressAdminLookup(): boolean {
+  const stack = String(new Error().stack || '').replace(/\\/g, '/');
+  return stack.includes('/app/api/discord/chat/route') || stack.includes('src/app/api/discord/chat/route');
+}
+
 export async function checkDiscordStreamHubAdminAccess(payload: {
   serverId?: string;
   guildId?: string;
   userId?: string;
 }): Promise<{ isAdmin: boolean; isMod: boolean; isOwner: boolean; matchedBy?: string | null } | null> {
+  // Discord ingress previously called DSH for every message before command
+  // classification. Skip that redundant lookup. Privileged commands still call
+  // this helper later from the dispatcher and receive the real DSH role check.
+  if (isDiscordIngressAdminLookup()) return null;
+
   const serverId = String(payload.serverId || payload.guildId || '').trim();
   const userId = String(payload.userId || '').trim();
   if (!serverId || !userId) return null;
