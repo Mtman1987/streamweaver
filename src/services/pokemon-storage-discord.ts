@@ -215,4 +215,40 @@ export async function saveUserCollection(username: string, collection: UserColle
   console.log(`[Pokemon Storage] Saved ${username}: ${collection.cards.length} cards, ${collection.packsOpened} packs opened`);
 }
 
+export async function swapPokemonCards(input: {
+  userA: string;
+  userB: string;
+  cardIndexA: number;
+  cardIndexB: number;
+  expectedA: { setCode: string; number: string; openedAt?: string };
+  expectedB: { setCode: string; number: string; openedAt?: string };
+}): Promise<{ cardA: Card; cardB: Card }> {
+  const data = await init();
+  const keyA = normalizePokemonUsername(input.userA);
+  const keyB = normalizePokemonUsername(input.userB);
+  if (!keyA || !keyB || keyA === keyB) throw new Error('A trade requires two different linked collections.');
+
+  const entryA = data[keyA];
+  const entryB = data[keyB];
+  const cardA = entryA?.cards?.[input.cardIndexA];
+  const cardB = entryB?.cards?.[input.cardIndexB];
+  const matches = (card: Card | undefined, expected: { setCode: string; number: string; openedAt?: string }) =>
+    Boolean(
+      card &&
+      card.setCode === expected.setCode &&
+      card.number === expected.number &&
+      (!expected.openedAt || card.openedAt === expected.openedAt)
+    );
+
+  if (!matches(cardA, input.expectedA)) throw new Error(`${input.userA}'s offered card is no longer available.`);
+  if (!matches(cardB, input.expectedB)) throw new Error(`${input.userB}'s offered card is no longer available.`);
+
+  entryA.cards[input.cardIndexA] = cardB;
+  entryB.cards[input.cardIndexB] = cardA;
+  entryA.updatedAt = new Date().toISOString();
+  entryB.updatedAt = entryA.updatedAt;
+  saveLocal();
+  return { cardA, cardB };
+}
+
 
