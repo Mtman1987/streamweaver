@@ -57,6 +57,7 @@ import {
     getDiscordStreamHubPoints,
     getDiscordStreamHubPointsLeaderboard,
     lookupDiscordStreamHubTwitchTarget,
+    resolveDiscordStreamHubTwitchIdentity,
     setDiscordStreamHubPoints,
     setDiscordStreamHubPointsToAll,
 } from './discord-stream-hub';
@@ -191,11 +192,9 @@ const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
 
 const DISCORD_NATIVE_COMMAND_NAMES = new Set([
     ...DISCORD_NATIVE_SOCIAL_COMMANDS,
-    'commands', 'admin', 'so', 'points', 'watchtime', 'time', 'coinflip',
-    'leader', 'pleader', 'wleader',
+    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip',
     'followers', 'uptime', 'stats',
     'timeout', 'raidmessage', 'mtfixit',
-    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',
     'ignore',
     'addflow', 'approveflow', 'disableflow', 'deleteflow',
 ]);
@@ -247,7 +246,18 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
         return false;
     }
 
-    const username = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'DiscordUser';
+    const discordUserId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
+    const guildId = String(msg.guildId || msg.guild_id || '').trim();
+    const linkedIdentity = discordUserId && guildId
+        ? await resolveDiscordStreamHubTwitchIdentity(discordUserId, guildId).catch(() => null)
+        : null;
+    const username = String(
+        linkedIdentity?.twitchLogin ||
+        msg.author?.username ||
+        msg.author?.globalName ||
+        msg.author?.global_name ||
+        'DiscordUser'
+    ).trim().toLowerCase();
     const isMod = await hasEffectiveDiscordModAccess(msg);
 
     const tags = {
@@ -748,142 +758,6 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         return true;
     }
 
-    if (actualMessage.toLowerCase() === '!leader' || actualMessage.toLowerCase() === '!pleader') {
-        try {
-            const entries = await getDiscordStreamHubPointsLeaderboard({
-                serverId: discordServerId,
-                limit: 5,
-            });
-            await reply(`Discord points leaders: ${formatDiscordLeaderboard(entries, 'no Discord points leaderboard yet.')}`);
-        } catch (error: any) {
-            console.error('[Discord Dispatcher] points leaderboard failed:', error);
-            await reply(`@${actualUsername}, I couldn't load the Discord points leaderboard right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase() === '!wleader') {
-        try {
-            const entries = await getDiscordStreamHubActivityLeaderboard({
-                serverId: discordServerId,
-                limit: 5,
-            });
-            await reply(`Discord activity leaders: ${formatDiscordActivityLeaderboard(entries, 'no Discord activity leaderboard yet.')}`);
-        } catch (error: any) {
-            console.error('[Discord Dispatcher] activity leaderboard failed:', error);
-            await reply(`@${actualUsername}, I couldn't load the Discord activity leaderboard right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase().startsWith('!addpoints ') || actualMessage.toLowerCase().startsWith('!setpoints ')) {
-        if (!isMod) {
-            await reply(`@${actualUsername}, only mods can use that command.`);
-            return true;
-        }
-
-        const match = actualMessage.match(/^!(addpoints|setpoints)\s+(\S+)\s+(-?\d+)\s*$/i);
-        if (!match) {
-            await reply(`@${actualUsername}, usage: !${cmdName} @user amount`);
-            return true;
-        }
-
-        const target = parseDiscordCommandTarget(msg, match[2]);
-        if (!target?.userId) {
-            await reply(`@${actualUsername}, mention the Discord user you want to update.`);
-            return true;
-        }
-
-        try {
-            const amount = Number(match[3]);
-            const current = await getDiscordStreamHubPoints({
-                userId: target.userId,
-                username: target.username,
-                displayName: target.displayName,
-                serverId: discordServerId,
-            });
-            const nextPoints = cmdName === 'addpoints'
-                ? Math.max(0, Math.trunc(Number(current.points || 0) + amount))
-                : Math.max(0, Math.trunc(amount));
-            const updated = await setDiscordStreamHubPoints({
-                userId: target.userId,
-                username: target.username || target.displayName || target.userId,
-                displayName: target.displayName || target.username || target.userId,
-                serverId: discordServerId,
-                points: nextPoints,
-            });
-            await reply(`@${actualUsername}, ${(target.displayName || target.username || 'that user')} now has ${Number(updated.points || 0).toLocaleString()} Discord points.`);
-        } catch (error: any) {
-            console.error(`[Discord Dispatcher] !${cmdName} failed:`, error);
-            await reply(`@${actualUsername}, I couldn't update that Discord points balance right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase().startsWith('!addtoall ')) {
-        if (!isMod) {
-            await reply(`@${actualUsername}, only mods can use that command.`);
-            return true;
-        }
-        const match = actualMessage.match(/^!addtoall\s+(-?\d+)\s*$/i);
-        if (!match) {
-            await reply(`@${actualUsername}, usage: !addToAll amount`);
-            return true;
-        }
-        try {
-            const result = await addDiscordStreamHubPointsToAll({
-                points: Number(match[1]),
-                serverId: discordServerId,
-            });
-            await reply(`@${actualUsername}, updated Discord points for ${result.count} members.`);
-        } catch (error: any) {
-            console.error('[Discord Dispatcher] !addtoall failed:', error);
-            await reply(`@${actualUsername}, I couldn't update the Discord points leaderboard right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase().startsWith('!settoall ')) {
-        if (!isMod) {
-            await reply(`@${actualUsername}, only mods can use that command.`);
-            return true;
-        }
-        const match = actualMessage.match(/^!settoall\s+(-?\d+)\s*$/i);
-        if (!match) {
-            await reply(`@${actualUsername}, usage: !setToAll amount`);
-            return true;
-        }
-        try {
-            const result = await setDiscordStreamHubPointsToAll({
-                points: Number(match[1]),
-                serverId: discordServerId,
-            });
-            await reply(`@${actualUsername}, set Discord points for ${result.count} members.`);
-        } catch (error: any) {
-            console.error('[Discord Dispatcher] !settoall failed:', error);
-            await reply(`@${actualUsername}, I couldn't set the Discord points leaderboard right now.`);
-        }
-        return true;
-    }
-
-    if (actualMessage.toLowerCase() === '!resetallpoints') {
-        if (!isMod) {
-            await reply(`@${actualUsername}, only mods can use that command.`);
-            return true;
-        }
-        try {
-            const result = await setDiscordStreamHubPointsToAll({
-                points: 0,
-                serverId: discordServerId,
-            });
-            await reply(`@${actualUsername}, reset Discord points for ${result.count} members.`);
-        } catch (error: any) {
-            console.error('[Discord Dispatcher] !resetallpoints failed:', error);
-            await reply(`@${actualUsername}, I couldn't reset Discord points right now.`);
-        }
-        return true;
-    }
-
     if (await handleDiscordPokemonCommand(msg, tenantId)) {
         return true;
     }
@@ -933,21 +807,9 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         return true;
     }
 
-    if (actualMessage.toLowerCase() === '!points') {
-        try {
-            const result = await getDiscordStreamHubPoints({
-                userId: msg.author?.id || msg.userId || msg.user_id,
-                username: msg.author?.username || actualUsername,
-                displayName: msg.author?.globalName || msg.author?.global_name || actualUsername,
-                serverId: msg.guildId || msg.guild_id,
-            });
-            const rankText = result.rank ? ` (rank #${result.rank})` : '';
-            await reply(`@${actualUsername}, you have ${Number(result.points || 0).toLocaleString()} Discord points${rankText}.`);
-        } catch (error: any) {
-            console.error('[Discord Dispatcher] !points failed:', error);
-            await reply(`@${actualUsername}, I couldn't load your Discord points right now.`);
-        }
-        return true;
+    if (/^!points(?:\s|$)/i.test(actualMessage)) {
+        msg.content = actualMessage.replace(/^!points/i, '!pleader');
+        return routeDiscordCommandThroughTwitchRuntime(msg, tenantId);
     }
 
     if (actualMessage.toLowerCase() === '!watchtime' || actualMessage.toLowerCase() === '!watch time') {
