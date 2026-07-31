@@ -179,7 +179,20 @@ function parseDiscordCommandTarget(msg: any, rawTarget: string): { userId: strin
     };
 }
 
+const PERMANENT_APP_OWNER_DISCORD_IDS = new Set([
+    '767875979561009173',
+    String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),
+    String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),
+].filter(Boolean));
+
+function isPermanentDiscordOwner(msg: any): boolean {
+    const userId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
+    return Boolean(userId && PERMANENT_APP_OWNER_DISCORD_IDS.has(userId));
+}
+
 async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
+    // The application owner must never depend on a network permission lookup.
+    if (isPermanentDiscordOwner(msg)) return true;
     if (hasDiscordModAccess(msg)) return true;
 
     const guildId = msg.guildId || msg.guild_id;
@@ -187,6 +200,13 @@ async function hasEffectiveDiscordModAccess(msg: any): Promise<boolean> {
     const access = await checkDiscordStreamHubAdminAccess({ guildId, userId });
     return Boolean(access?.isAdmin || access?.isMod || access?.isOwner);
 }
+
+const DISCORD_PRIVILEGED_ROUTED_COMMANDS = new Set([
+    'admin', 'ignore', 'timeout',
+    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',
+    'greetingmode', 'welcomemode', 'clipmode', 'chatmode', 'athenaeverywhere',
+    'addflow', 'approveflow', 'disableflow', 'deleteflow',
+]);
 
 const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
 
@@ -258,7 +278,12 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
         msg.author?.global_name ||
         'DiscordUser'
     ).trim().toLowerCase();
-    const isMod = await hasEffectiveDiscordModAccess(msg);
+    // Public commands such as !points and !pleader must never wait on
+    // DiscordStreamHub admin lookup. Only commands that actually require
+    // elevated Twitch-style tags perform the remote permission check.
+    const isMod = DISCORD_PRIVILEGED_ROUTED_COMMANDS.has(cmdName)
+        ? await hasEffectiveDiscordModAccess(msg)
+        : (isPermanentDiscordOwner(msg) || hasDiscordModAccess(msg));
 
     const tags = {
         username,
