@@ -267,6 +267,7 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
         userId: msg.author?.id || msg.userId || msg.user_id,
         username,
         displayName: msg.author?.globalName || msg.author?.global_name || username,
+        userAvatarUrl: msg.author?.avatarUrl || msg.author?.displayAvatarURL || msg.userAvatar || msg.avatarUrl || msg.avatar_url,
         messageId: msg.messageId || msg.message_id,
         messageContent: actualMessage,
         speakerMode: 'command',
@@ -675,6 +676,14 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     const sourceUserName = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'Discord User';
     const actualUsername = sourceUserName.replace(/^@/, '').trim() || 'DiscordUser';
     const actualMessage = content;
+    const sourceUserAvatarUrl = String(
+        msg.author?.avatarUrl ||
+        msg.author?.displayAvatarURL ||
+        msg.userAvatar ||
+        msg.avatarUrl ||
+        msg.avatar_url ||
+        '',
+    ).trim();
     const cmdName = actualMessage.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
     if (!cmdName) return false;
 
@@ -693,6 +702,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             sourceMessageId: msg.messageId || msg.message_id,
             sourceMessage: actualMessage,
             sourceUser: actualUsername,
+            sourceUserAvatarUrl,
             isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
         }).catch((error) => {
             console.error('[Discord Dispatcher] Failed to send command reply:', error);
@@ -1166,6 +1176,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             userId: msg.author?.id || msg.userId || msg.user_id,
             username: actualUsername,
             displayName: actualUsername,
+            userAvatarUrl: sourceUserAvatarUrl,
             messageId: msg.messageId || msg.message_id,
             messageContent: actualMessage,
             speakerMode: 'command',
@@ -1206,6 +1217,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 sourceMessageId: msg.messageId || msg.message_id,
                 sourceMessage: actualMessage,
                 sourceUser: actualUsername,
+                sourceUserAvatarUrl,
                 isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
             }).catch((error) => {
                 console.error('[Discord Dispatcher] Failed to send social command reply:', error);
@@ -1226,6 +1238,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 userId: msg.author?.id || msg.userId || msg.user_id,
                 username: actualUsername,
                 displayName: actualUsername,
+                userAvatarUrl: sourceUserAvatarUrl,
                 messageId: msg.messageId || msg.message_id,
                 messageContent: actualMessage,
                 speakerMode: 'command',

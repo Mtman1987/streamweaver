@@ -10,7 +10,7 @@ import {
   DISCORD_MEDIA_MAX_REQUEST_BYTES,
 } from '../src/lib/discord-media-limits';
 
-test('Discord embeds keep the idle avatar in the thumbnail and selected lane GIF in the large image slot', async () => {
+test('Discord embeds use StreamWeaver branding, responder thumbnail, requester footer, and explicit media only', async () => {
   const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-discord-media-'));
   process.env.PERSIST_ROOT = persistRoot;
   process.env.STREAMWEAVER_PUBLIC_URL = 'https://streamweaver.test';
@@ -32,14 +32,42 @@ test('Discord embeds keep the idle avatar in the thumbnail and selected lane GIF
       DISCORD_AVATAR_THUMBNAIL_MAX_BYTES,
       readDiscordAvatarThumbnail,
     } = await import('../src/services/discord-avatar-media');
-    const privateEmbed = await buildDiscordBotEmbed({ description: 'private', tenantId: 'tenant-media', mediaSlot: 'private' });
-    const publicEmbed = await buildDiscordBotEmbed({ description: 'public', tenantId: 'tenant-media', mediaSlot: 'public' });
+    const privateEmbed = await buildDiscordBotEmbed({
+      description: 'private answer',
+      tenantId: 'tenant-media',
+      botName: 'MediaBot',
+      sourceMessage: 'Why is the bot offline?',
+      sourceUser: 'TestUser',
+      sourceUserAvatarUrl: 'https://cdn.test/user.png',
+      deleteAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    });
+    const imageEmbed = await buildDiscordBotEmbed({
+      description: 'image prompt',
+      tenantId: 'tenant-media',
+      botName: 'MediaBot',
+      responseType: 'Image Generated',
+      sourceMessage: '!img a moonlit station',
+      sourceUser: 'TestUser',
+      imageUrl: 'https://media.test/generated.png',
+    });
     const optimizedAvatar = await readDiscordAvatarThumbnail('tenant-media');
 
     assert.match(privateEmbed.thumbnail.url, /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
-    assert.equal(privateEmbed.image?.url, 'https://media.test/private.gif');
-    assert.match(publicEmbed.thumbnail.url, /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
-    assert.equal(publicEmbed.image?.url, 'https://media.test/public.gif');
+    assert.equal(privateEmbed.image, undefined);
+    assert.equal(privateEmbed.author.name, 'StreamWeaver');
+    assert.match(privateEmbed.author.icon_url || '', /\/StreamWeaver\.png$/);
+    assert.equal(privateEmbed.title, 'MediaBot • AI Answer');
+    assert.deepEqual(privateEmbed.fields, [{
+      name: 'Question',
+      value: 'Why is the bot offline?',
+      inline: false,
+    }]);
+    assert.match(privateEmbed.footer.text, /^Requested by TestUser • Why is the bot offline\? • deletes in 10m$/);
+    assert.equal(privateEmbed.footer.icon_url, 'https://cdn.test/user.png');
+    assert.ok(Number.isFinite(Date.parse(privateEmbed.timestamp)));
+    assert.equal(imageEmbed.title, 'MediaBot • Image Generated');
+    assert.equal(imageEmbed.image?.url, 'https://media.test/generated.png');
+    assert.equal(imageEmbed.fields, undefined);
     assert.ok(optimizedAvatar);
     assert.ok(optimizedAvatar.length < DISCORD_AVATAR_THUMBNAIL_MAX_BYTES);
     const sharp = (await import('sharp')).default;

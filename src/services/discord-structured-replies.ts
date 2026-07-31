@@ -13,17 +13,21 @@ export type DiscordReplySpeaker = {
   stableId: string;
 };
 
-type StructuredDiscordReplyInput = {
+export type StructuredDiscordReplyInput = {
   channelId: string;
   message: string;
   tenantId?: string;
   botName?: string;
+  title?: string;
+  responseType?: string;
   rotateSpeaker?: boolean;
   speaker?: DiscordReplySpeaker;
   sourceMessageId?: string;
   sourceMessage?: string;
   sourceUser?: string;
+  sourceUserAvatarUrl?: string;
   isPrivate?: boolean;
+  imageUrl?: string;
 };
 
 let rotatingSpeakerIndex = 0;
@@ -92,7 +96,13 @@ export async function resolveStructuredDiscordReplySpeaker(input: { tenantId?: s
   return speaker;
 }
 
-export async function sendStructuredDiscordReply(input: StructuredDiscordReplyInput): Promise<{ messageId?: string; deleteAt: string; speaker: DiscordReplySpeaker }> {
+export async function buildStructuredDiscordReplyPayload(input: StructuredDiscordReplyInput): Promise<{
+  content: string;
+  embeds: Record<string, unknown>[];
+  username: string;
+  deleteAt: string;
+  speaker: DiscordReplySpeaker;
+}> {
   const speaker = input.speaker || await resolveStructuredDiscordReplySpeaker({
     tenantId: input.tenantId,
     botName: input.botName,
@@ -100,23 +110,44 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   });
   const deleteAt = getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
-  const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(speaker.tenantId);
   const embed = await buildDiscordBotEmbed({
     description: input.message,
     tenantId: speaker.tenantId,
     botName: speaker.botName,
+    title: input.title,
+    responseType: input.responseType,
+    sourceMessage: input.sourceMessage,
+    sourceUser: input.sourceUser,
+    sourceUserAvatarUrl: input.sourceUserAvatarUrl,
     deleteAt,
-    mediaSlot: input.isPrivate ? 'private' : 'public',
+    imageUrl: input.imageUrl,
   });
-  const sent = await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, [embed]);
+  return {
+    content: '',
+    embeds: [embed],
+    username: webhookIdentity.username,
+    deleteAt,
+    speaker,
+  };
+}
 
-  if (input.sourceMessageId) {
+export async function sendStructuredDiscordReply(input: StructuredDiscordReplyInput): Promise<{ messageId?: string; deleteAt: string; speaker: DiscordReplySpeaker }> {
+  const payload = await buildStructuredDiscordReplyPayload(input);
+  const { deleteAt, speaker } = payload;
+  const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
+  const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(speaker.tenantId);
+  const sent = await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
+
+  // Never remove the user's request until Discord confirms that its embed
+  // replacement was posted successfully.
+  if (sent?.id && input.sourceMessageId) {
     await deleteMessage(input.channelId, input.sourceMessageId).catch(() => {});
   }
 
   await recordDiscordMessageCleanup({
     tenantId: speaker.tenantId || input.tenantId,
     channelId: input.channelId,
+    triggerMessageId: sent?.id ? input.sourceMessageId : undefined,
     replyMessageIds: [sent?.id || ''],
     replyMessages: [input.message],
     sourceUser: input.sourceUser,

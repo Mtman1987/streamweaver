@@ -2,22 +2,19 @@ import { NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { apiOk } from '@/lib/api-response';
 import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
-import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getAdminTwitchId, listTenants } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
-import { deleteMessage, sendDiscordEmbed, sendDiscordMessage as sendDiscordBotMessage } from '@/services/discord-local';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { readDiscordConfig, updateDiscordConfig } from '@/lib/discord-config';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
-import { buildDiscordBotEmbed, getDiscordBotProfileAvatarUrl, getDiscordBotWebhookIdentity, resolveDiscordBotTenantId } from '@/services/discord-branding';
-import { getAvatarUrlForTenant } from '@/services/discord-webhook-avatar';
-import { sendStructuredDiscordReply } from '@/services/discord-structured-replies';
+import { resolveDiscordBotTenantId } from '@/services/discord-branding';
+import { buildStructuredDiscordReplyPayload, sendStructuredDiscordReply } from '@/services/discord-structured-replies';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
-import { getDiscordMessageCleanupDeleteAt, processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
+import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
 import { buildDirectHumanRelayMessage, deliverBotRelay, handleDiscordMessage, isDirectHumanRelayTarget, resolveRelayTarget } from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
@@ -218,26 +215,34 @@ export async function POST(request: NextRequest) {
       });
     };
 
-    const sendDiscordRouteReplyOrCollect = async (replyChannelId: string, replyMessage: string, username = 'StreamWeaver') => {
+    const sendDiscordRouteReplyOrCollect = async (
+      replyChannelId: string,
+      replyMessage: string,
+      username = 'StreamWeaver',
+      responseType?: string,
+      imageUrl?: string,
+    ) => {
       if (!replyChannelId) return;
+      const structuredInput = {
+        channelId: replyChannelId,
+        message: replyMessage,
+        tenantId,
+        botName: username === 'StreamWeaver' ? undefined : username,
+        responseType,
+        rotateSpeaker: username === 'StreamWeaver' && message.trim().startsWith('!'),
+        sourceMessageId: normalized.messageId,
+        sourceMessage: message,
+        sourceUser: userName,
+        sourceUserAvatarUrl: userAvatar,
+        isPrivate: isDirectMessage,
+        imageUrl,
+      };
       if (relayOnly) {
-        collectReply({ content: replyMessage, username });
+        const payload = await buildStructuredDiscordReplyPayload(structuredInput);
+        collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
         return;
       }
-      if (message.trim().startsWith('!')) {
-        await sendStructuredDiscordReply({
-          channelId: replyChannelId,
-          message: replyMessage,
-          tenantId,
-          rotateSpeaker: true,
-          sourceMessageId: normalized.messageId,
-          sourceMessage: message,
-          sourceUser: userName,
-          isPrivate: isDirectMessage,
-        });
-        return;
-      }
-      await sendDiscordRouteReply(replyChannelId, replyMessage, username);
+      await sendStructuredDiscordReply(structuredInput);
     };
 
     if (!isDirectMessage) {
@@ -556,9 +561,11 @@ export async function POST(request: NextRequest) {
       const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|pollinations|status))?$/i);
       if (gifMatch) {
         if (channelId) {
-          await sendDiscordBotMessage(
+          await sendDiscordRouteReplyOrCollect(
             channelId,
             'Animated GIF generation is not configured yet. Use `!img <description>` for a still image.',
+            getBotName(tenantId),
+            'Command Help',
           );
         }
         await markHandled();
@@ -575,7 +582,7 @@ export async function POST(request: NextRequest) {
           : action === 'status'
             ? await getGenMode(tenantId)
             : await toggleGenMode(tenantId);
-        if (channelId) await sendDiscordBotMessage(channelId, `Generation mode: ${mode.toUpperCase()}`);
+        if (channelId) await sendDiscordRouteReplyOrCollect(channelId, `Generation mode: ${mode.toUpperCase()}`, getBotName(tenantId), 'Generation Mode');
         await markHandled();
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-genmode', mode });
       }
@@ -584,14 +591,19 @@ export async function POST(request: NextRequest) {
         if (!prompt) {
           if (channelId) {
             const baseUrl = getConfiguredAppUrl();
-            await sendDiscordBotMessage(channelId, `Usage: !img <description>\nPrivate image library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}&scope=private`);
+            await sendDiscordRouteReplyOrCollect(
+              channelId,
+              `Usage: !img <description>\nPrivate image library: ${baseUrl}/api/ai/image/library?tenantId=${encodeURIComponent(tenantId)}&scope=private`,
+              getBotName(tenantId),
+              'Command Help',
+            );
           }
           await markHandled();
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
         }
 
         if (channelId) {
-          await sendDiscordBotMessage(channelId, "I'm processing your image now, Commander.");
+          await sendDiscordRouteReplyOrCollect(channelId, "I'm processing your image now, Commander.", getBotName(tenantId), 'Generating Image');
         }
 
         let result;
@@ -600,11 +612,13 @@ export async function POST(request: NextRequest) {
         } catch (error) {
           console.warn(`[Discord Chat:${tenantId}] !img failed:`, error);
           if (channelId) {
-            await sendDiscordBotMessage(
+            await sendDiscordRouteReplyOrCollect(
               channelId,
               isImagePromptModerationError(error)
                 ? 'That image request was blocked by your private content safety settings.'
                 : 'Image generation failed. Try again in a moment.',
+              getBotName(tenantId),
+              'Image Generation Failed',
             );
           }
           await markHandled();
@@ -613,7 +627,7 @@ export async function POST(request: NextRequest) {
 
         if (!result.images.length) {
           if (channelId) {
-            await sendDiscordBotMessage(channelId, 'Image generation returned no image URL.');
+            await sendDiscordRouteReplyOrCollect(channelId, 'Image generation returned no image URL.', getBotName(tenantId), 'Image Generation Failed');
           }
           await markHandled();
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', error: 'empty-image' });
@@ -623,20 +637,23 @@ export async function POST(request: NextRequest) {
           if (result.optimizedPrompt) {
             const settings = await readGenerationSettings(tenantId);
             if (settings.showOptimizedPrompt) {
-              await sendDiscordBotMessage(channelId, `Optimized prompt: ${result.optimizedPrompt.slice(0, 1500)}`);
+              await sendDiscordRouteReplyOrCollect(
+                channelId,
+                `Optimized prompt: ${result.optimizedPrompt.slice(0, 1500)}`,
+                getBotName(tenantId),
+                'Optimized Prompt',
+              );
             }
           }
           for (const image of result.images) {
             const imageUrl = await maybeShortenUrl(image);
-            const embed = await buildDiscordBotEmbed({
-              description: result.originalPrompt || prompt,
-              tenantId,
-              authorName: getBotName(tenantId),
-            });
-            await sendDiscordEmbed(channelId, {
-              content: 'Here is your image, Commander:',
-              embeds: [{ ...embed, title: 'Image Generated', image: { url: imageUrl } }],
-            });
+            await sendDiscordRouteReplyOrCollect(
+              channelId,
+              result.originalPrompt || prompt,
+              getBotName(tenantId),
+              'Image Generated',
+              imageUrl,
+            );
           }
         }
         await markHandled();
@@ -654,8 +671,11 @@ export async function POST(request: NextRequest) {
               message: openReply,
               tenantId,
               botName,
+              responseType: 'Command Response',
+              sourceMessageId: normalized.messageId,
               sourceMessage: message,
               sourceUser: userName,
+              sourceUserAvatarUrl: userAvatar,
               isPrivate: true,
             });
           }
@@ -682,6 +702,8 @@ export async function POST(request: NextRequest) {
             username: normalized.username,
             globalName: userName,
             global_name: userName,
+            avatarUrl: userAvatar,
+            displayAvatarURL: userAvatar,
             bot: false,
           },
           mentions: data?.mentions,
@@ -725,7 +747,13 @@ export async function POST(request: NextRequest) {
       }
 
       if (channelId) {
-        await sendDiscordBotEmbedReply(channelId, privateReply, tenantId);
+        await sendDiscordBotEmbedReply(channelId, privateReply, tenantId, {
+          sourceMessageId: normalized.messageId,
+          sourceMessage: message,
+          sourceUser: userName,
+          sourceUserAvatarUrl: userAvatar,
+          responseType: 'AI Answer',
+        });
       }
       await markHandled();
 
@@ -851,21 +879,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (channelId) {
-        const { sendDiscordEmbed } = await import('@/services/discord-local');
         for (const image of result.images) {
           const imageUrl = await maybeShortenUrl(image);
-          const embed = await buildDiscordBotEmbed({
-            description: result.originalPrompt || prompt,
-            tenantId,
-            authorName: getBotName(tenantId),
-          });
-          await sendDiscordEmbed(channelId, {
-            embeds: [{
-              ...embed,
-              title: 'Image Generated',
-              image: { url: imageUrl },
-            }],
-          });
+          await sendDiscordRouteReplyOrCollect(
+            channelId,
+            result.originalPrompt || prompt,
+            getBotName(tenantId),
+            'Image Generated',
+            imageUrl,
+          );
         }
       }
       return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'guild-image', images: result.images });
@@ -1024,18 +1046,23 @@ export async function POST(request: NextRequest) {
       try {
         const openReply = await runOpenBotCommand(openCommand);
         if (channelId) {
+          const structuredInput = {
+            channelId,
+            message: openReply,
+            tenantId: botTenantId || tenantId || undefined,
+            botName,
+            responseType: 'Command Response',
+            sourceMessageId: normalized.messageId,
+            sourceMessage: message,
+            sourceUser: userName,
+            sourceUserAvatarUrl: userAvatar,
+            isPrivate: false,
+          };
           if (relayOnly) {
-            collectReply({ content: openReply, username: botName });
+            const payload = await buildStructuredDiscordReplyPayload(structuredInput);
+            collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
           } else {
-            await sendStructuredDiscordReply({
-              channelId,
-              message: openReply,
-              tenantId: botTenantId || tenantId || undefined,
-              botName,
-              sourceMessage: message,
-              sourceUser: userName,
-              isPrivate: false,
-            });
+            await sendStructuredDiscordReply(structuredInput);
           }
         }
         logDiscordTrace(traceId, 'open-command', {
@@ -1116,30 +1143,23 @@ export async function POST(request: NextRequest) {
 
         const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
         if (channelId) {
-          const deleteAt = getDiscordMessageCleanupDeleteAt();
-          const ackEmbed = await buildDiscordBotEmbed({
-            description: ackReply,
+          const structuredInput = {
+            channelId,
+            message: ackReply,
             tenantId: botTenantId || tenantId || undefined,
             botName,
-            deleteAt,
-            mediaSlot: isDirectMessage ? 'private' : 'public',
-          });
+            responseType: 'Message Relay',
+            sourceMessageId: normalized.messageId,
+            sourceMessage: message,
+            sourceUser: userName,
+            sourceUserAvatarUrl: userAvatar,
+            isPrivate: isDirectMessage,
+          };
           if (relayOnly) {
-            collectReply({ content: ackReply, embeds: [ackEmbed] });
+            const payload = await buildStructuredDiscordReplyPayload(structuredInput);
+            collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
           } else {
-            const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
-            const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
-            const sentAck = await sendWebhookMessage(channelId, ackReply, webhookIdentity.username, avatarUrl, [ackEmbed]).catch(() => null);
-            await recordDiscordMessageCleanup({
-              tenantId: botTenantId || tenantId || undefined,
-              channelId,
-              triggerMessageId: normalized.messageId,
-              replyMessageIds: [sentAck?.id || ''],
-              replyMessages: [ackReply],
-              sourceUser: userName,
-              botName,
-              triggerMessage: message,
-            }).catch(() => {});
+            await sendStructuredDiscordReply(structuredInput);
           }
         }
 
@@ -1185,30 +1205,23 @@ export async function POST(request: NextRequest) {
       if (resolvedRelayTarget) {
         const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
         if (channelId) {
-          const deleteAt = getDiscordMessageCleanupDeleteAt();
-          const ackEmbed = await buildDiscordBotEmbed({
-            description: ackReply,
+          const structuredInput = {
+            channelId,
+            message: ackReply,
             tenantId: botTenantId || tenantId || undefined,
             botName,
-            deleteAt,
-            mediaSlot: isDirectMessage ? 'private' : 'public',
-          });
+            responseType: 'Message Relay',
+            sourceMessageId: normalized.messageId,
+            sourceMessage: message,
+            sourceUser: userName,
+            sourceUserAvatarUrl: userAvatar,
+            isPrivate: isDirectMessage,
+          };
           if (relayOnly) {
-            collectReply({ content: ackReply, embeds: [ackEmbed] });
+            const payload = await buildStructuredDiscordReplyPayload(structuredInput);
+            collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
           } else {
-            const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
-            const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
-            const sentAck = await sendWebhookMessage(channelId, ackReply, webhookIdentity.username, avatarUrl, [ackEmbed]).catch(() => null);
-            await recordDiscordMessageCleanup({
-              tenantId: botTenantId || tenantId || undefined,
-              channelId,
-              triggerMessageId: normalized.messageId,
-              replyMessageIds: [sentAck?.id || ''],
-              replyMessages: [ackReply],
-              sourceUser: userName,
-              botName,
-              triggerMessage: message,
-            }).catch(() => {});
+            await sendStructuredDiscordReply(structuredInput);
           }
         }
 
@@ -1283,21 +1296,24 @@ export async function POST(request: NextRequest) {
     let discordReplySent = false;
     if (channelId) {
       try {
-        const deleteAt = getDiscordMessageCleanupDeleteAt();
-        const aiEmbed = await buildDiscordBotEmbed({
-          description: aiReply,
+        const structuredInput = {
+          channelId,
+          message: aiReply,
           tenantId: botTenantId || tenantId || undefined,
           botName,
-          deleteAt,
-          mediaSlot: isDirectMessage ? 'private' : 'public',
-        });
-        let sentReply: any = null;
+          responseType: 'AI Answer',
+          sourceMessageId: normalized.messageId,
+          sourceMessage: message,
+          sourceUser: userName,
+          sourceUserAvatarUrl: userAvatar,
+          isPrivate: isDirectMessage,
+        };
+        let sentReply: Awaited<ReturnType<typeof sendStructuredDiscordReply>> | null = null;
         if (relayOnly) {
-          collectReply({ content: aiReply, embeds: [aiEmbed] });
+          const payload = await buildStructuredDiscordReplyPayload(structuredInput);
+          collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
         } else {
-          const webhookIdentity = getDiscordBotWebhookIdentity(botTenantId || tenantId, botName);
-          const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(botTenantId || tenantId);
-          sentReply = await sendWebhookMessage(channelId, aiReply, webhookIdentity.username, avatarUrl, [aiEmbed]);
+          sentReply = await sendStructuredDiscordReply(structuredInput);
           const ttsResult = await queueTtsOverlay(aiReply, botTenantId || tenantId || undefined);
           if (!ttsResult.ok) console.warn('[Discord Chat] TTS overlay queue failed:', ttsResult.error);
         }
@@ -1337,6 +1353,7 @@ export async function POST(request: NextRequest) {
           const followUpReplyIds = await sendCrossBotTargetReplies({
             channelId,
             userName,
+            userAvatar,
             triggerMessage: message,
             speakerReply: aiReply,
             decision: followUpDecision,
@@ -1349,7 +1366,7 @@ export async function POST(request: NextRequest) {
             triggerMessageId: normalized.messageId,
             triggerMessage: message,
             replyMessageIds: [
-              sentReply?.id || '',
+              sentReply?.messageId || '',
               ...(followUpReplyIds || []),
             ],
             replyMessages: [
@@ -1501,22 +1518,25 @@ async function buildDiscordListenLinks(channelId: string): Promise<Array<{ tenan
   return links;
 }
 
-async function sendDiscordRouteReply(channelId: string, message: string, username = 'StreamWeaver') {
-  try {
-    await sendDiscordBotMessage(channelId, message);
-  } catch (botError) {
-    console.warn('[Discord Chat] Bot API send failed, trying webhook fallback:', botError);
-    await sendWebhookMessage(channelId, message, username);
-  }
-}
-
-async function sendDiscordBotEmbedReply(channelId: string, message: string, tenantId?: string) {
+async function sendDiscordBotEmbedReply(
+  channelId: string,
+  message: string,
+  tenantId?: string,
+  source?: {
+    sourceMessageId?: string;
+    sourceMessage?: string;
+    sourceUser?: string;
+    sourceUserAvatarUrl?: string;
+    responseType?: string;
+  },
+) {
   const botName = getBotName(tenantId);
   await sendStructuredDiscordReply({
     channelId,
     message,
     tenantId,
     botName,
+    ...source,
     isPrivate: true,
   });
 }
@@ -1675,6 +1695,7 @@ async function decideReplyMentionInteraction(input: {
 async function sendCrossBotTargetReplies(input: {
   channelId: string;
   userName: string;
+  userAvatar?: string;
   triggerMessage: string;
   speakerReply: string;
   decision: Awaited<ReturnType<typeof decideBotInteraction>>;
@@ -1749,17 +1770,16 @@ async function sendCrossBotTargetReplies(input: {
       break;
     }
 
-    const webhookIdentity = getDiscordBotWebhookIdentity(targetTenantId, target.currentName);
-    const avatarUrl = webhookIdentity.avatarUrl || await getDiscordBotProfileAvatarUrl() || await getAvatarUrlForTenant(targetTenantId);
-    const deleteAt = getDiscordMessageCleanupDeleteAt();
-    const sentReply = await sendWebhookMessage(input.channelId, reply, webhookIdentity.username, avatarUrl, [
-      await buildDiscordBotEmbed({
-        description: reply,
-        tenantId: targetTenantId,
-        botName: target.currentName,
-        deleteAt,
-      }),
-    ]);
+    const sentReply = await sendStructuredDiscordReply({
+      channelId: input.channelId,
+      message: reply,
+      tenantId: targetTenantId,
+      botName: target.currentName,
+      responseType: 'AI Follow-up',
+      sourceMessage: input.triggerMessage,
+      sourceUser: input.userName,
+      sourceUserAvatarUrl: input.userAvatar,
+    });
     const ttsResult = await queueTtsOverlay(reply, targetTenantId);
     if (!ttsResult.ok) console.warn('[Discord Chat] Cross-bot TTS overlay queue failed:', ttsResult.error);
     console.log('[Discord Chat] Cross-bot target responded via webhook:', {
@@ -1780,7 +1800,7 @@ async function sendCrossBotTargetReplies(input: {
         responseMessage: reply,
       }).catch(() => {});
     }
-    if (sentReply?.id) replyIds.push(sentReply.id);
+    if (sentReply.messageId) replyIds.push(sentReply.messageId);
 
     currentTarget = previousSpeaker as WorldLoreCharacter;
     previousSpeaker = target;
