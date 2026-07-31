@@ -1,20 +1,20 @@
 name: Fix Discord Economy Direct
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/discord-economy-direct
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Add isolated Discord economy repair runner'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: fix/discord-economy-direct
           fetch-depth: 0
       - name: Patch Discord command routing
         run: |
@@ -104,12 +104,13 @@ function isPermanentDiscordOwner(msg: any): boolean {
 
           p.write_text(s)
           Path('.github/workflows/fix-discord-economy-direct.yml').unlink()
+          Path('.github/discord-economy-trigger.txt').unlink(missing_ok=True)
           PY
 
           npm ci
           npm run build
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/services/chat-dispatcher.ts .github/workflows/fix-discord-economy-direct.yml
+          git add src/services/chat-dispatcher.ts .github/workflows/fix-discord-economy-direct.yml .github/discord-economy-trigger.txt
           git commit -m "Fix Discord public economy routing and role checks"
           git push origin HEAD:fix/discord-economy-direct
