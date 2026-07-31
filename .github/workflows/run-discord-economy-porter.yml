@@ -1,0 +1,98 @@
+name: Run Discord Economy Porter
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  port:
+    if: github.event.head_commit.message == 'Run Discord economy batch porter'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create tested economy port branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git switch -c fix/discord-economy-runtime-port
+          python3 <<'PY'
+          from pathlib import Path
+
+          catalog_path = Path('src/services/discord-command-catalog.ts')
+          catalog = catalog_path.read_text()
+          catalog = catalog.replace(
+              "  '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!time', '!followers', '!uptime', '!stats',\n",
+              "  '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!cleader', '!bleader', '!bitsleader', '!time', '!followers', '!uptime', '!stats',\n"
+          )
+          catalog = catalog.replace(
+              "  '!commands', '!so <user>', '!trade @user', '!offer <card>', '!botshare', '!mtfixit', '!raidmessage <msg>',\n",
+              "  '!commands', '!so <user>', '!trade @user', '!offer <card>', '!givepoints @user <amount>', '!stealpoints @user <amount>', '!gamble <amount>', '!roll <amount>', '!double <amount>', '!botshare', '!mtfixit', '!raidmessage <msg>',\n"
+          )
+          for line in [
+              "  gamble: 'Discord gambling is disabled until Discord points are wired correctly.',\n",
+              "  roll: 'Discord roll is disabled until Discord points are wired correctly.',\n",
+              "  double: 'Discord double is disabled until Discord points are wired correctly.',\n",
+              "  cleader: 'Discord leaderboards need Discord-native point and activity data first.',\n",
+              "  bleader: 'Discord leaderboards need Discord-native point and activity data first.',\n",
+              "  bitsleader: 'Discord leaderboards need Discord-native point and activity data first.',\n",
+          ]:
+              catalog = catalog.replace(line, '')
+          catalog_path.write_text(catalog)
+
+          points_path = Path('src/services/points.ts')
+          points = points_path.read_text()
+          points = points.replace('if (discordContext) {', 'if (discordContext && !ctx) {')
+          points_path.write_text(points)
+
+          dispatcher_path = Path('src/services/chat-dispatcher.ts')
+          dispatcher = dispatcher_path.read_text()
+          dispatcher = dispatcher.replace(
+              "    lookupDiscordStreamHubTwitchTarget,\n",
+              "    lookupDiscordStreamHubTwitchTarget,\n    resolveDiscordStreamHubTwitchIdentity,\n"
+          )
+          dispatcher = dispatcher.replace(
+              "    'commands', 'admin', 'so', 'points', 'watchtime', 'time', 'coinflip',\n    'leader', 'pleader', 'wleader',\n    'followers', 'uptime', 'stats',\n    'timeout', 'raidmessage', 'mtfixit',\n    'addpoints', 'setpoints', 'addtoall', 'settoall', 'resetallpoints',\n",
+              "    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip',\n    'followers', 'uptime', 'stats',\n    'timeout', 'raidmessage', 'mtfixit',\n"
+          )
+          old_username = "    const username = msg.author?.username || msg.author?.globalName || msg.author?.global_name || 'DiscordUser';\n    const isMod = await hasEffectiveDiscordModAccess(msg);\n"
+          new_username = "    const discordUserId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();\n    const guildId = String(msg.guildId || msg.guild_id || '').trim();\n    const linkedIdentity = discordUserId && guildId\n        ? await resolveDiscordStreamHubTwitchIdentity(discordUserId, guildId).catch(() => null)\n        : null;\n    const username = String(\n        linkedIdentity?.twitchLogin ||\n        msg.author?.username ||\n        msg.author?.globalName ||\n        msg.author?.global_name ||\n        'DiscordUser'\n    ).trim().toLowerCase();\n    const isMod = await hasEffectiveDiscordModAccess(msg);\n"
+          if old_username not in dispatcher:
+              raise SystemExit('username anchor not found')
+          dispatcher = dispatcher.replace(old_username, new_username, 1)
+
+          start = dispatcher.find("    if (actualMessage.toLowerCase() === '!leader' || actualMessage.toLowerCase() === '!pleader') {")
+          pokemon = dispatcher.find("    if (await handleDiscordPokemonCommand(msg, tenantId)) {", start)
+          if start == -1 or pokemon == -1:
+              raise SystemExit('native economy block anchors not found')
+          dispatcher = dispatcher[:start] + dispatcher[pokemon:]
+
+          points_start = dispatcher.find("    if (actualMessage.toLowerCase() === '!points') {")
+          points_end = dispatcher.find("    if (actualMessage.toLowerCase() === '!watchtime'", points_start)
+          if points_start == -1 or points_end == -1:
+              raise SystemExit('points alias anchors not found')
+          replacement = "    if (/^!points(?:\\s|$)/i.test(actualMessage)) {\n        msg.content = actualMessage.replace(/^!points/i, '!pleader');\n        return routeDiscordCommandThroughTwitchRuntime(msg, tenantId);\n    }\n\n"
+          dispatcher = dispatcher[:points_start] + replacement + dispatcher[points_end:]
+          dispatcher_path.write_text(dispatcher)
+
+          Path('.github/workflows/run-discord-economy-porter.yml').unlink()
+          PY
+
+          npm ci
+          npm run build
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/services/chat-dispatcher.ts src/services/discord-command-catalog.ts src/services/points.ts .github/workflows/run-discord-economy-porter.yml
+          git commit -m "Port Discord economy commands through tenant runtime"
+          git push --force-with-lease origin fix/discord-economy-runtime-port
+
+          pr_url=$(gh pr create --base main --head fix/discord-economy-runtime-port --title "Port Discord economy commands through tenant runtime" --body "Ports the existing Twitch economy and leaderboard services to Discord in one batch. Linked Discord users execute as their linked Twitch identity; explicit tenant context keeps points isolated per streamer. Enables points/pleader alias routing, leader/wleader/cleader/bleader/bitsleader, givepoints, stealpoints, gamble, roll, double, and tenant point admin commands. Pokémon pack costs continue to use the tenant balance. The production build must pass before this PR is created.")
+          gh pr merge "$pr_url" --squash --delete-branch
