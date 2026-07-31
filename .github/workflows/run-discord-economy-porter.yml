@@ -57,3 +57,5 @@ jobs:
 
           pr_url=$(gh pr create --base main --head fix/discord-owner-admin-routing --title "Fix Discord owner and public command permission routing" --body "Public routed commands such as !points and !pleader no longer call DiscordStreamHub admin lookup. Only privileged commands perform the remote permission check. Discord user 767875979561009173 and configured owner IDs bypass all network permission checks permanently. Production build passed before PR creation.")
           gh pr merge "$pr_url" --squash --delete-branch
+
+# trigger refresh
