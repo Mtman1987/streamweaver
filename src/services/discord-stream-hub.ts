@@ -218,9 +218,19 @@ export async function setDiscordStreamHubPointsToAll(payload: { points: number; 
   };
 }
 
-function isDiscordIngressAdminLookup(): boolean {
-  const stack = String(new Error().stack || '').replace(/\\/g, '/');
-  return stack.includes('/app/api/discord/chat/route') || stack.includes('src/app/api/discord/chat/route');
+const PUBLIC_DISCORD_COMMANDS = new Set([
+  'points', 'leader', 'pleader', 'wleader', 'cleader', 'bleader', 'bitsleader',
+  'gamble', 'roll', 'double', 'coinflip', 'watchtime', 'uptime', 'followers',
+  'stats', 'time', 'commands', 'pack', 'collection', 'show', 'deck', 'challenge',
+]);
+
+function isPublicDiscordCommandContext(): boolean {
+  const context = getChatOutputContext();
+  if (!context || context.platform !== 'discord') return false;
+  const message = String(context.messageContent || '').trim();
+  if (!message.startsWith('!')) return false;
+  const command = message.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
+  return PUBLIC_DISCORD_COMMANDS.has(command);
 }
 
 export async function checkDiscordStreamHubAdminAccess(payload: {
@@ -228,10 +238,7 @@ export async function checkDiscordStreamHubAdminAccess(payload: {
   guildId?: string;
   userId?: string;
 }): Promise<{ isAdmin: boolean; isMod: boolean; isOwner: boolean; matchedBy?: string | null } | null> {
-  // Discord ingress previously called DSH for every message before command
-  // classification. Skip that redundant lookup. Privileged commands still call
-  // this helper later from the dispatcher and receive the real DSH role check.
-  if (isDiscordIngressAdminLookup()) return null;
+  if (isPublicDiscordCommandContext()) return null;
 
   const serverId = String(payload.serverId || payload.guildId || '').trim();
   const userId = String(payload.userId || '').trim();

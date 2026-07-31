@@ -1,7 +1,10 @@
 import { getLeaderboard, getUser, getUserRank } from './user-stats';
 import { getPoints as getPointsData } from './points';
 import { sendChatMessage } from './twitch';
+import { sendDiscordMessage } from './discord';
 import { getUserCards } from './pokemon-collection';
+import { getChatOutputContext } from './chat-output-context';
+import { getDiscordStreamHubPoints, getDiscordStreamHubPointsLeaderboard } from './discord-stream-hub';
 
 const COOLDOWNS = {
   user: new Map<string, number>(),
@@ -26,6 +29,45 @@ function normalizeTenantId(tenantId?: string): string | undefined {
   return tenantId;
 }
 
+async function handleDiscordPointsCommand(command: string, username: string): Promise<boolean> {
+  const context = getChatOutputContext();
+  if (!context || context.platform !== 'discord' || !context.channelId) return false;
+
+  const originalCommand = String(context.messageContent || command).trim().toLowerCase();
+  const serverId = context.guildId;
+
+  if (originalCommand === '!points') {
+    const balance = await getDiscordStreamHubPoints({
+      userId: context.userId,
+      username: context.username || username,
+      displayName: context.displayName || username,
+      serverId,
+    });
+    const rankText = balance.rank ? ` | Rank #${balance.rank}` : '';
+    await sendDiscordMessage(
+      context.channelId,
+      `@${context.displayName || context.username || username} has ${Number(balance.points || 0).toLocaleString()} points${rankText}!`,
+    );
+    return true;
+  }
+
+  if (command === '!pleader' || command === '!leader') {
+    const entries = await getDiscordStreamHubPointsLeaderboard({ serverId, limit: 10 });
+    if (!entries.length) {
+      await sendDiscordMessage(context.channelId, 'No Discord points have been recorded yet.');
+      return true;
+    }
+
+    const text = entries
+      .map((entry, index) => `#${index + 1} ${entry.displayName || entry.username || `User ${index + 1}`} ${Number(entry.points || 0).toLocaleString()}`)
+      .join(' | ');
+    await sendDiscordMessage(context.channelId, text);
+    return true;
+  }
+
+  return false;
+}
+
 export async function handleLeaderboardCommand(
   command: string,
   username: string,
@@ -34,11 +76,21 @@ export async function handleLeaderboardCommand(
   tenantId?: string,
 ) {
   if (!checkCooldown(username)) return;
+
+  try {
+    if (await handleDiscordPointsCommand(command, username)) return;
+  } catch (error) {
+    console.error('[Leaderboard] Discord points command failed:', error);
+    const context = getChatOutputContext();
+    if (context?.platform === 'discord' && context.channelId) {
+      await sendDiscordMessage(context.channelId, `@${context.displayName || context.username || username}, I couldn't load Discord points right now.`).catch(() => {});
+      return;
+    }
+  }
   
   const realTenantId = normalizeTenantId(tenantId);
   const tenantCtx = realTenantId ? { tenantId: realTenantId, username: '' } : undefined;
 
-  // Resolve broadcaster username for storage context
   if (tenantCtx) {
     try {
       const { getStoredTokens } = require('../lib/token-utils.server');
@@ -49,13 +101,10 @@ export async function handleLeaderboardCommand(
 
   const user = await getUser(username, tenantCtx);
   const pointsData = await getPointsData(username, tenantCtx);
-
-  // Get real card count from local collection
   const userCards = await getUserCards(username);
   const realTotal = userCards.length;
   const realRare = userCards.filter((c: any) => c.rarity?.includes('Rare')).length;
   
-  // !leader - show profile
   if (command === '!leader') {
     const profile = {
       type: 'profile',
@@ -71,12 +120,8 @@ export async function handleLeaderboardCommand(
       badges: user.badges
     };
     
-    broadcast({
-      type: 'leaderboard-profile',
-      payload: profile
-    }, realTenantId);
+    broadcast({ type: 'leaderboard-profile', payload: profile }, realTenantId);
     
-    // Send chat response
     const totalHours = Math.floor(user.watchtime / 60);
     let channelUsername = '';
     try {
@@ -98,44 +143,26 @@ export async function handleLeaderboardCommand(
     return;
   }
   
-  // Determine stat type
   let stat: 'points' | 'watchtime' | 'totalCards' | 'rareCards' | 'badges';
   let statName: string;
   
   switch (command) {
-    case '!pleader':
-      stat = 'points';
-      statName = 'Points';
-      break;
-    case '!wleader':
-      stat = 'watchtime';
-      statName = 'Watchtime';
-      break;
-    case '!cleader':
-      stat = 'totalCards';
-      statName = 'Cards';
-      break;
-    case '!bleader':
-      stat = 'badges';
-      statName = 'Badges';
-      break;
-    case '!bitsleader':
-      stat = 'points';
-      statName = 'Points';
-      break;
-    default:
-      return;
+    case '!pleader': stat = 'points'; statName = 'Points'; break;
+    case '!wleader': stat = 'watchtime'; statName = 'Watchtime'; break;
+    case '!cleader': stat = 'totalCards'; statName = 'Cards'; break;
+    case '!bleader': stat = 'badges'; statName = 'Badges'; break;
+    case '!bitsleader': stat = 'points'; statName = 'Points'; break;
+    default: return;
   }
   
   const leaderboard = await getLeaderboard(stat, 10, tenantCtx);
   const myRank = await getUserRank(username, stat, tenantCtx);
   let myValue = stat === 'badges' ? user.badges.length : user[stat];
-  if ((stat === 'totalCards')) {
+  if (stat === 'totalCards') {
     const myCards = await getUserCards(username);
     myValue = myCards.length;
   }
   
-  // Check for @mention comparison
   const mentionMatch = args.match(/@(\w+)/);
   if (mentionMatch) {
     const target = mentionMatch[1].toLowerCase();
@@ -157,7 +184,6 @@ export async function handleLeaderboardCommand(
       }
     }, realTenantId);
     
-    // Send chat response
     const ahead = myRank < theirRank;
     const emoji = ahead ? '🎯' : '💥';
     sendChatMessage(
@@ -182,7 +208,6 @@ export async function handleLeaderboardCommand(
       }
     }, realTenantId);
     
-    // Send chat response
     let chatMsg = `@${username}, you're currently #${myRank} with ${myValue} ${statName.toLowerCase()}!`;
     if (stat === 'watchtime') {
       const totalMin = myValue as number;
