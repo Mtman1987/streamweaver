@@ -6,7 +6,7 @@ import { buildDiscordBotEmbed, buildStreamWeaverLogoUrl, getDiscordBotWebhookIde
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
 import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from './discord-message-cleanup';
 import { sendWebhookMessage } from './discord-webhooks';
-import { sendDiscordEmbed } from './discord-local';
+import { sendDiscordEmbed, sendDiscordMessage } from './discord-local';
 
 export type DiscordReplySpeaker = {
   botName: string;
@@ -140,17 +140,27 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrlForTenant(speaker.tenantId) || buildStreamWeaverLogoUrl();
-  const sent = input.components?.length
-    ? await sendDiscordEmbed(input.channelId, {
-        content: '',
-        embeds: payload.embeds,
-        components: input.components,
-      })
-    : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
+
+  let sent: any;
+  if (!speaker.tenantId && !input.tenantId) {
+    sent = await sendDiscordMessage(input.channelId, input.message);
+  } else {
+    try {
+      sent = input.components?.length
+        ? await sendDiscordEmbed(input.channelId, {
+            content: '',
+            embeds: payload.embeds,
+            components: input.components,
+          })
+        : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
+    } catch (error) {
+      console.warn('[Discord Reply] Structured reply failed; falling back to direct Discord message:', error);
+      sent = await sendDiscordMessage(input.channelId, input.message);
+    }
+  }
+
   const sentId = typeof sent?.id === 'string' ? sent.id : '';
 
-  // Never remove the user's request until Discord confirms that its embed
-  // replacement was posted successfully.
   if (sentId && input.sourceMessageId) {
     await deleteMessage(input.channelId, input.sourceMessageId).catch(() => {});
   }
