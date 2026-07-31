@@ -46,6 +46,7 @@ export type DiscordStreamHubCheckinMember = {
 };
 
 let cachedDefaultGuildId: string | null = null;
+const checkinMemberCache = new Map<string, { members: DiscordStreamHubCheckinMember[]; expiresAt: number }>();
 
 function getDiscordStreamHubUrl(): string {
   return (
@@ -247,11 +248,29 @@ export async function checkDiscordStreamHubAdminAccess(payload: {
 
 export async function getDiscordStreamHubCheckinMembers(serverId: string, group?: string): Promise<DiscordStreamHubCheckinMember[]> {
   if (!serverId) throw new Error('DiscordStreamHub check-in member lookup requires a server ID');
+  const cacheKey = `${serverId}:${group || ''}`;
+  const cached = checkinMemberCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.members;
   const data = await getDiscordStreamHub<{ members?: DiscordStreamHubCheckinMember[] }>(
     '/api/discord/checkin-members',
     { serverId, group },
   );
-  return Array.isArray(data?.members) ? data.members : [];
+  const members = Array.isArray(data?.members) ? data.members : [];
+  checkinMemberCache.set(cacheKey, { members, expiresAt: Date.now() + 5 * 60 * 1000 });
+  return members;
+}
+
+export async function resolveDiscordStreamHubTwitchIdentity(
+  discordUserId: string,
+  serverId: string,
+): Promise<DiscordStreamHubCheckinMember | null> {
+  const normalizedId = String(discordUserId || '').trim();
+  if (!normalizedId || !serverId) return null;
+  const members = await getDiscordStreamHubCheckinMembers(serverId);
+  return members.find((member) =>
+    String(member.discordUserId || member.id || '').trim() === normalizedId &&
+    Boolean(String(member.twitchLogin || '').trim())
+  ) || null;
 }
 
 export async function lookupDiscordStreamHubTwitchTarget(twitchLogin: string, serverId?: string): Promise<DiscordStreamHubClipLookup | null> {

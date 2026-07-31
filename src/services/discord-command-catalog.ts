@@ -11,10 +11,11 @@ const DISCORD_LINK_COMMANDS: string[] = [];
 
 const DISCORD_INFO_COMMANDS = [
   '!points', '!watchtime', '!leader', '!pleader', '!wleader', '!time', '!followers', '!uptime', '!stats',
+  '!pack [set]', '!collection', '!show <card>', '!eevee', '!deck',
 ];
 
 const DISCORD_UTILITY_COMMANDS = [
-  '!commands', '!so <user>', '!botshare', '!mtfixit', '!raidmessage <msg>',
+  '!commands', '!so <user>', '!trade @user', '!offer <card>', '!botshare', '!mtfixit', '!raidmessage <msg>',
 ];
 
 const DISCORD_ADMIN_COMMANDS = [
@@ -71,19 +72,12 @@ export const DISCORD_UNSUPPORTED_COMMAND_MESSAGES: Record<string, string> = {
   cleader: 'Discord leaderboards need Discord-native point and activity data first.',
   bleader: 'Discord leaderboards need Discord-native point and activity data first.',
   bitsleader: 'Discord leaderboards need Discord-native point and activity data first.',
-  pack: 'Discord pack commands need a Discord-specific embed and preview flow first.',
-  collection: 'Discord collection commands need a Discord-specific presentation first.',
-  show: 'Discord card display needs a Discord-specific presentation first.',
-  trade: 'Discord trading needs a Discord-specific interaction flow first.',
-  offer: 'Discord trading needs a Discord-specific interaction flow first.',
-  accept: 'Discord trading needs a Discord-specific interaction flow first.',
-  cancel: 'Discord trading needs a Discord-specific interaction flow first.',
+  accept: 'Use the green Accept Trade button on the active trade embed.',
+  cancel: 'Use the red Decline button on the active trade embed.',
   challenge: 'Discord battle commands need a Discord-specific interaction flow first.',
   attack: 'Discord battle commands need a Discord-specific interaction flow first.',
   switch: 'Discord battle commands need a Discord-specific interaction flow first.',
   setdeck: 'Discord deck commands need a Discord-specific interaction flow first.',
-  deck: 'Discord deck commands need a Discord-specific interaction flow first.',
-  eevee: 'Discord pack commands need a Discord-specific embed and preview flow first.',
   followage: 'Discord followage is Twitch-specific and is not supported here.',
   followed: 'Discord followed status needs a Twitch identity mapping first.',
   clip: 'Discord clip needs explicit tenant targeting or a Discord-native clip design first.',

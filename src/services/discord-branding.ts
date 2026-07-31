@@ -251,6 +251,7 @@ export async function buildDiscordBotEmbed(input: {
     mediaSlot?: DiscordMediaSlot;
     includeConfiguredMedia?: boolean;
     imageUrl?: string;
+    fields?: Array<{ name: string; value: string; inline?: boolean }>;
 }): Promise<DiscordBotEmbed> {
     const resolvedTenantId = input.tenantId || await resolveTenantByBotName(input.botName);
     const owner = await getTenantOwnerBranding(resolvedTenantId, input.botName);
@@ -282,18 +283,20 @@ export async function buildDiscordBotEmbed(input: {
     const question = isAiAnswer && input.sourceMessage
         ? truncateDiscordText(input.sourceMessage, 1024)
         : '';
+    const fields = [
+        ...(question ? [{ name: 'Question', value: question, inline: false }] : []),
+        ...(input.fields || []).map((field) => ({
+            name: truncateDiscordText(field.name, 256),
+            value: truncateDiscordText(field.value, 1024),
+            inline: field.inline,
+        })),
+    ].slice(0, 25);
     return {
         title,
         description: input.description,
         thumbnail: { url: avatarMediaUrl },
         ...(embedMediaUrl ? { image: { url: embedMediaUrl } } : {}),
-        ...(question ? {
-            fields: [{
-                name: 'Question',
-                value: question,
-                inline: false,
-            }],
-        } : {}),
+        ...(fields.length ? { fields } : {}),
         author: {
             name: STREAMWEAVER_BRAND_NAME,
             icon_url: buildStreamWeaverLogoUrl(),

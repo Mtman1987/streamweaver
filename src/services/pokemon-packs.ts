@@ -6,6 +6,7 @@ const CARDS_DB_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards'
 const SETS_FILE = path.join(process.cwd(), 'pokemon-tcg-data-master', 'sets', 'en.json');
 
 let allSetsCache: { id: string; name: string }[] | null = null;
+export const POKEMON_PACK_SIZE = 9;
 
 function loadAllSets(): { id: string; name: string }[] {
   if (allSetsCache) return allSetsCache;
@@ -78,9 +79,9 @@ export async function openPack(setNumber: number, username: string, enabledSets?
   let picked: any[];
   if (common.length >= 4 && uncommon.length >= 3 && rare.length >= 1 && other.length >= 1) {
     picked = [...pickRandom(common, 4), ...pickRandom(uncommon, 3), ...pickRandom(rare, 1), ...pickRandom(other, 1)];
-  } else if (cardData.length >= 9) {
-    // Promo or non-standard sets: pick 9 random cards
-    picked = pickRandom(cardData, 9);
+  } else if (cardData.length >= POKEMON_PACK_SIZE) {
+    // Promo or non-standard sets use the same nine-card pack contract.
+    picked = pickRandom(cardData, POKEMON_PACK_SIZE);
     console.log(`[Pokemon] ${setInfo.name} uses fallback pack (non-standard rarities)`);
   } else {
     console.log(`[Pokemon] Not enough cards in ${setInfo.name} (${cardData.length} total)`);
@@ -131,7 +132,7 @@ function loadEeveePool(): any[] {
 
 export async function openEeveePack(username: string, tenantId?: string) {
   const pool = loadEeveePool();
-  if (pool.length < 9) return null;
+  if (pool.length < POKEMON_PACK_SIZE) return null;
 
   const common = pool.filter(c => c.rarity === 'Common');
   const uncommon = pool.filter(c => c.rarity === 'Uncommon');
@@ -139,10 +140,10 @@ export async function openEeveePack(username: string, tenantId?: string) {
   const any = pool;
 
   let picked: any[];
-  if (common.length >= 4 && uncommon.length >= 3 && rare.length >= 1) {
+  if (common.length >= 4 && uncommon.length >= 3 && rare.length >= 2) {
     picked = [...pickRandom(common, 4), ...pickRandom(uncommon, 3), ...pickRandom(rare, 2)];
   } else {
-    picked = pickRandom(any, 9);
+    picked = pickRandom(any, POKEMON_PACK_SIZE);
   }
 
   const pack = picked.map(card => ({

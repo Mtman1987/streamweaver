@@ -45,6 +45,7 @@ import {
     DISCORD_ROUTED_COMMAND_NAMES,
     DISCORD_UNSUPPORTED_COMMAND_MESSAGES,
 } from './discord-command-catalog';
+import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
@@ -880,6 +881,10 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             console.error('[Discord Dispatcher] !resetallpoints failed:', error);
             await reply(`@${actualUsername}, I couldn't reset Discord points right now.`);
         }
+        return true;
+    }
+
+    if (await handleDiscordPokemonCommand(msg, tenantId)) {
         return true;
     }
 
