@@ -879,18 +879,19 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 }),
                 getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 }).catch(() => []),
             ]);
-            const points = Number(balance.points || 0);
-            const standingIndex = standings.findIndex((entry) => entry.userId === String(targetUserId || ''));
-            const rank = standingIndex >= 0 ? standingIndex + 1 : Number(balance.rank || 0);
-            const ahead = standingIndex > 0 ? standings[standingIndex - 1] : undefined;
-            const gap = ahead ? Math.max(0, Number(ahead.points || 0) - points) : 0;
+            const current = Number(balance.currentPoints || 0);
+            const lifetime = Number(balance.lifetimePoints || 0);
+            const rank = Number(balance.rank || 0);
+            const ahead = rank > 1 ? standings.find((entry) => entry.rank === rank - 1) : undefined;
+            const gap = ahead ? Math.max(0, Number(ahead.lifetimePoints || 0) - lifetime) : 0;
 
-            await reply(`**${points.toLocaleString()}** points`, {
+            await reply(`**${current.toLocaleString()}** spendable • **${lifetime.toLocaleString()}** lifetime`, {
                 title: `${DISCORD_POINTS_ICON} ${targetName}'s points`,
                 color: DISCORD_POINTS_COLOR,
                 fields: [
-                    { name: 'Rank', value: rank ? `${rankMedal(rank)} #${rank}${standingIndex >= 0 ? ` of ${standings.length}` : ''}` : 'Unranked', inline: true },
-                    { name: 'Points', value: points.toLocaleString(), inline: true },
+                    { name: 'Rank', value: rank ? `${rankMedal(rank)} #${rank}${standings.length ? ` of ${standings.length}` : ''}` : 'Unranked', inline: true },
+                    { name: 'Current', value: current.toLocaleString(), inline: true },
+                    { name: 'Lifetime', value: lifetime.toLocaleString(), inline: true },
                     ...(ahead
                         ? [{ name: 'To next rank', value: `${gap.toLocaleString()} behind ${ahead.displayName || ahead.username || `#${rank - 1}`}`, inline: true }]
                         : rank === 1 ? [{ name: 'Standing', value: 'Top of the leaderboard', inline: true }] : []),
@@ -906,7 +907,15 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     if (cmdName === 'pleader' || cmdName === 'leader') {
         const requesterId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
         try {
-            const standings = await getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 });
+            const [standings, requesterBalance] = await Promise.all([
+                getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 }),
+                getDiscordStreamHubPoints({
+                    userId: requesterId,
+                    username: actualUsername,
+                    displayName: actualUsername,
+                    serverId: discordServerId,
+                }).catch(() => null),
+            ]);
             if (!standings.length) {
                 await reply('No Discord points have been recorded yet.', {
                     title: `${DISCORD_LEADERBOARD_ICON} Points leaderboard`,
@@ -915,24 +924,26 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 return true;
             }
 
-            const top = standings.slice(0, 10);
-            const requesterIndex = standings.findIndex((entry) => entry.userId === requesterId);
-            const board = top
+            const requesterRank = Number(requesterBalance?.rank || 0);
+            const isRequester = (entry: { userId: string; rank?: number }) =>
+                (requesterRank > 0 && entry.rank === requesterRank)
+                || Boolean(entry.userId && entry.userId === requesterId);
+            const board = standings
+                .slice(0, 10)
                 .map((entry, index) => {
                     const name = entry.displayName || entry.username || `User ${index + 1}`;
-                    const highlight = entry.userId && entry.userId === requesterId;
-                    const label = highlight ? `**${name}**` : name;
-                    return `${rankMedal(index + 1)} ${label} — ${Number(entry.points || 0).toLocaleString()}`;
+                    const label = isRequester(entry) ? `**${name}**` : name;
+                    return `${rankMedal(entry.rank || index + 1)} ${label} — ${Number(entry.lifetimePoints || 0).toLocaleString()}`;
                 })
                 .join('\n');
 
             await reply(board, {
                 title: `${DISCORD_LEADERBOARD_ICON} Points leaderboard`,
                 color: DISCORD_POINTS_COLOR,
-                fields: requesterIndex >= 10
+                fields: requesterRank > 10
                     ? [{
                         name: 'Your standing',
-                        value: `#${requesterIndex + 1} of ${standings.length} — ${Number(standings[requesterIndex].points || 0).toLocaleString()} points`,
+                        value: `#${requesterRank} of ${standings.length} — ${Number(requesterBalance?.lifetimePoints || 0).toLocaleString()} lifetime`,
                         inline: false,
                     }]
                     : undefined,
