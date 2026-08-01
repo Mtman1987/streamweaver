@@ -70,6 +70,22 @@ export async function getWebhookForChannel(channelId: string): Promise<WebhookDa
   return webhooks[channelId] || null;
 }
 
+export async function editWebhookMessage(
+  channelId: string,
+  messageId: string,
+  body: { content?: string; embeds?: Record<string, unknown>[] },
+): Promise<boolean> {
+  const webhook = await getWebhookForChannel(channelId);
+  if (!webhook) return false;
+
+  const response = await fetch(`${webhook.url}/messages/${messageId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return response.ok;
+}
+
 export async function sendWebhookMessage(channelId: string, message: string, username?: string, avatarUrl?: string, embeds?: Record<string, unknown>[]): Promise<SentWebhookMessage | null> {
   let webhook = await getWebhookForChannel(channelId);
   

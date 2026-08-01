@@ -326,7 +326,12 @@ async function routeDiscordCommandThroughTwitchRuntime(msg: any, tenantId?: stri
         userId: msg.author?.id || msg.userId || msg.user_id,
         username,
         displayName: msg.author?.globalName || msg.author?.global_name || username,
-        userAvatarUrl: msg.author?.avatarUrl || msg.author?.displayAvatarURL || msg.userAvatar || msg.avatarUrl || msg.avatar_url,
+        userAvatarUrl: msg.author?.avatarUrl
+            || msg.author?.displayAvatarURL
+            || msg.userAvatar
+            || msg.avatarUrl
+            || msg.avatar_url
+            || buildDiscordUserAvatarUrl(msg.author?.id || msg.userId || msg.user_id, msg.author?.avatar),
         messageId: msg.messageId || msg.message_id,
         messageContent: actualMessage,
         speakerMode: 'command',

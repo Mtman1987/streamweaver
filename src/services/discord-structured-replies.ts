@@ -33,6 +33,9 @@ export type StructuredDiscordReplyInput = {
   color?: number;
   fields?: Array<{ name: string; value: string; inline?: boolean }>;
   components?: Record<string, unknown>[];
+  // Extra embeds sharing the main embed's `url` render as a single image gallery.
+  extraEmbeds?: Record<string, unknown>[];
+  embedUrl?: string;
 };
 
 let rotatingSpeakerIndex = 0;
@@ -132,7 +135,10 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   });
   return {
     content: '',
-    embeds: [embed],
+    embeds: [
+      input.embedUrl ? { ...embed, url: input.embedUrl } : embed,
+      ...(input.extraEmbeds || []),
+    ],
     username: webhookIdentity.username,
     deleteAt,
     speaker,
