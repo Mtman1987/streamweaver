@@ -16,7 +16,7 @@ import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, is
 import { handleLeaderboardCommand } from './leaderboard-commands';
 import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
-import { getPoints, getPointBalance, setPoints } from './points';
+import { getPoints, getPointBalance, setPoints, settleWager } from './points';
 import { getAIConfig } from './ai-provider';
 import { getBotName } from '../lib/bot-settings-store';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
@@ -97,6 +97,20 @@ type DiscordDispatchOptions = {
     skipTwitchBridge?: boolean;
     replyMode?: 'structured' | 'bot';
 };
+
+// Gamble handlers report the net change, while the wallet settles stake vs payout:
+// a 500 stake returning +250 profit is a 500 wager with a 750 payout.
+async function settleWagerResult(
+    username: string,
+    result: { betAmount: string; change: string; newTotal: string },
+    eventType: 'gamble' | 'roll' | 'double',
+    ctx?: StorageContext,
+) {
+    const wager = BigInt(result.betAmount || '0');
+    const change = BigInt(result.change || '0');
+    const payout = wager + change > 0n ? wager + change : 0n;
+    await settleWager(username, { wager, payout, newTotal: result.newTotal, eventType }, ctx);
+}
 
 function parseTimeoutDuration(input: string | undefined): { seconds: number; consumed: boolean } {
     const raw = String(input || '').trim().toLowerCase();
@@ -3035,7 +3049,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const userPoints = await getPointBalance(actualUsername, tenantCtx);
             const result = await handleClassicGamble(actualUsername, betInput, userPoints, tenantId);
             if (result) {
-                await setPoints(actualUsername, result.newTotal, tenantCtx);
+                await settleWagerResult(actualUsername, result, 'gamble', tenantCtx);
             }
             return;
         }
@@ -3045,7 +3059,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const userPoints = await getPointBalance(actualUsername, tenantCtx);
             const result = await handleClassicGamble(actualUsername, '', userPoints, tenantId);
             if (result) {
-                await setPoints(actualUsername, result.newTotal, tenantCtx);
+                await settleWagerResult(actualUsername, result, 'gamble', tenantCtx);
             }
             return;
         }
@@ -3058,7 +3072,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const userPoints = await getPointBalance(actualUsername, tenantCtx);
             const result = await handleRoll(actualUsername, betInput, userPoints, tenantId);
             if (result) {
-                await setPoints(actualUsername, result.newTotal, tenantCtx);
+                await settleWagerResult(actualUsername, result, 'roll', tenantCtx);
                 // Store double-or-nothing state (30 second window)
                 const doubleState = { username: actualUsername, wager: result.change.startsWith('-') ? result.change.slice(1) : result.change || betInput, expires: Date.now() + 30000 };
                 if (!(global as any).doubleOrNothingStates) (global as any).doubleOrNothingStates = new Map();
@@ -3079,7 +3093,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const userPoints = await getPointBalance(actualUsername, tenantCtx);
             const result = await handleDouble(actualUsername, doubleState.wager, userPoints, tenantId);
             if (result) {
-                await setPoints(actualUsername, result.newTotal, tenantCtx);
+                await settleWagerResult(actualUsername, result, 'double', tenantCtx);
             }
             
             states?.delete(actualUsername.toLowerCase());

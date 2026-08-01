@@ -199,6 +199,56 @@ export async function setDiscordStreamHubPoints(payload: DiscordStreamHubPointsS
   };
 }
 
+/**
+ * Settles a wager against the canonical SPMT wallet: the stake leaves spendable
+ * XP, a win refills spendable up to lifetime, and anything above that ceiling is
+ * compressed 10:1 before it can raise the lifetime rank.
+ */
+export async function settleDiscordStreamHubGamble(payload: {
+  wager: number;
+  payout: number;
+  idempotencyKey: string;
+  eventType?: string;
+  userId?: string;
+  username?: string;
+  displayName?: string;
+  serverId?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{
+  points: number;
+  currentPoints: number;
+  lifetimePoints: number;
+  rank: number | null;
+  duplicate: boolean;
+  source: 'spmt' | 'legacy';
+}> {
+  const context = getDiscordPointsContext();
+  const data = await postDiscordStreamHub<{
+    points?: number;
+    currentPoints?: number;
+    lifetimePoints?: number;
+    rank?: number | null;
+    duplicate?: boolean;
+    source?: 'spmt' | 'legacy';
+  }>('/api/points/gamble-settle', {
+    ...payload,
+    userId: payload.userId || context?.userId,
+    username: payload.username || context?.username,
+    displayName: payload.displayName || context?.displayName,
+    serverId: payload.serverId || context?.guildId,
+  });
+
+  const points = Number(data.points || 0);
+  return {
+    points,
+    currentPoints: Number(data.currentPoints ?? points),
+    lifetimePoints: Number(data.lifetimePoints ?? points),
+    rank: data.rank ?? null,
+    duplicate: Boolean(data.duplicate),
+    source: data.source === 'legacy' ? 'legacy' : 'spmt',
+  };
+}
+
 export async function addDiscordStreamHubPointsToAll(payload: { points: number; serverId?: string }): Promise<{
   count: number;
 }> {
