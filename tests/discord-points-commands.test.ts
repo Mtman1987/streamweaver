@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-type SentDiscordMessage = { channelId: string; content: string };
+type SentDiscordMessage = { channelId: string; content: string; embeds: any[] };
 
 async function withDispatcher(
   run: (ctx: {
@@ -39,8 +39,9 @@ async function withDispatcher(
     if (url.includes('/api/points/leaderboard')) {
       dshCalls.push('leaderboard');
       return json([
-        { userProfileId: '1', points: 20, lastEventMetadata: { displayName: 'First' } },
-        { userProfileId: '2', points: 10, lastEventMetadata: { displayName: 'Second' } },
+        { userProfileId: '1', points: 20000, lastEventMetadata: { displayName: 'First' } },
+        { userProfileId: '2', points: 14000, lastEventMetadata: { displayName: 'Second' } },
+        { userProfileId: '999999999999999999', points: 13691, lastEventMetadata: { displayName: 'viewer' } },
       ]);
     }
     if (url.includes('/api/admin/access')) {
@@ -52,13 +53,13 @@ async function withDispatcher(
     }
     if (url.includes('discord.com/api/webhooks/')) {
       const body = JSON.parse(String(init.body || '{}'));
-      sent.push({ channelId: '1463633163673927732', content: String(body.content || '') });
+      sent.push({ channelId: '1463633163673927732', content: String(body.content || ''), embeds: body.embeds || [] });
       return json({ id: 'webhook-message' });
     }
     if (url.includes('discord.com/api')) {
       const channelId = url.match(/channels\/(\d+)/)?.[1] || '';
       const body = JSON.parse(String(init.body || '{}'));
-      sent.push({ channelId, content: String(body.content || '') });
+      sent.push({ channelId, content: String(body.content || ''), embeds: body.embeds || [] });
       return json({ id: `${Date.now()}` });
     }
     return json({});
@@ -88,16 +89,49 @@ test('!points answers in Discord without an admin lookup', async () => {
     assert.equal(result.commandHandled, true);
     assert.equal(dshCalls.includes('balance'), true);
     assert.equal(dshCalls.includes('admin-access'), false);
-    assert.match(sent.at(-1)?.content || '', /13,691 points/);
+    assert.match(sent.map((entry) => entry.content).join('\n'), /13,691/);
   });
 });
 
-test('!pleader answers with the Discord points leaderboard', async () => {
+const lastEmbed = (sent: SentDiscordMessage[]) =>
+  [...sent].reverse().find((entry) => entry.embeds?.length)?.embeds[0];
+
+test('!points embed shows rank, total and the gap to the next rank', async () => {
+  await withDispatcher(async ({ handleDiscordMessage, sent }) => {
+    await handleDiscordMessage(baseMessage('!points'), 'tenant-a');
+
+    const embed = lastEmbed(sent);
+    assert.ok(embed, 'expected an embed reply');
+    assert.match(String(embed.title), /viewer/);
+    const fields = Object.fromEntries((embed.fields || []).map((f: any) => [f.name, f.value]));
+    assert.match(fields.Rank, /#3 of 3/);
+    assert.equal(fields.Points, '13,691');
+    assert.match(fields['To next rank'], /309 behind Second/);
+  });
+});
+
+test('!pleader answers with a ranked leaderboard highlighting the requester', async () => {
   await withDispatcher(async ({ handleDiscordMessage, sent, dshCalls }) => {
-    const result = await handleDiscordMessage(baseMessage('!pleader'), 'tenant-a', { replyMode: 'bot' });
+    const result = await handleDiscordMessage(baseMessage('!pleader'), 'tenant-a');
 
     assert.equal(result.commandHandled, true);
     assert.equal(dshCalls.includes('leaderboard'), true);
-    assert.match(sent.at(-1)?.content || '', /#1 First 20/);
+    const description = String(lastEmbed(sent)?.description || '');
+    assert.match(description, /🥇 First — 20,000/);
+    assert.match(description, /🥉 \*\*viewer\*\* — 13,691/);
+  });
+});
+
+test('embed footer uses the requester avatar and falls back to the StreamWeaver logo thumbnail', async () => {
+  await withDispatcher(async ({ handleDiscordMessage, sent }) => {
+    await handleDiscordMessage({
+      ...baseMessage('!points'),
+      author: { id: '999999999999999999', username: 'viewer', bot: false, avatar: 'abc123' },
+    }, 'tenant-a');
+
+    const embed = lastEmbed(sent);
+    assert.ok(embed, 'expected an embed reply');
+    assert.equal(embed.footer.icon_url, 'https://cdn.discordapp.com/avatars/999999999999999999/abc123.png?size=128');
+    assert.match(String(embed.thumbnail.url), /StreamWeaver\.png$/);
   });
 });

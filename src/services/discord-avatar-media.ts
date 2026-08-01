@@ -15,6 +15,11 @@ function sourceCandidates(tenantId?: string): string[] {
   ];
 }
 
+export function hasTenantOwnAvatar(tenantId?: string): boolean {
+  if (!tenantId) return false;
+  return existsSync(tenantPath(tenantId, 'data/avatars/idle.gif'));
+}
+
 function findSource(tenantId?: string): string | null {
   return sourceCandidates(tenantId).find((candidate) => existsSync(candidate)) || null;
 }
