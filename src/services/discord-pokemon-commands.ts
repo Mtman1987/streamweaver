@@ -9,6 +9,8 @@ import {
   resolveDiscordStreamHubTwitchIdentity,
 } from './discord-stream-hub';
 import { sendStructuredDiscordReply } from './discord-structured-replies';
+import { sendAnimatedPackReveal } from './discord-pack-reveal';
+import { buildDiscordUserAvatarUrl } from './discord-branding';
 import {
   createDiscordPokemonTrade,
   discordPokemonTradeComponents,
@@ -23,7 +25,15 @@ function messageUser(msg: any) {
   return {
     discordId: String(user.id || msg.userId || msg.user_id || '').trim(),
     discordName: String(user.globalName || user.global_name || user.username || 'Discord User').trim(),
-    avatarUrl: String(user.avatarUrl || user.displayAvatarURL || msg.userAvatar || msg.avatarUrl || msg.avatar_url || '').trim(),
+    avatarUrl: String(
+      user.avatarUrl
+      || user.displayAvatarURL
+      || msg.userAvatar
+      || msg.avatarUrl
+      || msg.avatar_url
+      || buildDiscordUserAvatarUrl(user.id || msg.userId || msg.user_id, user.avatar)
+      || '',
+    ).trim(),
   };
 }
 
@@ -144,20 +154,22 @@ export async function handleDiscordPokemonCommand(msg: any, tenantId?: string): 
 
     const allCards = await getUserCards(pokemonUser);
     const feature = [...result.pack].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0];
-    await reply(
-      result.pack.map((card: any, index: number) =>
-        `**${index + 1}. ${card.name}** • ${card.setCode}-${card.number} • ${card.rarity || 'Common'}`
-      ).join('\n'),
-      {
-        responseType: 'Pack Opened',
-        title: `${result.setName} • 9-Card Pack`,
-        imageUrl: feature?.imageUrl,
-        fields: [
-          { name: 'Collection', value: `${allCards.length} total cards`, inline: true },
-          { name: 'Cost', value: pointCost ? `${pointCost.toLocaleString()} points` : 'Free', inline: true },
-        ],
-      },
-    );
+    await sendAnimatedPackReveal({
+      channelId,
+      tenantId,
+      cards: result.pack,
+      featureCard: feature,
+      responseType: 'Pack Opened',
+      title: `${result.setName} • 9-Card Pack`,
+      sourceMessageId,
+      sourceMessage,
+      sourceUser: user.discordName,
+      sourceUserAvatarUrl: user.avatarUrl,
+      fields: [
+        { name: 'Collection', value: `${allCards.length} total cards`, inline: true },
+        { name: 'Cost', value: pointCost ? `${pointCost.toLocaleString()} points` : 'Free', inline: true },
+      ],
+    });
     return true;
   }
 
@@ -226,16 +238,18 @@ export async function handleDiscordPokemonCommand(msg: any, tenantId?: string): 
       return true;
     }
     const feature = [...result.pack].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0];
-    await reply(
-      result.pack.map((card: any, index: number) =>
-        `**${index + 1}. ${card.name}** • ${card.setCode}-${card.number} • ${card.rarity || 'Common'}`
-      ).join('\n'),
-      {
-        responseType: 'Eevee Pack Opened',
-        title: 'Eevee Booster • 9 Cards',
-        imageUrl: feature?.imageUrl,
-      },
-    );
+    await sendAnimatedPackReveal({
+      channelId,
+      tenantId,
+      cards: result.pack,
+      featureCard: feature,
+      responseType: 'Eevee Pack Opened',
+      title: 'Eevee Booster • 9 Cards',
+      sourceMessageId,
+      sourceMessage,
+      sourceUser: user.discordName,
+      sourceUserAvatarUrl: user.avatarUrl,
+    });
     return true;
   }
 
