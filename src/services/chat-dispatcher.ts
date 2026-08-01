@@ -744,7 +744,10 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             console.error('[Discord Dispatcher] Failed to send command reply:', error);
         });
     };
-    const isMod = await hasEffectiveDiscordModAccess(msg);
+    // Resolved lazily: public commands must not wait on (or fail because of) the
+    // DiscordStreamHub admin lookup.
+    let modAccess: Promise<boolean> | undefined;
+    const resolveIsMod = () => (modAccess ||= hasEffectiveDiscordModAccess(msg));
     const discordServerId = msg.guildId || msg.guild_id;
 
     if (/^!say(?:\s|$)/i.test(actualMessage)) {
@@ -755,7 +758,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         const sayUsers = await readSayUsers();
 
         if (!targetToken || targetToken.toLowerCase() === 'all') {
-            if (!isMod) {
+            if (!await resolveIsMod()) {
                 await reply(`@${actualUsername}, only mods can change !say for everyone.`);
                 return true;
             }
@@ -772,7 +775,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             return true;
         }
         const isSelf = targetUserId === (msg.author?.id || msg.userId || '');
-        if (!isSelf && !isMod) {
+        if (!isSelf && !await resolveIsMod()) {
             await reply(`@${actualUsername}, only mods can change !say for another user.`);
             return true;
         }
@@ -828,13 +831,39 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     }
 
     if (actualMessage.toLowerCase() === '!admin') {
-        await reply(buildDiscordAdminCommandsSummary({ isMod }));
+        await reply(buildDiscordAdminCommandsSummary({ isMod: await resolveIsMod() }));
         return true;
     }
 
     if (/^!points(?:\s|$)/i.test(actualMessage)) {
-        msg.content = actualMessage.replace(/^!points/i, '!pleader');
-        return routeDiscordCommandThroughTwitchRuntime(msg, tenantId);
+        const mentionTarget = parseDiscordCommandTarget(msg, actualMessage.slice('!points'.length).trim());
+        const targetUserId = mentionTarget?.userId || msg.author?.id || msg.userId || msg.user_id;
+        const targetName = mentionTarget?.displayName || mentionTarget?.username || actualUsername;
+        try {
+            const balance = await getDiscordStreamHubPoints({
+                userId: targetUserId,
+                username: mentionTarget?.username || actualUsername,
+                displayName: targetName,
+                serverId: discordServerId,
+            });
+            const rankText = balance.rank ? ` | Rank #${balance.rank}` : '';
+            await reply(`@${targetName} has ${Number(balance.points || 0).toLocaleString()} points${rankText}!`);
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !points failed:', error);
+            await reply(`@${actualUsername}, I couldn't load Discord points right now.`);
+        }
+        return true;
+    }
+
+    if (cmdName === 'pleader' || cmdName === 'leader') {
+        try {
+            const entries = await getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 10 });
+            await reply(formatDiscordLeaderboard(entries, 'No Discord points have been recorded yet.'));
+        } catch (error: any) {
+            console.error(`[Discord Dispatcher] !${cmdName} failed:`, error);
+            await reply(`@${actualUsername}, I couldn't load the Discord points leaderboard right now.`);
+        }
+        return true;
     }
 
     if (actualMessage.toLowerCase() === '!watchtime' || actualMessage.toLowerCase() === '!watch time') {
@@ -913,7 +942,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     }
 
     if (cmdName === 'timeout') {
-        if (!isMod) {
+        if (!await resolveIsMod()) {
             await reply(`@${actualUsername}, only mods can use !timeout.`);
             return true;
         }
