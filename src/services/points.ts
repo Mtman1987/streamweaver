@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 import { getChatOutputContext } from './chat-output-context';
 import {
@@ -5,6 +6,7 @@ import {
   getDiscordStreamHubPoints,
   setDiscordStreamHubPoints,
   setDiscordStreamHubPointsToAll,
+  settleDiscordStreamHubGamble,
 } from './discord-stream-hub';
 
 const POINTS_FILE = 'points.json';
@@ -208,6 +210,36 @@ export async function getPointBalance(userId: string, ctx?: StorageContext): Pro
   const store = await loadPoints(ctx);
   const entry = store[userId.toLowerCase()];
   return normalizeStoredPointAmount(entry?.points ?? 0);
+}
+
+/**
+ * Applies a wager outcome. In Discord the canonical SPMT wallet settles it, so a
+ * jackpot refills spendable XP up to the lifetime ceiling instead of writing a
+ * new total straight into the leaderboard.
+ */
+export async function settleWager(
+  userId: string,
+  input: { wager: PointAmount; payout: PointAmount; newTotal: PointAmount; eventType?: string },
+  ctx?: StorageContext,
+): Promise<{ points: number; currentPoints: number; lifetimePoints: number }> {
+  const discordContext = getDiscordOutputContext();
+  if (discordContext && !ctx) {
+    const settlement = await settleDiscordStreamHubGamble({
+      wager: Number(parsePointAmount(input.wager)),
+      payout: Number(parsePointAmount(input.payout)),
+      idempotencyKey: `streamweaver:${discordContext.userId}:${randomUUID()}`,
+      eventType: input.eventType || 'gamble',
+      metadata: { surface: 'discord', command: input.eventType || 'gamble' },
+    });
+    return {
+      points: settlement.points,
+      currentPoints: settlement.currentPoints,
+      lifetimePoints: settlement.lifetimePoints,
+    };
+  }
+
+  const updated = await setPoints(userId, input.newTotal, ctx);
+  return { points: updated.points, currentPoints: updated.points, lifetimePoints: updated.points };
 }
 
 export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {

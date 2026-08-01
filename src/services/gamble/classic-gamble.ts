@@ -160,6 +160,7 @@ interface GambleResult {
 interface RollResult {
   roll: number;
   outcome: string;
+  betAmount: string;
   change: string;
   newTotal: string;
   changeDisplay: string;
@@ -170,6 +171,7 @@ interface RollResult {
 interface DoubleResult {
   roll: number;
   won: boolean;
+  betAmount: string;
   change: string;
   newTotal: string;
   changeDisplay: string;
@@ -395,6 +397,7 @@ export async function handleRoll(
   const result: RollResult = {
     roll,
     outcome,
+    betAmount: betAmount.toString(),
     change: change.toString(),
     newTotal: newTotal.toString(),
     changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change, settings)}`,
@@ -447,6 +450,7 @@ export async function handleDouble(
   const result: DoubleResult = {
     roll,
     won,
+    betAmount: doubleWager.toString(),
     change: change.toString(),
     newTotal: newTotal.toString(),
     changeDisplay: `${change > 0n ? '+' : ''}${formatNumber(change, settings)}`,
