@@ -5,7 +5,7 @@ import { listTenants } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getDiscordMediaPublicPath } from '@/lib/discord-media-store';
 import { getTwitchUser } from './twitch';
-import { getDiscordAvatarVersion } from './discord-avatar-media';
+import { getDiscordAvatarVersion, hasTenantOwnAvatar } from './discord-avatar-media';
 
 const STREAMWEAVER_BRAND_NAME = 'StreamWeaver';
 const DISCORD_BOT_PROFILE_CACHE_MS = 60 * 60 * 1000;
@@ -89,6 +89,28 @@ function getConfiguredDiscordEmbedMediaUrl(tenantId?: string, slot: DiscordMedia
     }
     if (configured) return configured;
     return '';
+}
+
+export async function resolveDiscordBotThumbnailUrl(tenantId?: string): Promise<string> {
+    if (hasTenantOwnAvatar(tenantId)) return buildBotAvatarUrl(tenantId);
+
+    const config = readUserConfigSync(tenantId);
+    const tokens = (await getStoredTokens(tenantId).catch(() => null)) as Record<string, unknown> | null;
+    const configured = firstUrl(
+        tokens?.botAvatarUrl,
+        tokens?.botProfileImageUrl,
+        config.TWITCH_BOT_AVATAR_GIF_URL,
+        config.TWITCH_BOT_AVATAR_URL,
+        config.BOT_AVATAR_URL,
+    );
+    return configured || buildStreamWeaverLogoUrl();
+}
+
+export function buildDiscordUserAvatarUrl(userId?: string, avatarHash?: unknown): string {
+    const id = String(userId || '').trim();
+    const hash = String(avatarHash || '').trim();
+    if (!id || !hash) return '';
+    return `https://cdn.discordapp.com/avatars/${id}/${hash}.${hash.startsWith('a_') ? 'gif' : 'png'}?size=128`;
 }
 
 export function buildStreamWeaverLogoUrl(): string {
@@ -251,12 +273,14 @@ export async function buildDiscordBotEmbed(input: {
     mediaSlot?: DiscordMediaSlot;
     includeConfiguredMedia?: boolean;
     imageUrl?: string;
+    thumbnailUrl?: string;
+    color?: number;
     fields?: Array<{ name: string; value: string; inline?: boolean }>;
 }): Promise<DiscordBotEmbed> {
     const resolvedTenantId = input.tenantId || await resolveTenantByBotName(input.botName);
     const owner = await getTenantOwnerBranding(resolvedTenantId, input.botName);
     const defaultBotName = input.botName || getBotName(resolvedTenantId);
-    const avatarMediaUrl = buildBotAvatarUrl(resolvedTenantId);
+    const avatarMediaUrl = await resolveDiscordBotThumbnailUrl(resolvedTenantId);
     const configuredMediaUrl = input.includeConfiguredMedia
         ? getConfiguredDiscordEmbedMediaUrl(resolvedTenantId, input.mediaSlot)
         : '';
@@ -294,7 +318,7 @@ export async function buildDiscordBotEmbed(input: {
     return {
         title,
         description: input.description,
-        thumbnail: { url: avatarMediaUrl },
+        thumbnail: { url: firstUrl(input.thumbnailUrl) || avatarMediaUrl },
         ...(embedMediaUrl ? { image: { url: embedMediaUrl } } : {}),
         ...(fields.length ? { fields } : {}),
         author: {
@@ -306,7 +330,7 @@ export async function buildDiscordBotEmbed(input: {
             text: input.footerText || footerParts.join(' • '),
             icon_url: firstUrl(input.sourceUserAvatarUrl) || buildStreamWeaverLogoUrl(),
         },
-        color: 0x5865F2,
+        color: input.color ?? 0x5865F2,
         timestamp: new Date().toISOString(),
     };
 }

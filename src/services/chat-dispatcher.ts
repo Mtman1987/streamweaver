@@ -2,6 +2,7 @@ import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
 import { deleteMessage, sendDiscordEmbed, sendDiscordMessage, uploadBinaryFileToDiscord } from './discord';
+import { buildDiscordUserAvatarUrl } from './discord-branding';
 import { sendChatMessage } from './twitch';
 import { getKickService } from './kick';
 import { addPoints, awardChatPoints, formatCompactPointAmount } from './points';
@@ -150,7 +151,25 @@ function formatDiscordActivityLeaderboard(entries: Array<{
         .join(' | ');
 }
 
-function parseDiscordCommandTarget(msg: any, rawTarget: string): { userId: string; username?: string; displayName?: string } | null {
+type DiscordCommandEmbedOptions = {
+    title?: string;
+    thumbnailUrl?: string;
+    color?: number;
+    fields?: Array<{ name: string; value: string; inline?: boolean }>;
+};
+
+const DISCORD_POINTS_COLOR = 0xF5A524;
+const DISCORD_POINTS_ICON = '💠';
+const DISCORD_LEADERBOARD_ICON = '🏆';
+
+function rankMedal(rank: number): string {
+    if (rank === 1) return '🥇';
+    if (rank === 2) return '🥈';
+    if (rank === 3) return '🥉';
+    return `\`#${String(rank).padStart(2, ' ')}\``;
+}
+
+function parseDiscordCommandTarget(msg: any, rawTarget: string): { userId: string; username?: string; displayName?: string; avatarUrl?: string } | null {
     const target = String(rawTarget || '').trim();
     const mentionMatch = target.match(/^<@!?(\d+)>$/);
     if (!mentionMatch) return null;
@@ -172,10 +191,14 @@ function parseDiscordCommandTarget(msg: any, rawTarget: string): { userId: strin
 
     const user = readMention(mentionsUsers);
     const member = readMention(mentionsMembers);
+    const avatarHash = user?.avatar || member?.user?.avatar;
     return {
         userId: targetId,
         username: user?.username || member?.user?.username,
         displayName: user?.globalName || user?.global_name || member?.displayName || member?.nick || user?.username,
+        avatarUrl: (typeof user?.avatarUrl === 'string' && user.avatarUrl)
+            || buildDiscordUserAvatarUrl(targetId, avatarHash)
+            || undefined,
     };
 }
 
@@ -718,13 +741,14 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         msg.userAvatar ||
         msg.avatarUrl ||
         msg.avatar_url ||
+        buildDiscordUserAvatarUrl(msg.author?.id || msg.userId || msg.user_id, msg.author?.avatar || msg.member?.user?.avatar) ||
         '',
     ).trim();
     const cmdName = actualMessage.slice(1).split(/\s+/)[0]?.toLowerCase() || '';
     if (!cmdName) return false;
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
-    const reply = (message: string) => {
+    const reply = (message: string, embed: DiscordCommandEmbedOptions = {}) => {
         if (options.replyMode === 'bot') {
             return sendDiscordMessage(sourceChannelId, message).catch((error) => {
                 console.error('[Discord Dispatcher] Failed to send bot command reply:', error);
@@ -740,6 +764,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             sourceUser: actualUsername,
             sourceUserAvatarUrl,
             isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
+            ...embed,
         }).catch((error) => {
             console.error('[Discord Dispatcher] Failed to send command reply:', error);
         });
@@ -840,14 +865,32 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         const targetUserId = mentionTarget?.userId || msg.author?.id || msg.userId || msg.user_id;
         const targetName = mentionTarget?.displayName || mentionTarget?.username || actualUsername;
         try {
-            const balance = await getDiscordStreamHubPoints({
-                userId: targetUserId,
-                username: mentionTarget?.username || actualUsername,
-                displayName: targetName,
-                serverId: discordServerId,
+            const [balance, standings] = await Promise.all([
+                getDiscordStreamHubPoints({
+                    userId: targetUserId,
+                    username: mentionTarget?.username || actualUsername,
+                    displayName: targetName,
+                    serverId: discordServerId,
+                }),
+                getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 }).catch(() => []),
+            ]);
+            const points = Number(balance.points || 0);
+            const standingIndex = standings.findIndex((entry) => entry.userId === String(targetUserId || ''));
+            const rank = standingIndex >= 0 ? standingIndex + 1 : Number(balance.rank || 0);
+            const ahead = standingIndex > 0 ? standings[standingIndex - 1] : undefined;
+            const gap = ahead ? Math.max(0, Number(ahead.points || 0) - points) : 0;
+
+            await reply(`**${points.toLocaleString()}** points`, {
+                title: `${DISCORD_POINTS_ICON} ${targetName}'s points`,
+                color: DISCORD_POINTS_COLOR,
+                fields: [
+                    { name: 'Rank', value: rank ? `${rankMedal(rank)} #${rank}${standingIndex >= 0 ? ` of ${standings.length}` : ''}` : 'Unranked', inline: true },
+                    { name: 'Points', value: points.toLocaleString(), inline: true },
+                    ...(ahead
+                        ? [{ name: 'To next rank', value: `${gap.toLocaleString()} behind ${ahead.displayName || ahead.username || `#${rank - 1}`}`, inline: true }]
+                        : rank === 1 ? [{ name: 'Standing', value: 'Top of the leaderboard', inline: true }] : []),
+                ],
             });
-            const rankText = balance.rank ? ` | Rank #${balance.rank}` : '';
-            await reply(`@${targetName} has ${Number(balance.points || 0).toLocaleString()} points${rankText}!`);
         } catch (error: any) {
             console.error('[Discord Dispatcher] !points failed:', error);
             await reply(`@${actualUsername}, I couldn't load Discord points right now.`);
@@ -856,9 +899,39 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     }
 
     if (cmdName === 'pleader' || cmdName === 'leader') {
+        const requesterId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
         try {
-            const entries = await getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 10 });
-            await reply(formatDiscordLeaderboard(entries, 'No Discord points have been recorded yet.'));
+            const standings = await getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 });
+            if (!standings.length) {
+                await reply('No Discord points have been recorded yet.', {
+                    title: `${DISCORD_LEADERBOARD_ICON} Points leaderboard`,
+                    color: DISCORD_POINTS_COLOR,
+                });
+                return true;
+            }
+
+            const top = standings.slice(0, 10);
+            const requesterIndex = standings.findIndex((entry) => entry.userId === requesterId);
+            const board = top
+                .map((entry, index) => {
+                    const name = entry.displayName || entry.username || `User ${index + 1}`;
+                    const highlight = entry.userId && entry.userId === requesterId;
+                    const label = highlight ? `**${name}**` : name;
+                    return `${rankMedal(index + 1)} ${label} — ${Number(entry.points || 0).toLocaleString()}`;
+                })
+                .join('\n');
+
+            await reply(board, {
+                title: `${DISCORD_LEADERBOARD_ICON} Points leaderboard`,
+                color: DISCORD_POINTS_COLOR,
+                fields: requesterIndex >= 10
+                    ? [{
+                        name: 'Your standing',
+                        value: `#${requesterIndex + 1} of ${standings.length} — ${Number(standings[requesterIndex].points || 0).toLocaleString()} points`,
+                        inline: false,
+                    }]
+                    : undefined,
+            });
         } catch (error: any) {
             console.error(`[Discord Dispatcher] !${cmdName} failed:`, error);
             await reply(`@${actualUsername}, I couldn't load the Discord points leaderboard right now.`);

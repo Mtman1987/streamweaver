@@ -29,6 +29,8 @@ export type StructuredDiscordReplyInput = {
   sourceUserAvatarUrl?: string;
   isPrivate?: boolean;
   imageUrl?: string;
+  thumbnailUrl?: string;
+  color?: number;
   fields?: Array<{ name: string; value: string; inline?: boolean }>;
   components?: Record<string, unknown>[];
 };
@@ -124,6 +126,8 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     sourceUserAvatarUrl: input.sourceUserAvatarUrl,
     deleteAt,
     imageUrl: input.imageUrl,
+    thumbnailUrl: input.thumbnailUrl,
+    color: input.color,
     fields: input.fields,
   });
   return {
