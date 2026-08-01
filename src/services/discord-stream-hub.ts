@@ -154,6 +154,8 @@ export function getDiscordPointsContext() {
 
 export async function getDiscordStreamHubPoints(payload?: Partial<DiscordStreamHubPointsPayload>): Promise<{
   points: number;
+  currentPoints: number;
+  lifetimePoints: number;
   rank?: number | null;
   username?: string;
   displayName?: string;
@@ -165,6 +167,8 @@ export async function getDiscordStreamHubPoints(payload?: Partial<DiscordStreamH
 
   const data = await postDiscordStreamHub<{
     points?: number;
+    currentPoints?: number;
+    lifetimePoints?: number;
     rank?: number | null;
     username?: string;
     displayName?: string;
@@ -175,8 +179,11 @@ export async function getDiscordStreamHubPoints(payload?: Partial<DiscordStreamH
     serverId: payload?.serverId || context?.guildId,
   });
 
+  const points = Number(data.points || 0);
   return {
-    points: Number(data.points || 0),
+    points,
+    currentPoints: Number(data.currentPoints ?? points),
+    lifetimePoints: Number(data.lifetimePoints ?? points),
     rank: data.rank ?? null,
     username: data.username,
     displayName: data.displayName,
@@ -386,13 +393,19 @@ export async function getDiscordStreamHubActivitySummary(payload: DiscordStreamH
 export async function getDiscordStreamHubPointsLeaderboard(payload: { serverId?: string; limit?: number }): Promise<Array<{
   userId: string;
   points: number;
+  currentPoints: number;
+  lifetimePoints: number;
+  rank?: number;
   username?: string;
   displayName?: string;
 }>> {
   const data = await getDiscordStreamHub<Array<{
     id?: string;
     userProfileId?: string;
+    rank?: number;
     points?: number;
+    currentPoints?: number;
+    lifetimePoints?: number;
     lastEventMetadata?: Record<string, unknown> | null;
   }>>('/api/points/leaderboard', {
     serverId: payload.serverId,
@@ -400,9 +413,12 @@ export async function getDiscordStreamHubPointsLeaderboard(payload: { serverId?:
   });
 
   return Array.isArray(data)
-    ? data.map((entry) => ({
+    ? data.map((entry, index) => ({
         userId: String(entry.userProfileId || entry.id || ''),
         points: Number(entry.points || 0),
+        currentPoints: Number(entry.currentPoints ?? entry.points ?? 0),
+        lifetimePoints: Number(entry.lifetimePoints ?? entry.points ?? 0),
+        rank: Number(entry.rank || index + 1),
         username: typeof entry.lastEventMetadata?.username === 'string' ? entry.lastEventMetadata.username : undefined,
         displayName: typeof entry.lastEventMetadata?.displayName === 'string' ? entry.lastEventMetadata.displayName : undefined,
       }))

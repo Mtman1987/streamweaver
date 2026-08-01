@@ -34,14 +34,22 @@ async function withDispatcher(
 
     if (url.includes('/api/points/balance')) {
       dshCalls.push('balance');
-      return json({ points: 13691, rank: 14, username: 'mtman1987', displayName: 'mtman1987' });
+      return json({
+        points: 9_200,
+        currentPoints: 9_200,
+        lifetimePoints: 13_691,
+        rank: 3,
+        source: 'spmt',
+        username: 'mtman1987',
+        displayName: 'mtman1987',
+      });
     }
     if (url.includes('/api/points/leaderboard')) {
       dshCalls.push('leaderboard');
       return json([
-        { userProfileId: '1', points: 20000, lastEventMetadata: { displayName: 'First' } },
-        { userProfileId: '2', points: 14000, lastEventMetadata: { displayName: 'Second' } },
-        { userProfileId: '999999999999999999', points: 13691, lastEventMetadata: { displayName: 'viewer' } },
+        { userProfileId: 'spmt-1', rank: 1, points: 20000, currentPoints: 18000, lifetimePoints: 20000, lastEventMetadata: { displayName: 'First' } },
+        { userProfileId: 'spmt-2', rank: 2, points: 14000, currentPoints: 500, lifetimePoints: 14000, lastEventMetadata: { displayName: 'Second' } },
+        { userProfileId: 'spmt-3', rank: 3, points: 13691, currentPoints: 9200, lifetimePoints: 13691, lastEventMetadata: { displayName: 'viewer' } },
       ]);
     }
     if (url.includes('/api/admin/access')) {
@@ -89,14 +97,14 @@ test('!points answers in Discord without an admin lookup', async () => {
     assert.equal(result.commandHandled, true);
     assert.equal(dshCalls.includes('balance'), true);
     assert.equal(dshCalls.includes('admin-access'), false);
-    assert.match(sent.map((entry) => entry.content).join('\n'), /13,691/);
+    assert.match(sent.map((entry) => entry.content).join('\n'), /9,200\*\* spendable/);
   });
 });
 
 const lastEmbed = (sent: SentDiscordMessage[]) =>
   [...sent].reverse().find((entry) => entry.embeds?.length)?.embeds[0];
 
-test('!points embed shows rank, total and the gap to the next rank', async () => {
+test('!points embed separates spendable from lifetime and ranks by lifetime', async () => {
   await withDispatcher(async ({ handleDiscordMessage, sent }) => {
     await handleDiscordMessage(baseMessage('!points'), 'tenant-a');
 
@@ -105,7 +113,8 @@ test('!points embed shows rank, total and the gap to the next rank', async () =>
     assert.match(String(embed.title), /viewer/);
     const fields = Object.fromEntries((embed.fields || []).map((f: any) => [f.name, f.value]));
     assert.match(fields.Rank, /#3 of 3/);
-    assert.equal(fields.Points, '13,691');
+    assert.equal(fields.Current, '9,200');
+    assert.equal(fields.Lifetime, '13,691');
     assert.match(fields['To next rank'], /309 behind Second/);
   });
 });
@@ -119,6 +128,7 @@ test('!pleader answers with a ranked leaderboard highlighting the requester', as
     const description = String(lastEmbed(sent)?.description || '');
     assert.match(description, /🥇 First — 20,000/);
     assert.match(description, /🥉 \*\*viewer\*\* — 13,691/);
+    assert.equal(description.includes('9,200'), false, 'the board ranks by lifetime, not spendable');
   });
 });
 
