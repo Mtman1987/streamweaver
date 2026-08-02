@@ -103,7 +103,7 @@ export async function resolveDiscordBotThumbnailUrl(tenantId?: string): Promise<
         config.TWITCH_BOT_AVATAR_URL,
         config.BOT_AVATAR_URL,
     );
-    return configured || buildStreamWeaverLogoUrl();
+    return configured || await getDiscordBotProfileAvatarUrl() || buildStreamWeaverLogoUrl();
 }
 
 export function buildDiscordUserAvatarUrl(userId?: string, avatarHash?: unknown): string {
@@ -322,13 +322,13 @@ export async function buildDiscordBotEmbed(input: {
         ...(embedMediaUrl ? { image: { url: embedMediaUrl } } : {}),
         ...(fields.length ? { fields } : {}),
         author: {
-            name: STREAMWEAVER_BRAND_NAME,
-            icon_url: buildStreamWeaverLogoUrl(),
-            url: input.authorUrl || buildTtsOverlayUrl(resolvedTenantId),
+            name: defaultBotName || owner.name || STREAMWEAVER_BRAND_NAME,
+            icon_url: avatarMediaUrl,
+            ...(input.authorUrl ? { url: input.authorUrl } : {}),
         },
         footer: {
             text: input.footerText || footerParts.join(' • '),
-            icon_url: firstUrl(input.sourceUserAvatarUrl) || buildStreamWeaverLogoUrl(),
+            icon_url: firstUrl(input.sourceUserAvatarUrl) || avatarMediaUrl,
         },
         color: input.color ?? 0x5865F2,
         timestamp: new Date().toISOString(),
@@ -337,8 +337,8 @@ export async function buildDiscordBotEmbed(input: {
 
 export function getDiscordBotWebhookIdentity(tenantId?: string, botName?: string) {
     return {
-        username: botName || getBotName(tenantId),
-        avatarUrl: '',
+        username: botName || getBotName(tenantId) || STREAMWEAVER_BRAND_NAME,
+        avatarUrl: hasTenantOwnAvatar(tenantId) ? buildBotAvatarUrl(tenantId) : '',
     };
 }
 

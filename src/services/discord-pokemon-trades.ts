@@ -156,6 +156,39 @@ export async function createDiscordPokemonTrade(input: {
   });
 }
 
+
+export async function getDiscordPokemonTrade(tradeId: string): Promise<DiscordPokemonTrade | null> {
+  const store = await readStore();
+  const trade = store.trades.find((entry) => entry.id === tradeId) || null;
+  return trade && active(trade) ? trade : null;
+}
+
+export async function getDiscordPokemonTradeCards(
+  tradeId: string,
+  actorDiscordId: string,
+  view: 'mine' | 'theirs',
+): Promise<{ trade: DiscordPokemonTrade; owner: DiscordPokemonTrade['initiator']; cards: TradeCard[] }> {
+  const trade = await getDiscordPokemonTrade(tradeId);
+  if (!trade) throw new Error('That trade is no longer active.');
+  const actor = participant(trade, actorDiscordId);
+  if (!actor) throw new Error('Only the two players in this trade can view these cards.');
+  const owner = view === 'mine'
+    ? actor
+    : actor.discordId === trade.initiator.discordId
+      ? trade.target
+      : trade.initiator;
+  const cards = (await getUserCards(owner.pokemonUser)).map((card: any, index: number) => ({
+    index,
+    name: String(card.name || 'Unknown card'),
+    number: String(card.number || ''),
+    setCode: String(card.setCode || ''),
+    rarity: String(card.rarity || 'Common'),
+    imageUrl: card.imageUrl,
+    openedAt: card.openedAt,
+  }));
+  return { trade, owner, cards };
+}
+
 export async function offerDiscordPokemonCard(
   discordId: string,
   identifier: string,
@@ -217,28 +250,51 @@ export async function actOnDiscordPokemonTrade(
 }
 
 export function formatDiscordPokemonTrade(trade: DiscordPokemonTrade): string {
-  const offer = (discordId: string) => {
-    const card = trade.offers[discordId];
-    return card ? `${card.name} (${card.setCode}-${card.number}) • ${card.rarity}` : 'No card selected';
+  const line = (person: DiscordPokemonTrade['initiator']) => {
+    const card = trade.offers[person.discordId];
+    const accepted = trade.acceptedBy.includes(person.discordId);
+    const indicator = accepted ? '🟢' : card ? '🟡' : '🔴';
+    const detail = card
+      ? `${card.name} (${card.setCode}-${card.number}) • ${card.rarity}`
+      : 'selecting a card';
+    return `${indicator} **${person.discordName}** — ${detail}${accepted ? ' • accepted' : ''}`;
   };
-  const accepted = (discordId: string) => trade.acceptedBy.includes(discordId) ? ' ✅ accepted' : '';
+
+  const instruction = trade.status === 'ready'
+    ? 'Both cards are selected. Each player must review and press **Accept Trade**.'
+    : 'Use **Choose My Card** to open your collection, then select an eligible card.';
+
   return [
-    `**${trade.initiator.discordName}** offers: ${offer(trade.initiator.discordId)}${accepted(trade.initiator.discordId)}`,
-    `**${trade.target.discordName}** offers: ${offer(trade.target.discordId)}${accepted(trade.target.discordId)}`,
+    line(trade.initiator),
+    line(trade.target),
     '',
-    trade.status === 'ready'
-      ? 'Review both cards, then each player must press **Accept**. Either player can decline.'
-      : 'Each player uses `!offer <collection # | set-number | card name>`.',
+    instruction,
+    `Trade expires <t:${Math.floor(Date.parse(trade.expiresAt) / 1000)}:R>.`,
   ].join('\n');
 }
 
 export function discordPokemonTradeComponents(trade: DiscordPokemonTrade) {
-  if (trade.status !== 'ready') return [];
-  return [{
-    type: 1,
-    components: [
-      { type: 2, style: 3, label: 'Accept Trade', custom_id: `sw_pokemon_trade_accept:${trade.id}` },
-      { type: 2, style: 4, label: 'Decline', custom_id: `sw_pokemon_trade_decline:${trade.id}` },
-    ],
-  }];
+  if (!['selecting', 'ready'].includes(trade.status)) return [];
+  return [
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 1, label: 'Choose My Card', custom_id: `sw_pokemon_trade_cards:${trade.id}:mine` },
+        { type: 2, style: 2, label: 'View Their Cards', custom_id: `sw_pokemon_trade_cards:${trade.id}:theirs` },
+      ],
+    },
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 3,
+          label: 'Accept Trade',
+          custom_id: `sw_pokemon_trade_accept:${trade.id}`,
+          disabled: trade.status !== 'ready',
+        },
+        { type: 2, style: 4, label: 'Decline', custom_id: `sw_pokemon_trade_decline:${trade.id}` },
+      ],
+    },
+  ];
 }

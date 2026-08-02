@@ -18,6 +18,8 @@ const DEFAULT_CONFIG = {
     },
     overlay: {
       url: 'https://spacemountain.live/?desktopOverlay=1',
+      socialUrl: 'https://streamweaver-new.fly.dev/overlay/social',
+      socialEnabled: true,
       visible: false,
       clickThrough: true,
       alwaysOnTop: true,

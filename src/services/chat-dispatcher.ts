@@ -42,12 +42,14 @@ import { sendDiscordCommandShoutout } from './discord-command-shoutout';
 import { resolveStructuredDiscordReplySpeaker, sendStructuredDiscordReply } from './discord-structured-replies';
 import {
     buildDiscordAdminCommandsSummary,
+    buildDiscordCommandDirectoryFields,
     buildDiscordCommandsSummary,
     DISCORD_ROUTED_COMMAND_NAMES,
     DISCORD_UNSUPPORTED_COMMAND_MESSAGES,
 } from './discord-command-catalog';
 import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
+import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
@@ -57,6 +59,9 @@ import {
     getDiscordStreamHubActivitySummary,
     getDiscordStreamHubPoints,
     getDiscordStreamHubPointsLeaderboard,
+    getDiscordStreamHubTenantPoints,
+    getDiscordStreamHubTenantActivity,
+    getDiscordStreamHubLeaderboardPost,
     lookupDiscordStreamHubTwitchTarget,
     resolveDiscordStreamHubTwitchIdentity,
     setDiscordStreamHubPoints,
@@ -167,9 +172,11 @@ function formatDiscordActivityLeaderboard(entries: Array<{
 
 type DiscordCommandEmbedOptions = {
     title?: string;
+    imageUrl?: string;
     thumbnailUrl?: string;
     color?: number;
     fields?: Array<{ name: string; value: string; inline?: boolean }>;
+    components?: Record<string, unknown>[];
 };
 
 const DISCORD_POINTS_COLOR = 0xF5A524;
@@ -249,7 +256,7 @@ const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
 
 const DISCORD_NATIVE_COMMAND_NAMES = new Set([
     ...DISCORD_NATIVE_SOCIAL_COMMANDS,
-    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip',
+    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip', 'leaderboard',
     'followers', 'uptime', 'stats',
     'timeout', 'raidmessage', 'mtfixit',
     'ignore',
@@ -870,7 +877,10 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     }
 
     if (actualMessage.toLowerCase() === '!commands') {
-        await reply(buildDiscordCommandsSummary());
+        await reply(buildDiscordCommandsSummary(), {
+            title: 'StreamWeaver Discord Commands',
+            fields: buildDiscordCommandDirectoryFields(),
+        });
         return true;
     }
 
@@ -884,36 +894,28 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         const targetUserId = mentionTarget?.userId || msg.author?.id || msg.userId || msg.user_id;
         const targetName = mentionTarget?.displayName || mentionTarget?.username || actualUsername;
         try {
-            const [balance, standings] = await Promise.all([
-                getDiscordStreamHubPoints({
-                    userId: targetUserId,
-                    username: mentionTarget?.username || actualUsername,
-                    displayName: targetName,
-                    serverId: discordServerId,
-                }),
-                getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 }).catch(() => []),
-            ]);
-            const current = Number(balance.currentPoints || 0);
-            const lifetime = Number(balance.lifetimePoints || 0);
-            const rank = Number(balance.rank || 0);
-            const ahead = rank > 1 ? standings.find((entry) => entry.rank === rank - 1) : undefined;
-            const gap = ahead ? Math.max(0, Number(ahead.lifetimePoints || 0) - lifetime) : 0;
-
-            await reply(`**${current.toLocaleString()}** spendable • **${lifetime.toLocaleString()}** lifetime`, {
-                title: `${DISCORD_POINTS_ICON} ${targetName}'s points`,
+            const balances = await getDiscordStreamHubTenantPoints({
+                userId: targetUserId,
+                username: mentionTarget?.username || actualUsername,
+                displayName: targetName,
+                serverId: discordServerId,
+            });
+            const rows = balances.tenants
+                .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.currentPoints - a.currentPoints)
+                .map((entry) => `${entry.isCurrent ? '★' : '•'} **${entry.tenantName}** — ${entry.currentPoints.toLocaleString()} current / ${entry.lifetimePoints.toLocaleString()} lifetime`)
+                .join('\n');
+            await reply(rows || 'No points have been recorded yet.', {
+                title: `${DISCORD_POINTS_ICON} ${targetName}'s StreamWeaver points`,
                 color: DISCORD_POINTS_COLOR,
                 fields: [
-                    { name: 'Rank', value: rank ? `${rankMedal(rank)} #${rank}${standings.length ? ` of ${standings.length}` : ''}` : 'Unranked', inline: true },
-                    { name: 'Current', value: current.toLocaleString(), inline: true },
-                    { name: 'Lifetime', value: lifetime.toLocaleString(), inline: true },
-                    ...(ahead
-                        ? [{ name: 'To next rank', value: `${gap.toLocaleString()} behind ${ahead.displayName || ahead.username || `#${rank - 1}`}`, inline: true }]
-                        : rank === 1 ? [{ name: 'Standing', value: 'Top of the leaderboard', inline: true }] : []),
+                    { name: 'Combined current', value: balances.totalCurrentPoints.toLocaleString(), inline: true },
+                    { name: 'Combined lifetime', value: balances.totalLifetimePoints.toLocaleString(), inline: true },
+                    { name: 'Communities', value: String(balances.tenants.length), inline: true },
                 ],
             });
         } catch (error: any) {
             console.error('[Discord Dispatcher] !points failed:', error);
-            await reply(`@${actualUsername}, I couldn't load Discord points right now.`);
+            await reply(`@${actualUsername}, I couldn't load StreamWeaver points right now.`);
         }
         return true;
     }
@@ -971,42 +973,52 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
 
     if (actualMessage.toLowerCase() === '!watchtime' || actualMessage.toLowerCase() === '!watch time') {
         try {
-            const result = await getDiscordStreamHubActivitySummary({
+            const activity = await getDiscordStreamHubTenantActivity({
                 userId: msg.author?.id || msg.userId || msg.user_id,
-                serverId: msg.guildId || msg.guild_id,
+                serverId: discordServerId,
             });
-            const summary = result.summary;
-            const hasActivity = summary && (
-                summary.messageCount > 0 ||
-                summary.voiceMinutes > 0 ||
-                summary.helpfulReactions > 0 ||
-                summary.streamAttendance > 0 ||
-                summary.activeDays > 0
-            );
-
-            if (!result.found || !summary || !hasActivity) {
-                await reply(`@${actualUsername}, no Discord activity has been tracked for you here yet.`);
-                return true;
-            }
-
-            const parts = [
-                `${summary.messageCount.toLocaleString()} messages`,
-                `${summary.activeDays.toLocaleString()} active days`,
-                `${formatDiscordActivityMinutes(summary.voiceMinutes)} voice time`,
-            ];
-            if (summary.helpfulReactions > 0) {
-                parts.push(`${summary.helpfulReactions.toLocaleString()} helpful reactions`);
-            }
-            if (summary.streamAttendance > 0) {
-                parts.push(`${summary.streamAttendance.toLocaleString()} stream check-ins`);
-            }
-
-            await reply(
-                `@${actualUsername}, Discord activity: ${parts.join(', ')}. First seen ${formatIsoDateLabel(summary.firstSeenAt)}; last seen ${formatIsoDateLabel(summary.lastSeenAt)}.`
-            );
+            const rows = activity.tenants
+                .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.watchMinutes - a.watchMinutes)
+                .map((entry) => `${entry.isCurrent ? '★' : '•'} **${entry.tenantName}** — ${formatDiscordActivityMinutes(entry.watchMinutes)}`)
+                .join('\n');
+            await reply(rows || 'No StreamWeaver watch activity has been recorded yet.', {
+                title: `⏱️ ${actualUsername}'s watchtime`,
+                fields: [
+                    { name: 'Total StreamWeaver time', value: formatDiscordActivityMinutes(activity.totalWatchMinutes), inline: true },
+                    { name: 'Communities', value: String(activity.tenants.length), inline: true },
+                ],
+            });
         } catch (error: any) {
             console.error('[Discord Dispatcher] !watchtime failed:', error);
-            await reply(`@${actualUsername}, I couldn't load your Discord activity right now.`);
+            await reply(`@${actualUsername}, I couldn't load your StreamWeaver watchtime right now.`);
+        }
+        return true;
+    }
+
+    if (cmdName === 'leaderboard') {
+        try {
+            const board = await getDiscordStreamHubLeaderboardPost({
+                serverId: discordServerId,
+                userId: msg.author?.id || msg.userId || msg.user_id,
+                limit: 10,
+            });
+            await reply(board.scope ? `Scope: **${board.scope}**` : 'The live DiscordStreamHub leaderboard.', {
+                title: board.title,
+                imageUrl: board.imageUrl,
+                fields: board.updatedAt ? [{ name: 'Updated', value: formatIsoDateLabel(board.updatedAt), inline: true }] : undefined,
+                components: [{
+                    type: 1,
+                    components: [{
+                        type: 2,
+                        style: 1,
+                        label: 'Check My Rank',
+                        custom_id: board.rankButtonCustomId,
+                    }],
+                }],
+            });
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !leaderboard failed:', error);
+            await reply(`@${actualUsername}, I couldn't render the DiscordStreamHub leaderboard right now.`);
         }
         return true;
     }
@@ -1232,6 +1244,27 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             botName: speaker.botName,
         });
         if (response) {
+            if (isSocialOverlayCommand(cmdName)) {
+                publishSocialOverlayEvent({
+                    command: cmdName,
+                    tenantId: speaker.tenantId || tenantId,
+                    actor: {
+                        id: msg.author?.id || msg.userId || msg.user_id,
+                        name: actualUsername,
+                        avatarUrl: sourceUserAvatarUrl,
+                    },
+                    ...(actualMessage.substring(cmdName.length + 2).trim()
+                        ? { target: { name: actualMessage.substring(cmdName.length + 2).trim() } }
+                        : {}),
+                    bot: { name: speaker.botName },
+                    animation: {
+                        theme: cmdName,
+                        durationMs: cmdName === 'love' ? 10_000 : 7_000,
+                        particleCount: cmdName === 'love' ? 48 : 32,
+                        reducedMotionSafe: true,
+                    },
+                });
+            }
             await sendStructuredDiscordReply({
                 channelId: sourceChannelId,
                 message: response,
@@ -3705,10 +3738,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
         // Handle !commands
         if (actualMessage.toLowerCase() === '!commands') {
-            const cmdSummary = outputContext?.platform === 'discord'
-                ? buildDiscordCommandsSummary()
-                : '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands';
-            await reply(cmdSummary, 'broadcaster').catch(() => {});
+            if (outputContext?.platform === 'discord' && outputContext.channelId) {
+                await sendStructuredDiscordReply({
+                    channelId: outputContext.channelId,
+                    message: buildDiscordCommandsSummary(),
+                    tenantId,
+                    title: 'StreamWeaver Discord Commands',
+                    responseType: 'Command Directory',
+                    fields: buildDiscordCommandDirectoryFields(),
+                    sourceMessageId: outputContext.messageId,
+                    sourceMessage: actualMessage,
+                    sourceUser: actualUsername,
+                    sourceUserAvatarUrl: outputContext.userAvatarUrl,
+                }).catch(() => {});
+            } else {
+                await reply(
+                    '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands',
+                    'broadcaster',
+                ).catch(() => {});
+            }
             return;
         }
 

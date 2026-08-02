@@ -2,10 +2,10 @@
 
 Current source version: `0.3.0`.
 
-The Companion is the local desktop host for StreamWeaver. It lives in the
-system tray, owns the local Next.js/WebSocket process, and manages windows,
-OBS, local audio, media, FFmpeg jobs, reviewed creative jobs, and scoped
-commands delivered from SPMT.
+The Companion is an optional local helper for the cloud-hosted StreamWeaver
+service. It lives in the system tray and manages hosted-app windows, OBS, local
+audio, media, FFmpeg jobs, reviewed creative jobs, and scoped commands delivered
+from SPMT. It is not the StreamWeaver production server.
 
 The capability and security rules are defined in
 [`../docs/COMPANION_CAPABILITY_SECURITY_CONTRACT.md`](../docs/COMPANION_CAPABILITY_SECURITY_CONTRACT.md).
@@ -33,8 +33,7 @@ Download the signed installer from the **SpaceMountain Companion** card on
 run the installer, and launch **SpaceMountain Companion** from the Start menu
 or desktop shortcut.
 
-The installer includes the local StreamWeaver runtime, so Node.js is not
-required for the installed build. Public downloads stay unavailable until the
+Node.js is not required for the installed build. Public downloads stay unavailable until the
 release workflow verifies the installer and application Authenticode signatures,
 timestamp, update metadata, blockmap, and checksum.
 
@@ -58,7 +57,8 @@ startup choices, and other non-secret settings are stored in
 
 ## Current capability surface
 
-- Start and supervise `npm run start:local` without opening a console window.
+- Retain source-only local runtime supervision for developer testing; normal
+  users open the hosted StreamWeaver workspace.
 - Open a persistent Companion-owned StreamWeaver workspace. SpaceMountain signs
   the user in once inside Electron, then passes StreamWeaver a short-lived,
   single-use embed code without exposing session tokens to the renderer.

@@ -32,6 +32,29 @@ async function withDispatcher(
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+    if (url.includes('/api/points/tenant-balances')) {
+      dshCalls.push('tenant-balances');
+      return json({
+        tenants: [
+          {
+            tenantId: '1240832965865635881',
+            serverId: '1240832965865635881',
+            tenantName: 'Mtman1987',
+            currentPoints: 9_200,
+            lifetimePoints: 13_691,
+            rank: 3,
+          },
+          {
+            tenantId: 'other-community',
+            serverId: 'other-community',
+            tenantName: 'Guest Streamer',
+            currentPoints: 300,
+            lifetimePoints: 500,
+            rank: 8,
+          },
+        ],
+      });
+    }
     if (url.includes('/api/points/balance')) {
       dshCalls.push('balance');
       return json({
@@ -95,16 +118,16 @@ test('!points answers in Discord without an admin lookup', async () => {
     const result = await handleDiscordMessage(baseMessage('!points'), 'tenant-a', { replyMode: 'bot' });
 
     assert.equal(result.commandHandled, true);
-    assert.equal(dshCalls.includes('balance'), true);
+    assert.equal(dshCalls.includes('tenant-balances'), true);
     assert.equal(dshCalls.includes('admin-access'), false);
-    assert.match(sent.map((entry) => entry.content).join('\n'), /9,200\*\* spendable/);
+    assert.match(sent.map((entry) => entry.content).join('\n'), /Mtman1987\*\* — 9,200 current/);
   });
 });
 
 const lastEmbed = (sent: SentDiscordMessage[]) =>
   [...sent].reverse().find((entry) => entry.embeds?.length)?.embeds[0];
 
-test('!points embed separates spendable from lifetime and ranks by lifetime', async () => {
+test('!points embed combines current and lifetime balances across communities', async () => {
   await withDispatcher(async ({ handleDiscordMessage, sent }) => {
     await handleDiscordMessage(baseMessage('!points'), 'tenant-a');
 
@@ -112,10 +135,9 @@ test('!points embed separates spendable from lifetime and ranks by lifetime', as
     assert.ok(embed, 'expected an embed reply');
     assert.match(String(embed.title), /viewer/);
     const fields = Object.fromEntries((embed.fields || []).map((f: any) => [f.name, f.value]));
-    assert.match(fields.Rank, /#3 of 3/);
-    assert.equal(fields.Current, '9,200');
-    assert.equal(fields.Lifetime, '13,691');
-    assert.match(fields['To next rank'], /309 behind Second/);
+    assert.equal(fields['Combined current'], '9,500');
+    assert.equal(fields['Combined lifetime'], '14,191');
+    assert.equal(fields.Communities, '2');
   });
 });
 

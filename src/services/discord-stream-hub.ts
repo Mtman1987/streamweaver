@@ -79,7 +79,7 @@ function createDiscordStreamHubAbortSignal(timeoutMs = 8000): AbortSignal | unde
   return AbortSignal.timeout(timeoutMs);
 }
 
-async function postDiscordStreamHub<T>(path: string, payload: Record<string, unknown>): Promise<T> {
+async function postDiscordStreamHub<T>(path: string, payload: Record<string, unknown>, timeoutMs = 8000): Promise<T> {
   const secret = getDiscordStreamHubSecret();
   if (!secret) throw new Error('DSH_SERVICE_SECRET is not configured');
   const response = await fetch(`${getDiscordStreamHubUrl()}${path}`, {
@@ -90,7 +90,7 @@ async function postDiscordStreamHub<T>(path: string, payload: Record<string, unk
     },
     body: JSON.stringify(payload),
     cache: 'no-store',
-    signal: createDiscordStreamHubAbortSignal(),
+    signal: createDiscordStreamHubAbortSignal(timeoutMs),
   });
 
   if (!response.ok) {
@@ -356,7 +356,10 @@ export async function lookupDiscordStreamHubTwitchTarget(twitchLogin: string, se
   if (serverId) url.searchParams.set('serverId', serverId);
 
   try {
-    const response = await fetch(url.toString(), { cache: 'no-store' });
+    const response = await fetch(url.toString(), {
+      cache: 'no-store',
+      signal: createDiscordStreamHubAbortSignal(),
+    });
     if (!response.ok) return null;
     return await response.json().catch(() => null);
   } catch {
@@ -511,4 +514,146 @@ export async function getDiscordStreamHubActivityLeaderboard(payload: { serverId
         activityScore: Number(entry.activityScore || 0),
       }))
     : [];
+}
+
+
+export type DiscordStreamHubTenantPoints = {
+  tenantId: string;
+  tenantName: string;
+  currentPoints: number;
+  lifetimePoints: number;
+  rank?: number | null;
+  isCurrent?: boolean;
+};
+
+export async function getDiscordStreamHubTenantPoints(payload: DiscordStreamHubPointsPayload): Promise<{
+  tenants: DiscordStreamHubTenantPoints[];
+  totalCurrentPoints: number;
+  totalLifetimePoints: number;
+}> {
+  try {
+    const data = await postDiscordStreamHub<{
+      tenants?: Array<{
+        tenantId?: string;
+        serverId?: string;
+        tenantName?: string;
+        streamerName?: string;
+        currentPoints?: number;
+        lifetimePoints?: number;
+        points?: number;
+        rank?: number | null;
+      }>;
+    }>('/api/points/tenant-balances', payload);
+    const tenants = (Array.isArray(data.tenants) ? data.tenants : []).map((entry) => ({
+      tenantId: String(entry.tenantId || entry.serverId || ''),
+      tenantName: String(entry.tenantName || entry.streamerName || 'Unknown streamer'),
+      currentPoints: Number(entry.currentPoints ?? entry.points ?? 0),
+      lifetimePoints: Number(entry.lifetimePoints ?? entry.points ?? 0),
+      rank: entry.rank ?? null,
+      isCurrent: Boolean(payload.serverId && (entry.serverId === payload.serverId || entry.tenantId === payload.serverId)),
+    }));
+    return {
+      tenants,
+      totalCurrentPoints: tenants.reduce((total, entry) => total + entry.currentPoints, 0),
+      totalLifetimePoints: tenants.reduce((total, entry) => total + entry.lifetimePoints, 0),
+    };
+  } catch {
+    const balance = await getDiscordStreamHubPoints(payload);
+    const tenantName = payload.serverId || 'Current streamer';
+    return {
+      tenants: [{
+        tenantId: payload.serverId || '',
+        tenantName,
+        currentPoints: balance.currentPoints,
+        lifetimePoints: balance.lifetimePoints,
+        rank: balance.rank,
+        isCurrent: true,
+      }],
+      totalCurrentPoints: balance.currentPoints,
+      totalLifetimePoints: balance.lifetimePoints,
+    };
+  }
+}
+
+export type DiscordStreamHubTenantActivity = {
+  tenantId: string;
+  tenantName: string;
+  watchMinutes: number;
+  messageCount: number;
+  activeDays: number;
+  isCurrent?: boolean;
+};
+
+export async function getDiscordStreamHubTenantActivity(payload: DiscordStreamHubActivityPayload): Promise<{
+  tenants: DiscordStreamHubTenantActivity[];
+  totalWatchMinutes: number;
+}> {
+  try {
+    const data = await postDiscordStreamHub<{
+      tenants?: Array<{
+        tenantId?: string;
+        serverId?: string;
+        tenantName?: string;
+        streamerName?: string;
+        watchMinutes?: number;
+        voiceMinutes?: number;
+        messageCount?: number;
+        activeDays?: number;
+      }>;
+    }>('/api/discord/activity/tenant-summary', payload);
+    const tenants = (Array.isArray(data.tenants) ? data.tenants : []).map((entry) => ({
+      tenantId: String(entry.tenantId || entry.serverId || ''),
+      tenantName: String(entry.tenantName || entry.streamerName || 'Unknown streamer'),
+      watchMinutes: Number(entry.watchMinutes ?? entry.voiceMinutes ?? 0),
+      messageCount: Number(entry.messageCount || 0),
+      activeDays: Number(entry.activeDays || 0),
+      isCurrent: Boolean(payload.serverId && (entry.serverId === payload.serverId || entry.tenantId === payload.serverId)),
+    }));
+    return {
+      tenants,
+      totalWatchMinutes: tenants.reduce((total, entry) => total + entry.watchMinutes, 0),
+    };
+  } catch {
+    const result = await getDiscordStreamHubActivitySummary(payload);
+    const summary = result.summary;
+    return {
+      tenants: summary ? [{
+        tenantId: payload.serverId || '',
+        tenantName: payload.serverId || 'Current streamer',
+        watchMinutes: summary.voiceMinutes,
+        messageCount: summary.messageCount,
+        activeDays: summary.activeDays,
+        isCurrent: true,
+      }] : [],
+      totalWatchMinutes: Number(summary?.voiceMinutes || 0),
+    };
+  }
+}
+
+export async function getDiscordStreamHubLeaderboardPost(payload: {
+  serverId?: string;
+  userId?: string;
+  limit?: number;
+}): Promise<{
+  title: string;
+  imageUrl?: string;
+  scope?: string;
+  updatedAt?: string;
+  rankButtonCustomId: string;
+}> {
+  const data = await postDiscordStreamHub<{
+    title?: string;
+    imageUrl?: string;
+    leaderboardImageUrl?: string;
+    scope?: string;
+    updatedAt?: string;
+    rankButtonCustomId?: string;
+  }>('/api/leaderboard/render', payload, 55_000);
+  return {
+    title: data.title || 'DiscordStreamHub Leaderboard',
+    imageUrl: data.imageUrl || data.leaderboardImageUrl,
+    scope: data.scope,
+    updatedAt: data.updatedAt,
+    rankButtonCustomId: data.rankButtonCustomId || `sw_dsh_rank:${payload.serverId || 'global'}`,
+  };
 }
