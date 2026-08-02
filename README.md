@@ -2,6 +2,10 @@
 
 StreamWeaver is a multi-tenant streaming automation platform built with Node.js and Next.js. It runs on Fly.io and provides each streamer with their own isolated environment for Twitch chat bots, AI features, overlays, game systems, and automation flows.
 
+The supported StreamWeaver runtime is the hosted Fly.io service. Streamers and
+OBS browser sources must use the hosted URL; `localhost` commands in this
+repository are for developer testing only and are not the production setup.
+
 ## Live App
 
 **URL:** https://streamweaver-new.fly.dev
@@ -137,7 +141,6 @@ All overlays run at `https://streamweaver-new.fly.dev` and connect via WebSocket
 The WebSocket server runs on port 8090 and provides real-time updates:
 
 - **Cloud URL:** `wss://streamweaver-new.fly.dev:8090`
-- **Local URL:** `ws://127.0.0.1:8090`
 
 Events broadcast to connected clients:
 - `twitch-message` — chat messages
@@ -174,7 +177,7 @@ Events broadcast to connected clients:
 - Node.js 20+ (Node 24 has SWC issues — use Docker for builds)
 - npm
 
-### Local Development
+### Developer Workstation (not production)
 ```bash
 npm install
 npm run dev

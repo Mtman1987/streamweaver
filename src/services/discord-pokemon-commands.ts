@@ -18,7 +18,7 @@ import {
   offerDiscordPokemonCard,
 } from './discord-pokemon-trades';
 
-const DISCORD_POKEMON_COMMANDS = new Set(['pack', 'collection', 'show', 'eevee', 'deck', 'trade', 'offer']);
+const DISCORD_POKEMON_COMMANDS = new Set(['pack', 'collection', 'collections', 'show', 'eevee', 'deck', 'trade', 'offer']);
 
 function messageUser(msg: any) {
   const user = msg.author || {};
@@ -173,29 +173,42 @@ export async function handleDiscordPokemonCommand(msg: any, tenantId?: string): 
     return true;
   }
 
-  if (commandName === 'collection') {
+  if (commandName === 'collection' || commandName === 'collections') {
     const collection = await getUserCollection(pokemonUser);
     const rareCount = collection.cards.filter((card) => rarityScore(card.rarity) >= 3).length;
+    const uniqueCards = new Set(collection.cards.map((card) => `${card.setCode}:${card.number}`)).size;
+    const uniqueSets = new Set(collection.cards.map((card) => card.setCode).filter(Boolean)).size;
     if (!collection.cards.length) {
       await reply('Your shared Pokémon collection is empty. Use `!pack` to see the available sets.', {
         responseType: 'Collection',
+        components: [{
+          type: 1,
+          components: [{ type: 2, style: 1, label: 'Open My Cards', custom_id: 'sw_pokemon_collection:mine' }],
+        }],
       });
       return true;
     }
-    const visible = collection.cards.slice(0, 25);
-    const remaining = collection.cards.length - visible.length;
+    const rarest = [...collection.cards].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0];
     await reply(
-      visible.map((card, index) =>
-        `\`${index + 1}\` **${card.name}** • ${card.setCode}-${card.number} • ${card.rarity || 'Common'}`
-      ).join('\n') + (remaining > 0 ? `\n\n…and ${remaining} more cards.` : ''),
+      `Your Discord and Twitch cards share one Pokédex.${rarest ? ` Rarest pull: **${rarest.name}** (${rarest.rarity || 'Common'}).` : ''}`,
       {
         responseType: 'Collection',
         title: `${pokemonUser}'s Pokémon Collection`,
+        imageUrl: rarest?.imageUrl,
         fields: [
-          { name: 'Cards', value: String(collection.cards.length), inline: true },
+          { name: 'Total cards', value: String(collection.cards.length), inline: true },
+          { name: 'Unique cards', value: String(uniqueCards), inline: true },
           { name: 'Rare cards', value: String(rareCount), inline: true },
+          { name: 'Sets collected', value: String(uniqueSets), inline: true },
           { name: 'Packs opened', value: String(collection.packsOpened || 0), inline: true },
         ],
+        components: [{
+          type: 1,
+          components: [
+            { type: 2, style: 1, label: 'Open My Cards', custom_id: 'sw_pokemon_collection:mine' },
+            { type: 2, style: 2, label: 'Build Deck', custom_id: 'sw_pokemon_deck:mine' },
+          ],
+        }],
       },
     );
     return true;
@@ -309,6 +322,7 @@ export async function handleDiscordPokemonCommand(msg: any, tenantId?: string): 
       await reply(formatDiscordPokemonTrade(trade), {
         responseType: 'Trade Started',
         title: 'Pokémon Card Trade',
+        components: discordPokemonTradeComponents(trade),
       });
     } catch (error: any) {
       await reply(error?.message || 'The trade could not be started.', { responseType: 'Trade' });

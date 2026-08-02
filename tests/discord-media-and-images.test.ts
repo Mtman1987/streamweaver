@@ -10,7 +10,7 @@ import {
   DISCORD_MEDIA_MAX_REQUEST_BYTES,
 } from '../src/lib/discord-media-limits';
 
-test('Discord embeds use StreamWeaver branding, responder thumbnail, requester footer, and explicit media only', async () => {
+test('Discord embeds use responder branding, requester footer, and explicit media only', async () => {
   const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-discord-media-'));
   process.env.PERSIST_ROOT = persistRoot;
   process.env.STREAMWEAVER_PUBLIC_URL = 'https://streamweaver.test';
@@ -54,8 +54,8 @@ test('Discord embeds use StreamWeaver branding, responder thumbnail, requester f
 
     assert.match(privateEmbed.thumbnail.url, /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
     assert.equal(privateEmbed.image, undefined);
-    assert.equal(privateEmbed.author.name, 'StreamWeaver');
-    assert.match(privateEmbed.author.icon_url || '', /\/StreamWeaver\.png$/);
+    assert.equal(privateEmbed.author.name, 'MediaBot');
+    assert.match(privateEmbed.author.icon_url || '', /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
     assert.equal(privateEmbed.title, 'MediaBot • AI Answer');
     assert.deepEqual(privateEmbed.fields, [{
       name: 'Question',

@@ -1,7 +1,6 @@
 import { readUserConfigSync } from '@/lib/user-config';
 import { getStoredTokens } from '@/lib/token-utils.server';
 
-const DEFAULT_DISCORD_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 const avatarCache = new Map<string, { url: string; expiresAt: number }>();
 
 function firstString(...values: unknown[]): string {
@@ -35,15 +34,9 @@ export async function getAvatarUrlForTenant(tenantId?: string): Promise<string> 
     tokens?.botProfileImage,
     config.TWITCH_BOT_AVATAR_URL,
     config.TWITCH_BOT_PROFILE_IMAGE_URL,
-    config.BOT_AVATAR_URL,
-    tokens?.broadcasterAvatarUrl,
-    tokens?.broadcasterProfileImageUrl,
-    tokens?.loginAvatarUrl,
-    tokens?.loginProfileImageUrl,
-    config.TWITCH_BROADCASTER_AVATAR_URL
+    config.BOT_AVATAR_URL
   );
 
-  const resolved = avatarUrl || DEFAULT_DISCORD_AVATAR;
-  avatarCache.set(cacheKey, { url: resolved, expiresAt: Date.now() + 60 * 60 * 1000 });
-  return resolved;
+  avatarCache.set(cacheKey, { url: avatarUrl, expiresAt: Date.now() + 60 * 60 * 1000 });
+  return avatarUrl;
 }

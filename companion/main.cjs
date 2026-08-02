@@ -31,6 +31,7 @@ let settingsWindow;
 let spaceMountainWindow;
 let workspaceWindow;
 let overlayWindow;
+let socialOverlayWindow;
 let tray;
 let serverProcess;
 let serverRestartTimer;
@@ -229,6 +230,7 @@ function fitOverlayToDisplay() {
   const window = ensureOverlayWindow();
   const display = screen.getDisplayMatching(window.getBounds());
   window.setBounds(display.bounds);
+  syncSocialOverlayBounds();
   config.windowBounds = { ...(config.windowBounds || {}), overlay: { ...display.bounds } };
   saveConfig();
   return { displayId: display.id, bounds: display.bounds };
@@ -250,6 +252,7 @@ function setOverlayInteraction(active) {
     window.setIgnoreMouseEvents(false);
     window.show();
     window.focus();
+    syncSocialOverlayBounds();
     config.windows.overlay.visible = true;
   } else {
     window.setIgnoreMouseEvents(config.windows.overlay.clickThrough !== false, { forward: true });
@@ -304,6 +307,30 @@ function ensureOverlayWindow() {
   return overlayWindow;
 }
 
+
+function ensureSocialOverlayWindow() {
+  if (socialOverlayWindow && !socialOverlayWindow.isDestroyed()) return socialOverlayWindow;
+  socialOverlayWindow = new BrowserWindow({
+    ...managedWindowOptions('overlay'),
+    focusable: false,
+  });
+  socialOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  socialOverlayWindow.webContents.setAudioMuted(true);
+  socialOverlayWindow.on('close', (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    socialOverlayWindow.hide();
+  });
+  void loadManagedUrl(socialOverlayWindow, config.windows.overlay.socialUrl || 'https://streamweaver-new.fly.dev/overlay/social');
+  return socialOverlayWindow;
+}
+
+function syncSocialOverlayBounds() {
+  if (!socialOverlayWindow || socialOverlayWindow.isDestroyed() || !overlayWindow || overlayWindow.isDestroyed()) return;
+  socialOverlayWindow.setBounds(overlayWindow.getBounds());
+  socialOverlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'screen-saver');
+}
+
 function popoutConfig(id) {
   return config.windows.popouts.find((entry) => Number(entry.id) === Number(id));
 }
@@ -332,6 +359,11 @@ function showOverlay() {
   const window = ensureOverlayWindow();
   if (config.windows.overlay.fitToDisplay !== false) fitOverlayToDisplay();
   window.showInactive();
+  if (config.windows.overlay.socialEnabled !== false) {
+    const socialWindow = ensureSocialOverlayWindow();
+    syncSocialOverlayBounds();
+    socialWindow.showInactive();
+  }
   config.windows.overlay.visible = true;
   saveConfig();
   rebuildTrayMenu();
@@ -341,6 +373,7 @@ function showOverlay() {
 function hideOverlay() {
   overlayInteractionActive = false;
   overlayWindow?.hide();
+  socialOverlayWindow?.hide();
   config.windows.overlay.visible = false;
   saveConfig();
   rebuildTrayMenu();

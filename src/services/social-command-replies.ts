@@ -5,7 +5,7 @@ import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 export const SOCIAL_COMMAND_NAMES = [
   'hug', 'boop', 'cuddle', 'dance', 'fistbump', 'headpat', 'highfive', 'love', 'tickle', 'hover',
-  'lurk', 'unlurk', 'hydrate', 'stretch', 'yes', 'yup', 'no',
+  'lurk', 'unlurk', 'yes', 'yup', 'no',
 ] as const;
 
 type SocialCommandName = typeof SOCIAL_COMMAND_NAMES[number];
@@ -52,8 +52,6 @@ function getSocialCommandFallback(input: {
     hover: `${input.userName} hovers nearby like they have unfinished business.`,
     lurk: `${input.userName} slips quietly into lurk mode.`,
     unlurk: `${input.userName} steps back out of the shadows.`,
-    hydrate: `Hydration check. ${input.userName} called it, so everybody grab a drink.`,
-    stretch: `Stretch break. ${input.userName} just called one for the room.`,
     yes: `Yes. ${input.userName} has spoken.`,
     yup: `Yup. ${input.userName} is locked in.`,
     no: `No. ${input.userName} is not approving that plan.`,
@@ -99,6 +97,24 @@ async function buildSpeakerPersonality(tenantId?: string, botName?: string): Pro
   ].filter(Boolean).join('\n');
 }
 
+const SOCIAL_COMMAND_STYLE: Record<SocialCommandName, string> = {
+  hug: 'Warm and comforting. Describe an imaginative hug without sounding romantic by default.',
+  boop: 'Mischievous and playful. Make the boop feel surprising and specific.',
+  cuddle: 'Cozy and wholesome. Create a soft scene without sexual language.',
+  dance: 'Energetic and musical. Treat this as a short announcement; the full dance flow is handled separately.',
+  fistbump: 'Confident and celebratory, with a punchy sense of teamwork.',
+  headpat: 'Gentle praise and encouragement. Keep it respectful and wholesome.',
+  highfive: 'Fast, triumphant, and celebratory.',
+  love: 'Wholesome appreciation. Make the affection feel personal without inventing private facts.',
+  tickle: 'Silly and chaotic, but never threatening or sexual.',
+  hover: 'The comic opposite of lurking: visibly present, suspiciously attentive, and making no effort to hide.',
+  lurk: 'Playfully send the caller into quiet lurk mode while keeping their place in the community.',
+  unlurk: 'Welcome the caller back from lurking with a fresh, character-specific observation.',
+  yes: 'A brief affirmative reaction.',
+  yup: 'A casual, confident affirmative reaction.',
+  no: 'A brief but playful negative reaction.',
+};
+
 function buildSocialCommandPrompt(input: {
   commandName: SocialCommandName;
   userName: string;
@@ -118,6 +134,8 @@ function buildSocialCommandPrompt(input: {
     hasTarget
       ? 'Mention both people naturally when a target exists.'
       : 'Keep it directed at the room or the caller as appropriate.',
+    SOCIAL_COMMAND_STYLE[input.commandName],
+    'Never claim real-world knowledge about either person that was not provided.',
     'Keep it to one sentence and under 220 characters.',
     `The response should sound like ${input.botName}, not like a generic assistant.`,
   ].join('\n');

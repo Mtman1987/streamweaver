@@ -66,6 +66,8 @@ async function load() {
   renderStatus(state.status);
   byId('update-status').textContent = state.update?.message || `Companion ${state.update?.currentVersion || ''}`.trim();
   byId('overlay-url').value = config.windows.overlay.url;
+  byId('overlay-social-url').value = config.windows.overlay.socialUrl || 'https://streamweaver-new.fly.dev/overlay/social';
+  byId('overlay-social-enabled').checked = config.windows.overlay.socialEnabled !== false;
   byId('overlay-click-through').checked = config.windows.overlay.clickThrough !== false;
   byId('overlay-always-on-top').checked = config.windows.overlay.alwaysOnTop !== false;
   byId('overlay-fit-display').checked = config.windows.overlay.fitToDisplay !== false;
@@ -161,6 +163,8 @@ byId('save').addEventListener('click', async () => {
       overlay: {
         ...state.config.windows.overlay,
         url: byId('overlay-url').value.trim(),
+        socialUrl: byId('overlay-social-url').value.trim(),
+        socialEnabled: byId('overlay-social-enabled').checked,
         clickThrough: byId('overlay-click-through').checked,
         alwaysOnTop: byId('overlay-always-on-top').checked,
         fitToDisplay: byId('overlay-fit-display').checked,

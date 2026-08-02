@@ -39,7 +39,8 @@ test('structured Discord replies post the embed before deleting the triggering m
         calls.push('reply');
         const body = JSON.parse(String(init?.body || '{}'));
         assert.equal(body.content, '');
-        assert.equal(body.embeds[0].author.name, 'StreamWeaver');
+        assert.match(body.avatar_url, /\/StreamWeaver\.png$/);
+        assert.equal(body.embeds[0].author.name, 'Moonbeam');
         assert.equal(body.embeds[0].title, 'Moonbeam • AI Answer');
         assert.match(body.embeds[0].footer.text, /^Requested by TestUser • Why is the bot offline\? • deletes in 10m$/);
         return new Response(JSON.stringify({ id: 'reply-1' }), {
