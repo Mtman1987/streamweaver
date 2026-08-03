@@ -1,12 +1,19 @@
 import { listTenants } from '@/lib/tenant';
 import { readWorldLore } from '@/lib/world-lore-store';
 import { getBotName } from '@/lib/bot-settings-store';
+import { getStoredTokens } from '@/lib/token-utils.server';
 import { deleteMessage } from './discord-local';
-import { buildDiscordBotEmbed, buildStreamWeaverLogoUrl, getDiscordBotWebhookIdentity } from './discord-branding';
+import {
+  buildDiscordBotEmbed,
+  buildStreamWeaverLogoUrl,
+  getDiscordBotProfileAvatarUrl,
+  getDiscordBotWebhookIdentity,
+} from './discord-branding';
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
 import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from './discord-message-cleanup';
 import { sendWebhookMessage } from './discord-webhooks';
-import { sendDiscordEmbed, sendDiscordMessage } from './discord-local';
+import { sendDiscordEmbed } from './discord-local';
+import { getTwitchUser } from './twitch';
 
 export type DiscordReplySpeaker = {
   botName: string;
@@ -33,12 +40,20 @@ export type StructuredDiscordReplyInput = {
   color?: number;
   fields?: Array<{ name: string; value: string; inline?: boolean }>;
   components?: Record<string, unknown>[];
-  // Extra embeds sharing the main embed's `url` render as a single image gallery.
   extraEmbeds?: Record<string, unknown>[];
   embedUrl?: string;
 };
 
 let rotatingSpeakerIndex = 0;
+
+function firstUrl(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (/^https?:\/\//i.test(text)) return text;
+  }
+  return '';
+}
 
 function uniqueSpeakers(speakers: DiscordReplySpeaker[]): DiscordReplySpeaker[] {
   const seen = new Set<string>();
@@ -80,7 +95,7 @@ async function getCommandReplySpeakers(fallbackTenantId?: string): Promise<Disco
   const unique = uniqueSpeakers(speakers);
   if (unique.length > 0) return unique;
 
-  const fallbackBotName = getBotName(fallbackTenantId) || 'StreamWeaver';
+  const fallbackBotName = getBotName(fallbackTenantId) || getBotName() || 'StreamWeaver';
   return [{
     botName: fallbackBotName,
     tenantId: fallbackTenantId,
@@ -88,9 +103,25 @@ async function getCommandReplySpeakers(fallbackTenantId?: string): Promise<Disco
   }];
 }
 
-export async function resolveStructuredDiscordReplySpeaker(input: { tenantId?: string; botName?: string; rotateSpeaker?: boolean }): Promise<DiscordReplySpeaker> {
+export async function resolveStructuredDiscordReplySpeaker(input: {
+  tenantId?: string;
+  botName?: string;
+  rotateSpeaker?: boolean;
+  isPrivate?: boolean;
+}): Promise<DiscordReplySpeaker> {
+  if (input.isPrivate) {
+    const tenantBotName = input.tenantId ? getBotName(input.tenantId) : '';
+    const botName = tenantBotName || getBotName() || 'StreamWeaver';
+    const tenantId = tenantBotName ? input.tenantId : undefined;
+    return {
+      botName,
+      tenantId,
+      stableId: `${tenantId || 'global'}:${botName.toLowerCase()}`,
+    };
+  }
+
   if (!input.rotateSpeaker) {
-    const botName = input.botName || getBotName(input.tenantId) || 'StreamWeaver';
+    const botName = input.botName || getBotName(input.tenantId) || getBotName() || 'StreamWeaver';
     return {
       botName,
       tenantId: input.tenantId,
@@ -104,6 +135,26 @@ export async function resolveStructuredDiscordReplySpeaker(input: { tenantId?: s
   return speaker;
 }
 
+async function resolveTenantOwnerLogo(tenantId: string | undefined, fallbackLogo: string): Promise<string> {
+  if (!tenantId) return fallbackLogo;
+  const tokens = await getStoredTokens(tenantId).catch(() => null) as Record<string, unknown> | null;
+  const configured = firstUrl(
+    tokens?.broadcasterAvatarUrl,
+    tokens?.broadcasterProfileImageUrl,
+    tokens?.loginAvatarUrl,
+    tokens?.loginProfileImageUrl,
+  );
+  if (configured) return configured;
+
+  const ownerName = String(tokens?.broadcasterUsername || tokens?.loginUsername || '').trim();
+  if (ownerName) {
+    const profile = await getTwitchUser(ownerName).catch(() => null);
+    const profileImage = firstUrl(profile?.profileImageUrl);
+    if (profileImage) return profileImage;
+  }
+  return fallbackLogo;
+}
+
 export async function buildStructuredDiscordReplyPayload(input: StructuredDiscordReplyInput): Promise<{
   content: string;
   embeds: Record<string, unknown>[];
@@ -114,10 +165,20 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   const speaker = input.speaker || await resolveStructuredDiscordReplySpeaker({
     tenantId: input.tenantId,
     botName: input.botName,
-    rotateSpeaker: input.rotateSpeaker,
+    rotateSpeaker: input.isPrivate ? false : input.rotateSpeaker,
+    isPrivate: input.isPrivate,
   });
   const deleteAt = getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
+  const fallbackLogo = await getDiscordBotProfileAvatarUrl() || buildStreamWeaverLogoUrl();
+  const botAvatar = firstUrl(
+    webhookIdentity.avatarUrl,
+    await getAvatarUrlForTenant(speaker.tenantId),
+    fallbackLogo,
+  );
+  const ownerLogo = await resolveTenantOwnerLogo(speaker.tenantId, fallbackLogo);
+  const requesterLogo = firstUrl(input.sourceUserAvatarUrl, fallbackLogo);
+
   const embed = await buildDiscordBotEmbed({
     description: input.message,
     tenantId: speaker.tenantId,
@@ -126,13 +187,25 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     responseType: input.responseType,
     sourceMessage: input.sourceMessage,
     sourceUser: input.sourceUser,
-    sourceUserAvatarUrl: input.sourceUserAvatarUrl,
+    sourceUserAvatarUrl: requesterLogo,
     deleteAt,
     imageUrl: input.imageUrl,
-    thumbnailUrl: input.thumbnailUrl,
+    thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
     color: input.color,
     fields: input.fields,
   });
+
+  embed.author = {
+    ...embed.author,
+    name: speaker.botName,
+    icon_url: ownerLogo,
+  };
+  embed.thumbnail = { url: firstUrl(input.thumbnailUrl, botAvatar, fallbackLogo) };
+  embed.footer = {
+    ...embed.footer,
+    icon_url: requesterLogo,
+  };
+
   return {
     content: '',
     embeds: [
@@ -149,7 +222,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const payload = await buildStructuredDiscordReplyPayload(input);
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
-  const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrlForTenant(speaker.tenantId) || buildStreamWeaverLogoUrl();
+  const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrlForTenant(speaker.tenantId) || await getDiscordBotProfileAvatarUrl() || buildStreamWeaverLogoUrl();
 
   const botTokenPayload = {
     content: '',
@@ -159,33 +232,32 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
 
   let sent: any;
   try {
-    // Discord does not support webhooks in DM channels. Private replies, replies
-    // with components, and tenant-less replies always use the bot-token route.
     sent = input.isPrivate || input.components?.length || (!speaker.tenantId && !input.tenantId)
       ? await sendDiscordEmbed(input.channelId, botTokenPayload)
       : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
   } catch (error) {
-    // Preserve the shared embed contract even when a webhook is unavailable.
     console.warn('[Discord Reply] Webhook reply failed; retrying through the bot-token embed route:', error);
     sent = await sendDiscordEmbed(input.channelId, botTokenPayload);
   }
 
   const sentId = typeof sent?.id === 'string' ? sent.id : '';
 
-  if (sentId && input.sourceMessageId) {
+  if (sentId && input.sourceMessageId && !input.isPrivate) {
     await deleteMessage(input.channelId, input.sourceMessageId).catch(() => {});
   }
 
-  await recordDiscordMessageCleanup({
-    tenantId: speaker.tenantId || input.tenantId,
-    channelId: input.channelId,
-    triggerMessageId: sentId ? input.sourceMessageId : undefined,
-    replyMessageIds: [sentId],
-    replyMessages: [input.message],
-    sourceUser: input.sourceUser,
-    botName: speaker.botName,
-    triggerMessage: input.sourceMessage,
-  }).catch(() => {});
+  if (!input.isPrivate) {
+    await recordDiscordMessageCleanup({
+      tenantId: speaker.tenantId || input.tenantId,
+      channelId: input.channelId,
+      triggerMessageId: sentId ? input.sourceMessageId : undefined,
+      replyMessageIds: [sentId],
+      replyMessages: [input.message],
+      sourceUser: input.sourceUser,
+      botName: speaker.botName,
+      triggerMessage: input.sourceMessage,
+    }).catch(() => {});
+  }
 
   return {
     messageId: sentId || undefined,
