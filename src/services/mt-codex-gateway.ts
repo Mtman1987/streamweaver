@@ -18,8 +18,8 @@ export type MtCodexJobResult = {
 
 export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCodexJobResult> {
   const baseUrl = String(process.env.SPMT_CODEX_API_URL || 'https://spmt.live').trim();
-  const secret = String(process.env.SPMT_CODEX_SERVICE_SECRET || '').trim();
-  if (!secret) return { ok: false, error: 'SPMT_CODEX_SERVICE_SECRET is not configured.' };
+  const spmtApiKey = String(process.env.SPMT_API_KEY || '').trim();
+  if (!spmtApiKey) return { ok: false, error: 'SPMT_API_KEY is not configured.' };
 
   try {
     const response = await fetch(new URL('/api/athena/code-jobs', baseUrl), {
@@ -27,7 +27,7 @@ export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCode
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',
-        'x-spmt-codex-secret': secret,
+        Authorization: `Bearer ${spmtApiKey}`,
       },
       body: JSON.stringify({
         source: `streamweaver:${input.source}`,
