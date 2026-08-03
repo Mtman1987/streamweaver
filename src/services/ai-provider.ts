@@ -69,6 +69,11 @@ export async function generateAIResponse(
   options?: AIResponseOptions
 ): Promise<string> {
   const config = getAIConfig(tenantId);
+  const conductPolicy = [
+    'Never self-promote, advertise, recruit, or ask for follows.',
+    'Never post promotional links or invite viewers to another stream, server, website, app, or community unless a human explicitly asks for that exact information.',
+  ].join(' ');
+  const governedSystemPrompt = [systemPrompt, conductPolicy].filter(Boolean).join('\n\n');
   
   if (!config.apiKey) {
     throw new Error(`No API key configured for ${config.provider}`);
@@ -76,11 +81,11 @@ export async function generateAIResponse(
   
   switch (config.provider) {
     case 'gemini':
-      return generateGeminiResponse(prompt, systemPrompt, config, options);
+      return generateGeminiResponse(prompt, governedSystemPrompt, config, options);
     case 'edenai':
-      return generateEdenAIResponse(prompt, systemPrompt, config, options);
+      return generateEdenAIResponse(prompt, governedSystemPrompt, config, options);
     case 'openai':
-      return generateOpenAIResponse(prompt, systemPrompt, config, options);
+      return generateOpenAIResponse(prompt, governedSystemPrompt, config, options);
     default:
       throw new Error(`Unsupported AI provider: ${config.provider}`);
   }
