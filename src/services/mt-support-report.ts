@@ -5,6 +5,7 @@ import { globalPath } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getRecentLogLines } from './runtime-log-buffer';
 import { readDiscordConfig } from '@/lib/discord-config';
+import { createMtCodexJob } from './mt-codex-gateway';
 
 type SupportPlatform = 'twitch' | 'discord';
 
@@ -13,6 +14,7 @@ type SupportContext = {
   tenantId?: string;
   username: string;
   channelId?: string;
+  reporterId?: string;
 };
 
 type PendingSupportRequest = SupportContext & {
@@ -96,7 +98,11 @@ export function consumePendingMtSupportRequest(context: SupportContext): boolean
 }
 
 export function getMtSupportPrompt(_platform: SupportPlatform): string {
-  return 'tell me what broke and I will send Mtman1987 a support packet with your description plus recent chat context.';
+  return 'tell me what broke and Athena will launch a private coding sandbox for the Commander.';
+}
+
+export function getMtFixItPublicReply(username: string): string {
+  return `@${username}, Athena has logged the repair request for Commander review. The coding stars are aligning.`;
 }
 
 function redactSensitiveText(text: string): string {
@@ -138,12 +144,7 @@ function formatChatTranscript(messages: Awaited<ReturnType<typeof readPublicChat
     .join('\n');
 }
 
-export async function submitMtSupportReport(input: SubmitSupportReportInput): Promise<{ ok: boolean; error?: string }> {
-  const destinationChannelId = await getSupportDestinationChannelId();
-  if (!destinationChannelId) {
-    return { ok: false, error: 'Mtman1987 support DM channel is not configured.' };
-  }
-
+export async function submitMtSupportReport(input: SubmitSupportReportInput): Promise<{ ok: boolean; jobId?: string; dashboardUrl?: string; error?: string }> {
   const reporter = normalizeUsername(input.username) || 'unknown';
   const description = String(input.description || '').trim();
   if (!description) {
@@ -206,10 +207,43 @@ export async function submitMtSupportReport(input: SubmitSupportReportInput): Pr
   const fileName = `mt-support-${tenantId || 'global'}-${fileSafeReporter}-${Date.now()}.txt`;
   const summary = `Support report from ${reporter}${broadcasterUsername ? ` in ${broadcasterUsername}'s tenant` : ''}. Description: ${description.slice(0, 160)}`;
 
+  const job = await createMtCodexJob({
+    source: input.platform,
+    tenantId,
+    reporter,
+    reporterId: input.reporterId,
+    channelId: input.channelId,
+    description,
+    triggerMessage: input.triggerMessage,
+    context: {
+      broadcasterUsername,
+      recentPublicChat: formatChatTranscript(publicChat).slice(-6000),
+      recentRuntimeLogs: runtimeLogs.slice(-30),
+      recentFlyLogs: flyLogs.slice(-20),
+    },
+  });
+  if (!job.ok) return job;
+
+  const ownerId = String(process.env.MTMAN_DISCORD_USER_ID || '767875979561009173').trim();
+  const isOwner = (input.reporterId && input.reporterId === ownerId) || reporter === 'mtman1987';
+  if (isOwner) return job;
+
+  const destinationChannelId = await getSupportDestinationChannelId();
+  if (!destinationChannelId) {
+    return { ...job, error: 'Codex job created, but the owner DM channel is not configured.' };
+  }
+
+  const ownerMessage = [
+    `Athena Codex request from ${reporter} on ${input.platform}.`,
+    `Job: ${job.jobId || 'queued'}`,
+    `Issue: ${description.slice(0, 500)}`,
+    `Repair station: ${job.dashboardUrl || 'https://mtman-machine-rotator.fly.dev/'}`,
+  ].join('\n');
+
   try {
-    await uploadFileToDiscord(destinationChannelId, reportText, fileName, summary);
-    return { ok: true };
+    await uploadFileToDiscord(destinationChannelId, reportText, fileName, `${ownerMessage}\n\n${summary}`.slice(0, 1900));
+    return job;
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return { ...job, error: `Codex job created, but owner DM failed: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
