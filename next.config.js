@@ -11,9 +11,9 @@ const nextConfig = {
     },
   },
   experimental: {
-    // Discord lane GIFs can legitimately exceed Next's 10 MB cloned-body default.
-    // The route still enforces a 60 MB file limit, leaving multipart overhead here.
-    middlewareClientMaxBodySize: '64mb',
+    // Discord lane GIFs may be up to 16 MB. Allow multipart overhead while
+    // leaving the route-level file validation as the final authority.
+    proxyClientMaxBodySize: '20mb',
   },
 }
 
