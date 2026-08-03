@@ -11,9 +11,9 @@ const nextConfig = {
     },
   },
   experimental: {
-    // Discord lane GIFs may be up to 16 MB. Allow multipart overhead while
-    // leaving the route-level file validation as the final authority.
-    proxyClientMaxBodySize: '20mb',
+    // StreamWeaver currently runs Next 15.5, where middleware body cloning uses
+    // middlewareClientMaxBodySize. Allow 16 MB GIFs plus multipart overhead.
+    middlewareClientMaxBodySize: '20mb',
   },
 }
 
