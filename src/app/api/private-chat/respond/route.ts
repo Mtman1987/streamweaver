@@ -14,6 +14,7 @@ import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
 import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { z } from 'zod';
+import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
 
 type RequestBody = {
   username: string;
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
         })
       : await requestPrivateChatCompletion({
           apiKey: edenaiKey,
-          systemPrompt: systemIdentity,
+          systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
           prompt,
         });
 
@@ -193,7 +194,7 @@ export async function POST(request: NextRequest) {
       console.warn('[Private Chat API] Retrying filtered DM without older conversation history');
       completion = await requestPrivateChatCompletion({
         apiKey: edenaiKey,
-        systemPrompt: systemIdentity,
+        systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
         prompt: reducedContextPrompt,
       });
     }
@@ -233,7 +234,7 @@ export async function POST(request: NextRequest) {
               })
             : await requestPrivateChatCompletion({
                 apiKey: edenaiKey,
-                systemPrompt: systemIdentity,
+                systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
                 prompt: enhancedPrompt,
               });
 
