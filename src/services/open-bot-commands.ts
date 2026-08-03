@@ -16,6 +16,21 @@ const CHAT_TAG_URL = (process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_C
 const SPMT_URL = (process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
 const HEARMEOUT_URL = (process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev').replace(/\/+$/, '');
 
+function detectExplicitSpmtCommand(normalized: string): OpenBotCommand | null {
+  const match = normalized.match(/^spmt(?:\s+|[:,-]\s*)(.+)$/);
+  if (!match) return null;
+
+  const command = match[1].trim();
+  if (/^(?:status|state|game status|chat[\s-]?tag status)$/.test(command)) return 'chat-tag-status';
+  if (/^(?:current|tag|who(?:'?s| is) it|who has the tag)$/.test(command)) return 'chat-tag-current';
+  if (/^(?:leader|leaderboard|rankings?|top(?:\s+(?:3|three))?)$/.test(command)) return 'chat-tag-leaderboard';
+  if (/^(?:live|who(?:'?s| is) live|streamers?|members live)$/.test(command)) return 'live-members';
+  if (/^(?:apps?|tools?|catalog)$/.test(command)) return 'apps';
+  if (/^(?:hearmeout|hear me out|music|now playing|queue)$/.test(command)) return 'hearmeout';
+  if (/^(?:help|commands?|command list)$/.test(command)) return 'help';
+  return null;
+}
+
 export function detectOpenBotCommand(message: string): OpenBotCommand | null {
   const raw = String(message || '').trim();
   // Explicit !commands belong to the native Discord/Twitch command dispatcher.
@@ -27,6 +42,11 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
     .replace(/[’]/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
+
+  // SPMT-prefixed commands are an explicit command namespace. In particular,
+  // Discord DMs must execute these before the conversational Athena path.
+  const explicitSpmtCommand = detectExplicitSpmtCommand(normalized);
+  if (explicitSpmtCommand) return explicitSpmtCommand;
 
   if (/\b(who(?:'?s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized)) return 'live-members';
   if (/\b(who(?:'s| is) it|who has the tag|current(?:ly)? it)\b/.test(normalized)) return 'chat-tag-current';

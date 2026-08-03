@@ -16,6 +16,17 @@ test('detects safe natural-language commands after any tenant bot wake name', ()
   assert.equal(detectOpenBotCommand('tell me a joke'), null);
 });
 
+test('routes explicit SPMT command namespace before conversational chat', () => {
+  assert.equal(detectOpenBotCommand('spmt status'), 'chat-tag-status');
+  assert.equal(detectOpenBotCommand('SPMT current'), 'chat-tag-current');
+  assert.equal(detectOpenBotCommand('spmt leaderboard'), 'chat-tag-leaderboard');
+  assert.equal(detectOpenBotCommand('spmt live'), 'live-members');
+  assert.equal(detectOpenBotCommand('spmt apps'), 'apps');
+  assert.equal(detectOpenBotCommand('spmt music'), 'hearmeout');
+  assert.equal(detectOpenBotCommand('spmt commands'), 'help');
+  assert.equal(detectOpenBotCommand('spmt tell me a joke'), null);
+});
+
 test('formats shared live-member data without tenant credentials', async () => {
   const reply = await runOpenBotCommand('live-members', async () => new Response(JSON.stringify({
     liveMembers: [
