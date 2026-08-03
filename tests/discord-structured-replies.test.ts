@@ -82,3 +82,56 @@ test('structured Discord replies post the embed before deleting the triggering m
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+
+test('private structured replies use the bot-token embed route and never a webhook', async () => {
+  const originalFetch = global.fetch;
+  const originalToken = process.env.DISCORD_BOT_TOKEN;
+  const calls: string[] = [];
+
+  try {
+    process.env.DISCORD_BOT_TOKEN = 'test-token';
+    global.fetch = (async (input, init) => {
+      const url = String(input);
+      if (url === 'https://discord.com/api/v10/users/@me') {
+        return new Response(JSON.stringify({ id: 'bot-1', avatar: 'bot-avatar' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url === 'https://discord.com/api/v10/channels/dm-channel/messages') {
+        calls.push('bot-token');
+        const body = JSON.parse(String(init?.body || '{}'));
+        assert.equal(init?.headers && (init.headers as Record<string, string>).Authorization, 'Bot test-token');
+        assert.equal(body.content, '');
+        assert.equal(body.embeds[0].description, 'Private Athena reply.');
+        return new Response(JSON.stringify({ id: 'dm-reply-1' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('webhook')) {
+        calls.push('webhook');
+        throw new Error('DM must not use a webhook');
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    const { sendStructuredDiscordReply } = await import('../src/services/discord-structured-replies');
+    const result = await sendStructuredDiscordReply({
+      channelId: 'dm-channel',
+      message: 'Private Athena reply.',
+      tenantId: 'tenant-1',
+      botName: 'Athena',
+      responseType: 'AI Answer',
+      isPrivate: true,
+    });
+
+    assert.equal(result.messageId, 'dm-reply-1');
+    assert.deepEqual(calls, ['bot-token']);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalToken === undefined) delete process.env.DISCORD_BOT_TOKEN;
+    else process.env.DISCORD_BOT_TOKEN = originalToken;
+  }
+});
