@@ -10,6 +10,7 @@ import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/int
 import { resolveResearchMode } from '@/services/research-mode';
 import { isEdenContentPolicyRejection } from '@/services/eden-policy';
 import { z } from 'zod';
+import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
 
 type RequestBody = {
   username: string;
@@ -201,11 +202,8 @@ export async function POST(request: NextRequest) {
     ].filter(Boolean).join(' ');
 
     const botConductPolicy = [
-      'Never self-promote, advertise, recruit, ask for follows, or post promotional links.',
-      'Never invite viewers to another stream, server, website, app, or community unless a human explicitly asks for that exact information.',
-      channelType === 'visitor-channel'
-        ? `You are a guest in ${channelName || 'another streamer'}'s Twitch chat. Show the broadcaster and their community the utmost respect, never imply ownership of the channel, and answer only the message that invoked you.`
-        : '',
+      BOT_NO_SELF_PROMOTION_POLICY,
+      channelType === 'visitor-channel' ? visitorChannelConductPolicy(channelName) : '',
     ].filter(Boolean).join(' ');
 
     const promptParts = [
