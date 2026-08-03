@@ -1,4 +1,5 @@
 import { readUserConfigSync } from '@/lib/user-config';
+import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
 
 export type AIProvider = 'gemini' | 'edenai' | 'openai';
 
@@ -69,6 +70,7 @@ export async function generateAIResponse(
   options?: AIResponseOptions
 ): Promise<string> {
   const config = getAIConfig(tenantId);
+  const governedSystemPrompt = [systemPrompt, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n');
   
   if (!config.apiKey) {
     throw new Error(`No API key configured for ${config.provider}`);
@@ -76,11 +78,11 @@ export async function generateAIResponse(
   
   switch (config.provider) {
     case 'gemini':
-      return generateGeminiResponse(prompt, systemPrompt, config, options);
+      return generateGeminiResponse(prompt, governedSystemPrompt, config, options);
     case 'edenai':
-      return generateEdenAIResponse(prompt, systemPrompt, config, options);
+      return generateEdenAIResponse(prompt, governedSystemPrompt, config, options);
     case 'openai':
-      return generateOpenAIResponse(prompt, systemPrompt, config, options);
+      return generateOpenAIResponse(prompt, governedSystemPrompt, config, options);
     default:
       throw new Error(`Unsupported AI provider: ${config.provider}`);
   }

@@ -10,6 +10,7 @@ import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/int
 import { resolveResearchMode } from '@/services/research-mode';
 import { isEdenContentPolicyRejection } from '@/services/eden-policy';
 import { z } from 'zod';
+import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
 
 type RequestBody = {
   username: string;
@@ -200,7 +201,13 @@ export async function POST(request: NextRequest) {
       `isDirectMessage=${isDirectMessage ? 'true' : 'false'};`,
     ].filter(Boolean).join(' ');
 
+    const botConductPolicy = [
+      BOT_NO_SELF_PROMOTION_POLICY,
+      channelType === 'visitor-channel' ? visitorChannelConductPolicy(channelName) : '',
+    ].filter(Boolean).join(' ');
+
     const promptParts = [
+      botConductPolicy,
       extendedGuidance,
       worldLoreText,
       botInteractionHistory,
