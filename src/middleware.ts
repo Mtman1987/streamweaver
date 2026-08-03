@@ -206,5 +206,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  // Large Discord media uploads are authenticated and validated inside their
+  // route. Excluding them here prevents Next middleware from cloning and
+  // truncating multipart bodies at its 10 MB buffering ceiling.
+  matcher: ['/((?!_next/static|_next/image|api/discord-media(?:/|$)).*)'],
 };
