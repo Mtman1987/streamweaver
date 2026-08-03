@@ -18,6 +18,7 @@
     "flow-packages:verify": "npx tsx scripts/verify-flow-packages.ts",
     "flow-packages:smoke": "npx tsx scripts/smoke-flow-package-tooling.ts",
     "persistence:verify": "node --import tsx scripts/verify-automation-variable-persistence.ts",
+    "test:bot-conduct": "node --import tsx --test tests/bot-conduct-policy.test.ts",
     "test:isolation": "node --import tsx --test --test-force-exit tests/*.test.ts && npm run persistence:verify",
     "social-stream:bridge": "npx tsx scripts/social-stream-bridge.ts",
     "social-stream:supervisor": "npx tsx scripts/social-stream-supervisor.ts",
