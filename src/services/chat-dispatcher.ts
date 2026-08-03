@@ -776,24 +776,21 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
     const reply = (message: string, embed: DiscordCommandEmbedOptions = {}) => {
-        if (options.replyMode === 'bot') {
-            return sendDiscordMessage(sourceChannelId, message).catch((error) => {
-                console.error('[Discord Dispatcher] Failed to send bot command reply:', error);
-            });
-        }
         return sendStructuredDiscordReply({
             channelId: sourceChannelId,
             message,
             tenantId,
-            rotateSpeaker: true,
+            // Bot-token mode controls transport, never presentation. Every
+            // Discord command still uses the canonical structured embed.
+            rotateSpeaker: options.replyMode !== 'bot',
             sourceMessageId: msg.messageId || msg.message_id,
             sourceMessage: actualMessage,
             sourceUser: actualUsername,
             sourceUserAvatarUrl,
-            isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
+            isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message || options.replyMode === 'bot'),
             ...embed,
         }).catch((error) => {
-            console.error('[Discord Dispatcher] Failed to send command reply:', error);
+            console.error('[Discord Dispatcher] Failed to send command embed:', error);
         });
     };
     // Resolved lazily: public commands must not wait on (or fail because of) the
