@@ -1,4 +1,5 @@
 import { readUserConfigSync } from '@/lib/user-config';
+import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
 
 export type AIProvider = 'gemini' | 'edenai' | 'openai';
 
