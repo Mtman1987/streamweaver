@@ -45,7 +45,7 @@ export async function requestPrivateChatCompletion(input: {
       },
       body: JSON.stringify({
         model: PRIVATE_CHAT_MODEL,
-        fallbacks: ['openai/gpt-4.1-mini', 'anthropic/claude-sonnet-4-5'],
+        fallbacks: ['openai/gpt-4.1-mini'],
         messages: [
           { role: 'system', content: input.systemPrompt },
           { role: 'user', content: input.prompt },
