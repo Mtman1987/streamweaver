@@ -1,8 +1,10 @@
 {
   "name": "@spmt/companion",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
+  "author": "Mtman1987",
+  "license": "MIT",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
@@ -12,7 +14,8 @@
   "build": {
     "appId": "live.spmt.companion",
     "productName": "SpaceMountain Companion",
-    "artifactName": "SpaceMountain-Companion-Setup-${version}.${ext}",
+    "artifactName": "SpaceMountain-Companion-Setup.${ext}",
+    "copyright": "Copyright © 2026 Mtman1987",
     "asar": true,
     "compression": "normal",
     "npmRebuild": false,
@@ -51,6 +54,7 @@
     ],
     "win": {
       "icon": "../public/favicon.ico",
+      "publisherName": "SignPath Foundation",
       "target": [
         "nsis"
       ]
