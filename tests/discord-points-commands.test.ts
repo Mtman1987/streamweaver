@@ -67,6 +67,16 @@ async function withDispatcher(
         displayName: 'mtman1987',
       });
     }
+    if (url.includes('/api/leaderboard/render')) {
+      dshCalls.push('leaderboard-render');
+      return json({
+        title: '🏆 Space Mountain Points Leaderboard',
+        imageUrl: 'https://dsh.test/leaderboard.png',
+        scope: 'Space Mountain',
+        updatedAt: '2026-08-02T00:00:00.000Z',
+        rankButtonCustomId: 'check_rank_test',
+      });
+    }
     if (url.includes('/api/points/leaderboard')) {
       dshCalls.push('leaderboard');
       return json([
@@ -120,7 +130,9 @@ test('!points answers in Discord without an admin lookup', async () => {
     assert.equal(result.commandHandled, true);
     assert.equal(dshCalls.includes('tenant-balances'), true);
     assert.equal(dshCalls.includes('admin-access'), false);
-    assert.match(sent.map((entry) => entry.content).join('\n'), /Mtman1987\*\* — 9,200 current/);
+    const embed = lastEmbed(sent);
+    assert.ok(embed, 'bot-token mode must preserve the structured embed');
+    assert.match(String(embed.description), /Mtman1987\*\* — 9,200 current/);
   });
 });
 
@@ -157,16 +169,16 @@ test('!pints is an alias for the structured !points response', async () => {
   });
 });
 
-test('!pleader answers with a ranked leaderboard highlighting the requester', async () => {
+test('!pleader posts the rendered Discord Stream Hub points leaderboard image', async () => {
   await withDispatcher(async ({ handleDiscordMessage, sent, dshCalls }) => {
     const result = await handleDiscordMessage(baseMessage('!pleader'), 'tenant-a');
 
     assert.equal(result.commandHandled, true);
-    assert.equal(dshCalls.includes('leaderboard'), true);
-    const description = String(lastEmbed(sent)?.description || '');
-    assert.match(description, /🥇 First — 20,000/);
-    assert.match(description, /🥉 \*\*viewer\*\* — 13,691/);
-    assert.equal(description.includes('9,200'), false, 'the board ranks by lifetime, not spendable');
+    assert.equal(dshCalls.includes('leaderboard-render'), true);
+    const embed = lastEmbed(sent);
+    assert.ok(embed, 'expected a rendered leaderboard embed');
+    assert.equal(embed.image?.url, 'https://dsh.test/leaderboard.png');
+    assert.match(String(embed.description), /Global SPMT XP/);
   });
 });
 

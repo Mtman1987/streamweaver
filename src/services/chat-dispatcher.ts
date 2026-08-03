@@ -776,24 +776,21 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
 
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: actualUsername } : undefined;
     const reply = (message: string, embed: DiscordCommandEmbedOptions = {}) => {
-        if (options.replyMode === 'bot') {
-            return sendDiscordMessage(sourceChannelId, message).catch((error) => {
-                console.error('[Discord Dispatcher] Failed to send bot command reply:', error);
-            });
-        }
         return sendStructuredDiscordReply({
             channelId: sourceChannelId,
             message,
             tenantId,
-            rotateSpeaker: true,
+            // Bot-token mode controls transport, never presentation. Every
+            // Discord command still uses the canonical structured embed.
+            rotateSpeaker: options.replyMode !== 'bot',
             sourceMessageId: msg.messageId || msg.message_id,
             sourceMessage: actualMessage,
             sourceUser: actualUsername,
             sourceUserAvatarUrl,
-            isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message),
+            isPrivate: Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message || options.replyMode === 'bot'),
             ...embed,
         }).catch((error) => {
-            console.error('[Discord Dispatcher] Failed to send command reply:', error);
+            console.error('[Discord Dispatcher] Failed to send command embed:', error);
         });
     };
     // Resolved lazily: public commands must not wait on (or fail because of) the
@@ -925,53 +922,78 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         return true;
     }
 
-    if (cmdName === 'pleader' || cmdName === 'leader') {
-        const requesterId = String(msg.author?.id || msg.userId || msg.user_id || '').trim();
+    if (cmdName === 'leader') {
+        const targetText = actualMessage.replace(/^!leader\b/i, '').trim();
+        const mentionTarget = parseDiscordCommandTarget(msg, targetText);
+        const targetUserId = mentionTarget?.userId || msg.author?.id || msg.userId || msg.user_id;
+        const targetName = mentionTarget?.displayName || mentionTarget?.username || actualUsername;
         try {
-            const [standings, requesterBalance] = await Promise.all([
-                getDiscordStreamHubPointsLeaderboard({ serverId: discordServerId, limit: 100 }),
+            const { getUser, getUserRank } = require('./user-stats');
+            const { getUserCards } = require('./pokemon-collection');
+            const [spmt, profile, cards] = await Promise.all([
                 getDiscordStreamHubPoints({
-                    userId: requesterId,
-                    username: actualUsername,
-                    displayName: actualUsername,
+                    userId: targetUserId,
+                    username: mentionTarget?.username || actualUsername,
+                    displayName: targetName,
                     serverId: discordServerId,
-                }).catch(() => null),
+                }),
+                getUser(String(mentionTarget?.username || actualUsername).toLowerCase()),
+                getUserCards(String(mentionTarget?.username || actualUsername).toLowerCase()),
             ]);
-            if (!standings.length) {
-                await reply('No Discord points have been recorded yet.', {
-                    title: `${DISCORD_LEADERBOARD_ICON} Points leaderboard`,
-                    color: DISCORD_POINTS_COLOR,
-                });
-                return true;
-            }
-
-            const requesterRank = Number(requesterBalance?.rank || 0);
-            const isRequester = (entry: { userId: string; rank?: number }) =>
-                (requesterRank > 0 && entry.rank === requesterRank)
-                || Boolean(entry.userId && entry.userId === requesterId);
-            const board = standings
-                .slice(0, 10)
-                .map((entry, index) => {
-                    const name = entry.displayName || entry.username || `User ${index + 1}`;
-                    const label = isRequester(entry) ? `**${name}**` : name;
-                    return `${rankMedal(entry.rank || index + 1)} ${label} — ${Number(entry.lifetimePoints || 0).toLocaleString()}`;
-                })
-                .join('\n');
-
-            await reply(board, {
-                title: `${DISCORD_LEADERBOARD_ICON} Points leaderboard`,
+            const [watchRank, cardRank, badgeRank] = await Promise.all([
+                getUserRank(profile.user, 'watchtime'),
+                getUserRank(profile.user, 'totalCards'),
+                getUserRank(profile.user, 'badges'),
+            ]);
+            const badges = Array.isArray(profile.badges) ? profile.badges : [];
+            const chatTag = String(profile.chatTag || profile.activeChatTag || badges[0] || 'None');
+            await reply('Global Space Mountain profile across every connected community.', {
+                title: `🌌 ${targetName}'s Global Profile`,
                 color: DISCORD_POINTS_COLOR,
-                fields: requesterRank > 10
-                    ? [{
-                        name: 'Your standing',
-                        value: `#${requesterRank} of ${standings.length} — ${Number(requesterBalance?.lifetimePoints || 0).toLocaleString()} lifetime`,
-                        inline: false,
-                    }]
-                    : undefined,
+                thumbnailUrl: mentionTarget?.avatarUrl || sourceUserAvatarUrl,
+                fields: [
+                    { name: 'SPMT XP', value: spmt.lifetimePoints.toLocaleString(), inline: true },
+                    { name: 'XP rank', value: spmt.rank ? `#${spmt.rank}` : 'Unranked', inline: true },
+                    { name: 'Global watchtime', value: formatDiscordActivityMinutes(Number(profile.watchtime || 0)), inline: true },
+                    { name: 'Watchtime rank', value: watchRank ? `#${watchRank}` : 'Unranked', inline: true },
+                    { name: 'Global cards', value: cards.length.toLocaleString(), inline: true },
+                    { name: 'Card rank', value: cardRank ? `#${cardRank}` : 'Unranked', inline: true },
+                    { name: 'Global badges', value: badges.length ? badges.join(', ') : 'None', inline: false },
+                    { name: 'Badge rank', value: badgeRank ? `#${badgeRank}` : 'Unranked', inline: true },
+                    { name: 'Chat tag', value: chatTag, inline: true },
+                ],
             });
         } catch (error: any) {
-            console.error(`[Discord Dispatcher] !${cmdName} failed:`, error);
-            await reply(`@${actualUsername}, I couldn't load the Discord points leaderboard right now.`);
+            console.error('[Discord Dispatcher] !leader profile failed:', error);
+            await reply(`@${actualUsername}, I couldn't load that global profile right now.`);
+        }
+        return true;
+    }
+
+    if (cmdName === 'pleader') {
+        try {
+            const board = await getDiscordStreamHubLeaderboardPost({
+                serverId: discordServerId,
+                userId: msg.author?.id || msg.userId || msg.user_id,
+                limit: 10,
+            });
+            await reply(board.scope ? `Scope: **${board.scope}** • Global SPMT XP` : 'Global SPMT XP leaderboard.', {
+                title: board.title,
+                imageUrl: board.imageUrl,
+                fields: board.updatedAt ? [{ name: 'Updated', value: formatIsoDateLabel(board.updatedAt), inline: true }] : undefined,
+                components: [{
+                    type: 1,
+                    components: [{
+                        type: 2,
+                        style: 1,
+                        label: 'Check My Rank',
+                        custom_id: board.rankButtonCustomId,
+                    }],
+                }],
+            });
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !pleader failed:', error);
+            await reply(`@${actualUsername}, I couldn't render the SPMT XP leaderboard right now.`);
         }
         return true;
     }

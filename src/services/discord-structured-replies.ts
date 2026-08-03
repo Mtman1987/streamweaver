@@ -151,22 +151,23 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrlForTenant(speaker.tenantId) || buildStreamWeaverLogoUrl();
 
+  const botTokenPayload = {
+    content: '',
+    embeds: payload.embeds,
+    ...(input.components?.length ? { components: input.components } : {}),
+  };
+
   let sent: any;
-  if (!speaker.tenantId && !input.tenantId) {
-    sent = await sendDiscordMessage(input.channelId, input.message);
-  } else {
-    try {
-      sent = input.components?.length
-        ? await sendDiscordEmbed(input.channelId, {
-            content: '',
-            embeds: payload.embeds,
-            components: input.components,
-          })
-        : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
-    } catch (error) {
-      console.warn('[Discord Reply] Structured reply failed; falling back to direct Discord message:', error);
-      sent = await sendDiscordMessage(input.channelId, input.message);
-    }
+  try {
+    // Discord does not support webhooks in DM channels. Private replies, replies
+    // with components, and tenant-less replies always use the bot-token route.
+    sent = input.isPrivate || input.components?.length || (!speaker.tenantId && !input.tenantId)
+      ? await sendDiscordEmbed(input.channelId, botTokenPayload)
+      : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
+  } catch (error) {
+    // Preserve the shared embed contract even when a webhook is unavailable.
+    console.warn('[Discord Reply] Webhook reply failed; retrying through the bot-token embed route:', error);
+    sent = await sendDiscordEmbed(input.channelId, botTokenPayload);
   }
 
   const sentId = typeof sent?.id === 'string' ? sent.id : '';
