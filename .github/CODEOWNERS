@@ -1,0 +1,4 @@
+# Signing and release policy changes require the project owner.
+/.github/workflows/companion-release.yml @Mtman1987
+/companion/CODE_SIGNING_POLICY.md @Mtman1987
+/companion/signpath-artifact-configuration.xml @Mtman1987

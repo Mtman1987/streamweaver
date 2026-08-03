@@ -208,6 +208,15 @@ Build args (in `fly.toml`):
 - [Suite production roadmap](https://github.com/Mtman1987/spmt-live/blob/main/docs/ecosystem/PRODUCTION_ROADMAP.md) — canonical backlog, including StreamWeaver tenant and app-track work
 - [Research and reviewed creative workflows](docs/RESEARCH_AND_CREATIVE_WORKFLOWS.md) — shared bot Research Mode, knowledge packs, Companion review jobs, OBS playback, and current release gates
 - [SpaceMountain Companion](companion/README.md) — tray host setup, pairing, and implemented local capabilities
+
+## License and code signing
+
+StreamWeaver and SpaceMountain Companion are available under the [MIT License](LICENSE).
+The Companion's Windows installer follows the published
+[code signing policy](companion/CODE_SIGNING_POLICY.md). Free code signing is
+provided by [SignPath.io](https://signpath.io/), with a certificate provided by
+[SignPath Foundation](https://signpath.org/).
+
 ## Shared SpaceMountain appearance
 
 StreamWeaver can follow the signed-in account's `WorkspaceProfileV1` appearance
