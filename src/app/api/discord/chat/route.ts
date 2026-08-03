@@ -29,6 +29,7 @@ import {
   beginPendingMtSupportRequest,
   consumePendingMtSupportRequest,
   detectMtFixItIntent,
+  getMtFixItPublicReply,
   getMtSupportPrompt,
   submitMtSupportReport,
 } from '@/services/mt-support-report';
@@ -383,16 +384,12 @@ export async function POST(request: NextRequest) {
           platform: 'discord',
           tenantId,
           username: userName,
+          reporterId: userId,
           channelId,
           description: mtFixItIntent.description,
           triggerMessage: message,
         });
-        await sendDiscordRouteReplyOrCollect(
-          channelId,
-          result.ok
-            ? `@${userName}, support report sent to Mtman1987.`
-            : `@${userName}, I could not send the support report: ${result.error || 'unknown error'}`,
-        );
+        await sendDiscordRouteReplyOrCollect(channelId, getMtFixItPublicReply(userName));
         return apiOk({ success: true, botResponded: true, supportReportSent: result.ok, replies: relayOnly ? collectedReplies : undefined });
       }
 
@@ -406,16 +403,12 @@ export async function POST(request: NextRequest) {
           platform: 'discord',
           tenantId,
           username: userName,
+          reporterId: userId,
           channelId,
           description: message,
           triggerMessage: '!mtfixit',
         });
-        await sendDiscordRouteReplyOrCollect(
-          channelId,
-          result.ok
-            ? `@${userName}, support report sent to Mtman1987.`
-            : `@${userName}, I could not send the support report: ${result.error || 'unknown error'}`,
-        );
+        await sendDiscordRouteReplyOrCollect(channelId, getMtFixItPublicReply(userName));
         return apiOk({ success: true, botResponded: true, supportReportSent: result.ok, replies: relayOnly ? collectedReplies : undefined });
       }
     }

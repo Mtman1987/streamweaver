@@ -72,6 +72,7 @@ import {
     beginPendingMtSupportRequest,
     consumePendingMtSupportRequest,
     detectMtFixItIntent,
+    getMtFixItPublicReply,
     getMtSupportPrompt,
     submitMtSupportReport,
 } from './mt-support-report';
@@ -860,19 +861,16 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             return true;
         }
 
-        const result = await submitMtSupportReport({
+        await submitMtSupportReport({
             platform: 'discord',
             tenantId,
             username: actualUsername,
+            reporterId: String(msg.author?.id || ''),
             channelId: sourceChannelId,
             description: mtFixItIntent.description,
             triggerMessage: content,
         });
-        await reply(
-            result.ok
-                ? `@${actualUsername}, support report sent to Mtman1987.`
-                : `@${actualUsername}, I could not send the support report: ${result.error || 'unknown error'}`,
-        );
+        await reply(getMtFixItPublicReply(actualUsername));
         return true;
     }
 
@@ -2095,7 +2093,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        const result = await submitMtSupportReport({
+        await submitMtSupportReport({
             platform: 'twitch',
             tenantId,
             username: actualUsername,
@@ -2103,12 +2101,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             description: mtFixItIntent.description,
             triggerMessage: actualMessage,
         });
-        await replyMaybeKick(
-            result.ok
-                ? `@${actualUsername}, support report sent to Mtman1987.`
-                : `@${actualUsername}, I could not send the support report: ${result.error || 'unknown error'}`,
-            'bot',
-        ).catch(() => {});
+        await replyMaybeKick(getMtFixItPublicReply(actualUsername), 'bot').catch(() => {});
         return;
     }
 
@@ -2118,7 +2111,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         username: actualUsername,
         channelId: replyChannel,
     })) {
-        const result = await submitMtSupportReport({
+        await submitMtSupportReport({
             platform: 'twitch',
             tenantId,
             username: actualUsername,
@@ -2126,12 +2119,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             description: actualMessage,
             triggerMessage: '!mtfixit',
         });
-        await replyMaybeKick(
-            result.ok
-                ? `@${actualUsername}, support report sent to Mtman1987.`
-                : `@${actualUsername}, I could not send the support report: ${result.error || 'unknown error'}`,
-            'bot',
-        ).catch(() => {});
+        await replyMaybeKick(getMtFixItPublicReply(actualUsername), 'bot').catch(() => {});
         return;
     }
 
@@ -4820,20 +4808,16 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
                 return { commandHandled: true };
             }
 
-            const result = await submitMtSupportReport({
+            await submitMtSupportReport({
                 platform: 'discord',
                 tenantId,
                 username: sourceUserName,
+                reporterId: String(msg.author?.id || ''),
                 channelId: sourceChannelId,
                 description: mtFixItIntent.description,
                 triggerMessage: normalizedContent,
             });
-            await sendDiscordMessage(
-                sourceChannelId,
-                result.ok
-                    ? `@${sourceUserName}, support report sent to Mtman1987.`
-                    : `@${sourceUserName}, I could not send the support report: ${result.error || 'unknown error'}`,
-            ).catch(() => {});
+            await sendDiscordMessage(sourceChannelId, getMtFixItPublicReply(sourceUserName)).catch(() => {});
             return { commandHandled: true };
         }
 
@@ -4843,20 +4827,16 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
             username: sourceUserName,
             channelId: sourceChannelId,
         })) {
-            const result = await submitMtSupportReport({
+            await submitMtSupportReport({
                 platform: 'discord',
                 tenantId,
                 username: sourceUserName,
+                reporterId: String(msg.author?.id || ''),
                 channelId: sourceChannelId,
                 description: normalizedContent,
                 triggerMessage: '!mtfixit',
             });
-            await sendDiscordMessage(
-                sourceChannelId,
-                result.ok
-                    ? `@${sourceUserName}, support report sent to Mtman1987.`
-                    : `@${sourceUserName}, I could not send the support report: ${result.error || 'unknown error'}`,
-            ).catch(() => {});
+            await sendDiscordMessage(sourceChannelId, getMtFixItPublicReply(sourceUserName)).catch(() => {});
             return { commandHandled: true };
         }
     }
