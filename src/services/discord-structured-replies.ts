@@ -5,8 +5,6 @@ import { getStoredTokens } from '@/lib/token-utils.server';
 import { deleteMessage } from './discord-local';
 import {
   buildDiscordBotEmbed,
-  buildStreamWeaverLogoUrl,
-  getDiscordBotProfileAvatarUrl,
   getDiscordBotWebhookIdentity,
 } from './discord-branding';
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
@@ -14,6 +12,8 @@ import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from '.
 import { sendWebhookMessage } from './discord-webhooks';
 import { sendDiscordEmbed } from './discord-local';
 import { getTwitchUser } from './twitch';
+
+const SPACEMOUNTAIN_FALLBACK_LOGO = 'https://spacemountain.live/assets/space-logo-main.png';
 
 export type DiscordReplySpeaker = {
   botName: string;
@@ -135,24 +135,37 @@ export async function resolveStructuredDiscordReplySpeaker(input: {
   return speaker;
 }
 
-async function resolveTenantOwnerLogo(tenantId: string | undefined, fallbackLogo: string): Promise<string> {
-  if (!tenantId) return fallbackLogo;
+async function resolveTenantOwnerBranding(
+  tenantId: string | undefined,
+): Promise<{ name: string; logo: string }> {
+  if (!tenantId) {
+    return { name: 'SpaceMountain.live', logo: SPACEMOUNTAIN_FALLBACK_LOGO };
+  }
+
   const tokens = await getStoredTokens(tenantId).catch(() => null) as Record<string, unknown> | null;
+  const ownerName = String(
+    tokens?.broadcasterDisplayName ||
+    tokens?.broadcasterUsername ||
+    tokens?.loginDisplayName ||
+    tokens?.loginUsername ||
+    'SpaceMountain.live'
+  ).trim();
+
   const configured = firstUrl(
     tokens?.broadcasterAvatarUrl,
     tokens?.broadcasterProfileImageUrl,
     tokens?.loginAvatarUrl,
     tokens?.loginProfileImageUrl,
   );
-  if (configured) return configured;
+  if (configured) return { name: ownerName, logo: configured };
 
-  const ownerName = String(tokens?.broadcasterUsername || tokens?.loginUsername || '').trim();
-  if (ownerName) {
+  if (ownerName && ownerName !== 'SpaceMountain.live') {
     const profile = await getTwitchUser(ownerName).catch(() => null);
     const profileImage = firstUrl(profile?.profileImageUrl);
-    if (profileImage) return profileImage;
+    if (profileImage) return { name: ownerName, logo: profileImage };
   }
-  return fallbackLogo;
+
+  return { name: ownerName || 'SpaceMountain.live', logo: SPACEMOUNTAIN_FALLBACK_LOGO };
 }
 
 export async function buildStructuredDiscordReplyPayload(input: StructuredDiscordReplyInput): Promise<{
@@ -168,16 +181,15 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     rotateSpeaker: input.isPrivate ? false : input.rotateSpeaker,
     isPrivate: input.isPrivate,
   });
-  const deleteAt = getDiscordMessageCleanupDeleteAt();
+  const deleteAt = input.isPrivate ? '' : getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
-  const fallbackLogo = await getDiscordBotProfileAvatarUrl() || buildStreamWeaverLogoUrl();
   const botAvatar = firstUrl(
     webhookIdentity.avatarUrl,
     await getAvatarUrlForTenant(speaker.tenantId),
-    fallbackLogo,
+    SPACEMOUNTAIN_FALLBACK_LOGO,
   );
-  const ownerLogo = await resolveTenantOwnerLogo(speaker.tenantId, fallbackLogo);
-  const requesterLogo = firstUrl(input.sourceUserAvatarUrl, fallbackLogo);
+  const owner = await resolveTenantOwnerBranding(speaker.tenantId);
+  const requesterLogo = firstUrl(input.sourceUserAvatarUrl, SPACEMOUNTAIN_FALLBACK_LOGO);
 
   const embed = await buildDiscordBotEmbed({
     description: input.message,
@@ -188,7 +200,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     sourceMessage: input.sourceMessage,
     sourceUser: input.sourceUser,
     sourceUserAvatarUrl: requesterLogo,
-    deleteAt,
+    deleteAt: deleteAt || undefined,
     imageUrl: input.imageUrl,
     thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
     color: input.color,
@@ -197,10 +209,10 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
 
   embed.author = {
     ...embed.author,
-    name: speaker.botName,
-    icon_url: ownerLogo,
+    name: `Bot owned by ${owner.name}`,
+    icon_url: firstUrl(owner.logo, SPACEMOUNTAIN_FALLBACK_LOGO),
   };
-  embed.thumbnail = { url: firstUrl(input.thumbnailUrl, botAvatar, fallbackLogo) };
+  embed.thumbnail = { url: firstUrl(input.thumbnailUrl, botAvatar, SPACEMOUNTAIN_FALLBACK_LOGO) };
   embed.footer = {
     ...embed.footer,
     icon_url: requesterLogo,
@@ -222,7 +234,11 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const payload = await buildStructuredDiscordReplyPayload(input);
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
-  const avatarUrl = webhookIdentity.avatarUrl || await getAvatarUrlForTenant(speaker.tenantId) || await getDiscordBotProfileAvatarUrl() || buildStreamWeaverLogoUrl();
+  const avatarUrl = firstUrl(
+    webhookIdentity.avatarUrl,
+    await getAvatarUrlForTenant(speaker.tenantId),
+    SPACEMOUNTAIN_FALLBACK_LOGO,
+  );
 
   const botTokenPayload = {
     content: '',
