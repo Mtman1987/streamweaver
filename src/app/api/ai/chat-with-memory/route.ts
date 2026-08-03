@@ -200,7 +200,16 @@ export async function POST(request: NextRequest) {
       `isDirectMessage=${isDirectMessage ? 'true' : 'false'};`,
     ].filter(Boolean).join(' ');
 
+    const botConductPolicy = [
+      'Never self-promote, advertise, recruit, ask for follows, or post promotional links.',
+      'Never invite viewers to another stream, server, website, app, or community unless a human explicitly asks for that exact information.',
+      channelType === 'visitor-channel'
+        ? `You are a guest in ${channelName || 'another streamer'}'s Twitch chat. Show the broadcaster and their community the utmost respect, never imply ownership of the channel, and answer only the message that invoked you.`
+        : '',
+    ].filter(Boolean).join(' ');
+
     const promptParts = [
+      botConductPolicy,
       extendedGuidance,
       worldLoreText,
       botInteractionHistory,
