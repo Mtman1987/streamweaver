@@ -201,6 +201,8 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     sourceUser: input.sourceUser,
     sourceUserAvatarUrl: requesterLogo,
     deleteAt: deleteAt || undefined,
+    mediaSlot: input.isPrivate ? 'private' : 'public',
+    includeConfiguredMedia: Boolean(input.isPrivate),
     imageUrl: input.imageUrl,
     thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
     color: input.color,
