@@ -80,6 +80,16 @@ test('Discord embeds use responder branding, requester footer, and explicit medi
   }
 });
 
+test('companion runtime staging excludes accidental duplicate avatar bundle files', async () => {
+  const sourcePath = await readFile(path.join(process.cwd(), 'scripts', 'stage-companion-runtime.ts'), 'utf8');
+
+  assert.match(
+    sourcePath,
+    /avatars\[\\\\\/]\(New folder\|New folder\\\.zip\)/,
+    'staging script should continue excluding duplicate avatar bundle files from runtime output',
+  );
+});
+
 test('Discord media upload rejects oversized and malformed multipart requests without throwing', async () => {
   process.env.STREAMWEAVER_SESSION_SECRET = 'discord-media-test-secret';
   const cookie = serializeSessionCookie({ id: 'tenant-media-upload', username: 'owner' });
