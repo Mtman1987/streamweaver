@@ -36,15 +36,11 @@ const saveLocks = new Map<string, Promise<void>>();
 
 function contextKey(ctx?: StorageContext): string {
   if (ctx?.tenantId) return ctx.tenantId;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('User stats require tenant context');
-  }
-  return '__development_global__';
+  return '__global__';
 }
 
 function statsFile(ctx?: StorageContext): string {
   if (ctx?.tenantId) return tenantPath(ctx.tenantId, 'data/user-stats.json');
-  contextKey(ctx);
   return path.join(process.cwd(), 'data', 'user-stats.json');
 }
 
@@ -90,7 +86,6 @@ function loadStats(ctx?: StorageContext): Record<string, UserStats> {
     return migrated;
   }
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  // Migrate old entries that lack watchtimeByChannel
   for (const key of Object.keys(raw)) {
     if (!raw[key].watchtimeByChannel) {
       raw[key].watchtimeByChannel = raw[key].watchtime ? { unknown: raw[key].watchtime } : {};
@@ -152,7 +147,6 @@ export async function getUser(username: string, ctx?: StorageContext): Promise<U
     const pointsData = await getPointsData(username, ctx);
     statsCache[username].points = pointsData.points;
     statsCache[username].watchtime = totalWatchtime(statsCache[username]);
-    // Refresh badges and cards from real stores
     try {
       const { getUserBadges: getBadges } = require('./badge-storage-discord');
       const globalBadges = await getBadges(username);
@@ -238,7 +232,6 @@ export async function getLeaderboard(stat: 'points' | 'watchtime' | 'totalCards'
     statsCache[username].watchtime = totalWatchtime(statsCache[username]);
   }
 
-  // Refresh card counts from the real collection for card-related stats
   if (stat === 'totalCards' || stat === 'rareCards') {
     try {
       const { getUserCards } = require('./pokemon-collection');
