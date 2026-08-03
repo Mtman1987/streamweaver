@@ -887,33 +887,40 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         return true;
     }
 
-    if (/^!points(?:\s|$)/i.test(actualMessage)) {
-        const mentionTarget = parseDiscordCommandTarget(msg, actualMessage.slice('!points'.length).trim());
+    if (/^!(?:points|pints)(?:\s|$)/i.test(actualMessage)) {
+        const targetText = actualMessage.replace(/^!(?:points|pints)\b/i, '').trim();
+        const mentionTarget = parseDiscordCommandTarget(msg, targetText);
         const targetUserId = mentionTarget?.userId || msg.author?.id || msg.userId || msg.user_id;
         const targetName = mentionTarget?.displayName || mentionTarget?.username || actualUsername;
+        const identity = {
+            userId: targetUserId,
+            username: mentionTarget?.username || actualUsername,
+            displayName: targetName,
+            serverId: discordServerId,
+        };
         try {
-            const balances = await getDiscordStreamHubTenantPoints({
-                userId: targetUserId,
-                username: mentionTarget?.username || actualUsername,
-                displayName: targetName,
-                serverId: discordServerId,
-            });
-            const rows = balances.tenants
-                .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.currentPoints - a.currentPoints)
+            const [spmt, balances] = await Promise.all([
+                getDiscordStreamHubPoints(identity),
+                getDiscordStreamHubTenantPoints(identity),
+            ]);
+            const tenantsWithPoints = balances.tenants
+                .filter((entry) => entry.currentPoints > 0 || entry.lifetimePoints > 0)
+                .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.currentPoints - a.currentPoints);
+            const rows = tenantsWithPoints
                 .map((entry) => `${entry.isCurrent ? '★' : '•'} **${entry.tenantName}** — ${entry.currentPoints.toLocaleString()} current / ${entry.lifetimePoints.toLocaleString()} lifetime`)
                 .join('\n');
-            await reply(rows || 'No points have been recorded yet.', {
-                title: `${DISCORD_POINTS_ICON} ${targetName}'s StreamWeaver points`,
+            await reply(rows || 'No tenant points have been recorded yet.', {
+                title: `${DISCORD_POINTS_ICON} ${targetName}'s Space Mountain points`,
                 color: DISCORD_POINTS_COLOR,
                 fields: [
-                    { name: 'Combined current', value: balances.totalCurrentPoints.toLocaleString(), inline: true },
-                    { name: 'Combined lifetime', value: balances.totalLifetimePoints.toLocaleString(), inline: true },
-                    { name: 'Communities', value: String(balances.tenants.length), inline: true },
+                    { name: 'SPMT XP', value: spmt.lifetimePoints.toLocaleString(), inline: true },
+                    { name: 'Global rank', value: spmt.rank ? `#${spmt.rank}` : 'Unranked', inline: true },
+                    { name: 'Tenant balances', value: String(tenantsWithPoints.length), inline: true },
                 ],
             });
         } catch (error: any) {
             console.error('[Discord Dispatcher] !points failed:', error);
-            await reply(`@${actualUsername}, I couldn't load StreamWeaver points right now.`);
+            await reply(`@${actualUsername}, I couldn't load Space Mountain points right now.`);
         }
         return true;
     }

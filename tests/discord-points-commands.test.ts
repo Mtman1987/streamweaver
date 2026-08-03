@@ -127,17 +127,33 @@ test('!points answers in Discord without an admin lookup', async () => {
 const lastEmbed = (sent: SentDiscordMessage[]) =>
   [...sent].reverse().find((entry) => entry.embeds?.length)?.embeds[0];
 
-test('!points embed combines current and lifetime balances across communities', async () => {
-  await withDispatcher(async ({ handleDiscordMessage, sent }) => {
+test('!points shows canonical SPMT XP before separate tenant balances', async () => {
+  await withDispatcher(async ({ handleDiscordMessage, sent, dshCalls }) => {
     await handleDiscordMessage(baseMessage('!points'), 'tenant-a');
 
     const embed = lastEmbed(sent);
     assert.ok(embed, 'expected an embed reply');
     assert.match(String(embed.title), /viewer/);
+    assert.equal(dshCalls.includes('balance'), true);
+    assert.equal(dshCalls.includes('tenant-balances'), true);
     const fields = Object.fromEntries((embed.fields || []).map((f: any) => [f.name, f.value]));
-    assert.equal(fields['Combined current'], '9,500');
-    assert.equal(fields['Combined lifetime'], '14,191');
-    assert.equal(fields.Communities, '2');
+    assert.equal(fields['SPMT XP'], '13,691');
+    assert.equal(fields['Global rank'], '#3');
+    assert.equal(fields['Tenant balances'], '2');
+    assert.equal(fields['Combined current'], undefined);
+    assert.match(String(embed.description), /Mtman1987\*\* — 9,200 current/);
+    assert.match(String(embed.description), /Guest Streamer\*\* — 300 current/);
+  });
+});
+
+test('!pints is an alias for the structured !points response', async () => {
+  await withDispatcher(async ({ handleDiscordMessage, sent, dshCalls }) => {
+    const result = await handleDiscordMessage(baseMessage('!pints'), 'tenant-a');
+
+    assert.equal(result.commandHandled, true);
+    assert.equal(dshCalls.includes('balance'), true);
+    assert.equal(dshCalls.includes('tenant-balances'), true);
+    assert.equal(lastEmbed(sent)?.fields?.[0]?.name, 'SPMT XP');
   });
 });
 
