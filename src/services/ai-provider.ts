@@ -69,11 +69,7 @@ export async function generateAIResponse(
   options?: AIResponseOptions
 ): Promise<string> {
   const config = getAIConfig(tenantId);
-  const conductPolicy = [
-    'Never self-promote, advertise, recruit, or ask for follows.',
-    'Never post promotional links or invite viewers to another stream, server, website, app, or community unless a human explicitly asks for that exact information.',
-  ].join(' ');
-  const governedSystemPrompt = [systemPrompt, conductPolicy].filter(Boolean).join('\n\n');
+  const governedSystemPrompt = [systemPrompt, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n');
   
   if (!config.apiKey) {
     throw new Error(`No API key configured for ${config.provider}`);
