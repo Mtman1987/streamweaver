@@ -1,5 +1,5 @@
 import * as fs from 'fs/promises';
-import { uploadFileToDiscord } from './discord';
+import { createDiscordDmChannel, uploadFileToDiscord } from './discord';
 import { readPublicChatMessages } from '@/lib/public-chat-store';
 import { globalPath } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
@@ -24,6 +24,15 @@ type PendingSupportRequest = SupportContext & {
 type SubmitSupportReportInput = SupportContext & {
   description: string;
   triggerMessage: string;
+};
+
+type SubmitSupportReportResult = {
+  ok: boolean;
+  jobId?: string;
+  dashboardUrl?: string;
+  dmSent?: boolean;
+  dmChannelId?: string;
+  error?: string;
 };
 
 const PENDING_TTL_MS = 10 * 60 * 1000;
@@ -56,9 +65,7 @@ function cleanupExpiredPendingRequests(): void {
   const now = Date.now();
   const pending = getPendingSupportRequests();
   for (const [key, request] of pending.entries()) {
-    if (now - request.createdAt > PENDING_TTL_MS) {
-      pending.delete(key);
-    }
+    if (now - request.createdAt > PENDING_TTL_MS) pending.delete(key);
   }
 }
 
@@ -67,24 +74,17 @@ export function detectMtFixItIntent(message: string): { matched: boolean; descri
   if (!text) return { matched: false, description: '' };
 
   const commandMatch = text.match(/^!mtfixit(?:\s+(.+))?$/i);
-  if (commandMatch) {
-    return { matched: true, description: String(commandMatch[1] || '').trim() };
-  }
+  if (commandMatch) return { matched: true, description: String(commandMatch[1] || '').trim() };
 
   const voiceAliasMatch = text.match(/^mt\s+fix\s+it(?:\s+(.+))?$/i);
-  if (voiceAliasMatch) {
-    return { matched: true, description: String(voiceAliasMatch[1] || '').trim() };
-  }
+  if (voiceAliasMatch) return { matched: true, description: String(voiceAliasMatch[1] || '').trim() };
 
   return { matched: false, description: '' };
 }
 
 export function beginPendingMtSupportRequest(context: SupportContext): void {
   cleanupExpiredPendingRequests();
-  getPendingSupportRequests().set(makeSupportKey(context), {
-    ...context,
-    createdAt: Date.now(),
-  });
+  getPendingSupportRequests().set(makeSupportKey(context), { ...context, createdAt: Date.now() });
 }
 
 export function hasPendingMtSupportRequest(context: SupportContext): boolean {
@@ -120,12 +120,24 @@ async function readDiscordChannelSettings(tenantId?: string): Promise<Record<str
   }
 }
 
-async function getSupportDestinationChannelId(): Promise<string> {
+async function getConfiguredSupportDestinationChannelId(): Promise<string> {
   const fromEnv = String(process.env.MT_SUPPORT_DM_CHANNEL_ID || '').trim();
   if (fromEnv) return fromEnv;
-
   const rootSettings = await readDiscordChannelSettings();
   return String(rootSettings.dmChannelId || '').trim();
+}
+
+async function resolveOwnerDmChannelId(): Promise<string> {
+  const ownerId = String(process.env.MTMAN_DISCORD_USER_ID || '767875979561009173').trim();
+  if (ownerId) {
+    try {
+      const dm = await createDiscordDmChannel(ownerId);
+      if (dm.id) return dm.id;
+    } catch (error) {
+      console.warn('[MtFixIt] Could not create owner DM channel; trying configured fallback:', error);
+    }
+  }
+  return getConfiguredSupportDestinationChannelId();
 }
 
 async function readRecentFlyLogLines(limit = 80): Promise<string[]> {
@@ -139,17 +151,13 @@ async function readRecentFlyLogLines(limit = 80): Promise<string[]> {
 
 function formatChatTranscript(messages: Awaited<ReturnType<typeof readPublicChatMessages>>): string {
   if (!messages.length) return 'No recent public chat history captured.';
-  return messages
-    .map((entry) => `[${entry.timestamp}] ${entry.username} (${entry.type}): ${entry.message}`)
-    .join('\n');
+  return messages.map((entry) => `[${entry.timestamp}] ${entry.username} (${entry.type}): ${entry.message}`).join('\n');
 }
 
-export async function submitMtSupportReport(input: SubmitSupportReportInput): Promise<{ ok: boolean; jobId?: string; dashboardUrl?: string; error?: string }> {
+export async function submitMtSupportReport(input: SubmitSupportReportInput): Promise<SubmitSupportReportResult> {
   const reporter = normalizeUsername(input.username) || 'unknown';
   const description = String(input.description || '').trim();
-  if (!description) {
-    return { ok: false, error: 'Missing issue description.' };
-  }
+  if (!description) return { ok: false, error: 'Missing issue description.' };
 
   const tenantId = input.tenantId;
   const tenantDiscordSettings = await readDiscordChannelSettings(tenantId);
@@ -171,6 +179,7 @@ export async function submitMtSupportReport(input: SubmitSupportReportInput): Pr
     `Tenant ID: ${tenantId || 'global'}`,
     `Broadcaster: ${broadcasterUsername || 'unknown'}`,
     `Reporter: ${reporter}`,
+    `Reporter ID: ${input.reporterId || 'unknown'}`,
     `Platform: ${input.platform}`,
     `Source Channel: ${input.channelId || 'unknown'}`,
     `Trigger: ${input.triggerMessage}`,
@@ -197,10 +206,6 @@ export async function submitMtSupportReport(input: SubmitSupportReportInput): Pr
     'Recent Fly Log Tail',
     '-------------------',
     flyLogs.length > 0 ? flyLogs.join('\n') : 'No fly-logs.txt tail available.',
-    '',
-    'Screenshot Capture',
-    '------------------',
-    'Automatic chat screenshots are not attached in this version.',
   ].join('\n');
 
   const fileSafeReporter = reporter.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40) || 'reporter';
@@ -224,26 +229,24 @@ export async function submitMtSupportReport(input: SubmitSupportReportInput): Pr
   });
   if (!job.ok) return job;
 
-  const ownerId = String(process.env.MTMAN_DISCORD_USER_ID || '767875979561009173').trim();
-  const isOwner = (input.reporterId && input.reporterId === ownerId) || reporter === 'mtman1987';
-  if (isOwner) return job;
-
-  const destinationChannelId = await getSupportDestinationChannelId();
+  const destinationChannelId = await resolveOwnerDmChannelId();
   if (!destinationChannelId) {
-    return { ...job, error: 'Codex job created, but the owner DM channel is not configured.' };
+    return { ...job, dmSent: false, error: 'Codex job created, but Athena could not create or resolve the owner DM channel.' };
   }
 
   const ownerMessage = [
     `Athena Codex request from ${reporter} on ${input.platform}.`,
     `Job: ${job.jobId || 'queued'}`,
     `Issue: ${description.slice(0, 500)}`,
-    `Repair station: ${job.dashboardUrl || 'https://mtman-machine-rotator.fly.dev/'}`,
+    `Repair station: ${job.dashboardUrl || 'https://mtman-machine-rotator.fly.dev/athena'}`,
   ].join('\n');
 
   try {
     await uploadFileToDiscord(destinationChannelId, reportText, fileName, `${ownerMessage}\n\n${summary}`.slice(0, 1900));
-    return job;
+    return { ...job, dmSent: true, dmChannelId: destinationChannelId };
   } catch (error) {
-    return { ...job, error: `Codex job created, but owner DM failed: ${error instanceof Error ? error.message : String(error)}` };
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[MtFixIt] Codex job created but owner DM failed:', message);
+    return { ...job, dmSent: false, dmChannelId: destinationChannelId, error: `Codex job created, but owner DM failed: ${message}` };
   }
 }
