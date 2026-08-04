@@ -26,11 +26,15 @@ async function forward(request: NextRequest, namespace: string, method: 'GET' | 
     };
     if (ifMatch) headers['If-Match'] = ifMatch;
     if (body) headers['Content-Type'] = 'application/json';
+    const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(8000)
+      : undefined;
     return fetch(`${SPMT_BASE_URL}/api/app-state/streamweaver/${namespace}`, {
       method,
       headers,
       body,
       cache: 'no-store',
+      signal,
     });
   };
   let response = await send(token);

@@ -40,6 +40,9 @@ export async function publishSpmtEvent(event: SpmtEventInput) {
         payload: {},
         ...event,
       }),
+      signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.timeout(5000)
+        : undefined,
     });
 
     if (!response.ok) {

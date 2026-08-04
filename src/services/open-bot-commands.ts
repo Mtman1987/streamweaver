@@ -175,7 +175,10 @@ function extractJsonObject(text: string): any | null {
 }
 
 async function fetchJson(fetcher: FetchLike, url: string): Promise<any> {
-  const response = await fetcher(url, { headers: { accept: 'application/json' }, cache: 'no-store' });
+  const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(5000)
+    : undefined;
+  const response = await fetcher(url, { headers: { accept: 'application/json' }, cache: 'no-store', signal });
   if (!response.ok) throw new Error(`Open bot command source failed (${response.status})`);
   return response.json();
 }
