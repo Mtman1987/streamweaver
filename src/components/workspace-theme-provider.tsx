@@ -29,6 +29,7 @@ const DEFAULT_VISUAL_TUNING: VisualTuning = {
   uiScale: 100,
 };
 
+const WORKSPACE_REFRESH_MS = 30_000;
 const WorkspaceThemeContext = React.createContext<WorkspaceThemeContextValue | null>(null);
 
 export function WorkspaceThemeProvider({ children }: { children: React.ReactNode }) {
@@ -42,6 +43,7 @@ export function WorkspaceThemeProvider({ children }: { children: React.ReactNode
   const [error, setError] = React.useState('');
   const [reconnectUrl, setReconnectUrl] = React.useState('');
   const tuningHydratedRef = React.useRef(false);
+  const revisionRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     if (!persisted.loaded) return;
@@ -73,15 +75,16 @@ export function WorkspaceThemeProvider({ children }: { children: React.ReactNode
     return () => window.clearTimeout(timer);
   }, [followWorkspaceTheme, persisted.loaded, persisted.save, visualTuning]);
 
-  const loadWorkspaceTheme = React.useCallback(async () => {
+  const loadWorkspaceTheme = React.useCallback(async (quiet = false) => {
     if (!followWorkspaceTheme) {
       clearWorkspaceThemeTokens(document.documentElement);
+      revisionRef.current = null;
       setStatus('local');
       setError('');
       setReconnectUrl('');
       return;
     }
-    setStatus('loading');
+    if (!quiet) setStatus('loading');
     setError('');
     setReconnectUrl('');
     try {
@@ -91,11 +94,18 @@ export function WorkspaceThemeProvider({ children }: { children: React.ReactNode
         if (body?.reconnectUrl) setReconnectUrl(String(body.reconnectUrl));
         throw new Error(body?.error || 'Workspace theme unavailable');
       }
-      applyWorkspaceThemeTokens(document.documentElement, body.tokens as WorkspaceThemeTokensV1);
+      const revision = Number(body.revision || 0);
+      if (revisionRef.current !== revision || !document.documentElement.dataset.workspaceTheme) {
+        applyWorkspaceThemeTokens(document.documentElement, body.tokens as WorkspaceThemeTokensV1);
+        revisionRef.current = revision;
+        window.dispatchEvent(new CustomEvent('spmt-workspace-updated', { detail: body }));
+      }
       setStatus('applied');
     } catch (themeError) {
-      clearWorkspaceThemeTokens(document.documentElement);
-      setStatus('error');
+      if (!quiet || !document.documentElement.dataset.workspaceTheme) {
+        clearWorkspaceThemeTokens(document.documentElement);
+        setStatus('error');
+      }
       setError(themeError instanceof Error ? themeError.message : 'Workspace theme unavailable');
     }
   }, [followWorkspaceTheme]);
@@ -103,6 +113,18 @@ export function WorkspaceThemeProvider({ children }: { children: React.ReactNode
   React.useEffect(() => {
     if (!persisted.loaded) return;
     void loadWorkspaceTheme();
+    const interval = window.setInterval(() => void loadWorkspaceTheme(true), WORKSPACE_REFRESH_MS);
+    const onFocus = () => void loadWorkspaceTheme(true);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void loadWorkspaceTheme(true);
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [persisted.loaded, loadWorkspaceTheme]);
 
   const setFollowWorkspaceTheme = React.useCallback(async (next: boolean) => {
@@ -114,6 +136,7 @@ export function WorkspaceThemeProvider({ children }: { children: React.ReactNode
       await persisted.save({ followWorkspaceTheme: next, visualTuning });
       if (!next) {
         clearWorkspaceThemeTokens(document.documentElement);
+        revisionRef.current = null;
         setStatus('local');
       }
     } catch (saveError) {
@@ -138,7 +161,7 @@ export function WorkspaceThemeProvider({ children }: { children: React.ReactNode
     status,
     error,
     reconnectUrl,
-    retry: loadWorkspaceTheme,
+    retry: () => loadWorkspaceTheme(false),
     accountBacked: persisted.accountBacked,
     visualTuning,
     setVisualTuning,
