@@ -1,0 +1,13 @@
+diff --git a/node_modules/next/dist/build/generate-build-id.js b/node_modules/next/dist/build/generate-build-id.js
+index 846c686..1226468 100644
+--- a/node_modules/next/dist/build/generate-build-id.js
++++ b/node_modules/next/dist/build/generate-build-id.js
+@@ -9,7 +9,7 @@ Object.defineProperty(exports, "generateBuildId", {
+     }
+ });
+ async function generateBuildId(generate, fallback) {
+-    let buildId = await generate();
++    let buildId = typeof generate === 'function' ? await generate() : null;
+     // If there's no buildId defined we'll fall back
+     if (buildId === null) {
+         // We also create a new buildId if it contains the word `ad` to avoid false
