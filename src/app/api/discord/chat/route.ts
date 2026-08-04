@@ -389,27 +389,30 @@ export async function POST(request: NextRequest) {
           description: mtFixItIntent.description,
           triggerMessage: message,
         });
+        if (!result.ok) console.error('[MtFixIt] Discord route inline report failed:', result.error);
         await sendDiscordRouteReplyOrCollect(channelId, getMtFixItPublicReply(userName));
         return apiOk({ success: true, botResponded: true, supportReportSent: result.ok, replies: relayOnly ? collectedReplies : undefined });
       }
 
-      if (!message.trim().startsWith('!') && consumePendingMtSupportRequest({
+      if (consumePendingMtSupportRequest({
         platform: 'discord',
         tenantId,
         username: userName,
         channelId,
       })) {
-        const result = await submitMtSupportReport({
+        const pendingDescription = message.trim().startsWith('!') ? message.trim().slice(1).trim() : message;
+        const pendingResult = await submitMtSupportReport({
           platform: 'discord',
           tenantId,
           username: userName,
           reporterId: userId,
           channelId,
-          description: message,
+          description: pendingDescription,
           triggerMessage: '!mtfixit',
         });
+        if (!pendingResult.ok) console.error('[MtFixIt] Discord route pending-description report failed:', pendingResult.error);
         await sendDiscordRouteReplyOrCollect(channelId, getMtFixItPublicReply(userName));
-        return apiOk({ success: true, botResponded: true, supportReportSent: result.ok, replies: relayOnly ? collectedReplies : undefined });
+        return apiOk({ success: true, botResponded: true, supportReportSent: pendingResult.ok, replies: relayOnly ? collectedReplies : undefined });
       }
     }
 

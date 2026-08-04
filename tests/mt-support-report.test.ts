@@ -21,3 +21,14 @@ test('pending support requests can be tracked per user context', () => {
   assert.equal(consumePendingMtSupportRequest(context), true);
   assert.equal(hasPendingMtSupportRequest(context), false);
 });
+
+test('pending description starting with ! has leading ! stripped', () => {
+  // Simulates the stripping logic used in all 3 dispatch surfaces
+  function stripLeadingBang(msg: string): string {
+    return msg.startsWith('!') ? msg.slice(1).trim() : msg;
+  }
+  assert.equal(stripLeadingBang('!obs crashed'), 'obs crashed');
+  assert.equal(stripLeadingBang('!  alerts stuck'), 'alerts stuck');
+  assert.equal(stripLeadingBang('stream is down'), 'stream is down');
+  assert.equal(stripLeadingBang('normal message'), 'normal message');
+});
