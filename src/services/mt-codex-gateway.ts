@@ -18,11 +18,11 @@ export type MtCodexJobResult = {
 
 export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCodexJobResult> {
   const baseUrl = String(process.env.SPMT_CODEX_API_URL || 'https://spmt.live').trim();
-  const serviceSecret = String(process.env.SPMT_CODEX_SERVICE_SECRET || '').trim();
-  if (!serviceSecret) {
+  const spmtApiKey = String(process.env.SPMT_API_KEY || '').trim();
+  if (!spmtApiKey) {
     return {
       ok: false,
-      error: 'SPMT_CODEX_SERVICE_SECRET is not configured for the Athena Codex bridge.',
+      error: 'SPMT_API_KEY is not configured for the Athena Codex bridge.',
     };
   }
 
@@ -32,7 +32,9 @@ export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCode
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',
-        'x-spmt-codex-secret': serviceSecret,
+        // SPMT uses the existing API key as the server-to-server Athena credential.
+        // The custom header keeps it separate from user/admin bearer sessions.
+        'x-spmt-codex-secret': spmtApiKey,
       },
       body: JSON.stringify({
         source: `streamweaver:${input.source}`,
