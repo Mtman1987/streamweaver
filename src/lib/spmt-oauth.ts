@@ -14,6 +14,9 @@ export async function refreshSpmtConnection(request: NextRequest): Promise<Refre
   const clientSecret = String(process.env.STREAMWEAVER_CLIENT_SECRET || '').trim();
   if (!refreshToken || !clientSecret) return null;
 
+  const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(8000)
+    : undefined;
   const response = await fetch(`${SPMT_BASE_URL}/api/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -24,6 +27,7 @@ export async function refreshSpmtConnection(request: NextRequest): Promise<Refre
       client_secret: clientSecret,
     }),
     cache: 'no-store',
+    signal,
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.access_token || !payload?.refresh_token) return null;

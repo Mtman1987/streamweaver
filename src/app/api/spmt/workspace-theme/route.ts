@@ -26,9 +26,12 @@ export async function GET(request: NextRequest) {
 
   const loadWorkspace = (accessToken: string) => {
     const headers = { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' };
+    const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(8000)
+      : undefined;
     return Promise.all([
-      fetch(`${SPMT_BASE_URL}/api/workspace-profile`, { headers, cache: 'no-store' }),
-      fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store' }),
+      fetch(`${SPMT_BASE_URL}/api/workspace-profile`, { headers, cache: 'no-store', signal }),
+      fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store', signal }),
     ]);
   };
   let [profileResponse, overlayResponse] = await loadWorkspace(token);

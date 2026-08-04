@@ -2122,7 +2122,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        await submitMtSupportReport({
+        const inlineResult = await submitMtSupportReport({
             platform: 'twitch',
             tenantId,
             username: actualUsername,
@@ -2130,24 +2130,27 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             description: mtFixItIntent.description,
             triggerMessage: actualMessage,
         });
+        if (!inlineResult.ok) console.error('[MtFixIt] Twitch inline report failed:', inlineResult.error);
         await replyMaybeKick(getMtFixItPublicReply(actualUsername), 'bot').catch(() => {});
         return;
     }
 
-    if (!self && !actualMessage.startsWith('!') && consumePendingMtSupportRequest({
+    if (!self && consumePendingMtSupportRequest({
         platform: 'twitch',
         tenantId,
         username: actualUsername,
         channelId: replyChannel,
     })) {
-        await submitMtSupportReport({
+        const pendingDescription = actualMessage.startsWith('!') ? actualMessage.slice(1).trim() : actualMessage;
+        const result = await submitMtSupportReport({
             platform: 'twitch',
             tenantId,
             username: actualUsername,
             channelId: replyChannel,
-            description: actualMessage,
+            description: pendingDescription,
             triggerMessage: '!mtfixit',
         });
+        if (!result.ok) console.error('[MtFixIt] Twitch pending-description report failed:', result.error);
         await replyMaybeKick(getMtFixItPublicReply(actualUsername), 'bot').catch(() => {});
         return;
     }
@@ -4837,7 +4840,7 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
                 return { commandHandled: true };
             }
 
-            await submitMtSupportReport({
+            const inlineRelayResult = await submitMtSupportReport({
                 platform: 'discord',
                 tenantId,
                 username: sourceUserName,
@@ -4846,25 +4849,28 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
                 description: mtFixItIntent.description,
                 triggerMessage: normalizedContent,
             });
+            if (!inlineRelayResult.ok) console.error('[MtFixIt] Discord relay inline report failed:', inlineRelayResult.error);
             await sendDiscordMessage(sourceChannelId, getMtFixItPublicReply(sourceUserName)).catch(() => {});
             return { commandHandled: true };
         }
 
-        if (!normalizedContent.startsWith('!') && consumePendingMtSupportRequest({
+        if (consumePendingMtSupportRequest({
             platform: 'discord',
             tenantId,
             username: sourceUserName,
             channelId: sourceChannelId,
         })) {
-            await submitMtSupportReport({
+            const pendingRelayDescription = normalizedContent.startsWith('!') ? normalizedContent.slice(1).trim() : normalizedContent;
+            const pendingRelayResult = await submitMtSupportReport({
                 platform: 'discord',
                 tenantId,
                 username: sourceUserName,
                 reporterId: String(msg.author?.id || ''),
                 channelId: sourceChannelId,
-                description: normalizedContent,
+                description: pendingRelayDescription,
                 triggerMessage: '!mtfixit',
             });
+            if (!pendingRelayResult.ok) console.error('[MtFixIt] Discord relay pending-description report failed:', pendingRelayResult.error);
             await sendDiscordMessage(sourceChannelId, getMtFixItPublicReply(sourceUserName)).catch(() => {});
             return { commandHandled: true };
         }
