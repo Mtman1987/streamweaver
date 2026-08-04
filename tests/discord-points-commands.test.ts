@@ -182,7 +182,7 @@ test('!pleader posts the rendered Discord Stream Hub points leaderboard image', 
   });
 });
 
-test('embed footer uses the requester avatar and falls back to the StreamWeaver logo thumbnail', async () => {
+test('embed footer uses the requester avatar and falls back to the SPMT logo thumbnail', async () => {
   await withDispatcher(async ({ handleDiscordMessage, sent }) => {
     await handleDiscordMessage({
       ...baseMessage('!points'),
