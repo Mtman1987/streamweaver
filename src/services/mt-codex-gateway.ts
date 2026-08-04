@@ -18,8 +18,13 @@ export type MtCodexJobResult = {
 
 export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCodexJobResult> {
   const baseUrl = String(process.env.SPMT_CODEX_API_URL || 'https://spmt.live').trim();
-  const spmtApiKey = String(process.env.SPMT_API_KEY || '').trim();
-  if (!spmtApiKey) return { ok: false, error: 'SPMT_API_KEY is not configured.' };
+  const serviceSecret = String(process.env.SPMT_CODEX_SERVICE_SECRET || '').trim();
+  if (!serviceSecret) {
+    return {
+      ok: false,
+      error: 'SPMT_CODEX_SERVICE_SECRET is not configured for the Athena Codex bridge.',
+    };
+  }
 
   try {
     const response = await fetch(new URL('/api/athena/code-jobs', baseUrl), {
@@ -27,7 +32,7 @@ export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCode
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',
-        Authorization: `Bearer ${spmtApiKey}`,
+        'x-spmt-codex-secret': serviceSecret,
       },
       body: JSON.stringify({
         source: `streamweaver:${input.source}`,
@@ -44,11 +49,20 @@ export async function createMtCodexJob(input: MtCodexJobRequest): Promise<MtCode
       signal: AbortSignal.timeout(15_000),
     });
     const payload = await response.json().catch(() => ({})) as any;
-    if (!response.ok) return { ok: false, error: String(payload.error || `SPMT returned ${response.status}`) };
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: String(payload.error || `SPMT returned ${response.status}`),
+      };
+    }
     return {
       ok: true,
       jobId: String(payload.job?.id || ''),
-      dashboardUrl: String(payload.dashboardUrl || process.env.CODEX_REPAIR_DASHBOARD_URL || 'https://mtman-machine-rotator.fly.dev/'),
+      dashboardUrl: String(
+        payload.dashboardUrl ||
+        process.env.CODEX_REPAIR_DASHBOARD_URL ||
+        'https://mtman-machine-rotator.fly.dev/athena',
+      ),
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
