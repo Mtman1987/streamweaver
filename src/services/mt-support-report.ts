@@ -1,12 +1,11 @@
 import * as fs from 'fs/promises';
-import { uploadFileToDiscord } from './discord';
-import { createDiscordDmChannel } from './discord-local';
 import { readPublicChatMessages } from '@/lib/public-chat-store';
 import { globalPath } from '@/lib/tenant';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getRecentLogLines } from './runtime-log-buffer';
 import { readDiscordConfig } from '@/lib/discord-config';
 import { createMtCodexJob } from './mt-codex-gateway';
+import { sendOwnerDmThroughDsh } from './dsh-owner-dm';
 
 type SupportPlatform = 'twitch' | 'discord';
 type SupportContext = { platform: SupportPlatform; tenantId?: string; username: string; channelId?: string; reporterId?: string; };
@@ -44,17 +43,6 @@ function redactSensitiveText(text: string): string {
     .replace(/("?(?:client|api)?_?secret"?\s*[:=]\s*")([^"\r\n]+)"/gi, '$1[redacted]"');
 }
 async function readDiscordChannelSettings(tenantId?: string): Promise<Record<string, unknown>> { try { return await readDiscordConfig(tenantId) as Record<string, unknown>; } catch { return {}; } }
-async function resolveOwnerDmChannelId(tenantId?: string): Promise<string> {
-  const tenantSettings = await readDiscordChannelSettings(tenantId);
-  const tenantDm = String(tenantSettings.dmChannelId || '').trim();
-  if (tenantDm) return tenantDm;
-  const configured = String(process.env.MT_SUPPORT_DM_CHANNEL_ID || '').trim();
-  if (configured) return configured;
-  const ownerId = String(process.env.MTMAN_DISCORD_USER_ID || '').trim();
-  if (!ownerId) return '';
-  try { return (await createDiscordDmChannel(ownerId)).id; }
-  catch (error) { console.warn('[MtFixIt] Owner DM channel creation failed:', error instanceof Error ? error.message : String(error)); return ''; }
-}
 async function readRecentFlyLogLines(limit = 80): Promise<string[]> { try { return (await fs.readFile(globalPath('fly-logs.txt'), 'utf-8')).split(/\r?\n/).filter(Boolean).slice(-limit); } catch { return []; } }
 function formatChatTranscript(messages: Awaited<ReturnType<typeof readPublicChatMessages>>): string { return messages.length ? messages.map((entry) => `[${entry.timestamp}] ${entry.username} (${entry.type}): ${entry.message}`).join('\n') : 'No recent public chat history captured.'; }
 
@@ -88,23 +76,17 @@ export async function submitMtSupportReport(input: SubmitSupportReportInput): Pr
     context: { broadcasterUsername, recentPublicChat: formatChatTranscript(publicChat).slice(-6000), recentRuntimeLogs: runtimeLogs.slice(-30), recentFlyLogs: flyLogs.slice(-20) } });
   if (!job.ok) { console.error(`[MtFixIt] job=failed dm=skipped reason=${job.error || 'unknown'}`); return job; }
 
-  const destinationChannelId = await resolveOwnerDmChannelId(tenantId);
-  if (!destinationChannelId) {
-    const result = { ...job, dmSent: false, error: 'Codex job created, but no tenant-safe owner DM destination is configured.' };
-    console.error(`[MtFixIt] job=created id=${job.jobId || 'unknown'} dm=failed reason=no-destination`);
-    return result;
-  }
-
   const fileSafeReporter = reporter.replace(/[^a-z0-9_-]/gi, '_').slice(0, 40) || 'reporter';
   const fileName = `mt-support-${tenantId || 'global'}-${fileSafeReporter}-${Date.now()}.txt`;
   const ownerMessage = [`Athena Codex request from ${reporter} on ${input.platform}.`, `Job: ${job.jobId || 'queued'}`, `Issue: ${description.slice(0, 500)}`, `Repair station: ${job.dashboardUrl || 'https://mtman-machine-rotator.fly.dev/athena'}`].join('\n');
+
   try {
-    await uploadFileToDiscord(destinationChannelId, reportText, fileName, ownerMessage.slice(0, 1900));
-    console.log(`[MtFixIt] job=created id=${job.jobId || 'unknown'} dm=sent channel=${destinationChannelId}`);
-    return { ...job, dmSent: true, dmChannelId: destinationChannelId };
+    const delivered = await sendOwnerDmThroughDsh({ message: ownerMessage, fileName, fileContent: reportText });
+    console.log(`[MtFixIt] job=created id=${job.jobId || 'unknown'} dm=sent-via-dsh channel=${delivered.channelId || 'unknown'}`);
+    return { ...job, dmSent: true, dmChannelId: delivered.channelId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[MtFixIt] job=created id=${job.jobId || 'unknown'} dm=failed channel=${destinationChannelId} reason=${message}`);
-    return { ...job, dmSent: false, dmChannelId: destinationChannelId, error: `Codex job created, but owner DM failed: ${message}` };
+    console.error(`[MtFixIt] job=created id=${job.jobId || 'unknown'} dm=failed-via-dsh reason=${message}`);
+    return { ...job, dmSent: false, error: `Codex job created, but DSH owner DM failed: ${message}` };
   }
 }
