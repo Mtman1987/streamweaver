@@ -29,7 +29,7 @@ const DISCORD_UTILITY_COMMANDS = [
   '!commands', '!s <user>', '!so <user>', '!trade @user', '!offer <card>',
   '!givepoints @user <amount>', '!stealpoints @user <amount>',
   '!gamble <amount>', '!roll <amount>', '!double <amount>', '!coinflip',
-  '!botshare', '!mtfixit', '!raidmessage <msg>',
+  '!botshare', '!raidmessage <msg>',
 ];
 
 const DISCORD_ADMIN_COMMANDS = [
@@ -43,11 +43,7 @@ const DISCORD_ADMIN_COMMANDS = [
 ];
 
 function commandName(label: string): string {
-  return label
-    .trim()
-    .split(/\s+/)[0]
-    .replace(/^!/, '')
-    .toLowerCase();
+  return label.trim().split(/\s+/)[0].replace(/^!/, '').toLowerCase();
 }
 
 export const DISCORD_ROUTED_COMMAND_NAMES = Array.from(new Set([
@@ -88,26 +84,11 @@ function formatCommands(commands: string[]): string {
 
 export function buildDiscordCommandDirectoryFields(): DiscordCommandDirectorySection[] {
   return [
-    {
-      name: 'Social',
-      value: formatCommands(DISCORD_PRIMARY_FUN_COMMANDS),
-    },
-    {
-      name: 'Profile and leaderboards',
-      value: formatCommands(DISCORD_INFO_COMMANDS.slice(0, 13)),
-    },
-    {
-      name: 'Pokémon',
-      value: formatCommands(DISCORD_INFO_COMMANDS.slice(13)),
-    },
-    {
-      name: 'Games, economy, and tools',
-      value: formatCommands(DISCORD_UTILITY_COMMANDS.filter((command) => command !== '!commands')),
-    },
-    {
-      name: 'Moderator commands',
-      value: 'Use `!admin` to view commands available to moderators.',
-    },
+    { name: 'Social', value: formatCommands(DISCORD_PRIMARY_FUN_COMMANDS) },
+    { name: 'Profile and leaderboards', value: formatCommands(DISCORD_INFO_COMMANDS.slice(0, 13)) },
+    { name: 'Pokémon', value: formatCommands(DISCORD_INFO_COMMANDS.slice(13)) },
+    { name: 'Games, economy, and tools', value: formatCommands(DISCORD_UTILITY_COMMANDS.filter((command) => command !== '!commands')) },
+    { name: 'Moderator commands', value: 'Use `!admin` to view commands available to moderators.' },
   ];
 }
 
@@ -116,9 +97,6 @@ export function buildDiscordCommandsSummary(): string {
 }
 
 export function buildDiscordAdminCommandsSummary(options: CatalogOptions): string {
-  if (!options.isMod) {
-    return 'Only mods can view admin Discord commands.';
-  }
-
+  if (!options.isMod) return 'Only mods can view admin Discord commands.';
   return `Discord mod commands: ${DISCORD_ADMIN_COMMANDS.join(', ')}`;
 }
