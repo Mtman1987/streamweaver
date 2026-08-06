@@ -14,25 +14,25 @@ const publicFunctions = [
     action: 'View commands',
   },
   {
-    title: 'Live translation',
-    description: 'Use multilingual chat support without exposing provider credentials or internal routing controls.',
+    title: 'Language-aware replies',
+    description: 'Build multilingual chat behavior without exposing provider credentials or internal routing controls.',
     icon: Languages,
-    href: '/translation',
-    action: 'Open translation',
+    href: '/actions',
+    action: 'Build a flow',
   },
   {
     title: 'Voice and TTS',
-    description: 'Learn how StreamWeaver reads supported messages and events aloud on stream.',
+    description: 'Configure the creator-facing voice reply flow used for supported messages and stream events.',
     icon: Music,
-    href: '/docs',
-    action: 'Read the guide',
+    href: '/voice-reply',
+    action: 'Open voice reply',
   },
   {
     title: 'Creative tools',
-    description: 'See the viewer-facing image, avatar, and creative commands currently enabled for the channel.',
+    description: 'See the viewer-facing image, avatar, and creative features currently available to the community.',
     icon: ImageIcon,
-    href: '/commands',
-    action: 'Explore creative commands',
+    href: '/community',
+    action: 'Browse features',
   },
 ];
 
@@ -58,7 +58,7 @@ export default function BotFunctionsPage() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/docs">Open documentation</Link>
+              <Link href="/community">Browse feature library</Link>
             </Button>
           </div>
         </div>
