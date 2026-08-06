@@ -14,9 +14,8 @@ function getDshUrl(): string {
 
 function getDshSecret(): string {
   return String(
-    process.env.DSH_SERVICE_SECRET ||
-    process.env.DSH_CLIENT_SECRET ||
-    process.env.BOT_SECRET_KEY ||
+    process.env.SPMT_API_KEY ||
+    process.env.SPMT_PLATFORM_API_KEY ||
     '',
   ).trim();
 }
@@ -27,7 +26,7 @@ export async function sendOwnerDmThroughDsh(input: {
   fileContent: string;
 }): Promise<DshOwnerDmResult> {
   const secret = getDshSecret();
-  if (!secret) throw new Error('DSH_SERVICE_SECRET is not configured');
+  if (!secret) throw new Error('SPMT_API_KEY is not configured');
 
   const response = await fetch(`${getDshUrl()}/api/internal/owner-dm`, {
     method: 'POST',
