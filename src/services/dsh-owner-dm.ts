@@ -1,3 +1,12 @@
+/*
+ * ACTIVE SHARED CLIENT — RESERVED FOR FUTURE NON-MTFIXIT OWNER DMS
+ *
+ * This helper is intentionally retained and authenticated with SPMT_API_KEY.
+ * It is not part of the retired StreamWeaver mtfixit pipeline and currently
+ * has no mtfixit caller. Search for `OWNER_DM_CLIENT_RESERVED` to identify it.
+ */
+export const OWNER_DM_CLIENT_RESERVED = true as const;
+
 type DshOwnerDmResult = {
   success: boolean;
   channelId?: string;
@@ -20,6 +29,10 @@ function getDshSecret(): string {
   ).trim();
 }
 
+/**
+ * Reserved reusable client for future non-mtfixit owner notifications.
+ * Do not reconnect this helper to StreamWeaver mtfixit handling.
+ */
 export async function sendOwnerDmThroughDsh(input: {
   message: string;
   fileName: string;
