@@ -1,3 +1,12 @@
+/*
+ * ACTIVE SHARED CLIENT — RESERVED FOR FUTURE NON-MTFIXIT OWNER DMS
+ *
+ * This helper is intentionally retained and authenticated with SPMT_API_KEY.
+ * It is not part of the retired StreamWeaver mtfixit pipeline and currently
+ * has no mtfixit caller. Search for `OWNER_DM_CLIENT_RESERVED` to identify it.
+ */
+export const OWNER_DM_CLIENT_RESERVED = true as const;
+
 type DshOwnerDmResult = {
   success: boolean;
   channelId?: string;
@@ -14,20 +23,23 @@ function getDshUrl(): string {
 
 function getDshSecret(): string {
   return String(
-    process.env.DSH_SERVICE_SECRET ||
-    process.env.DSH_CLIENT_SECRET ||
-    process.env.BOT_SECRET_KEY ||
+    process.env.SPMT_API_KEY ||
+    process.env.SPMT_PLATFORM_API_KEY ||
     '',
   ).trim();
 }
 
+/**
+ * Reserved reusable client for future non-mtfixit owner notifications.
+ * Do not reconnect this helper to StreamWeaver mtfixit handling.
+ */
 export async function sendOwnerDmThroughDsh(input: {
   message: string;
   fileName: string;
   fileContent: string;
 }): Promise<DshOwnerDmResult> {
   const secret = getDshSecret();
-  if (!secret) throw new Error('DSH_SERVICE_SECRET is not configured');
+  if (!secret) throw new Error('SPMT_API_KEY is not configured');
 
   const response = await fetch(`${getDshUrl()}/api/internal/owner-dm`, {
     method: 'POST',
