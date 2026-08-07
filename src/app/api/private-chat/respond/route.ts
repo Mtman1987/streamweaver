@@ -38,12 +38,14 @@ const schema = z.object({
   channelName: z.string().trim().max(128).optional(),
   messageId: z.string().trim().max(128).optional(),
   createdAt: z.string().trim().max(128).optional(),
-  source: z.enum(['app-private', 'discord-dm', 'rotator', 'mountainview', 'internal']).optional().default('app-private'),
+  source: z.enum(['app-private', 'discord-dm', 'rotator', 'mountainview', 'internal']).optional(),
   layout: z.string().trim().max(128).optional(),
   capabilities: z.array(z.string().trim().min(1).max(128)).max(100).optional(),
 }).refine((value) => value.message || value.attachments?.length || value.embeds?.length, {
   message: 'message or media is required',
 });
+
+type PrivateSource = NonNullable<z.infer<typeof schema>['source']>;
 
 function mediaContext(
   attachments: PrivateChatMessage['attachments'] | undefined,
@@ -98,16 +100,19 @@ export async function POST(request: NextRequest) {
     const tenantId = session?.tenantId || ((serviceAccess || mountainViewAccess) ? body.tenantId : undefined);
     if (!tenantId) return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
 
+    const resolvedSource: PrivateSource = body.source
+      || (mountainViewAccess ? 'mountainview' : session?.tenantId ? 'app-private' : 'discord-dm');
+
     await incrementPrivateMessageCount(tenantId);
     await checkAndCondensePrivateMemory(tenantId);
 
-    const sourceSurface = body.source === 'discord-dm'
+    const sourceSurface = resolvedSource === 'discord-dm'
       ? 'discord-dm'
-      : body.source === 'rotator'
+      : resolvedSource === 'rotator'
         ? 'rotator-workbench'
-        : body.source === 'mountainview'
+        : resolvedSource === 'mountainview'
           ? 'mountainview'
-          : body.source === 'internal'
+          : resolvedSource === 'internal'
             ? 'internal'
             : 'streamweaver-private';
     const media = mediaContext(body.attachments, body.embeds);
@@ -123,7 +128,7 @@ export async function POST(request: NextRequest) {
         displayName: body.username,
       },
       location: {
-        app: body.source === 'rotator' ? 'fly-machine-rotator' : 'streamweaver',
+        app: resolvedSource === 'rotator' ? 'fly-machine-rotator' : 'streamweaver',
         surface: sourceSurface,
         channelId: body.channelId,
         channelName: body.channelName,
@@ -131,7 +136,7 @@ export async function POST(request: NextRequest) {
         createdAt: body.createdAt,
         live: false,
         layout: body.layout,
-        replyMode: body.source === 'mountainview' ? 'voice' : 'structured',
+        replyMode: resolvedSource === 'mountainview' ? 'voice' : 'structured',
         capabilities: body.capabilities || [
           'athena.memory.public',
           'athena.memory.private',
@@ -147,7 +152,7 @@ export async function POST(request: NextRequest) {
       executeTools: true,
       metadata: {
         compatibilityRoute: '/api/private-chat/respond',
-        source: body.source,
+        source: resolvedSource,
         attachmentCount: body.attachments?.length || 0,
         embedCount: body.embeds?.length || 0,
       },
