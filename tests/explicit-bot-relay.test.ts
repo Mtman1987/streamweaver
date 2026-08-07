@@ -4,6 +4,31 @@ import {
   deliverExplicitBotRelay,
   normalizeExplicitBotRelayMessage,
 } from '../src/services/explicit-bot-relay';
+import { detectBotRelayRequestWithAi } from '../src/services/bot-relay';
+
+const REAPER = {
+  stableId: 'unknown:reaper',
+  currentName: 'Reaper',
+  aliases: ['Reaper'],
+};
+
+test('legacy public transport relay detection defers to the unified AthenaOS gateway', async () => {
+  const input = {
+    message: 'Athena, tell Reaper the Commander will be ready in 10 minutes.',
+    speakerName: 'Athena',
+    targets: [REAPER],
+    tenantId: 'tenant-athena',
+    platform: 'discord' as const,
+  };
+
+  assert.deepEqual(await detectBotRelayRequestWithAi(input), { matched: false });
+  const rollbackOnly = await detectBotRelayRequestWithAi({
+    ...input,
+    legacyTransportExecution: true,
+  });
+  assert.equal(rollbackOnly.matched, true);
+  assert.equal(rollbackOnly.targetName, 'Reaper');
+});
 
 test('nested relay wording is normalized for the target streamer', () => {
   assert.equal(
@@ -23,11 +48,7 @@ test('explicit human relay uses the target tenant bot in its live channel withou
       aliases: ['Athenabot87'],
     },
     targetTenantId: 'tenant-reaper',
-    target: {
-      stableId: 'unknown:reaper',
-      currentName: 'Reaper',
-      aliases: ['Reaper'],
-    },
+    target: REAPER,
     relayMessage: 'let Neph know the Commander will be ready to play in 10 minutes',
   }, {
     getBroadcasterChannel: async () => 'nephalem2',
