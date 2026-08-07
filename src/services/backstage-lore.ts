@@ -12,7 +12,7 @@ import {
   readBotInteractionHistory,
   type BotInteractionPlatform,
 } from '@/lib/bot-interactions-store';
-import { globalPath, listTenants } from '@/lib/tenant';
+import { globalPath, listTenants, tenantPath } from '@/lib/tenant';
 import {
   appendWorldLoreJournalEntry,
   readWorldLore,
@@ -86,13 +86,14 @@ type BackstageState = {
   lastObservedActivityAt?: string;
   lastIdleSceneAt?: string;
   idleCursor?: number;
+  queueCursor?: number;
 };
 
 const MAX_QUEUE_SIZE = 500;
 const MAX_ATTEMPTS = 4;
 const DEFAULT_POLL_INTERVAL_MS = 45_000;
 const DEFAULT_IDLE_INTERVAL_MS = 20 * 60_000;
-const queuePath = () => globalPath('backstage-lore/queue.json');
+const queuePath = (tenantId: string) => tenantPath(tenantId, 'data/backstage-lore/queue.json');
 const statePath = () => globalPath('backstage-lore/state.json');
 const lockPath = (name: string) => globalPath(`backstage-lore/${name}.lock`);
 
@@ -120,6 +121,10 @@ export function parseBotInterestTags(value: unknown): string[] {
 
 function hashId(prefix: string, value: string): string {
   return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 24)}`;
+}
+
+function queueLockName(tenantId: string): string {
+  return `queue-${hashId('tenant', tenantId)}`;
 }
 
 async function readJson<T>(filePath: string, fallback: T): Promise<T> {
@@ -173,16 +178,20 @@ async function withFileLock<T>(name: string, operation: () => Promise<T>): Promi
   }
 }
 
-async function readQueue(): Promise<BackstageLoreCandidate[]> {
-  const queue = await readJson<BackstageLoreCandidate[]>(queuePath(), []);
-  return Array.isArray(queue) ? queue : [];
+async function readQueue(tenantId: string): Promise<BackstageLoreCandidate[]> {
+  const queue = await readJson<BackstageLoreCandidate[]>(queuePath(tenantId), []);
+  return Array.isArray(queue)
+    ? queue.filter((candidate) => candidate?.sourceTenantId === tenantId)
+    : [];
 }
 
 async function enqueueCandidate(candidate: BackstageLoreCandidate): Promise<void> {
-  await withFileLock('queue', async () => {
-    const existing = await readQueue();
+  const tenantId = String(candidate.sourceTenantId || '').trim();
+  if (!tenantId) throw new Error('Backstage lore candidate requires a source tenant.');
+  await withFileLock(queueLockName(tenantId), async () => {
+    const existing = await readQueue(tenantId);
     const next = [...existing.filter((entry) => entry.id !== candidate.id), candidate].slice(-MAX_QUEUE_SIZE);
-    await writeJsonAtomic(queuePath(), next);
+    await writeJsonAtomic(queuePath(tenantId), next);
   });
   await withFileLock('state', async () => {
     const state = await readJson<BackstageState>(statePath(), {});
@@ -191,19 +200,50 @@ async function enqueueCandidate(candidate: BackstageLoreCandidate): Promise<void
   }).catch(() => undefined);
 }
 
-async function dequeueCandidates(maxCandidates: number, now: Date): Promise<BackstageLoreCandidate[]> {
-  return withFileLock('queue', async () => {
-    const existing = await readQueue();
-    const ready: BackstageLoreCandidate[] = [];
-    const remaining: BackstageLoreCandidate[] = [];
-    for (const candidate of existing) {
+async function takeReadyCandidate(tenantId: string, now: Date): Promise<BackstageLoreCandidate | null> {
+  return withFileLock(queueLockName(tenantId), async () => {
+    const existing = await readQueue(tenantId);
+    const index = existing.findIndex((candidate) => {
       const retryAt = candidate.nextAttemptAt ? Date.parse(candidate.nextAttemptAt) : 0;
-      if (ready.length < maxCandidates && (!retryAt || retryAt <= now.getTime())) ready.push(candidate);
-      else remaining.push(candidate);
-    }
-    await writeJsonAtomic(queuePath(), remaining);
-    return ready;
+      return !retryAt || retryAt <= now.getTime();
+    });
+    if (index < 0) return null;
+    const [candidate] = existing.splice(index, 1);
+    await writeJsonAtomic(queuePath(tenantId), existing);
+    return candidate || null;
   });
+}
+
+async function dequeueCandidates(maxCandidates: number, now: Date): Promise<BackstageLoreCandidate[]> {
+  const tenantIds = (await listTenants())
+    .filter((tenantId) => tenantId && !tenantId.startsWith('__kick_silent__'))
+    .sort();
+  if (!tenantIds.length) return [];
+
+  const state = await readJson<BackstageState>(statePath(), {});
+  const cursor = Math.max(0, Number(state.queueCursor || 0));
+  const offset = cursor % tenantIds.length;
+  const orderedTenants = [...tenantIds.slice(offset), ...tenantIds.slice(0, offset)];
+  const ready: BackstageLoreCandidate[] = [];
+  let madeProgress = true;
+
+  while (ready.length < maxCandidates && madeProgress) {
+    madeProgress = false;
+    for (const tenantId of orderedTenants) {
+      if (ready.length >= maxCandidates) break;
+      const candidate = await takeReadyCandidate(tenantId, now);
+      if (!candidate) continue;
+      ready.push(candidate);
+      madeProgress = true;
+    }
+  }
+
+  await withFileLock('state', async () => {
+    const nextState = await readJson<BackstageState>(statePath(), {});
+    nextState.queueCursor = (offset + 1) % tenantIds.length;
+    await writeJsonAtomic(statePath(), nextState);
+  }).catch(() => undefined);
+  return ready;
 }
 
 function isPublicSharedChatEvent(event: SharedChatEventV1): boolean {
