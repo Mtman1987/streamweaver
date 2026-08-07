@@ -55,9 +55,8 @@ export async function recordSharedChatEvent(
   await writeJsonArray(filePath, next);
 
   // Shared-chat replay remains the durable ingestion source. The living-lore
-  // queue receives only public human events and never blocks normal chat if it
-  // cannot enqueue an optional backstage observation.
-  await queueBackstageLoreEvent(event).catch((error) => {
+  // queue is optional background work and must not add latency to normal chat.
+  void queueBackstageLoreEvent(event).catch((error) => {
     console.warn('[Backstage Lore] Shared-chat observation enqueue failed:', error instanceof Error ? error.message : String(error));
   });
   return event;
