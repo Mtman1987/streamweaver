@@ -91,3 +91,37 @@ test('the dedicated Local Qwen key takes precedence over shared service keys', a
     restoreEnv('SPMT_LLM_API_KEY', previousLocalKey);
   }
 });
+
+test('unified Athena fails closed on Local Qwen errors unless cloud fallback is explicitly enabled', async () => {
+  const previousBase = process.env.SPMT_LLM_BASE_URL;
+  const previousSharedKey = process.env.SPMT_API_KEY;
+  const previousEdenKey = process.env.EDENAI_API_KEY;
+
+  process.env.SPMT_LLM_BASE_URL = 'http://worker.internal:8080/v1';
+  process.env.SPMT_API_KEY = 'shared-key';
+  process.env.EDENAI_API_KEY = 'eden-key-that-must-not-be-used';
+
+  const requestedUrls: string[] = [];
+  const fetchImpl = async (input: Parameters<typeof fetch>[0]) => {
+    requestedUrls.push(String(input));
+    return new Response(JSON.stringify({ error: { message: 'local unavailable' } }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  try {
+    await assert.rejects(
+      requestAthenaModel({
+        messages: [{ role: 'user', content: 'private context' }],
+        fetchImpl: fetchImpl as typeof fetch,
+      }),
+      /local unavailable/i,
+    );
+    assert.deepEqual(requestedUrls, ['http://worker.internal:8080/v1/chat/completions']);
+  } finally {
+    restoreEnv('SPMT_LLM_BASE_URL', previousBase);
+    restoreEnv('SPMT_API_KEY', previousSharedKey);
+    restoreEnv('EDENAI_API_KEY', previousEdenKey);
+  }
+});
