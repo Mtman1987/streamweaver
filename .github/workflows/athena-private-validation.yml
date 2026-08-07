@@ -8,9 +8,12 @@ on:
       - 'src/app/api/athena/**'
       - 'src/app/api/private-chat/**'
       - 'src/services/athena-*.ts'
+      - 'src/services/private-chat-ai.ts'
       - 'src/lib/internal-service-auth.ts'
+      - 'src/lib/spmt-userinfo.ts'
       - 'tests/athena-*.test.ts'
       - 'tests/private-chat-ai.test.ts'
+      - 'tests/spmt-userinfo.test.ts'
       - '.github/workflows/athena-private-validation.yml'
   workflow_dispatch:
 
@@ -38,3 +41,4 @@ jobs:
           tests/athena-model.test.ts
           tests/athena-tools.test.ts
           tests/private-chat-ai.test.ts
+          tests/spmt-userinfo.test.ts
