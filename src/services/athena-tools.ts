@@ -1,5 +1,8 @@
 import { createHash } from 'crypto';
 import { getAllCommands } from '@/lib/commands-store';
+import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
+import { appendSharedBotMemory } from '@/lib/bot-interactions-store';
+import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import type {
   AthenaDecision,
   AthenaRequest,
@@ -11,6 +14,7 @@ import {
 } from '@/services/athena-contract';
 import { executeAthenaTransportCommand } from '@/services/athena-command-executor';
 import { requestAthenaJson } from '@/services/athena-model';
+import { detectBotRelayRequest } from '@/services/bot-relay';
 import {
   detectOpenBotCommand,
   runOpenBotCommand,
@@ -60,11 +64,13 @@ const TOOL_CATALOG: ToolSpec[] = [
   { id: 'hearmeout.status', description: 'Read HearMeOut now-playing and queue status.', risk: 'read', surfaces: 'all', visibility: 'both' },
   { id: 'athena.help', description: 'Explain Athena safe public capabilities.', risk: 'read', surfaces: 'all', visibility: 'both' },
   { id: 'image.generate', description: 'Generate one or more images using the image router for the current public/private scope.', risk: 'reversible', surfaces: 'all', visibility: 'both' },
+  { id: 'bot.group-memory.share', description: 'Store an explicitly requested private message as shared memory for another mutually opted-in tenant bot without sending a live message.', risk: 'reversible', surfaces: 'all', visibility: 'private' },
   { id: 'transport.command', description: 'Hand an explicit chat command to the current Twitch, Kick, or Discord dispatcher.', risk: 'reversible', surfaces: ['twitch-chat', 'kick-chat', 'discord-channel', 'discord-dm'], visibility: 'both' },
 ];
 
 const IMAGE_REQUEST_RE = /^(?:please\s+)?(?:generate|create|draw|make|render)\s+(?:me\s+)?(?:an?\s+)?(?:image|picture|art|illustration)\b|\b(?:image|picture)\s+of\b/i;
 const COMMAND_WORD_RE = /^!?([a-z][a-z0-9_-]{1,40})(?:\s+([\s\S]*))?$/i;
+const NON_BOT_RELAY_TARGETS = new Set(['me', 'you', 'him', 'her', 'them', 'us', 'someone', 'somebody']);
 
 function toolAllowed(tool: ToolSpec, request: AthenaRequest): boolean {
   if (tool.visibility !== 'both' && tool.visibility !== request.visibility) return false;
@@ -91,6 +97,70 @@ function imagePromptFromMessage(message: string): string {
     .replace(/^!img\s*/i, '')
     .replace(/^(?:please\s+)?(?:generate|create|draw|make|render)\s+(?:me\s+)?(?:an?\s+)?(?:image|picture|art|illustration)\s*(?:of\s+)?/i, '')
     .trim();
+}
+
+function normalizedName(value: unknown): string {
+  return String(value || '').trim().replace(/^@/, '').toLowerCase();
+}
+
+function characterNames(character: WorldLoreCharacter): string[] {
+  return [
+    character.currentName,
+    ...(character.aliases || []),
+    ...(character.previousNames || []),
+  ].map(normalizedName).filter(Boolean);
+}
+
+async function tenantSpeakerCharacter(tenantId: string): Promise<WorldLoreCharacter> {
+  const botName = String(getBotName(tenantId) || 'Bot').trim() || 'Bot';
+  const aliases = String(getBotAliases(tenantId) || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const configuredNames = new Set([botName, ...aliases].map(normalizedName).filter(Boolean));
+  const lore = await readWorldLore();
+  const matching = Object.values(lore?.characters || {}).find((character) =>
+    characterNames(character).some((name) => configuredNames.has(name))
+  );
+  if (matching) return matching;
+  const slug = normalizedName(botName).replace(/[^a-z0-9_-]+/g, '-') || 'bot';
+  return {
+    stableId: `${tenantId}:${slug}`,
+    currentName: botName,
+    aliases,
+  };
+}
+
+async function privateGroupMemoryDecision(request: AthenaRequest): Promise<AthenaDecision | null> {
+  if (request.visibility !== 'private') return null;
+  const speaker = await tenantSpeakerCharacter(request.tenantId);
+  const lore = await readWorldLore();
+  const targets = Object.values(lore?.characters || {})
+    .filter((character) => character.stableId !== speaker.stableId);
+  const relay = detectBotRelayRequest({
+    message: request.message,
+    speakerName: speaker.currentName,
+    targets,
+  });
+  const targetName = String(relay.targetName || relay.target?.currentName || '').trim();
+  const memoryText = String(relay.relayMessage || '').trim();
+  if (!relay.matched || !targetName || !memoryText) return null;
+  if (!relay.target && NON_BOT_RELAY_TARGETS.has(normalizedName(targetName))) return null;
+
+  return {
+    mode: 'tool',
+    reason: 'The private user explicitly asked this tenant bot to share something with another bot; store it through the existing mutually opted-in bot-share memory instead of sending a live message.',
+    confidence: 1,
+    toolId: 'bot.group-memory.share',
+    arguments: {
+      speakerStableId: speaker.stableId,
+      speakerName: speaker.currentName,
+      targetStableId: relay.target?.stableId,
+      targetName,
+      memoryText,
+    },
+    risk: 'reversible',
+  };
 }
 
 async function configuredTransportCommands(tenantId: string): Promise<Array<{ name: string; description: string; enabled: boolean }>> {
@@ -165,6 +235,9 @@ function normalizeCommand(value: unknown, available: Set<string>): string | unde
 }
 
 export async function decideAthenaAction(request: AthenaRequest): Promise<AthenaDecision> {
+  const sharedMemoryDecision = await privateGroupMemoryDecision(request);
+  if (sharedMemoryDecision) return sharedMemoryDecision;
+
   const deterministic = deterministicDecision(request);
   if (deterministic) return deterministic;
 
@@ -179,10 +252,11 @@ export async function decideAthenaAction(request: AthenaRequest): Promise<Athena
   try {
     const result = await requestAthenaJson({
       system: [
-        'You are Athena\'s action router.',
+        'You are the action router for the active tenant bot persona.',
         'Decide whether the latest message is ordinary conversation, a safe tool request, or a configured transport command.',
         'Location and capability boundaries are mandatory. Never invent a tool or command.',
         'Use a tool when the human asks for live/current app state that a listed tool can retrieve.',
+        'Use bot.group-memory.share only in private context when the user clearly asks the current bot to tell, share, pass, or remember something for another bot. Include targetName and memoryText arguments.',
         'Use a command only when the user clearly wants the action performed, not when discussing the action hypothetically.',
         'For ambiguous requests choose chat.',
         'Return one JSON object only with keys: mode, reason, confidence, toolId, command, arguments.',
@@ -257,6 +331,12 @@ function confirmationRequired(decision: AthenaDecision, request: AthenaRequest):
   return true;
 }
 
+function sharedMemoryPlatform(surface: AthenaSurface): 'twitch' | 'discord' | 'app' {
+  if (surface === 'twitch-chat' || surface === 'kick-chat') return 'twitch';
+  if (surface === 'discord-channel' || surface === 'discord-dm') return 'discord';
+  return 'app';
+}
+
 export async function executeAthenaDecision(request: AthenaRequest, decision: AthenaDecision): Promise<AthenaActionOutcome> {
   if (decision.mode === 'chat') return { decision };
 
@@ -264,7 +344,7 @@ export async function executeAthenaDecision(request: AthenaRequest, decision: At
     const selected = decision.command || decision.toolId || decision.mode;
     return {
       decision: { ...decision, executed: false, delivered: false },
-      response: `Athena selected ${selected}, but execution is disabled for this request.`,
+      response: `The active bot selected ${selected}, but execution is disabled for this request.`,
       toolResult: `Execution disabled. Selected action: ${selected}.`,
     };
   }
@@ -295,6 +375,65 @@ export async function executeAthenaDecision(request: AthenaRequest, decision: At
       decision: { ...decision, executed: true, delivered: false },
       response,
       toolResult: response,
+    };
+  }
+
+  if (decision.toolId === 'bot.group-memory.share') {
+    const targetName = String(decision.arguments?.targetName || '').trim();
+    const memoryText = String(decision.arguments?.memoryText || '').trim().slice(0, 12_000);
+    if (!targetName || !memoryText) {
+      return {
+        decision: { ...decision, executed: false, delivered: false },
+        response: 'Tell me which bot should remember it and what you want shared.',
+      };
+    }
+
+    const speaker = await tenantSpeakerCharacter(request.tenantId);
+    const lore = await readWorldLore();
+    const targetStableId = String(decision.arguments?.targetStableId || '').trim();
+    const structuredTarget = targetStableId
+      ? lore?.characters?.[targetStableId]
+      : Object.values(lore?.characters || {}).find((character) =>
+          characterNames(character).includes(normalizedName(targetName))
+        );
+    const { resolveRelayTarget } = await import('@/services/chat-dispatcher');
+    const resolved = await resolveRelayTarget({
+      namedTarget: targetName,
+      structuredTarget,
+    });
+    if (!resolved?.tenantId) {
+      return {
+        decision: { ...decision, executed: false, delivered: false },
+        response: `I could not match ${targetName} to a configured tenant bot, so I did not store or send anything.`,
+      };
+    }
+
+    try {
+      await appendSharedBotMemory({
+        sourceTenantId: request.tenantId,
+        targetTenantId: resolved.tenantId,
+        platform: sharedMemoryPlatform(request.location.surface),
+        channelId: request.location.channelId,
+        sourceUser: request.actor.displayName || request.actor.username,
+        speaker,
+        target: resolved.character,
+        triggerMessage: request.message,
+        memoryText,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return {
+        decision: { ...decision, executed: false, delivered: false },
+        response: `I did not share that with ${resolved.character.currentName}: ${detail}`,
+        toolResult: detail,
+      };
+    }
+
+    const response = `I saved that in the shared bot memory for ${resolved.character.currentName}. I did not send a live message.`;
+    return {
+      decision: { ...decision, executed: true, delivered: false },
+      response,
+      toolResult: `${speaker.currentName} shared a group memory with ${resolved.character.currentName}: ${memoryText}`,
     };
   }
 
