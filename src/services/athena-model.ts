@@ -157,11 +157,12 @@ export async function requestAthenaModel(input: {
       fetchImpl,
     });
   } catch (localError) {
+    const fallbackEnabled = input.allowFallback === true;
     console.warn('[Athena Model] Local Qwen request failed', {
       error: localError instanceof Error ? localError.message : String(localError),
-      fallbackEnabled: input.allowFallback !== false,
+      fallbackEnabled,
     });
-    if (input.allowFallback === false) throw localError;
+    if (!fallbackEnabled) throw localError;
     return requestEden({ messages: input.messages, temperature, maxTokens, fetchImpl });
   }
 }
@@ -186,6 +187,7 @@ export async function requestAthenaJson(input: {
   prompt: string;
   maxTokens?: number;
   fetchImpl?: FetchLike;
+  allowFallback?: boolean;
 }): Promise<{ data: Record<string, unknown>; model: AthenaModelResult }> {
   const model = await requestAthenaModel({
     messages: [
@@ -195,6 +197,7 @@ export async function requestAthenaJson(input: {
     temperature: 0,
     maxTokens: input.maxTokens || 500,
     fetchImpl: input.fetchImpl,
+    allowFallback: input.allowFallback === true,
   });
   const data = extractJsonObject(model.text);
   if (!data) throw new Error('Athena decision model returned invalid JSON');
@@ -207,6 +210,7 @@ export function getAthenaModelStatus() {
     localBaseUrl: localBaseUrl() || null,
     localModel: localModel(),
     localAuthenticationConfigured: Boolean(localWorkerKey()),
-    edenFallbackReady: Boolean(String(process.env.EDENAI_API_KEY || '').trim()),
+    edenFallbackConfigured: Boolean(String(process.env.EDENAI_API_KEY || '').trim()),
+    cloudFallbackDefault: false,
   };
 }
