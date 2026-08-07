@@ -88,6 +88,11 @@ function cleanList(values: unknown[]): string[] {
     .filter(Boolean)));
 }
 
+function mergeLists(...values: Array<unknown[] | undefined>): string[] | undefined {
+  const merged = cleanList(values.flatMap((value) => value || []));
+  return merged.length ? merged : undefined;
+}
+
 function normalizeTag(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
@@ -96,6 +101,129 @@ function isExpired(entry: Pick<WorldLoreJournalEntry, 'expiresAt'>, now = Date.n
   if (!entry.expiresAt) return false;
   const expiresAt = Date.parse(entry.expiresAt);
   return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+async function readWorldLoreFile(filePath: string): Promise<WorldLore | null> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.worldId !== 'string' || typeof parsed.title !== 'string') {
+      return null;
+    }
+    return parsed as WorldLore;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The mounted production file may be older than the packaged canon. Preserve
+ * persisted names and custom additions, but always add new canonical
+ * relationships, character links, lore notes, domains, and event hooks.
+ */
+export function mergeWorldLore(canonical: WorldLore, persisted: WorldLore): WorldLore {
+  const characterIds = new Set([
+    ...Object.keys(canonical.characters || {}),
+    ...Object.keys(persisted.characters || {}),
+  ]);
+  const characters: Record<string, WorldLoreCharacter> = {};
+  for (const id of characterIds) {
+    const base = canonical.characters?.[id];
+    const saved = persisted.characters?.[id];
+    if (!base && saved) {
+      characters[id] = saved;
+      continue;
+    }
+    if (!base) continue;
+    if (!saved) {
+      characters[id] = base;
+      continue;
+    }
+    characters[id] = {
+      ...base,
+      ...saved,
+      stableId: saved.stableId || base.stableId,
+      currentName: saved.currentName || base.currentName,
+      aliases: mergeLists(base.aliases, saved.aliases),
+      previousNames: mergeLists(base.previousNames, saved.previousNames),
+      personalityNotes: mergeLists(base.personalityNotes, saved.personalityNotes),
+      relationshipIds: mergeLists(base.relationshipIds, saved.relationshipIds),
+    };
+  }
+
+  const domainIds = new Set([
+    ...Object.keys(canonical.domains || {}),
+    ...Object.keys(persisted.domains || {}),
+  ]);
+  const domains: NonNullable<WorldLore['domains']> = {};
+  for (const id of domainIds) {
+    const base = canonical.domains?.[id];
+    const saved = persisted.domains?.[id];
+    if (!base && saved) {
+      domains[id] = saved;
+      continue;
+    }
+    if (!base) continue;
+    if (!saved) {
+      domains[id] = base;
+      continue;
+    }
+    domains[id] = {
+      ...base,
+      ...saved,
+      name: saved.name || base.name,
+      associatedCharacterIds: mergeLists(base.associatedCharacterIds, saved.associatedCharacterIds),
+    };
+  }
+
+  const eventIds = new Set([
+    ...Object.keys(canonical.crossBotEvents || {}),
+    ...Object.keys(persisted.crossBotEvents || {}),
+  ]);
+  const crossBotEvents: NonNullable<WorldLore['crossBotEvents']> = {};
+  for (const id of eventIds) {
+    const base = canonical.crossBotEvents?.[id];
+    const saved = persisted.crossBotEvents?.[id];
+    if (!base && saved) {
+      crossBotEvents[id] = saved;
+      continue;
+    }
+    if (!base) continue;
+    if (!saved) {
+      crossBotEvents[id] = base;
+      continue;
+    }
+    crossBotEvents[id] = {
+      ...base,
+      ...saved,
+      name: saved.name || base.name,
+      associatedCharacterIds: mergeLists(base.associatedCharacterIds, saved.associatedCharacterIds),
+      signals: mergeLists(base.signals, saved.signals),
+    };
+  }
+
+  return {
+    ...canonical,
+    ...persisted,
+    schemaVersion: Math.max(Number(canonical.schemaVersion || 1), Number(persisted.schemaVersion || 1)),
+    worldId: persisted.worldId || canonical.worldId,
+    title: persisted.title || canonical.title,
+    identityRules: {
+      ...(canonical.identityRules || {}),
+      ...(persisted.identityRules || {}),
+    },
+    overview: mergeLists(canonical.overview, persisted.overview),
+    toneRules: mergeLists(canonical.toneRules, persisted.toneRules),
+    domains,
+    characters,
+    // Canonical relationship IDs intentionally win over stale packaged copies,
+    // while persisted custom relationships remain available.
+    relationships: {
+      ...(persisted.relationships || {}),
+      ...(canonical.relationships || {}),
+    },
+    crossBotEvents,
+  };
 }
 
 async function readJournalFile(): Promise<WorldLoreJournalEntry[]> {
@@ -129,19 +257,12 @@ async function writeJournalFile(entries: WorldLoreJournalEntry[]): Promise<void>
 }
 
 export async function readWorldLore(): Promise<WorldLore | null> {
-  for (const filePath of [getWorldLoreFilePath(), getDefaultWorldLoreFilePath()]) {
-    try {
-      const raw = await fs.readFile(filePath, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || typeof parsed.worldId !== 'string') {
-        continue;
-      }
-      return parsed as WorldLore;
-    } catch {
-      // Try the next source.
-    }
-  }
-  return null;
+  const [persisted, canonical] = await Promise.all([
+    readWorldLoreFile(getWorldLoreFilePath()),
+    readWorldLoreFile(getDefaultWorldLoreFilePath()),
+  ]);
+  if (persisted && canonical) return mergeWorldLore(canonical, persisted);
+  return persisted || canonical;
 }
 
 export async function readWorldLoreJournal(limit = 500): Promise<WorldLoreJournalEntry[]> {
