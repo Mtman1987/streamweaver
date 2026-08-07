@@ -12,6 +12,8 @@ primary_region = 'iad'
   PERSIST_ROOT = '/data/runtime'
   APP_URL = 'https://streamweaver-new.fly.dev'
   INTERNAL_API_BASE_URL = 'https://streamweaver-new.fly.dev'
+  SPMT_LLM_BASE_URL = 'http://spmt-llm-worker.internal:8080/v1'
+  SPMT_LLM_MODEL = 'spmt-qwen3-4b'
 
 [[mounts]]
   source = 'streamweaver_data'
