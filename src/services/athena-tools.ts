@@ -9,6 +9,7 @@ import {
   isLiveAthenaSurface,
   surfaceAllowsTransportCommands,
 } from '@/services/athena-contract';
+import { executeAthenaTransportCommand } from '@/services/athena-command-executor';
 import { requestAthenaJson } from '@/services/athena-model';
 import {
   detectOpenBotCommand,
@@ -259,6 +260,15 @@ function confirmationRequired(decision: AthenaDecision, request: AthenaRequest):
 export async function executeAthenaDecision(request: AthenaRequest, decision: AthenaDecision): Promise<AthenaActionOutcome> {
   if (decision.mode === 'chat') return { decision };
 
+  if (request.executeTools === false) {
+    const selected = decision.command || decision.toolId || decision.mode;
+    return {
+      decision: { ...decision, executed: false, delivered: false },
+      response: `Athena selected ${selected}, but execution is disabled for this request.`,
+      toolResult: `Execution disabled. Selected action: ${selected}.`,
+    };
+  }
+
   if (confirmationRequired(decision, request)) {
     const id = actionId([
       request.tenantId,
@@ -311,14 +321,17 @@ export async function executeAthenaDecision(request: AthenaRequest, decision: At
   }
 
   if (decision.mode === 'command' && decision.command) {
+    const execution = await executeAthenaTransportCommand(request, decision.command);
     return {
       decision: {
         ...decision,
-        executed: false,
-        delivered: false,
+        executed: execution.executed,
+        delivered: execution.delivered,
       },
-      response: `Command handoff ready for ${request.location.surface}: ${decision.command}`,
-      toolResult: `Transport command handoff: ${decision.command}`,
+      response: execution.executed
+        ? `Ran ${decision.command} through the ${request.location.surface} dispatcher.`
+        : `I could not run ${decision.command}: ${execution.detail}`,
+      toolResult: execution.detail,
     };
   }
 
