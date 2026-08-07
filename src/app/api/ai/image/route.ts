@@ -113,13 +113,23 @@ export async function POST(request: NextRequest) {
     }
     const scope = parsed.data.scope;
 
-    // Resolve effective mode: prefer tenant gen-settings (UI source of truth),
-    // fall back to legacy gen-mode.json toggled by !genmode.
+    // Public mode remains the StreamWeaver UI/!genmode source of truth.
+    // Private requests can select a separate provider without mutating it.
     const [settings, legacyMode] = await Promise.all([
       readGenerationSettings(tenantId).catch(() => undefined),
       getGenMode(tenantId).catch(() => 'eden' as const),
     ]);
-    const genMode = parsed.data.providerOverride || settings?.mode || legacyMode;
+    const privateMode = settings?.privateMode && settings.privateMode !== 'inherit'
+      ? settings.privateMode
+      : undefined;
+    const genMode = parsed.data.providerOverride
+      || (scope === 'private' ? privateMode : undefined)
+      || settings?.mode
+      || legacyMode;
+    const effectiveModel = parsed.data.model
+      || (scope === 'private' ? settings?.privateModel : undefined)
+      || settings?.model
+      || undefined;
     const generator = genMode === 'seaart'
       ? generateImageWithSeaArt
       : genMode === 'perchance'
@@ -130,7 +140,7 @@ export async function POST(request: NextRequest) {
     const generationOptions = {
       prompt: parsed.data.prompt,
       tenantId,
-      model: parsed.data.model || settings?.model || undefined,
+      model: effectiveModel,
       resolution: parsed.data.resolution || settings?.resolution || undefined,
       numImages: parsed.data.numImages || settings?.imageCount || 1,
       providerParams: {
@@ -186,7 +196,7 @@ export async function POST(request: NextRequest) {
         tenantId: tenantId || 'global',
         prompt: parsed.data.prompt,
         provider: effectiveGenMode,
-        model: parsed.data.model || settings?.model || null,
+        model: effectiveModel || null,
         resolution: parsed.data.resolution || settings?.resolution || null,
         imageCount: imageUrls.length,
         persistedImageCount: persistedImageUrls.length,
