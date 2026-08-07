@@ -2,13 +2,30 @@
 
 ## Goal
 
-Run one Athena intelligence across StreamWeaver, Twitch, Kick, Discord, Rotator, MountainView, private app layouts, and future SPMT apps.
+Run one shared AthenaOS and Local Qwen runtime across StreamWeaver, Twitch, Kick, Discord, Rotator, MountainView, private app layouts, and future SPMT apps without turning every tenant bot into the character Athena.
 
-The local Qwen worker is the canonical model for public and private Athena. A user signs in once through SPMT. Cross-app Athena calls carry the SPMT-issued OAuth access token already held by the signed-in app; streamers never create or manage an Athena secret.
+The runtime is shared. The bot personas are not.
 
-SPMT authentication terminates at the Athena gateway. The gateway then calls the Qwen HTTP process over Fly's private network. The model worker receives neither the user's SPMT token nor a second API key.
+- The Commander tenant can run Athena.
+- Another tenant can run Scarlett, Reaper, Moonbeam, or another configured bot.
+- Each tenant bot keeps its own name, aliases, personality, voice, avatar, public memory, and private memory.
+- Static Station lore can be shared by all bots.
+- Explicitly shared bot-group memories can cross only between participating tenants that both enabled the existing bot-share feature.
 
 This implementation remains private and approval-gated while the coordinated branches are reviewed.
+
+## Existing systems used
+
+This slice extends existing StreamWeaver systems instead of introducing a replacement platform:
+
+- `bot-settings-store.ts` remains the source for each tenant bot's name, personality, aliases, and voice.
+- `discord-branding.ts` remains the source for tenant-aware avatar and Discord presentation.
+- Discord DM channel mapping remains responsible for selecting the destination tenant.
+- `athena-memory.ts` remains tenant-scoped for ordinary public/private conversation memory.
+- `world-lore-store.ts` remains the global source for shared fictional lore and relationships.
+- `bot-interactions-store.ts` remains the tenant-owned cross-bot history and bot-share permission store.
+- `bot-relay.ts` remains the parser for requests such as “tell Reaper...” or “tell your sister...”.
+- Existing Twitch, Kick, and Discord dispatchers remain authoritative for live command execution and live message delivery.
 
 ## Authentication boundary
 
@@ -16,13 +33,89 @@ There is one user-facing authentication universe: SPMT.
 
 - SPMT issues access and refresh tokens after login.
 - Apps keep those tokens in server-controlled or HttpOnly storage.
-- Cross-app Athena requests forward the SPMT access token as a bearer token.
-- The Athena gateway validates the token with SPMT `/api/oauth/userinfo`.
-- Tenant ID, username, display name, owner status, and admin status are derived from the verified SPMT identity.
+- Cross-app AthenaOS requests forward the SPMT access token already held by the signed-in app.
+- The gateway validates the token with SPMT `/api/oauth/userinfo`.
+- Tenant ID, username, display name, owner status, and admin status come from the verified SPMT identity.
 - Client-provided tenant or authority claims cannot override that identity.
-- No streamer creates, pastes, stores, rotates, or understands an Athena key, Qwen key, or shared service key.
+- Streamers never create, paste, store, rotate, or understand an Athena key, Qwen key, or shared service key.
 
-Existing same-process transport authentication remains temporarily available only as a compatibility bridge while Twitch, Kick, Discord, and other server-owned transports are moved to the unified gateway. It is not a credential exposed to streamers.
+Existing StreamWeaver-owned Twitch, Kick, and Discord transports may temporarily retain their pre-existing internal compatibility credential. That infrastructure credential is never exposed to a streamer and is not accepted as a new cross-app identity method.
+
+## Tenant persona boundary
+
+The gateway resolves the active persona from the destination tenant.
+
+For every turn it uses that tenant's configured:
+
+- bot name;
+- aliases;
+- personality;
+- voice through the existing TTS path;
+- avatar through the existing Discord branding path;
+- tenant memory file;
+- tenant bot-share mode.
+
+A request-supplied display name cannot replace a configured tenant bot. AthenaOS is the runtime; Athena, Scarlett, Reaper, Moonbeam, and other bots are distinct characters using that runtime.
+
+Example:
+
+```text
+Commander DM channel -> Commander tenant -> Athena persona and Athena tenant memory
+FatKid DM channel    -> FatKid tenant    -> Scarlett persona and Scarlett tenant memory
+```
+
+No tenant receives another tenant's ordinary public or private memory.
+
+## Shared world lore
+
+Shared fictional lore continues to use `world-lore.json` and stable character IDs.
+
+The existing Athena–Scarlett relationship is preserved and clarified as an adopted pretend sister relationship in the Station's fictional lore. Athena–Moonbeam is added as a best-friend relationship. These are static shared facts available to every bot persona.
+
+Names remain mutable display labels. Tenant resolution still matches configured bot names and aliases at runtime, so no unknown production tenant ID is invented for Scarlett, Reaper, or Moonbeam.
+
+## Shared bot-group memory
+
+Dynamic group memory extends the existing tenant-owned bot interaction history.
+
+A private request such as:
+
+```text
+Athena, tell Reaper that the funniest joke today involved a cosmic trout.
+```
+
+uses the existing bot-relay parser to identify Reaper and the message. It does not call the live relay delivery function. Instead:
+
+1. Resolve the source tenant bot from its configured name and aliases.
+2. Resolve the target bot through the existing lore/tenant resolver.
+3. Require the existing bot-share mode to be enabled for both source and target tenants.
+4. Write a `shared-memory` entry to the source tenant's bot-interaction history.
+5. Write the same approved entry to the target tenant's bot-interaction history.
+6. Set `delivered=false`; no Twitch, Discord, or DM message is sent.
+7. Do not copy the entry to unrelated tenant histories.
+
+When Reaper later speaks, Reaper can naturally remember the entry as something Athena shared. The model prompt also knows that no live message was physically delivered.
+
+Turning bot sharing off blocks new cross-tenant group memories and stops that tenant's bot-group history from being loaded into the AthenaOS prompt.
+
+## Public/private memory boundary
+
+Ordinary tenant memory remains separate from bot-group memory.
+
+Public request:
+
+- may retrieve that tenant's public memory;
+- may retrieve explicitly shared bot-group memory when bot sharing is enabled;
+- cannot retrieve that tenant's private memory;
+- cannot retrieve another tenant's ordinary memory;
+- must not reveal that excluded private memory exists.
+
+Private request:
+
+- may retrieve that tenant's public and private memory;
+- may retrieve explicitly shared bot-group memory when bot sharing is enabled;
+- still cannot read another tenant's ordinary memory;
+- still cannot bypass tool permissions or confirmations.
 
 ## Private Qwen transport
 
@@ -31,44 +124,12 @@ Qwen remains an HTTP service, but it is an internal implementation detail:
 - it binds to `[::]:8080` so applications in the Fly organization can reach it over 6PN;
 - its Fly configuration has no public `http_service` or public `services` section;
 - callers use `http://spmt-llm-worker.internal:8080/v1`;
-- production Athena rejects a public worker URL;
-- the gateway sends no `Authorization` header to Qwen;
+- production rejects a public worker URL;
+- the gateway sends no SPMT token or `Authorization` header to Qwen;
 - no `LLAMA_API_KEY`, `SPMT_LLM_API_KEY`, Athena key, or generated fallback key is required;
-- obsolete worker secrets and public addresses are removed by the paired Rotator deployment workflow.
+- active AthenaOS adapters fail closed when Local Qwen is unavailable.
 
-The security boundary is therefore SPMT OAuth at Athena plus Fly private-network reachability for the model process.
-
-## One Athena, one memory system
-
-Athena uses one tenant-scoped memory store with source metadata instead of separate personalities and unrelated histories.
-
-Every record includes:
-
-- public or private visibility;
-- source app and surface;
-- conversation ID;
-- channel, message, and participant metadata when available;
-- user, assistant, tool, or system role;
-- creation time and optional expiry;
-- tool and action metadata.
-
-Existing StreamWeaver public chat, private chat, public LTM, private LTM, and Commander records are read as legacy memory during migration. New turns are written to the unified store. Compatibility routes continue dual-writing the old chat files so existing pages keep working.
-
-## Non-negotiable visibility boundary
-
-Visibility is derived from trusted server location, never from prompt text.
-
-Public request:
-
-- may retrieve public memory;
-- cannot retrieve private memory;
-- must not tell the audience that private memory exists or was excluded.
-
-Private request:
-
-- may retrieve public and private memory;
-- can refer to source naturally, such as “earlier in Twitch chat” or “in our Discord DM”;
-- still cannot bypass tool permissions or confirmation requirements.
+The security boundary is SPMT OAuth at the gateway plus Fly private-network reachability for the model process.
 
 ## Location envelope examples
 
@@ -87,9 +148,7 @@ Private request:
 }
 ```
 
-Visibility: `public`
-
-Athena keeps replies stream-friendly, retrieves public memory only, and may hand an explicit or clearly requested command to the Twitch dispatcher.
+The destination tenant determines which configured bot persona answers. The bot receives public tenant memory only.
 
 ### Public Discord server
 
@@ -108,9 +167,7 @@ Athena keeps replies stream-friendly, retrieves public memory only, and may hand
 }
 ```
 
-Visibility: `public`
-
-Athena uses public memory and the existing Discord command/permission system.
+The bot uses the existing Discord command and permission system.
 
 ### Private Discord DM
 
@@ -132,28 +189,7 @@ Athena uses public memory and the existing Discord command/permission system.
 }
 ```
 
-Visibility: `private`
-
-Athena can use public and private memory. Private image generation uses the separate private image router and does not change public StreamWeaver image settings.
-
-### Private StreamWeaver layout
-
-```json
-{
-  "location": {
-    "app": "streamweaver",
-    "surface": "app-layout",
-    "layout": "private-control-room",
-    "live": false,
-    "replyMode": "structured",
-    "capabilities": ["athena.memory.private", "streamweaver.read-tools"]
-  }
-}
-```
-
-Visibility: `private`
-
-A layout can tell Athena where the user is and which capabilities are valid without putting secrets or authorization claims in the prompt.
+The DM channel mapping chooses the tenant. That tenant's bot persona, private memory, voice, avatar, and private image settings are used.
 
 ### Private Rotator workbench
 
@@ -175,63 +211,45 @@ A layout can tell Athena where the user is and which capabilities are valid with
 }
 ```
 
-Visibility: `private`
-
-The existing Rotator UI keeps its SPMT login. Its chat POST forwards that existing SPMT OAuth token to the same Athena gateway and memory used by StreamWeaver and Discord DMs.
+Rotator forwards its existing SPMT OAuth session. StreamWeaver derives the tenant and therefore the correct configured bot persona.
 
 ## Decision pipeline
 
-For every message Athena receives:
+For every message:
 
-1. Authenticate the caller with SPMT or a trusted server-owned transport and resolve tenant/actor.
-2. Derive visibility from the trusted surface.
-3. Derive a stable conversation ID from tenant, surface, channel/layout, and private participant where applicable.
-4. Retrieve only memory permitted for that visibility.
-5. Read the location and capability envelope.
-6. Decide one mode:
+1. Authenticate the caller and resolve the trusted tenant and actor.
+2. Resolve the active tenant bot persona from existing tenant settings.
+3. Derive visibility from the trusted surface.
+4. Derive a stable conversation ID.
+5. Retrieve only the active tenant memory allowed for that visibility.
+6. Load shared world lore.
+7. Load the active tenant's bot-group history only when bot sharing is enabled.
+8. Decide one mode:
    - `chat` — ordinary conversation;
-   - `tool` — safe structured data or image generation;
+   - `tool` — safe structured data, image generation, or private group-memory sharing;
    - `command` — a valid command on the current transport;
    - `confirm` — a state-changing natural-language command awaiting confirmation.
-7. Validate the selected tool or command against the current surface.
-8. Execute through the owning service/dispatcher.
-9. Generate a conversational response when needed.
-10. Store user, tool, and assistant turns with source metadata.
+9. Validate the selected tool or command against the current surface.
+10. Execute through the existing owning service or dispatcher.
+11. Store user, tool, and assistant turns in the active tenant's memory.
 
-## Command ownership
+## Command and delivery ownership
 
-Athena decides intent, but does not replace platform permissions or command implementations.
+AthenaOS decides intent but does not replace platform permissions or implementations.
 
 - Twitch commands execute through `handleTwitchMessage`.
 - Kick commands execute through `handleKickMessage`.
 - Discord commands execute through `handleDiscordMessage`.
+- Existing live cross-bot relays continue to use the current relay delivery path.
+- Private group-memory sharing stores an opted-in memory and deliberately does not use live relay delivery.
 - Safe app-state reads use the existing Open Bot command providers.
 - Image generation uses the existing public/private image router.
-
-The existing dispatcher remains authoritative for permissions, cooldowns, tenant routing, output delivery, and command behavior.
-
-## Confirmation policy
-
-An explicit `!command` is treated as direct command syntax and goes to the dispatcher.
-
-A natural-language request that changes state must produce a confirmation action ID before execution. Read-only tools do not require confirmation. Destructive operations remain unavailable until they have a registered, permission-checked tool implementation.
-
-## Private rollout order
-
-1. StreamWeaver unified gateway and memory store.
-2. Public Twitch, Kick, and Discord compatibility routes.
-3. Private StreamWeaver chat and Discord DM compatibility route.
-4. Rotator workbench proxy using its existing SPMT OAuth session.
-5. Qwen worker cleanup: remove legacy keys and public Fly exposure while retaining private HTTP access.
-6. Location-aware safe read tools, image generation, and transport command handoff.
-7. Tests for SPMT identity, visibility, memory isolation, conversation identity, private-worker transport, and action decisions.
-8. Review/typecheck/CI on private branches.
-9. Add future SPMT apps by forwarding their SPMT OAuth session and sending an app-specific surface/capability envelope.
 
 ## Current constraints
 
 - No branch in this slice should be merged or deployed until coordinated review passes.
 - SPMT OAuth is the only user-facing cross-app credential.
 - Qwen must remain reachable only through Fly private networking.
-- Public Athena must never receive private content in its model input.
-- Tools that are not registered for a surface are treated as ordinary chat or rejected; Athena cannot invent executable capabilities.
+- Public model input must never receive private tenant memory.
+- Group memory requires mutual bot-share opt-in and is copied only to participant tenant histories.
+- Tools not registered for a surface are treated as ordinary chat or rejected; the model cannot invent executable capabilities.
