@@ -31,22 +31,9 @@ export function extractPrivateChatResponseText(data: any): string {
     .trim();
 }
 
-function configuredLocalWorkerKey(override?: string): string {
-  return String(
-    override ||
-    process.env.SPMT_LLM_API_KEY ||
-    process.env.SPMT_API_KEY ||
-    process.env.SPMT_PLATFORM_API_KEY ||
-    process.env.LLM_WORKER_TOKEN ||
-    process.env.LLAMA_API_KEY ||
-    '',
-  ).trim();
-}
-
 async function requestLocalQwenCompletion(input: {
   baseUrl: string;
   model?: string;
-  apiKey?: string;
   systemPrompt: string;
   prompt: string;
   fetchImpl: FetchLike;
@@ -54,14 +41,12 @@ async function requestLocalQwenCompletion(input: {
   const baseUrl = String(input.baseUrl || '').trim().replace(/\/$/, '');
   if (!baseUrl) return { text: '' };
   const model = String(input.model || DEFAULT_LOCAL_MODEL).trim() || DEFAULT_LOCAL_MODEL;
-  const apiKey = configuredLocalWorkerKey(input.apiKey);
   try {
     const response = await input.fetchImpl(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
+      // SPMT authenticates the caller before this private-network hop. The
+      // Qwen worker does not need a second user-facing or generated API key.
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
         messages: [
@@ -108,7 +93,6 @@ export async function requestPrivateChatCompletion(input: {
   prompt: string;
   localBaseUrl?: string;
   localModel?: string;
-  localApiKey?: string;
   fetchImpl?: FetchLike;
 }): Promise<PrivateChatCompletionResult> {
   const fetchImpl = input.fetchImpl || fetch;
@@ -117,13 +101,12 @@ export async function requestPrivateChatCompletion(input: {
     const local = await requestLocalQwenCompletion({
       baseUrl: input.localBaseUrl,
       model: input.localModel,
-      apiKey: input.localApiKey,
       systemPrompt: input.systemPrompt,
       prompt: input.prompt,
       fetchImpl,
     });
     if (local.text) return local;
-    console.warn('[Private Chat API] Local Qwen failed; trying EdenAI fallback', {
+    console.warn('[Private Chat API] Local Qwen failed; trying explicit EdenAI fallback', {
       upstreamStatus: local.upstreamStatus || null,
       upstreamError: local.upstreamError ? local.upstreamError.slice(0, 300) : null,
     });
