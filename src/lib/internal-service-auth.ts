@@ -1,11 +1,21 @@
 import type { NextRequest } from 'next/server';
 
+type InternalSecretName =
+  | 'BOT_SECRET_KEY'
+  | 'MOUNTAINVIEW_STREAMWEAVER_SECRET'
+  | 'STREAMWEAVER_SECRET'
+  | 'STREAMWEAVER_CLIENT_SECRET'
+  | 'DSH_SERVICE_SECRET'
+  | 'DSH_CLIENT_SECRET'
+  | 'SPMT_API_KEY'
+  | 'SPMT_PLATFORM_API_KEY';
+
 function bearerToken(request: NextRequest): string {
   const header = request.headers.get('authorization') || '';
   return header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
 }
 
-function configuredSecret(name: 'BOT_SECRET_KEY' | 'MOUNTAINVIEW_STREAMWEAVER_SECRET' | 'STREAMWEAVER_SECRET' | 'STREAMWEAVER_CLIENT_SECRET' | 'DSH_SERVICE_SECRET' | 'DSH_CLIENT_SECRET'): string {
+function configuredSecret(name: InternalSecretName): string {
   return String(process.env[name] || '').trim();
 }
 
@@ -20,6 +30,8 @@ export function getInternalServiceSecrets(): string[] {
     configuredSecret('STREAMWEAVER_CLIENT_SECRET'),
     configuredSecret('DSH_SERVICE_SECRET'),
     configuredSecret('DSH_CLIENT_SECRET'),
+    configuredSecret('SPMT_API_KEY'),
+    configuredSecret('SPMT_PLATFORM_API_KEY'),
   ]);
 }
 
@@ -54,9 +66,13 @@ export function hasMountainViewBridgeAccess(request: NextRequest): boolean {
 }
 
 export function internalServiceHeaders(headers: Record<string, string> = {}): Record<string, string> {
-  const secret = configuredSecret('BOT_SECRET_KEY') || configuredSecret('STREAMWEAVER_SECRET');
+  const secret =
+    configuredSecret('BOT_SECRET_KEY') ||
+    configuredSecret('STREAMWEAVER_SECRET') ||
+    configuredSecret('SPMT_API_KEY') ||
+    configuredSecret('SPMT_PLATFORM_API_KEY');
   if (!secret && process.env.NODE_ENV === 'production') {
-    throw new Error('BOT_SECRET_KEY is required for internal StreamWeaver requests');
+    throw new Error('An internal StreamWeaver service key is required for server-to-server requests');
   }
   return {
     ...headers,
