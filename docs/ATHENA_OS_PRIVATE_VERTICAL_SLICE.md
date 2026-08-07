@@ -290,29 +290,17 @@ Known bot/tenant relays are delegated from the older public transport handlers i
 
 The model cannot invent executable capabilities. Existing dispatchers remain authoritative for platform permissions, cooldowns, tenant routing, delivery, and command behavior.
 
-## Validation requirements
+## Validation result
 
-The pull-request workflow must verify:
+The exact final head passed both non-deploying pull-request workflows:
 
-- TypeScript compilation;
-- tenant persona, voice, alias, and avatar separation;
-- public/private ordinary-memory isolation;
-- tenant-scoped raw private lore queues;
-- public stream filtering through configured interests;
-- interest routing to selected participant tenants only;
-- no backstage dependence on `!botshare`;
-- visible bot interaction disabled when `!botshare` is off;
-- autonomous idle lore creation;
-- explicit relay intent while `!botshare` is off or on;
-- older public transport handlers deferring known-bot relays to AthenaOS;
-- live target delivery through the target tenant bot;
-- truthful `delivered=true` only after an actual send;
-- static sister/best-friend lore and persisted-volume merging;
-- SPMT OAuth and private keyless Qwen boundaries.
+- `Athena private validation`: TypeScript plus tenant persona, public/private memory, living lore, interest filtering, idle-scene, explicit relay, OAuth, Local Qwen, image, and tool tests.
+- `Athena DM Validation`: current DM open-command tests plus TypeScript validation.
 
 ## Current status
 
 - Draft only.
 - Not merged.
 - Not deployed.
+- Based on current StreamWeaver `main` with no divergence at validation time.
 - Paired with the current-main Rotator draft for SPMT OAuth and private keyless Qwen transport.
