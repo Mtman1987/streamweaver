@@ -186,6 +186,15 @@ function cleanRelayValue(value: unknown, maxLength: number): string {
     .trim();
 }
 
+function isKnownBotRelayTarget(request: BotRelayRequest, targets: WorldLoreCharacter[]): boolean {
+  if (request.target) return true;
+  const requestedName = String(request.targetName || '').trim().replace(/^@/, '').toLowerCase();
+  if (!requestedName) return false;
+  return targets.some((target) =>
+    characterNames(target).some((name) => name.toLowerCase() === requestedName)
+  );
+}
+
 export async function detectBotRelayRequestWithAi(input: {
   message: string;
   speakerName?: string;
@@ -194,17 +203,21 @@ export async function detectBotRelayRequestWithAi(input: {
   platform?: 'twitch' | 'discord';
   /**
    * The old transport routes used to execute relays directly. AthenaOS now
-   * owns explicit relay intent so it can ignore botshare, report delivery
-   * truthfully, and use one target resolution path. Legacy execution is opt-in
-   * only for rollback/testing and is off for all current callers.
+   * owns known bot/tenant relay intent so it can ignore botshare, report
+   * delivery truthfully, and use one target resolution path. Legacy execution
+   * remains opt-in for rollback/testing. Deterministic direct-human relays in
+   * the current channel are preserved when the target is not a known bot.
    */
   legacyTransportExecution?: boolean;
 }): Promise<BotRelayRequest> {
+  const parsed = detectBotRelayRequest(input);
   if (input.legacyTransportExecution !== true) {
-    return { matched: false };
+    if (!parsed.matched || isKnownBotRelayTarget(parsed, input.targets)) {
+      return { matched: false };
+    }
+    return parsed;
   }
 
-  const parsed = detectBotRelayRequest(input);
   if (parsed.matched) return parsed;
 
   const normalized = relayCandidateText(input.message, input.speakerName);
