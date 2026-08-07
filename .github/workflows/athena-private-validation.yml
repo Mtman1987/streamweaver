@@ -40,6 +40,7 @@ jobs:
           tests/athena-contract.test.ts
           tests/athena-memory-boundary.test.ts
           tests/athena-model.test.ts
+          tests/athena-oauth-route.test.ts
           tests/athena-tools.test.ts
           tests/private-chat-ai.test.ts
           tests/spmt-userinfo.test.ts
