@@ -11,16 +11,28 @@ export type OpenBotCommand =
 
 type FetchLike = typeof fetch;
 type AiResponder = typeof generateAIResponse;
+type FetchJsonOptions = {
+  method?: RequestInit['method'];
+  body?: BodyInit | null;
+  headers?: HeadersInit;
+  serviceSecrets?: string[];
+};
 
 const CHAT_TAG_URL = (process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_CHAT_TAG_URL || 'https://chat-tag-new.fly.dev').replace(/\/+$/, '');
 const SPMT_URL = (process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
 const HEARMEOUT_URL = (process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev').replace(/\/+$/, '');
 
+function normalizeSpmtCommandTypos(command: string): string {
+  return command
+    .replace(/\b(?:sttus|staus|stauts|statsu|statuz)\b/g, 'status')
+    .replace(/\b(?:liv|lve)\b/g, 'live');
+}
+
 function detectExplicitSpmtCommand(normalized: string): OpenBotCommand | null {
-  const match = normalized.match(/^spmt(?:\s+|[:,-]\s*)(.+)$/);
+  const match = normalized.match(/^@?spmt(?:\s+|[:,-]\s*)(.+)$/);
   if (!match) return null;
 
-  const command = match[1].trim();
+  const command = normalizeSpmtCommandTypos(match[1].trim());
   if (/^(?:status|state|game status|chat[\s-]?tag status)$/.test(command)) return 'chat-tag-status';
   if (/^(?:current|tag|who(?:'?s| is) it|who has the tag)$/.test(command)) return 'chat-tag-current';
   if (/^(?:leader|leaderboard|rankings?|top(?:\s+(?:3|three))?)$/.test(command)) return 'chat-tag-leaderboard';
@@ -29,6 +41,20 @@ function detectExplicitSpmtCommand(normalized: string): OpenBotCommand | null {
   if (/^(?:hearmeout|hear me out|music|now playing|queue)$/.test(command)) return 'hearmeout';
   if (/^(?:help|commands?|command list)$/.test(command)) return 'help';
   return null;
+}
+
+/**
+ * Converts an explicit SPMT namespace command into the existing native command
+ * syntax. The DM route only uses this after the safe read-only command catalog
+ * declines the request, so `spmt status` stays a Chat Tag lookup while
+ * `spmt points`, `spmt checkin`, and other installed commands reuse the normal
+ * command dispatcher.
+ */
+export function rewriteSpmtNamespaceCommand(message: string): string | null {
+  const match = String(message || '').trim().match(/^@?spmt(?:\s+|[:,-]\s*)(.+)$/i);
+  if (!match) return null;
+  const command = match[1].trim().replace(/^!+/, '');
+  return command ? `!${command}` : null;
 }
 
 export function detectOpenBotCommand(message: string): OpenBotCommand | null {
@@ -48,7 +74,12 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
   const explicitSpmtCommand = detectExplicitSpmtCommand(normalized);
   if (explicitSpmtCommand) return explicitSpmtCommand;
 
-  if (/\b(who(?:'?s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized)) return 'live-members';
+  if (
+    /\b(who(?:'?s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized) ||
+    /\bhow many\b.*\b(?:users?|members?|people|creators?|streamers?)\b.*\b(?:live|streaming|broadcasting)\b/.test(normalized) ||
+    /\bhow many\b.*\b(?:live|streaming|broadcasting)\b.*\b(?:users?|members?|people|creators?|streamers?)\b/.test(normalized) ||
+    /\bchat[\s-]?tag\b.*\b(?:users?|members?|people|creators?|streamers?)\b.*\b(?:live|streaming|broadcasting)\b/.test(normalized)
+  ) return 'live-members';
   if (/\b(who(?:'s| is) it|who has the tag|current(?:ly)? it)\b/.test(normalized)) return 'chat-tag-current';
   if (/\b(chat[\s-]?tag (?:status|state)|how many (?:chat[\s-]?tag )?players|game status)\b/.test(normalized)) return 'chat-tag-status';
   if (/\b(chat[\s-]?tag (?:leaderboard|rankings?)|top (?:three|3)|who is winning|who's winning)\b/.test(normalized)) return 'chat-tag-leaderboard';
@@ -116,14 +147,19 @@ export async function detectOpenBotCommandWithAi(message: string, tenantId?: str
 
 export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchLike = fetch): Promise<string> {
   if (command === 'help') {
-    return ['Open commands work even when the streamer is offline:', '"who\'s live?", "who\'s it?", "ChatTag status", "top 3",', '"what apps can you control?", and "what\'s playing?"'].join(' ');
+    return [
+      'Private commands work even when the streamer is offline:',
+      '`spmt status`, `spmt live`, `spmt current`, `spmt leaderboard`, `spmt apps`, and `spmt music`.',
+      'You can also write a read-only request naturally, such as “Athena, how many Chat Tag users are live?”',
+      'For any other installed command, use `spmt <command>` in a DM.',
+    ].join(' ');
   }
 
   if (command === 'live-members') {
-    const data = await fetchJson(fetcher, `${CHAT_TAG_URL}/api/discord/live-members`);
+    const data = await fetchChatTagLiveMembers(fetcher);
     const members = Array.isArray(data.liveMembers) ? data.liveMembers : [];
     if (!members.length) return 'Nobody in the SpaceMountain community is live right now.';
-    const names = members.map((member: any) => String(member.twitchDisplayName || member.twitchUsername || member.discordDisplayName || '').trim()).filter(Boolean);
+    const names = members.map((member: any) => String(member.twitchDisplayName || member.displayName || member.twitchUsername || member.username || member.discordDisplayName || '').trim()).filter(Boolean);
     const shown = names.slice(0, 12);
     const remaining = Math.max(0, names.length - shown.length);
     return `🟢 ${names.length} live: ${shown.join(', ')}${remaining ? `, and ${remaining} more` : ''}.`;
@@ -160,6 +196,45 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
   return `🏆 ChatTag top 3: ${leaders.map((player: any, index) => `#${index + 1} ${player.twitchUsername || player.username || 'unknown'} (${Number(player.score || 0)} pts)`).join(' | ')}.`;
 }
 
+function getChatTagServiceSecrets(): string[] {
+  return Array.from(new Set([
+    process.env.CHAT_TAG_BOT_SECRET,
+    process.env.CHAT_TAG_SERVICE_SECRET,
+    process.env.DSH_SERVICE_SECRET,
+    process.env.DSH_CLIENT_SECRET,
+    process.env.BOT_SECRET_KEY,
+    process.env.STREAMWEAVER_SECRET,
+    process.env.STREAMWEAVER_CLIENT_SECRET,
+  ].map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+async function fetchChatTagLiveMembers(fetcher: FetchLike): Promise<any> {
+  try {
+    return await fetchJson(fetcher, `${CHAT_TAG_URL}/api/discord/live-members`, {
+      serviceSecrets: getChatTagServiceSecrets(),
+    });
+  } catch (error) {
+    console.warn('[OpenBotCommands] Protected Chat Tag live lookup failed; using public Twitch fallback:', error);
+  }
+
+  const roster = await fetchJson(fetcher, `${CHAT_TAG_URL}/api/tag`);
+  const usernames = Array.from(new Set(
+    (Array.isArray(roster.players) ? roster.players : [])
+      .map((player: any) => String(player?.twitchUsername || player?.username || '').trim().toLowerCase())
+      .filter(Boolean),
+  ));
+  if (!usernames.length) return { liveMembers: [] };
+
+  const liveData = await fetchJson(fetcher, `${CHAT_TAG_URL}/api/twitch/live`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usernames }),
+  });
+  return {
+    liveMembers: Array.isArray(liveData.liveUsers) ? liveData.liveUsers : [],
+  };
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -174,11 +249,33 @@ function extractJsonObject(text: string): any | null {
   try { return JSON.parse(candidate.slice(start, end + 1)); } catch { return null; }
 }
 
-async function fetchJson(fetcher: FetchLike, url: string): Promise<any> {
-  const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-    ? AbortSignal.timeout(5000)
-    : undefined;
-  const response = await fetcher(url, { headers: { accept: 'application/json' }, cache: 'no-store', signal });
-  if (!response.ok) throw new Error(`Open bot command source failed (${response.status})`);
-  return response.json();
+async function fetchJson(fetcher: FetchLike, url: string, options: FetchJsonOptions = {}): Promise<any> {
+  const serviceSecrets = Array.isArray(options.serviceSecrets)
+    ? options.serviceSecrets.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const attempts = serviceSecrets.length ? serviceSecrets : [''];
+  let lastStatus = 0;
+
+  for (const secret of attempts) {
+    const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(5000)
+      : undefined;
+    const headers = new Headers(options.headers || {});
+    headers.set('accept', 'application/json');
+    if (secret) headers.set('x-bot-secret', secret);
+
+    const response = await fetcher(url, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body,
+      cache: 'no-store',
+      signal,
+    });
+    if (response.ok) return response.json();
+
+    lastStatus = response.status;
+    if (response.status !== 401 && response.status !== 403) break;
+  }
+
+  throw new Error(`Open bot command source failed (${lastStatus || 'request-error'})`);
 }

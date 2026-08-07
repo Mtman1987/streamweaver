@@ -4,12 +4,15 @@ import assert from 'node:assert/strict';
 import {
   detectOpenBotCommand,
   detectOpenBotCommandWithAi,
+  rewriteSpmtNamespaceCommand,
   runOpenBotCommand,
 } from '../src/services/open-bot-commands';
 
 test('detects safe natural-language commands after any tenant bot wake name', () => {
   assert.equal(detectOpenBotCommand("NovaBot, who's live?"), 'live-members');
   assert.equal(detectOpenBotCommand('athena whos live right now?'), 'live-members');
+  assert.equal(detectOpenBotCommand('Athena, how many users are reporting live in Chat-Tag?'), 'live-members');
+  assert.equal(detectOpenBotCommand('how many live streamers does chat tag have, Athena?'), 'live-members');
   assert.equal(detectOpenBotCommand('Athena who has the tag?'), 'chat-tag-current');
   assert.equal(detectOpenBotCommand('MayaBot, show me the ChatTag leaderboard'), 'chat-tag-leaderboard');
   assert.equal(detectOpenBotCommand("what's playing in HearMeOut?"), 'hearmeout');
@@ -18,6 +21,8 @@ test('detects safe natural-language commands after any tenant bot wake name', ()
 
 test('routes explicit SPMT command namespace before conversational chat', () => {
   assert.equal(detectOpenBotCommand('spmt status'), 'chat-tag-status');
+  assert.equal(detectOpenBotCommand('spmt sttus'), 'chat-tag-status');
+  assert.equal(detectOpenBotCommand('@spmt status'), 'chat-tag-status');
   assert.equal(detectOpenBotCommand('SPMT current'), 'chat-tag-current');
   assert.equal(detectOpenBotCommand('spmt leaderboard'), 'chat-tag-leaderboard');
   assert.equal(detectOpenBotCommand('spmt live'), 'live-members');
@@ -25,6 +30,12 @@ test('routes explicit SPMT command namespace before conversational chat', () => 
   assert.equal(detectOpenBotCommand('spmt music'), 'hearmeout');
   assert.equal(detectOpenBotCommand('spmt commands'), 'help');
   assert.equal(detectOpenBotCommand('spmt tell me a joke'), null);
+});
+
+test('rewrites uncatalogued SPMT namespace commands for the native DM dispatcher', () => {
+  assert.equal(rewriteSpmtNamespaceCommand('spmt points'), '!points');
+  assert.equal(rewriteSpmtNamespaceCommand('@spmt !checkin'), '!checkin');
+  assert.equal(rewriteSpmtNamespaceCommand('Athena, how are you?'), null);
 });
 
 test('formats shared live-member data without tenant credentials', async () => {
@@ -36,6 +47,60 @@ test('formats shared live-member data without tenant credentials', async () => {
   }), { status: 200, headers: { 'content-type': 'application/json' } }));
 
   assert.equal(reply, '🟢 2 live: StreamerOne, streamer_two.');
+});
+
+test('falls back to the public Chat Tag roster and Twitch lookup when the protected aggregate is unavailable', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+
+    if (url.endsWith('/api/discord/live-members')) {
+      return new Response(JSON.stringify({ error: 'authentication required' }), { status: 401 });
+    }
+    if (url.endsWith('/api/tag')) {
+      return new Response(JSON.stringify({
+        players: [
+          { twitchUsername: 'streamer_one' },
+          { twitchUsername: 'streamer_two' },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.endsWith('/api/twitch/live')) {
+      assert.equal(init?.method, 'POST');
+      assert.deepEqual(JSON.parse(String(init?.body || '{}')), {
+        usernames: ['streamer_one', 'streamer_two'],
+      });
+      return new Response(JSON.stringify({
+        liveUsers: [{ displayName: 'Streamer One', username: 'streamer_one' }],
+        allUsers: [],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response('{}', { status: 404 });
+  };
+
+  const reply = await runOpenBotCommand('live-members', fetcher as typeof fetch);
+  assert.equal(reply, '🟢 1 live: Streamer One.');
+  assert.equal(calls.some((call) => call.url.endsWith('/api/twitch/live')), true);
+});
+
+test('uses a configured Chat Tag shared secret for the protected live aggregate', async () => {
+  const previous = process.env.CHAT_TAG_BOT_SECRET;
+  process.env.CHAT_TAG_BOT_SECRET = 'test-chat-tag-secret';
+  try {
+    const reply = await runOpenBotCommand('live-members', async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get('x-bot-secret'), 'test-chat-tag-secret');
+      return new Response(JSON.stringify({ liveMembers: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    assert.equal(reply, 'Nobody in the SpaceMountain community is live right now.');
+  } finally {
+    if (previous === undefined) delete process.env.CHAT_TAG_BOT_SECRET;
+    else process.env.CHAT_TAG_BOT_SECRET = previous;
+  }
 });
 
 test('uses MountainView-style AI inference when wording is not an exact match', async () => {

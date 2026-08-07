@@ -1,0 +1,27 @@
+name: Athena DM Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-athena-dm-commands:
+    name: Test Athena DM commands
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run open-command tests
+        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts
+      - name: Typecheck
+        run: npm run typecheck
