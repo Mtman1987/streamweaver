@@ -113,7 +113,14 @@ export default function AppShell({
               <Header />
               <main className="app-surface flex-1 min-h-0 overflow-y-auto px-3 pb-4 pt-3 sm:px-5 lg:px-6" data-workspace-main>
                 <div className="mx-auto flex min-h-0 w-full max-w-[1900px] flex-1 flex-col gap-6">
-                  <div className="flex justify-end px-4 pt-1 sm:px-6">
+                  <div className="flex justify-end gap-2 px-4 pt-1 sm:px-6">
+                    <a
+                      href="/private-router"
+                      className="inline-flex items-center rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                      title="Choose private DM image routing without changing public image settings"
+                    >
+                      Private DM Router
+                    </a>
                     <button
                       type="button"
                       onClick={registerDiscordDmChannel}
