@@ -1,10 +1,10 @@
 import { generateAIResponse } from '@/services/ai-provider';
-import { readGenerationSettings, type GenerationSettings } from '@/lib/gen-settings-store';
+import { readGenerationSettings, type GenerationSettings, type ImageProviderMode } from '@/lib/gen-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
 import { ImagePromptModerationError, moderateImagePrompt } from '@/services/image-content-moderation';
 
-type ProviderMode = GenerationSettings['mode'];
+type ProviderMode = ImageProviderMode;
 
 export type ParsedImageCommand = {
   prompt: string;
@@ -142,6 +142,11 @@ export async function runImageCommand(input: string, tenantId: string, options: 
 
   const settings = await readGenerationSettings(tenantId);
   const scope = options.scope || 'public';
+  const privateProvider = settings.privateMode !== 'inherit' ? settings.privateMode : undefined;
+  const providerOverride = parsed.provider || (scope === 'private' ? privateProvider : undefined);
+  const effectiveModel = scope === 'private'
+    ? (settings.privateModel || settings.model || undefined)
+    : (settings.model || undefined);
   const moderationEnabled = scope === 'private'
     ? settings.privateContentModeration
     : settings.publicContentModeration;
@@ -168,7 +173,7 @@ export async function runImageCommand(input: string, tenantId: string, options: 
     body: JSON.stringify({
       prompt: finalPrompt,
       tenantId,
-      model: settings.model || undefined,
+      model: effectiveModel,
       resolution: settings.resolution || undefined,
       numImages: parsed.count || settings.imageCount || 1,
       scope,
@@ -178,9 +183,9 @@ export async function runImageCommand(input: string, tenantId: string, options: 
         steps: settings.steps,
         cfg: settings.cfg,
         seed: settings.seed,
-        ...(parsed.provider ? { providerOverride: parsed.provider } : {}),
+        ...(providerOverride ? { providerOverride } : {}),
       },
-      ...(parsed.provider ? { providerOverride: parsed.provider } : {}),
+      ...(providerOverride ? { providerOverride } : {}),
     }),
   });
 
@@ -210,7 +215,7 @@ export async function runImageCommand(input: string, tenantId: string, options: 
     prompt: finalPrompt,
     originalPrompt: parsed.prompt,
     optimizedPrompt: finalPrompt !== parsed.prompt ? finalPrompt : null,
-    provider: imageData?.provider || parsed.provider || settings.mode,
+    provider: imageData?.provider || providerOverride || settings.mode,
     images: finalImages,
   };
 }
