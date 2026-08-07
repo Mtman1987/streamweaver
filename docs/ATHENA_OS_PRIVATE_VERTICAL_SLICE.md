@@ -119,7 +119,7 @@ Tenant-selected `interests` are active routing tags rather than decorative profi
 
 ### Public stream and community monitoring
 
-The existing shared-chat replay receives public human events from Twitch, Discord servers, Kick, and YouTube. After the durable replay write completes, an optional background filter compares the message against the cached union of configured tenant interests.
+The existing shared-chat replay receives public human events from Twitch, Discord servers, Kick, and YouTube. After the durable replay write completes, an optional background filter compares the message against the cached union of configured tenant interests. The cache refreshes automatically within one minute after interest settings change.
 
 Only public messages matching at least one configured interest enter the Local Qwen lore queue. This prevents a busy channel from feeding every chat line to the model while still capturing relevant material such as jokes, games, fishing, music, art, horror, coding, and arbitrary directly named interests.
 
