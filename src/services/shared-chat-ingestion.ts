@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { tenantPath } from '../lib/tenant';
 import { parseSharedChatEventV1, type SharedChatEventV1, type SharedChatPlatform } from '../contracts/shared-chat-event';
+import { shouldQueueBackstagePublicObservation } from './backstage-interest-index';
 import { queueBackstageLoreEvent, startBackstageLoreScheduler } from './backstage-lore';
 
 export const DEFAULT_SHARED_CHAT_REPLAY_LIMIT = 500;
@@ -54,11 +55,15 @@ export async function recordSharedChatEvent(
   const next = [...withoutDuplicate, event].slice(-maxReplayEvents);
   await writeJsonArray(filePath, next);
 
-  // Shared-chat replay remains the durable ingestion source. The living-lore
-  // queue is optional background work and must not add latency to normal chat.
-  void queueBackstageLoreEvent(event).catch((error) => {
-    console.warn('[Backstage Lore] Shared-chat observation enqueue failed:', error instanceof Error ? error.message : String(error));
-  });
+  // Shared-chat replay remains the durable ingestion source. Optional living
+  // lore work runs after the response path and only for messages matching at
+  // least one configured tenant interest, preventing busy chats from feeding
+  // every line into Local Qwen.
+  void shouldQueueBackstagePublicObservation(event.text)
+    .then((matched) => matched ? queueBackstageLoreEvent(event) : false)
+    .catch((error) => {
+      console.warn('[Backstage Lore] Shared-chat observation enqueue failed:', error instanceof Error ? error.message : String(error));
+    });
   return event;
 }
 
