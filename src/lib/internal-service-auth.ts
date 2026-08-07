@@ -6,9 +6,7 @@ type InternalSecretName =
   | 'STREAMWEAVER_SECRET'
   | 'STREAMWEAVER_CLIENT_SECRET'
   | 'DSH_SERVICE_SECRET'
-  | 'DSH_CLIENT_SECRET'
-  | 'SPMT_API_KEY'
-  | 'SPMT_PLATFORM_API_KEY';
+  | 'DSH_CLIENT_SECRET';
 
 function bearerToken(request: NextRequest): string {
   const header = request.headers.get('authorization') || '';
@@ -23,6 +21,13 @@ function uniqueNonEmpty(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+/**
+ * Legacy server-owned transport credentials only.
+ *
+ * These are not SPMT identity credentials, are never exposed to streamers, and
+ * cannot be substituted for an SPMT OAuth access token on cross-app Athena
+ * requests. New ecosystem apps must use SPMT OAuth.
+ */
 export function getInternalServiceSecrets(): string[] {
   return uniqueNonEmpty([
     configuredSecret('BOT_SECRET_KEY'),
@@ -30,8 +35,6 @@ export function getInternalServiceSecrets(): string[] {
     configuredSecret('STREAMWEAVER_CLIENT_SECRET'),
     configuredSecret('DSH_SERVICE_SECRET'),
     configuredSecret('DSH_CLIENT_SECRET'),
-    configuredSecret('SPMT_API_KEY'),
-    configuredSecret('SPMT_PLATFORM_API_KEY'),
   ]);
 }
 
@@ -55,24 +58,21 @@ export function isMountainViewBridgeSecretEnforced(): boolean {
   return String(process.env.MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET || '').trim() === 'true';
 }
 
+/**
+ * Retained only for legacy MountainView compatibility routes. The canonical
+ * `/api/athena/respond` gateway does not use this header as SPMT identity.
+ */
 export function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
-  // Default: trust the bridge header alone so the bridge works without
-  // provisioning a shared secret. Set MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET=true
-  // to require a matching MOUNTAINVIEW_STREAMWEAVER_SECRET bearer token.
   if (!isMountainViewBridgeSecretEnforced()) return true;
   const expected = configuredSecret('MOUNTAINVIEW_STREAMWEAVER_SECRET');
   return Boolean(expected && bearerToken(request) === expected);
 }
 
 export function internalServiceHeaders(headers: Record<string, string> = {}): Record<string, string> {
-  const secret =
-    configuredSecret('BOT_SECRET_KEY') ||
-    configuredSecret('STREAMWEAVER_SECRET') ||
-    configuredSecret('SPMT_API_KEY') ||
-    configuredSecret('SPMT_PLATFORM_API_KEY');
+  const secret = configuredSecret('BOT_SECRET_KEY') || configuredSecret('STREAMWEAVER_SECRET');
   if (!secret && process.env.NODE_ENV === 'production') {
-    throw new Error('An internal StreamWeaver service key is required for server-to-server requests');
+    throw new Error('BOT_SECRET_KEY is required for legacy internal StreamWeaver requests');
   }
   return {
     ...headers,
