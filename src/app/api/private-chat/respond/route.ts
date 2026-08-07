@@ -1,277 +1,200 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { apiError, apiOk } from '@/lib/api-response';
+import { getBotName } from '@/lib/bot-settings-store';
 import {
   appendPrivateChatMessages,
-  readPrivateChatMessages,
   type PrivateChatMessage,
 } from '@/lib/private-chat-store';
-import { getPrivateLTMTitles, incrementPrivateMessageCount, getPrivateMessageCount, retrieveLTMByTitle } from '@/lib/private-ltm-store';
-import { apiError, apiOk } from '@/lib/api-response';
-import { getTenantFromRequest } from '@/lib/tenant-context';
-import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
+import {
+  getPrivateMessageCount,
+  incrementPrivateMessageCount,
+} from '@/lib/private-ltm-store';
+import {
+  hasInternalServiceAccess,
+  hasMountainViewBridgeAccess,
+  internalServiceHeaders,
+} from '@/lib/internal-service-auth';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
-import { hasInternalServiceAccess, hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
-import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
-import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
-import { readGenerationSettings } from '@/lib/gen-settings-store';
-import { z } from 'zod';
-import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
+import { getTenantFromRequest } from '@/lib/tenant-context';
+import { respondWithAthena } from '@/services/athena-gateway';
 
-type RequestBody = {
-  username: string;
-  message: string;
-  attachments?: PrivateChatMessage['attachments'];
-  embeds?: PrivateChatMessage['embeds'];
-  personality?: string;
-  historyLimit?: number;
-  tenantId?: string;
-};
-
-const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
-
-const privateRespondSchema = z.object({
-  username: z.string().trim().min(1, 'username is required').max(128),
-  message: z.string().trim().max(5000),
+const schema = z.object({
+  username: z.string().trim().min(1).max(128),
+  message: z.string().trim().max(20_000),
   attachments: z.array(z.object({
     id: z.string().optional(),
     url: z.string().trim().min(1),
     filename: z.string().optional(),
     content_type: z.string().optional(),
-  }).passthrough()).optional(),
-  embeds: z.array(z.object({}).passthrough()).optional(),
-  personality: z.string().trim().max(3000).optional(),
+  }).passthrough()).max(20).optional(),
+  embeds: z.array(z.object({}).passthrough()).max(20).optional(),
+  personality: z.string().trim().max(6000).optional(),
   historyLimit: z.coerce.number().int().min(0).max(100).optional().default(20),
   tenantId: z.string().trim().max(128).optional(),
+  conversationId: z.string().trim().max(256).optional(),
+  userId: z.string().trim().max(128).optional(),
+  channelId: z.string().trim().max(128).optional(),
+  channelName: z.string().trim().max(128).optional(),
+  messageId: z.string().trim().max(128).optional(),
+  createdAt: z.string().trim().max(128).optional(),
+  source: z.enum(['app-private', 'discord-dm', 'rotator', 'mountainview', 'internal']).optional().default('app-private'),
+  layout: z.string().trim().max(128).optional(),
+  capabilities: z.array(z.string().trim().min(1).max(128)).max(100).optional(),
 }).refine((value) => value.message || value.attachments?.length || value.embeds?.length, {
   message: 'message or media is required',
 });
 
-function formatHistory(messages: PrivateChatMessage[]): string {
-  if (messages.length === 0) return '';
-
-  const lines = messages.map((m) => {
-    const role = m.type === 'ai' ? (m.username || 'AI') : (m.username || 'User');
-    const mediaCount = (m.attachments?.length || 0) + (m.embeds?.length || 0);
-    const mediaNote = mediaCount ? ` [${mediaCount} media item${mediaCount === 1 ? '' : 's'}]` : '';
-    return `${role}: ${m.message}${mediaNote}`;
-  });
-
-  return `Conversation so far:\n${lines.join('\n')}`;
+function mediaContext(
+  attachments: PrivateChatMessage['attachments'] | undefined,
+  embeds: PrivateChatMessage['embeds'] | undefined,
+): string {
+  const lines: string[] = [];
+  for (const attachment of attachments || []) {
+    lines.push(`Attachment: ${attachment.filename || 'file'} (${attachment.content_type || 'unknown type'}) ${attachment.url}`);
+  }
+  for (const embed of embeds || []) {
+    const parts = [embed.title, embed.description, embed.url, embed.image?.url, embed.thumbnail?.url].filter(Boolean);
+    if (parts.length) lines.push(`Embed: ${parts.join(' | ')}`);
+  }
+  return lines.length ? `Media supplied with this private turn:\n${lines.join('\n')}` : '';
 }
 
-async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
+async function checkAndCondensePrivateMemory(tenantId: string): Promise<void> {
   try {
-    const messageCount = await getPrivateMessageCount(tenantId);
-    if (messageCount > 0 && messageCount % 50 === 0) {
-      console.log(`[Private LTM] Message count reached ${messageCount}, condensing history...`);
-
-      const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
-        method: 'POST',
-        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ tenantId }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[Private LTM] Successfully condensed memory:', data.title);
-      }
+    const count = await getPrivateMessageCount(tenantId);
+    if (count <= 0 || count % 50 !== 0) return;
+    const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
+      method: 'POST',
+      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ tenantId }),
+    });
+    if (!response.ok) {
+      console.warn('[Private Chat API] Legacy private LTM condensation failed:', response.status);
     }
   } catch (error) {
-    console.error('[Private LTM] Failed to condense memory:', error);
+    console.warn('[Private Chat API] Legacy private LTM condensation failed:', error);
   }
 }
 
 export async function POST(request: NextRequest) {
-  if (VERBOSE_LOGS) console.log('[Private Chat API] POST request received');
-
   try {
-    const parsed = privateRespondSchema.safeParse(await request.json().catch(() => null));
+    const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
-      console.log('[Private Chat API] Missing required fields');
-      return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
+      return apiError('Missing required fields: username, message or media', {
+        status: 400,
+        code: 'INVALID_BODY',
+        details: parsed.error.flatten(),
+      });
     }
 
-    const { username, message, attachments, embeds, personality, historyLimit, tenantId: bodyTenantId } = parsed.data as RequestBody;
+    const body = parsed.data;
     const session = getTenantFromRequest(request);
-    const hasServiceAccess = hasInternalServiceAccess(request);
-    const hasMountainViewAccess = hasMountainViewBridgeAccess(request);
-    if (!session?.tenantId && !hasServiceAccess && !hasMountainViewAccess) {
+    const serviceAccess = hasInternalServiceAccess(request);
+    const mountainViewAccess = hasMountainViewBridgeAccess(request);
+    if (!session?.tenantId && !serviceAccess && !mountainViewAccess) {
       return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
     }
-    const tenantId = session?.tenantId || ((hasServiceAccess || hasMountainViewAccess) ? bodyTenantId : undefined);
-    if (!tenantId) {
-      return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
-    }
-    const botName = getBotName(tenantId);
-    const botPersonality = getBotPersonality(tenantId);
-    if (VERBOSE_LOGS) {
-      console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });
-    }
+    const tenantId = session?.tenantId || ((serviceAccess || mountainViewAccess) ? body.tenantId : undefined);
+    if (!tenantId) return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
 
-    const generationSettings = await readGenerationSettings(tenantId);
-    const seaartCharacterId = generationSettings.seaartCharacterId;
-    const seaartCharacterToken = process.env.SEAART_CHARACTER_TOKEN || process.env.SEAART_TOKEN || '';
-    const useSeaArtCharacter = Boolean(seaartCharacterId);
-    const localQwenBaseUrl = String(process.env.SPMT_LLM_BASE_URL || '').trim().replace(/\/$/, '');
-    const localQwenModel = String(process.env.ATHENA_CHAT_LOCAL_MODEL || process.env.SPMT_LLM_MODEL || 'spmt-qwen3-4b').trim();
-    const edenaiKey = process.env.EDENAI_API_KEY || '';
-    if (!useSeaArtCharacter && !localQwenBaseUrl && !edenaiKey) {
-      return apiError('Server missing private chat provider configuration', { status: 500, code: 'MISSING_CONFIG' });
-    }
-
-    const messageCount = await incrementPrivateMessageCount(tenantId);
+    await incrementPrivateMessageCount(tenantId);
     await checkAndCondensePrivateMemory(tenantId);
 
-    const history = await readPrivateChatMessages(historyLimit, tenantId);
-    const ltmTitles = await getPrivateLTMTitles(tenantId);
-    const ltmContext = ltmTitles.length > 0
-      ? `\n\nLong Term Memory titles (request full content if relevant): ${ltmTitles.join(', ')}`
-      : '';
+    const sourceSurface = body.source === 'discord-dm'
+      ? 'discord-dm'
+      : body.source === 'rotator'
+        ? 'rotator-workbench'
+        : body.source === 'mountainview'
+          ? 'mountainview'
+          : body.source === 'internal'
+            ? 'internal'
+            : 'streamweaver-private';
+    const media = mediaContext(body.attachments, body.embeds);
+    const messageForAthena = body.message || '[The user shared private media without accompanying text.]';
+    const botName = getBotName(tenantId) || 'Athena';
 
-    let systemIdentity: string;
-    let extendedGuidance: string;
-    const rawPersonality = botPersonality;
-    if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
-      const splitIndex = rawPersonality.indexOf('\n---');
-      systemIdentity = rawPersonality.substring(0, splitIndex).trim();
-      extendedGuidance = rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim();
-    } else {
-      systemIdentity = rawPersonality;
-      extendedGuidance = '';
-    }
+    const result = await respondWithAthena({
+      tenantId,
+      message: messageForAthena,
+      actor: {
+        userId: body.userId || session?.tenantId,
+        username: body.username,
+        displayName: body.username,
+      },
+      location: {
+        app: body.source === 'rotator' ? 'fly-machine-rotator' : 'streamweaver',
+        surface: sourceSurface,
+        channelId: body.channelId,
+        channelName: body.channelName,
+        messageId: body.messageId,
+        createdAt: body.createdAt,
+        live: false,
+        layout: body.layout,
+        replyMode: body.source === 'mountainview' ? 'voice' : 'structured',
+        capabilities: body.capabilities || [
+          'athena.memory.public',
+          'athena.memory.private',
+          'image.generate.private',
+          'spmt.read-tools',
+        ],
+      },
+      visibility: 'private',
+      conversationId: body.conversationId,
+      personalityOverride: (serviceAccess || mountainViewAccess) ? body.personality : undefined,
+      responseName: botName,
+      additionalContext: media || undefined,
+      executeTools: true,
+      metadata: {
+        compatibilityRoute: '/api/private-chat/respond',
+        source: body.source,
+        attachmentCount: body.attachments?.length || 0,
+        embedCount: body.embeds?.length || 0,
+      },
+    });
 
-    const historyText = formatHistory(history);
-    const promptParts = [
-      extendedGuidance,
-      '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
-      'If you need more context from Long Term Memory, respond with: "LTM_REQUEST: [exact title]" and I will provide the full content.',
-      historyText,
-      `Latest message from ${username}: ${message}${ltmContext}`,
-      `Respond as ${botName}:`,
-    ].filter(Boolean);
+    const timestamp = new Date().toISOString();
+    await appendPrivateChatMessages([
+      {
+        type: 'user',
+        username: body.username,
+        message: body.message,
+        timestamp,
+        attachments: body.attachments,
+        embeds: body.embeds,
+      },
+      {
+        type: 'ai',
+        username: botName,
+        message: result.response,
+        timestamp,
+        ...(result.images?.length
+          ? {
+              embeds: result.images.map((url) => ({
+                title: 'Athena private image',
+                image: { url },
+              })),
+            }
+          : {}),
+      },
+    ], 160, tenantId);
 
-    const prompt = promptParts.join('\n\n');
-    const reducedContextPrompt = [
-      extendedGuidance,
-      '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
-      `Latest message from ${username}: ${message}${ltmContext}`,
-      `Respond as ${botName}:`,
-    ].filter(Boolean).join('\n\n');
-
-    const userEntry: PrivateChatMessage = {
-      type: 'user',
-      username,
-      message,
-      timestamp: new Date().toISOString(),
-      attachments,
-      embeds,
-    };
-
-    if (VERBOSE_LOGS) {
-      console.log('[Private Chat API] Saving user message to tenant:', tenantId || 'NO TENANT - LEGACY PATH');
-      console.log('[Private Chat API] File path:', (await import('@/lib/private-chat-store')).getPrivateChatFilePath(tenantId));
-    }
-    await appendPrivateChatMessages([userEntry], 100, tenantId);
-
-    let completion = useSeaArtCharacter
-      ? await requestSeaArtCharacterCompletion({
-          token: seaartCharacterToken,
-          tenantId,
-          characterId: seaartCharacterId,
-          message,
-          history,
-          characterName: botName,
-        })
-      : await requestPrivateChatCompletion({
-          apiKey: edenaiKey,
-          localBaseUrl: localQwenBaseUrl,
-          localModel: localQwenModel,
-          systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
-          prompt,
-        });
-
-    if ('filtered' in completion && completion.filtered) {
-      console.warn('[Private Chat API] Retrying filtered DM without older conversation history');
-      completion = await requestPrivateChatCompletion({
-        apiKey: edenaiKey,
-        localBaseUrl: localQwenBaseUrl,
-        localModel: localQwenModel,
-        systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
-        prompt: reducedContextPrompt,
-      });
-    }
-
-    if (completion.upstreamStatus || completion.upstreamError) {
-      const provider = useSeaArtCharacter
-        ? 'SeaArt character'
-        : ('provider' in completion && completion.provider === 'local-qwen' ? 'Local Qwen' : 'EdenAI');
-      console.error(`[Private Chat API] ${provider} error:`, completion.upstreamStatus || null, completion.upstreamError);
-      return apiError(`${provider} API failed`, {
-        status: 502,
-        code: 'UPSTREAM_ERROR',
-        details: { upstreamStatus: completion.upstreamStatus },
-      });
-    }
-
-    let responseText = completion.text;
-    const ltmRequestMatch = responseText.match(/LTM_REQUEST:\s*(.+)/);
-    if (ltmRequestMatch) {
-      const requestedTitle = ltmRequestMatch[1].trim();
-
-      try {
-        const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
-
-        if (ltmContent) {
-          const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
-
-          const enhancedCompletion = useSeaArtCharacter
-            ? await requestSeaArtCharacterCompletion({
-                token: seaartCharacterToken,
-                tenantId,
-                characterId: seaartCharacterId,
-                message: `${message}\n\nRelevant memory: ${ltmContent}`,
-                history,
-                characterName: botName,
-              })
-            : await requestPrivateChatCompletion({
-                apiKey: edenaiKey,
-                localBaseUrl: localQwenBaseUrl,
-                localModel: localQwenModel,
-                systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
-                prompt: enhancedPrompt,
-              });
-
-          responseText = enhancedCompletion.text || responseText;
-        } else {
-          responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about, Commander?`;
-        }
-      } catch (error) {
-        console.error('[Private Chat] Failed to retrieve LTM:', error);
-        responseText = 'I had trouble accessing my memory banks. Could you remind me what you were referring to?';
-      }
-    }
-
-    if (!responseText) {
-      console.log('[Private Chat API] AI returned empty response');
-      return apiError('AI returned an empty response', { status: 502, code: 'EMPTY_RESPONSE' });
-    }
-
-    const aiEntry: PrivateChatMessage = {
-      type: 'ai',
-      username: botName,
-      message: responseText,
-      timestamp: new Date().toISOString(),
-    };
-
-    if (VERBOSE_LOGS) console.log('[Private Chat API] Saving AI response:', aiEntry);
-    await appendPrivateChatMessages([aiEntry], 100, tenantId);
-
-    if (VERBOSE_LOGS) console.log('[Private Chat API] Successfully saved both messages');
-    const provider = useSeaArtCharacter
-      ? 'seaart-character'
-      : ('provider' in completion && completion.provider ? completion.provider : (localQwenBaseUrl ? 'local-qwen' : 'edenai'));
-    return apiOk({ response: responseText, provider });
+    return apiOk({
+      response: result.response,
+      provider: result.provider,
+      model: result.model,
+      visibility: result.visibility,
+      surface: result.surface,
+      conversationId: result.conversationId,
+      decision: result.decision,
+      images: result.images,
+      memorySources: result.memorySources,
+    });
   } catch (error) {
-    console.error('Private chat respond API error:', error);
-    return apiError('Failed to generate private chat response', { status: 500, code: 'INTERNAL_ERROR' });
+    console.error('[Private Chat API] Unified Athena route failed:', error);
+    return apiError(error instanceof Error ? error.message : 'Failed to generate private Athena response', {
+      status: 500,
+      code: 'ATHENA_FAILED',
+    });
   }
 }
