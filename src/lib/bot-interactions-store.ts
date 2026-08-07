@@ -5,8 +5,9 @@ import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { isBotTriggerIgnored } from '@/lib/bot-trigger-ignore-store';
 
 export type BotShareMode = 'off' | 'on';
-export type BotInteractionKind = 'interaction' | 'shared-memory';
-export type BotInteractionPlatform = 'twitch' | 'discord' | 'app';
+export type BotInteractionKind = 'interaction' | 'shared-memory' | 'backstage-lore';
+export type BotInteractionPlatform = 'twitch' | 'discord' | 'kick' | 'youtube' | 'app' | 'social-stream';
+export type BotInteractionOrigin = 'live-chat' | 'interest-ingestion' | 'idle-scene' | 'explicit-relay' | 'manual';
 
 export type BotInteractionEntry = {
   id: string;
@@ -14,6 +15,7 @@ export type BotInteractionEntry = {
   platform: BotInteractionPlatform;
   tenantId?: string;
   sourceTenantId?: string;
+  sourceEventId?: string;
   channelId?: string;
   sourceUser: string;
   speakerBotId: string;
@@ -23,7 +25,10 @@ export type BotInteractionEntry = {
   triggerMessage: string;
   responseMessage: string;
   kind?: BotInteractionKind;
+  origin?: BotInteractionOrigin;
+  interestTags?: string[];
   delivered?: boolean;
+  expiresAt?: string;
 };
 
 export type BotInteractionDecision = {
@@ -52,11 +57,19 @@ function historyFilePath(tenantId: string): string {
 
 const historyWriteLocks = new Map<string, Promise<void>>();
 
+function isExpired(entry: Pick<BotInteractionEntry, 'expiresAt'>): boolean {
+  if (!entry.expiresAt) return false;
+  const expiresAt = Date.parse(entry.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
 async function readHistoryFile(filePath: string): Promise<BotInteractionEntry[]> {
   try {
     const raw = await fs.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((entry) => entry && typeof entry === 'object' && !isExpired(entry))
+      : [];
   } catch {
     return [];
   }
@@ -118,6 +131,10 @@ export async function toggleBotShareMode(tenantId?: string): Promise<BotShareMod
   return setBotShareMode(current === 'on' ? 'off' : 'on', tenantId);
 }
 
+/**
+ * This setting controls spontaneous visible bot-to-bot chat only. Backstage
+ * lore and explicit human-requested relays do not use this gate.
+ */
 export async function isBotSharePairEnabled(sourceTenantId?: string, targetTenantId?: string): Promise<boolean> {
   if (!sourceTenantId || !targetTenantId) return false;
   if (await getBotShareMode(sourceTenantId) !== 'on') return false;
@@ -137,17 +154,31 @@ export async function readBotInteractionHistory(limit = 10, tenantId: string): P
     .slice(-Math.max(1, limit));
 }
 
-export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id' | 'timestamp'> & { tenantId: string }): Promise<void> {
+export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id' | 'timestamp'> & {
+  tenantId: string;
+  id?: string;
+  timestamp?: string;
+}): Promise<void> {
   const filePath = historyFilePath(entry.tenantId);
   const previousWrite = historyWriteLocks.get(entry.tenantId) || Promise.resolve();
   const nextWrite = previousWrite.then(async () => {
-    const existing = await readBotInteractionHistory(100, entry.tenantId);
+    const existing = await readBotInteractionHistory(300, entry.tenantId);
     const next: BotInteractionEntry = {
       ...entry,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: new Date().toISOString(),
+      id: entry.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: entry.timestamp || new Date().toISOString(),
+      targetBotIds: Array.from(new Set(entry.targetBotIds || [])),
+      targetBotNames: Array.from(new Set(entry.targetBotNames || [])),
+      interestTags: Array.from(new Set((entry.interestTags || []).map((tag) => String(tag).trim().toLowerCase()).filter(Boolean))),
     };
-    await writeHistoryFile(filePath, [...existing, next].slice(-100));
+    const sameSource = (candidate: BotInteractionEntry) => Boolean(
+      next.sourceEventId
+      && candidate.sourceEventId === next.sourceEventId
+      && candidate.kind === next.kind
+      && candidate.speakerBotId === next.speakerBotId
+      && candidate.targetBotIds.slice().sort().join(',') === next.targetBotIds.slice().sort().join(',')
+    );
+    await writeHistoryFile(filePath, [...existing.filter((candidate) => candidate.id !== next.id && !sameSource(candidate)), next].slice(-300));
   });
   historyWriteLocks.set(entry.tenantId, nextWrite);
   try {
@@ -157,7 +188,7 @@ export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id'
   }
 }
 
-export async function appendSharedBotMemory(input: {
+export async function appendBackstageLoreMemory(input: {
   sourceTenantId: string;
   targetTenantId: string;
   platform: BotInteractionPlatform;
@@ -167,20 +198,24 @@ export async function appendSharedBotMemory(input: {
   target: WorldLoreCharacter;
   triggerMessage: string;
   memoryText: string;
+  sourceEventId?: string;
+  interestTags?: string[];
+  origin?: BotInteractionOrigin;
+  delivered?: boolean;
+  expiresAt?: string;
+  kind?: Extract<BotInteractionKind, 'shared-memory' | 'backstage-lore'>;
 }): Promise<void> {
   const sourceTenantId = String(input.sourceTenantId || '').trim();
   const targetTenantId = String(input.targetTenantId || '').trim();
-  const memoryText = String(input.memoryText || '').trim().slice(0, 12_000);
+  const memoryText = String(input.memoryText || '').replace(/\s+/g, ' ').trim().slice(0, 12_000);
   if (!sourceTenantId || !targetTenantId || !memoryText) {
-    throw new Error('Shared bot memory requires source tenant, target tenant, and memory text.');
-  }
-  if (!(await isBotSharePairEnabled(sourceTenantId, targetTenantId))) {
-    throw new Error('Both tenant bots must enable bot sharing before group memory can be shared.');
+    throw new Error('Backstage bot lore requires source tenant, target tenant, and memory text.');
   }
 
   const sharedEntry = {
     platform: input.platform,
     sourceTenantId,
+    sourceEventId: input.sourceEventId,
     channelId: input.channelId,
     sourceUser: input.sourceUser,
     speakerBotId: input.speaker.stableId,
@@ -189,8 +224,11 @@ export async function appendSharedBotMemory(input: {
     targetBotNames: [input.target.currentName],
     triggerMessage: input.triggerMessage,
     responseMessage: memoryText,
-    kind: 'shared-memory' as const,
-    delivered: false,
+    kind: input.kind || 'backstage-lore' as const,
+    origin: input.origin || 'manual' as const,
+    interestTags: input.interestTags || [],
+    delivered: input.delivered === true,
+    expiresAt: input.expiresAt,
   };
 
   const participantTenants = Array.from(new Set([sourceTenantId, targetTenantId]));
@@ -200,18 +238,27 @@ export async function appendSharedBotMemory(input: {
   })));
 }
 
+/** Compatibility name retained for callers created during the AthenaOS draft. */
+export async function appendSharedBotMemory(input: Parameters<typeof appendBackstageLoreMemory>[0]): Promise<void> {
+  return appendBackstageLoreMemory({ ...input, kind: input.kind || 'shared-memory' });
+}
+
 export async function formatBotInteractionHistoryForPrompt(limit = 8, tenantId: string): Promise<string> {
   const history = await readBotInteractionHistory(limit, tenantId);
   if (!history.length) return '';
   const lines = history.map((entry) => {
     const targets = entry.targetBotNames.length ? entry.targetBotNames.join(', ') : 'the bot group';
-    if (entry.kind === 'shared-memory') {
-      return `Shared group memory: ${entry.speakerBotName} shared with ${targets}: "${entry.responseMessage}". This is an in-world memory the named bots may naturally recall; it was stored for them and was not sent as a live chat message.`;
+    const tags = entry.interestTags?.length ? ` Interests: ${entry.interestTags.join(', ')}.` : '';
+    if (entry.kind === 'backstage-lore' || entry.kind === 'shared-memory') {
+      const delivery = entry.delivered
+        ? 'It was also delivered through a real platform relay.'
+        : 'It happened backstage and was not posted as live bot chatter.';
+      return `Backstage bot memory: ${entry.speakerBotName} shared with ${targets}: "${entry.responseMessage}". ${delivery}${tags}`;
     }
     const targetSuffix = entry.targetBotNames.length ? ` to ${entry.targetBotNames.join(', ')}` : '';
     return `${entry.speakerBotName}${targetSuffix}: ${entry.responseMessage}`;
   });
-  return `Recent cross-bot history and shared group memory:\n${lines.join('\n')}`;
+  return `Recent cross-bot history and living backstage lore:\n${lines.join('\n')}`;
 }
 
 export async function decideBotInteraction(input: {
@@ -227,6 +274,7 @@ export async function decideBotInteraction(input: {
   allowedSpeakerStableIds?: string[];
   allowedTargetStableIds?: string[];
 }): Promise<BotInteractionDecision | null> {
+  // !botshare gates only visible spontaneous replies and name-trigger chains.
   const mode = input.mode || await getBotShareMode(input.tenantId);
   if (mode !== 'on') return null;
 
@@ -303,7 +351,7 @@ export async function decideBotInteraction(input: {
   const recent = input.tenantId ? await formatBotInteractionHistoryForPrompt(6, input.tenantId) : '';
   const targetNames = allowedTargets.map((target) => target.currentName).join(', ');
   const promptInstruction = [
-    `Cross-bot interaction request on ${input.platform}.`,
+    `Visible cross-bot interaction request on ${input.platform}.`,
     `You are ${speaker.currentName}. Reply directly to or about ${targetNames}.`,
     'Keep it to 1-2 short sentences. Do not impersonate the other bot. Do not continue the conversation unless a human asks.',
     recent,
@@ -394,3 +442,5 @@ function relationshipPhraseMatches(messageLower: string, label: string, summary:
     && phrases.some((phrase) => messageLower.includes(phrase))
   );
 }
+
+export { triggerMatches };
