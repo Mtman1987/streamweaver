@@ -44,6 +44,7 @@ jobs:
           node --import tsx --test --test-force-exit
           tests/athena-contract.test.ts
           tests/athena-group-memory.test.ts
+          tests/athena-group-memory-execution.test.ts
           tests/athena-memory-boundary.test.ts
           tests/athena-model.test.ts
           tests/athena-oauth-route.test.ts
