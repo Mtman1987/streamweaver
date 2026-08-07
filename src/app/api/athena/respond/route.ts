@@ -7,6 +7,7 @@ import {
   ATHENA_SURFACES,
   trustedVisibilityForSurface,
   type AthenaRequest,
+  type AthenaSurface,
 } from '@/services/athena-contract';
 import { respondWithAthena } from '@/services/athena-gateway';
 
@@ -57,6 +58,31 @@ const schema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+const BROWSER_SESSION_SURFACES = new Set<AthenaSurface>([
+  'streamweaver-private',
+  'app-layout',
+]);
+
+function validateCallerSurface(input: {
+  surface: AthenaSurface;
+  hasSession: boolean;
+  serviceAccess: boolean;
+  mountainViewAccess: boolean;
+}): string | null {
+  if (input.serviceAccess) return null;
+  if (input.mountainViewAccess) {
+    return input.surface === 'mountainview'
+      ? null
+      : 'MountainView bridge requests must use the mountainview surface.';
+  }
+  if (input.hasSession) {
+    return BROWSER_SESSION_SURFACES.has(input.surface)
+      ? null
+      : 'Browser sessions may use only authenticated private app surfaces.';
+  }
+  return 'No trusted Athena surface is available for this caller.';
+}
+
 export async function POST(request: NextRequest) {
   try {
     const parsed = schema.safeParse(await request.json().catch(() => null));
@@ -75,6 +101,16 @@ export async function POST(request: NextRequest) {
       return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
     }
 
+    const surfaceError = validateCallerSurface({
+      surface: parsed.data.location.surface,
+      hasSession: Boolean(session?.tenantId),
+      serviceAccess,
+      mountainViewAccess,
+    });
+    if (surfaceError) {
+      return apiError(surfaceError, { status: 403, code: 'SURFACE_FORBIDDEN' });
+    }
+
     const tenantId = session?.tenantId || ((serviceAccess || mountainViewAccess) ? parsed.data.tenantId : undefined);
     if (!tenantId) {
       return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
@@ -85,14 +121,14 @@ export async function POST(request: NextRequest) {
       displayName: parsed.data.displayName,
       userId: parsed.data.userId,
     };
-    const actor = session
+    const actor = session && !serviceAccess && !mountainViewAccess
       ? {
           userId: session.tenantId,
           username: session.username,
           displayName: session.displayName || session.username,
-          isOwner: suppliedActor.isOwner,
-          isAdmin: suppliedActor.isAdmin,
-          isModerator: suppliedActor.isModerator,
+          isOwner: false,
+          isAdmin: false,
+          isModerator: false,
         }
       : suppliedActor;
 
