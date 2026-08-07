@@ -2,12 +2,17 @@ import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
 
+export type ImageProviderMode = 'eden' | 'seaart' | 'perchance' | 'pollinations';
+export type PrivateImageProviderMode = 'inherit' | ImageProviderMode;
+
 export type GenerationSettings = {
-  mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
+  mode: ImageProviderMode;
+  privateMode: PrivateImageProviderMode;
   publicImageAccess: 'everyone' | 'mods' | 'off';
   publicContentModeration: boolean;
   privateContentModeration: boolean;
   model: string;
+  privateModel: string;
   seaartCharacterId: string;
   lora: string;
   loraStrength: number;
@@ -52,10 +57,12 @@ export const DEFAULT_IMAGE_PROMPT_TEMPLATE = IMAGE_PROMPT_TEMPLATES.general;
 
 const defaults: GenerationSettings = {
   mode: 'eden',
+  privateMode: 'inherit',
   publicImageAccess: 'everyone',
   publicContentModeration: true,
   privateContentModeration: false,
   model: '',
+  privateModel: '',
   seaartCharacterId: '',
   lora: '',
   loraStrength: 0.7,
@@ -79,7 +86,10 @@ export function getDefaultGenerationSettings(): GenerationSettings {
 }
 
 function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
-  const mode = input.mode === 'seaart' || input.mode === 'perchance' || input.mode === 'pollinations' ? input.mode : 'eden';
+  const mode: ImageProviderMode = input.mode === 'seaart' || input.mode === 'perchance' || input.mode === 'pollinations' ? input.mode : 'eden';
+  const privateMode: PrivateImageProviderMode = input.privateMode === 'eden' || input.privateMode === 'seaart' || input.privateMode === 'perchance' || input.privateMode === 'pollinations'
+    ? input.privateMode
+    : 'inherit';
   const publicImageAccess = input.publicImageAccess === 'mods' || input.publicImageAccess === 'off'
     ? input.publicImageAccess
     : 'everyone';
@@ -91,10 +101,12 @@ function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
 
   return {
     mode,
+    privateMode,
     publicImageAccess,
     publicContentModeration: input.publicContentModeration !== false,
     privateContentModeration: input.privateContentModeration === true,
     model: String(input.model || '').trim(),
+    privateModel: String(input.privateModel || '').trim(),
     seaartCharacterId: String(input.seaartCharacterId || '').trim(),
     lora: String(input.lora || '').trim(),
     loraStrength,
