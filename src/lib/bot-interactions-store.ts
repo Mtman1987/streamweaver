@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { globalPath, tenantPath } from '@/lib/tenant';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { isBotTriggerIgnored } from '@/lib/bot-trigger-ignore-store';
+import { detectBotRelayRequest } from '@/services/bot-relay';
 
 export type BotShareMode = 'off' | 'on';
 export type BotInteractionKind = 'interaction' | 'shared-memory' | 'backstage-lore';
@@ -281,6 +282,16 @@ export async function decideBotInteraction(input: {
   const lore = await readWorldLore();
   const characters = Object.values(lore?.characters || {});
   if (!characters.length) return null;
+
+  // Explicit human relay requests must fall through to the unified AthenaOS
+  // gateway even when visible botshare is on. That gateway performs one target
+  // resolution and a truthful live/Discord delivery independent of botshare.
+  const relayRequest = detectBotRelayRequest({
+    message: input.message,
+    speakerName: input.currentBotName,
+    targets: characters,
+  });
+  if (relayRequest.matched) return null;
 
   const messageLower = input.message.toLowerCase();
   const mentioned = findMentionedCharacters(messageLower, characters);
