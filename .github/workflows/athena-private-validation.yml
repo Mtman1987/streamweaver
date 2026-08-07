@@ -9,8 +9,13 @@ on:
       - 'src/app/api/private-chat/**'
       - 'src/services/athena-*.ts'
       - 'src/services/private-chat-ai.ts'
+      - 'src/lib/bot-interactions-store.ts'
+      - 'src/lib/bot-settings-store.ts'
       - 'src/lib/internal-service-auth.ts'
       - 'src/lib/spmt-userinfo.ts'
+      - 'src/lib/world-lore-store.ts'
+      - 'src/data/world-lore-default.json'
+      - 'data/runtime/global/world-lore.json'
       - 'tests/athena-*.test.ts'
       - 'tests/private-chat-ai.test.ts'
       - 'tests/spmt-userinfo.test.ts'
@@ -38,9 +43,11 @@ jobs:
         run: >-
           node --import tsx --test --test-force-exit
           tests/athena-contract.test.ts
+          tests/athena-group-memory.test.ts
           tests/athena-memory-boundary.test.ts
           tests/athena-model.test.ts
           tests/athena-oauth-route.test.ts
+          tests/athena-tenant-persona.test.ts
           tests/athena-tools.test.ts
           tests/private-chat-ai.test.ts
           tests/spmt-userinfo.test.ts
