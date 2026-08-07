@@ -14,6 +14,7 @@ on:
       - 'tests/athena-*.test.ts'
       - 'tests/private-chat-ai.test.ts'
       - 'tests/spmt-userinfo.test.ts'
+      - 'docs/ATHENA_OS_PRIVATE_VERTICAL_SLICE.md'
       - '.github/workflows/athena-private-validation.yml'
   workflow_dispatch:
 
