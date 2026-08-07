@@ -47,6 +47,10 @@ export type AthenaMemoryQuery = {
   conversationId: string;
   message: string;
   surface: AthenaSurface;
+  actorUsername?: string;
+  actorUserId?: string;
+  actorIsOwner?: boolean;
+  actorIsAdmin?: boolean;
   limit?: number;
   maxCharacters?: number;
 };
@@ -231,7 +235,28 @@ function legacyRecord(input: Omit<AthenaMemoryRecord, 'id' | 'tenantId' | 'kind'
   };
 }
 
-async function readLegacyMemory(tenantId: string, visibility: AthenaVisibility): Promise<AthenaMemoryRecord[]> {
+function canReadCommanderMemory(query: AthenaMemoryQuery): boolean {
+  const username = normalizeText(query.actorUsername, 128).toLowerCase();
+  const userId = normalizeText(query.actorUserId, 128);
+  const configuredOwnerIds = [
+    process.env.STREAMWEAVER_OWNER_TWITCH_ID,
+    process.env.NEXT_PUBLIC_HARDCODED_ADMIN_TWITCH_ID,
+    process.env.ADMIN_TWITCH_ID,
+  ].map((value) => normalizeText(value, 128)).filter(Boolean);
+
+  return Boolean(
+    query.visibility === 'private' &&
+    (
+      query.actorIsOwner === true ||
+      query.actorIsAdmin === true ||
+      username === 'mtman1987' ||
+      (userId && configuredOwnerIds.includes(userId))
+    )
+  );
+}
+
+async function readLegacyMemory(query: AthenaMemoryQuery): Promise<AthenaMemoryRecord[]> {
+  const tenantId = query.tenantId;
   const records: AthenaMemoryRecord[] = [];
   const publicMessages = await readPublicChatMessages(120, tenantId);
   for (const message of publicMessages) {
@@ -263,11 +288,14 @@ async function readLegacyMemory(tenantId: string, visibility: AthenaVisibility):
     }));
   }
 
-  if (visibility === 'private') {
+  if (query.visibility === 'private') {
+    const commanderPromise = canReadCommanderMemory(query)
+      ? readCommanderMemory(80)
+      : Promise.resolve([]);
     const [privateMessages, privateLtm, commander] = await Promise.all([
       readPrivateChatMessages(160, tenantId),
       getLTMEntries(tenantId),
-      readCommanderMemory(80),
+      commanderPromise,
     ]);
     for (const message of privateMessages) {
       records.push(legacyRecord({
@@ -356,7 +384,7 @@ function memoryLabel(record: AthenaMemoryRecord): string {
 export async function retrieveAthenaMemory(query: AthenaMemoryQuery): Promise<AthenaMemoryHit[]> {
   const [unified, legacy] = await Promise.all([
     readUnifiedStore(query.tenantId),
-    readLegacyMemory(query.tenantId, query.visibility),
+    readLegacyMemory(query),
   ]);
   const allowed = [...unified, ...legacy].filter((entry) =>
     entry.visibility === 'public' || query.visibility === 'private'
