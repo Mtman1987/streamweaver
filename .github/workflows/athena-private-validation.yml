@@ -8,7 +8,10 @@ on:
       - 'src/app/api/athena/**'
       - 'src/app/api/private-chat/**'
       - 'src/services/athena-*.ts'
+      - 'src/services/backstage-lore.ts'
+      - 'src/services/explicit-bot-relay.ts'
       - 'src/services/private-chat-ai.ts'
+      - 'src/services/shared-chat-ingestion.ts'
       - 'src/lib/bot-interactions-store.ts'
       - 'src/lib/bot-settings-store.ts'
       - 'src/lib/internal-service-auth.ts'
@@ -17,6 +20,8 @@ on:
       - 'src/data/world-lore-default.json'
       - 'data/runtime/global/world-lore.json'
       - 'tests/athena-*.test.ts'
+      - 'tests/backstage-lore.test.ts'
+      - 'tests/explicit-bot-relay.test.ts'
       - 'tests/private-chat-ai.test.ts'
       - 'tests/spmt-userinfo.test.ts'
       - 'docs/ATHENA_OS_PRIVATE_VERTICAL_SLICE.md'
@@ -50,5 +55,7 @@ jobs:
           tests/athena-oauth-route.test.ts
           tests/athena-tenant-persona.test.ts
           tests/athena-tools.test.ts
+          tests/backstage-lore.test.ts
+          tests/explicit-bot-relay.test.ts
           tests/private-chat-ai.test.ts
           tests/spmt-userinfo.test.ts
