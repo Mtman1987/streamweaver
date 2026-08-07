@@ -119,7 +119,9 @@ Tenant-selected `interests` are active routing tags rather than decorative profi
 
 ### Public stream and community monitoring
 
-The existing shared-chat replay receives public human events from Twitch, Discord servers, Kick, and YouTube. Eligible messages are queued for backstage classification after normal ingestion succeeds.
+The existing shared-chat replay receives public human events from Twitch, Discord servers, Kick, and YouTube. After the durable replay write completes, an optional background filter compares the message against the cached union of configured tenant interests.
+
+Only public messages matching at least one configured interest enter the Local Qwen lore queue. This prevents a busy channel from feeding every chat line to the model while still capturing relevant material such as jokes, games, fishing, music, art, horror, coding, and arbitrary directly named interests.
 
 The classifier receives:
 
@@ -219,6 +221,8 @@ Static canon continues to use `world-lore.json` and stable character IDs.
 
 The existing Athena–Scarlett relationship is preserved and clarified as an adopted pretend sister relationship in the Station's fictional lore. Athena–Moonbeam remains a best-friend relationship.
 
+At runtime, the packaged canonical lore is merged with an older persisted Fly-volume copy. Persisted display names and custom characters/relationships survive, while newly packaged canonical relationships and character links are added. This prevents an old mounted file from hiding current canon.
+
 Living lore is stored separately in:
 
 ```text
@@ -282,6 +286,8 @@ The active tenant bot can choose among:
 - a command valid for the current Twitch, Kick, or Discord surface;
 - confirmation before a natural-language state-changing command.
 
+Known bot/tenant relays are delegated from the older public transport handlers into the unified AthenaOS relay path, so a botshare-on source cannot accidentally use the old mutual-toggle gate. The existing direct-human current-channel relay fallback remains available for targets that are not configured bots.
+
 The model cannot invent executable capabilities. Existing dispatchers remain authoritative for platform permissions, cooldowns, tenant routing, delivery, and command behavior.
 
 ## Validation requirements
@@ -292,14 +298,16 @@ The pull-request workflow must verify:
 - tenant persona, voice, alias, and avatar separation;
 - public/private ordinary-memory isolation;
 - tenant-scoped raw private lore queues;
+- public stream filtering through configured interests;
 - interest routing to selected participant tenants only;
 - no backstage dependence on `!botshare`;
 - visible bot interaction disabled when `!botshare` is off;
 - autonomous idle lore creation;
-- explicit relay intent while `!botshare` is off;
+- explicit relay intent while `!botshare` is off or on;
+- older public transport handlers deferring known-bot relays to AthenaOS;
 - live target delivery through the target tenant bot;
 - truthful `delivered=true` only after an actual send;
-- static sister/best-friend lore;
+- static sister/best-friend lore and persisted-volume merging;
 - SPMT OAuth and private keyless Qwen boundaries.
 
 ## Current status
