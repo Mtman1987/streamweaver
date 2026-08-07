@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { tenantPath } from '../lib/tenant';
 import { parseSharedChatEventV1, type SharedChatEventV1, type SharedChatPlatform } from '../contracts/shared-chat-event';
+import { queueBackstageLoreEvent, startBackstageLoreScheduler } from './backstage-lore';
 
 export const DEFAULT_SHARED_CHAT_REPLAY_LIMIT = 500;
 export const DEFAULT_SHARED_CHAT_DEAD_LETTER_LIMIT = 200;
@@ -52,6 +53,13 @@ export async function recordSharedChatEvent(
   const withoutDuplicate = existing.filter((entry) => entry.dedupeKey !== event.dedupeKey);
   const next = [...withoutDuplicate, event].slice(-maxReplayEvents);
   await writeJsonArray(filePath, next);
+
+  // Shared-chat replay remains the durable ingestion source. The living-lore
+  // queue receives only public human events and never blocks normal chat if it
+  // cannot enqueue an optional backstage observation.
+  await queueBackstageLoreEvent(event).catch((error) => {
+    console.warn('[Backstage Lore] Shared-chat observation enqueue failed:', error instanceof Error ? error.message : String(error));
+  });
   return event;
 }
 
@@ -106,3 +114,5 @@ export async function readSharedChatDeadLetters(
   const limit = Math.max(1, options.limit ?? DEFAULT_SHARED_CHAT_DEAD_LETTER_LIMIT);
   return (await readJsonArray<SharedChatDeadLetter>(deadLetterPath(cleanTenantId))).slice(-limit);
 }
+
+startBackstageLoreScheduler();
