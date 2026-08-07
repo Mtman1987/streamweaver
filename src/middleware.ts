@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { applyRefreshedSpmtCookies, refreshSpmtConnection, type RefreshedSpmtConnection } from '@/lib/spmt-oauth';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -44,8 +45,7 @@ function isAdmin(identity: any): boolean {
   return role === 'admin' || role === 'owner' || roles.includes('admin') || roles.includes('owner');
 }
 
-async function resolveSpmtIdentity(request: NextRequest) {
-  const token = request.cookies.get('streamweaver-spmt-token')?.value || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+async function fetchSpmtIdentity(token: string) {
   if (!token) return null;
   const response = await fetch(`${SPMT_BASE_URL}/api/oauth/userinfo`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -55,6 +55,23 @@ async function resolveSpmtIdentity(request: NextRequest) {
   const payload = await response.json().catch(() => null);
   const identity = payload?.user || payload?.profile || payload;
   return identity?.id ? identity : null;
+}
+
+async function resolveSpmtIdentity(request: NextRequest): Promise<{ identity: any; refreshed: RefreshedSpmtConnection | null }> {
+  const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+  const token = request.cookies.get('streamweaver-spmt-token')?.value || bearer;
+  let identity = await fetchSpmtIdentity(token);
+  if (identity || bearer) return { identity, refreshed: null };
+
+  const refreshed = await refreshSpmtConnection(request).catch(() => null);
+  if (!refreshed) return { identity: null, refreshed: null };
+  identity = await fetchSpmtIdentity(refreshed.accessToken);
+  return { identity, refreshed: identity ? refreshed : null };
+}
+
+function withRefreshedCookies(response: NextResponse, refreshed: RefreshedSpmtConnection | null) {
+  if (refreshed) applyRefreshedSpmtCookies(response, refreshed);
+  return response;
 }
 
 export async function middleware(request: NextRequest) {
@@ -67,7 +84,7 @@ export async function middleware(request: NextRequest) {
   if (PUBLIC_PATHS.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
   if (pathname.includes('.') && !pathname.endsWith('.html')) return NextResponse.next();
 
-  const identity = await resolveSpmtIdentity(request);
+  const { identity, refreshed } = await resolveSpmtIdentity(request);
   if (!identity) {
     if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'SPMT session required' }, { status: 401 });
     const login = new URL('/login', request.url);
@@ -78,16 +95,16 @@ export async function middleware(request: NextRequest) {
   const admin = isAdmin(identity);
   if (ADMIN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix)) && !admin) {
     if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'SPMT admin required' }, { status: 403 });
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return withRefreshedCookies(NextResponse.redirect(new URL('/dashboard', request.url)), refreshed);
   }
 
-  if (pathname === '/' || pathname === '') return NextResponse.redirect(new URL('/dashboard', request.url));
+  if (pathname === '/' || pathname === '') return withRefreshedCookies(NextResponse.redirect(new URL('/dashboard', request.url)), refreshed);
 
   const headers = new Headers(request.headers);
   headers.set('x-spmt-user-id', String(identity.id));
   headers.set('x-spmt-username', String(identity.username || identity.displayName || ''));
   headers.set('x-spmt-is-admin', admin ? '1' : '0');
-  return NextResponse.next({ request: { headers } });
+  return withRefreshedCookies(NextResponse.next({ request: { headers } }), refreshed);
 }
 
 export const config = {
