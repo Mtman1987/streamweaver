@@ -70,7 +70,7 @@ test('backstage lore stays active while botshare gates only visible bot chatter'
     assert.match(prompt, /not posted as live bot chatter/i);
 
     const offDecision = await decideBotInteraction({
-      message: 'Athena, ask Reaper what he thought of the joke.',
+      message: 'Athena and Reaper, what do you two think of that cosmic trout joke?',
       currentBotName: 'Athena',
       tenantId: 'tenant-athena',
       platform: 'discord',
@@ -80,7 +80,7 @@ test('backstage lore stays active while botshare gates only visible bot chatter'
     await setBotShareMode('on', 'tenant-athena');
     await setBotShareMode('on', 'tenant-reaper');
     const onDecision = await decideBotInteraction({
-      message: 'Athena, ask Reaper what he thought of the joke.',
+      message: 'Athena and Reaper, what do you two think of that cosmic trout joke?',
       currentBotName: 'Athena',
       tenantId: 'tenant-athena',
       platform: 'discord',
@@ -88,6 +88,18 @@ test('backstage lore stays active while botshare gates only visible bot chatter'
     assert.equal(onDecision?.shouldRespond, true);
     assert.equal(onDecision?.speaker.currentName, 'Athena');
     assert.ok(onDecision?.targets.some((target) => target.currentName === 'Reaper'));
+
+    const relayDecision = await decideBotInteraction({
+      message: 'Athena, tell Reaper the Commander will be ready in 10 minutes.',
+      currentBotName: 'Athena',
+      tenantId: 'tenant-athena',
+      platform: 'discord',
+    });
+    assert.equal(
+      relayDecision,
+      null,
+      'explicit human relays must bypass the visible botshare responder and fall through to AthenaOS delivery',
+    );
 
     const lore = await readWorldLore();
     assert.ok(lore);
