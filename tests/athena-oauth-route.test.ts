@@ -80,7 +80,7 @@ test('canonical Athena uses verified SPMT OAuth and rejects invented master-key 
     const payload = await valid.json();
     assert.equal(payload.visibility, 'private');
     assert.equal(payload.surface, 'rotator-workbench');
-    assert.match(String(payload.response || ''), /Open commands work/i);
+    assert.match(String(payload.response || ''), /Private commands work even when the streamer is offline/i);
 
     const memoryPath = path.join(
       persistRoot,
