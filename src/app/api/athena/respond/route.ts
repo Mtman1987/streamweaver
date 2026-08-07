@@ -2,6 +2,11 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiOk } from '@/lib/api-response';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
+import {
+  getSpmtAthenaActor,
+  getSpmtIdentity,
+  getSpmtTenantId,
+} from '@/lib/spmt-userinfo';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import {
   ATHENA_SURFACES,
@@ -63,17 +68,33 @@ const BROWSER_SESSION_SURFACES = new Set<AthenaSurface>([
   'app-layout',
 ]);
 
+const SPMT_OAUTH_SURFACES = new Set<AthenaSurface>([
+  'streamweaver-private',
+  'rotator-workbench',
+  'mountainview',
+  'app-layout',
+]);
+
 function validateCallerSurface(input: {
   surface: AthenaSurface;
   hasSession: boolean;
+  hasSpmtIdentity: boolean;
   serviceAccess: boolean;
   mountainViewAccess: boolean;
 }): string | null {
+  // Legacy same-service callers remain accepted while active transports are
+  // moved to direct gateway calls. This is infrastructure compatibility, not
+  // a credential that a streamer creates or manages.
   if (input.serviceAccess) return null;
   if (input.mountainViewAccess) {
     return input.surface === 'mountainview'
       ? null
       : 'MountainView bridge requests must use the mountainview surface.';
+  }
+  if (input.hasSpmtIdentity) {
+    return SPMT_OAUTH_SURFACES.has(input.surface)
+      ? null
+      : 'This SPMT session cannot impersonate a public transport or internal service surface.';
   }
   if (input.hasSession) {
     return BROWSER_SESSION_SURFACES.has(input.surface)
@@ -97,13 +118,20 @@ export async function POST(request: NextRequest) {
     const session = getTenantFromRequest(request);
     const serviceAccess = hasInternalServiceAccess(request);
     const mountainViewAccess = hasMountainViewBridgeAccess(request);
-    if (!session?.tenantId && !serviceAccess && !mountainViewAccess) {
-      return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
+    // A real SPMT OAuth access token is the cross-app credential. Do not
+    // invent or provision a second Athena/LLM shared secret.
+    const spmtIdentity = serviceAccess || mountainViewAccess
+      ? null
+      : await getSpmtIdentity(request);
+
+    if (!session?.tenantId && !spmtIdentity && !serviceAccess && !mountainViewAccess) {
+      return apiError('SPMT authentication required', { status: 401, code: 'UNAUTHORIZED' });
     }
 
     const surfaceError = validateCallerSurface({
       surface: parsed.data.location.surface,
       hasSession: Boolean(session?.tenantId),
+      hasSpmtIdentity: Boolean(spmtIdentity),
       serviceAccess,
       mountainViewAccess,
     });
@@ -111,7 +139,10 @@ export async function POST(request: NextRequest) {
       return apiError(surfaceError, { status: 403, code: 'SURFACE_FORBIDDEN' });
     }
 
-    const tenantId = session?.tenantId || ((serviceAccess || mountainViewAccess) ? parsed.data.tenantId : undefined);
+    const spmtTenantId = getSpmtTenantId(spmtIdentity);
+    const tenantId = spmtTenantId
+      || session?.tenantId
+      || ((serviceAccess || mountainViewAccess) ? parsed.data.tenantId : undefined);
     if (!tenantId) {
       return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
     }
@@ -121,16 +152,23 @@ export async function POST(request: NextRequest) {
       displayName: parsed.data.displayName,
       userId: parsed.data.userId,
     };
-    const actor = session && !serviceAccess && !mountainViewAccess
-      ? {
-          userId: session.tenantId,
-          username: session.username,
-          displayName: session.displayName || session.username,
-          isOwner: false,
-          isAdmin: false,
-          isModerator: false,
-        }
-      : suppliedActor;
+    const actor = spmtIdentity
+      ? getSpmtAthenaActor(spmtIdentity)
+      : session && !serviceAccess && !mountainViewAccess
+        ? {
+            userId: session.tenantId,
+            username: session.username,
+            displayName: session.displayName || session.username,
+            isOwner: false,
+            isAdmin: false,
+            isModerator: false,
+          }
+        : suppliedActor;
+    const trustedRichContext = Boolean(
+      serviceAccess
+      || mountainViewAccess
+      || (spmtIdentity && (actor.isOwner || actor.isAdmin)),
+    );
 
     const visibility = trustedVisibilityForSurface(parsed.data.location.surface);
     const athenaRequest: AthenaRequest = {
@@ -141,12 +179,21 @@ export async function POST(request: NextRequest) {
       visibility,
       conversationId: parsed.data.conversationId,
       transientHistory: parsed.data.transientHistory,
-      personalityOverride: (serviceAccess || mountainViewAccess) ? parsed.data.personalityOverride : undefined,
+      personalityOverride: trustedRichContext ? parsed.data.personalityOverride : undefined,
       responseName: parsed.data.responseName,
-      additionalContext: (serviceAccess || mountainViewAccess) ? parsed.data.additionalContext : undefined,
+      additionalContext: trustedRichContext ? parsed.data.additionalContext : undefined,
       executeTools: parsed.data.executeTools !== false,
       confirmedActionId: parsed.data.confirmedActionId,
-      metadata: parsed.data.metadata,
+      metadata: {
+        ...parsed.data.metadata,
+        authentication: spmtIdentity
+          ? 'spmt-oauth'
+          : session?.tenantId
+            ? 'streamweaver-session'
+            : mountainViewAccess
+              ? 'mountainview-bridge'
+              : 'legacy-internal',
+      },
     };
 
     const result = await respondWithAthena(athenaRequest);
