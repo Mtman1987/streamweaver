@@ -5,12 +5,14 @@ import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
 import { isBotTriggerIgnored } from '@/lib/bot-trigger-ignore-store';
 
 export type BotShareMode = 'off' | 'on';
+export type BotInteractionKind = 'interaction' | 'shared-memory';
 
 export type BotInteractionEntry = {
   id: string;
   timestamp: string;
   platform: 'twitch' | 'discord';
   tenantId?: string;
+  sourceTenantId?: string;
   channelId?: string;
   sourceUser: string;
   speakerBotId: string;
@@ -19,6 +21,8 @@ export type BotInteractionEntry = {
   targetBotNames: string[];
   triggerMessage: string;
   responseMessage: string;
+  kind?: BotInteractionKind;
+  delivered?: boolean;
 };
 
 export type BotInteractionDecision = {
@@ -113,6 +117,13 @@ export async function toggleBotShareMode(tenantId?: string): Promise<BotShareMod
   return setBotShareMode(current === 'on' ? 'off' : 'on', tenantId);
 }
 
+export async function isBotSharePairEnabled(sourceTenantId?: string, targetTenantId?: string): Promise<boolean> {
+  if (!sourceTenantId || !targetTenantId) return false;
+  if (await getBotShareMode(sourceTenantId) !== 'on') return false;
+  if (sourceTenantId === targetTenantId) return true;
+  return await getBotShareMode(targetTenantId) === 'on';
+}
+
 export async function readBotInteractionHistory(limit = 10, tenantId: string): Promise<BotInteractionEntry[]> {
   const tenantHistory = await readHistoryFile(historyFilePath(tenantId));
   if (tenantHistory.length) return tenantHistory.slice(-Math.max(1, limit));
@@ -145,14 +156,61 @@ export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id'
   }
 }
 
+export async function appendSharedBotMemory(input: {
+  sourceTenantId: string;
+  targetTenantId: string;
+  platform: 'twitch' | 'discord';
+  channelId?: string;
+  sourceUser: string;
+  speaker: WorldLoreCharacter;
+  target: WorldLoreCharacter;
+  triggerMessage: string;
+  memoryText: string;
+}): Promise<void> {
+  const sourceTenantId = String(input.sourceTenantId || '').trim();
+  const targetTenantId = String(input.targetTenantId || '').trim();
+  const memoryText = String(input.memoryText || '').trim().slice(0, 12_000);
+  if (!sourceTenantId || !targetTenantId || !memoryText) {
+    throw new Error('Shared bot memory requires source tenant, target tenant, and memory text.');
+  }
+  if (!(await isBotSharePairEnabled(sourceTenantId, targetTenantId))) {
+    throw new Error('Both tenant bots must enable bot sharing before group memory can be shared.');
+  }
+
+  const sharedEntry = {
+    platform: input.platform,
+    sourceTenantId,
+    channelId: input.channelId,
+    sourceUser: input.sourceUser,
+    speakerBotId: input.speaker.stableId,
+    speakerBotName: input.speaker.currentName,
+    targetBotIds: [input.target.stableId],
+    targetBotNames: [input.target.currentName],
+    triggerMessage: input.triggerMessage,
+    responseMessage: memoryText,
+    kind: 'shared-memory' as const,
+    delivered: false,
+  };
+
+  const participantTenants = Array.from(new Set([sourceTenantId, targetTenantId]));
+  await Promise.all(participantTenants.map((tenantId) => appendBotInteraction({
+    ...sharedEntry,
+    tenantId,
+  })));
+}
+
 export async function formatBotInteractionHistoryForPrompt(limit = 8, tenantId: string): Promise<string> {
   const history = await readBotInteractionHistory(limit, tenantId);
   if (!history.length) return '';
   const lines = history.map((entry) => {
-    const targets = entry.targetBotNames.length ? ` to ${entry.targetBotNames.join(', ')}` : '';
-    return `${entry.speakerBotName}${targets}: ${entry.responseMessage}`;
+    const targets = entry.targetBotNames.length ? entry.targetBotNames.join(', ') : 'the bot group';
+    if (entry.kind === 'shared-memory') {
+      return `Shared group memory: ${entry.speakerBotName} shared with ${targets}: "${entry.responseMessage}". This is an in-world memory the named bots may naturally recall; it was stored for them and was not sent as a live chat message.`;
+    }
+    const targetSuffix = entry.targetBotNames.length ? ` to ${entry.targetBotNames.join(', ')}` : '';
+    return `${entry.speakerBotName}${targetSuffix}: ${entry.responseMessage}`;
   });
-  return `Recent cross-bot history:\n${lines.join('\n')}`;
+  return `Recent cross-bot history and shared group memory:\n${lines.join('\n')}`;
 }
 
 export async function decideBotInteraction(input: {
@@ -325,6 +383,7 @@ function relationshipPhraseMatches(messageLower: string, label: string, summary:
     ['brother', 'brothers', 'sibling', 'siblings'],
     ['rival', 'rivals'],
     ['teacher', 'professor', 'dad'],
+    ['best friend', 'best friends', 'friend', 'friends'],
     ['soft spot', 'favorite'],
     ['opposite', 'opposites'],
   ];
