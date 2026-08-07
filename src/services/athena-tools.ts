@@ -1,8 +1,12 @@
 import { createHash } from 'crypto';
 import { getAllCommands } from '@/lib/commands-store';
 import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
-import { appendSharedBotMemory } from '@/lib/bot-interactions-store';
-import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
+import { appendBackstageLoreMemory } from '@/lib/bot-interactions-store';
+import {
+  appendWorldLoreJournalEntry,
+  readWorldLore,
+  type WorldLoreCharacter,
+} from '@/lib/world-lore-store';
 import type {
   AthenaDecision,
   AthenaRequest,
@@ -15,6 +19,7 @@ import {
 import { executeAthenaTransportCommand } from '@/services/athena-command-executor';
 import { requestAthenaJson } from '@/services/athena-model';
 import { detectBotRelayRequest } from '@/services/bot-relay';
+import { deliverExplicitBotRelay } from '@/services/explicit-bot-relay';
 import {
   detectOpenBotCommand,
   runOpenBotCommand,
@@ -62,9 +67,9 @@ const TOOL_CATALOG: ToolSpec[] = [
   { id: 'chattag.leaderboard', description: 'Read the ChatTag top-three leaderboard.', risk: 'read', surfaces: 'all', visibility: 'both' },
   { id: 'spmt.apps', description: 'Read the current SPMT app catalog.', risk: 'read', surfaces: 'all', visibility: 'both' },
   { id: 'hearmeout.status', description: 'Read HearMeOut now-playing and queue status.', risk: 'read', surfaces: 'all', visibility: 'both' },
-  { id: 'athena.help', description: 'Explain Athena safe public capabilities.', risk: 'read', surfaces: 'all', visibility: 'both' },
+  { id: 'athena.help', description: 'Explain the active tenant bot safe capabilities.', risk: 'read', surfaces: 'all', visibility: 'both' },
   { id: 'image.generate', description: 'Generate one or more images using the image router for the current public/private scope.', risk: 'reversible', surfaces: 'all', visibility: 'both' },
-  { id: 'bot.group-memory.share', description: 'Store an explicitly requested private message as shared memory for another mutually opted-in tenant bot without sending a live message.', risk: 'reversible', surfaces: 'all', visibility: 'private' },
+  { id: 'bot.relay', description: 'Carry an explicit human-requested message to another configured tenant bot using the real live/Discord relay path.', risk: 'reversible', surfaces: 'all', visibility: 'both' },
   { id: 'transport.command', description: 'Hand an explicit chat command to the current Twitch, Kick, or Discord dispatcher.', risk: 'reversible', surfaces: ['twitch-chat', 'kick-chat', 'discord-channel', 'discord-dm'], visibility: 'both' },
 ];
 
@@ -131,8 +136,7 @@ async function tenantSpeakerCharacter(tenantId: string): Promise<WorldLoreCharac
   };
 }
 
-async function privateGroupMemoryDecision(request: AthenaRequest): Promise<AthenaDecision | null> {
-  if (request.visibility !== 'private') return null;
+async function botRelayDecision(request: AthenaRequest): Promise<AthenaDecision | null> {
   const speaker = await tenantSpeakerCharacter(request.tenantId);
   const lore = await readWorldLore();
   const targets = Object.values(lore?.characters || {})
@@ -143,21 +147,21 @@ async function privateGroupMemoryDecision(request: AthenaRequest): Promise<Athen
     targets,
   });
   const targetName = String(relay.targetName || relay.target?.currentName || '').trim();
-  const memoryText = String(relay.relayMessage || '').trim();
-  if (!relay.matched || !targetName || !memoryText) return null;
+  const relayMessage = String(relay.relayMessage || '').trim();
+  if (!relay.matched || !targetName || !relayMessage) return null;
   if (!relay.target && NON_BOT_RELAY_TARGETS.has(normalizedName(targetName))) return null;
 
   return {
     mode: 'tool',
-    reason: 'The private user explicitly asked this tenant bot to share something with another bot; store it through the existing mutually opted-in bot-share memory instead of sending a live message.',
+    reason: 'The human explicitly asked the active tenant bot to carry a message to another configured bot or streamer.',
     confidence: 1,
-    toolId: 'bot.group-memory.share',
+    toolId: 'bot.relay',
     arguments: {
       speakerStableId: speaker.stableId,
       speakerName: speaker.currentName,
       targetStableId: relay.target?.stableId,
       targetName,
-      memoryText,
+      relayMessage,
     },
     risk: 'reversible',
   };
@@ -235,8 +239,8 @@ function normalizeCommand(value: unknown, available: Set<string>): string | unde
 }
 
 export async function decideAthenaAction(request: AthenaRequest): Promise<AthenaDecision> {
-  const sharedMemoryDecision = await privateGroupMemoryDecision(request);
-  if (sharedMemoryDecision) return sharedMemoryDecision;
+  const relayDecision = await botRelayDecision(request);
+  if (relayDecision) return relayDecision;
 
   const deterministic = deterministicDecision(request);
   if (deterministic) return deterministic;
@@ -253,10 +257,11 @@ export async function decideAthenaAction(request: AthenaRequest): Promise<Athena
     const result = await requestAthenaJson({
       system: [
         'You are the action router for the active tenant bot persona.',
-        'Decide whether the latest message is ordinary conversation, a safe tool request, or a configured transport command.',
+        'Decide whether the latest message is ordinary conversation, a safe tool request, an explicit bot relay, or a configured transport command.',
         'Location and capability boundaries are mandatory. Never invent a tool or command.',
         'Use a tool when the human asks for live/current app state that a listed tool can retrieve.',
-        'Use bot.group-memory.share only in private context when the user clearly asks the current bot to tell, share, pass, or remember something for another bot. Include targetName and memoryText arguments.',
+        'Use bot.relay when the human clearly asks the current bot to tell, message, relay, notify, or pass something to another bot or streamer. Include targetName and relayMessage arguments.',
+        'An explicit human-requested relay is different from spontaneous bot-to-bot chatter and does not depend on the live botshare toggle.',
         'Use a command only when the user clearly wants the action performed, not when discussing the action hypothetically.',
         'For ambiguous requests choose chat.',
         'Return one JSON object only with keys: mode, reason, confidence, toolId, command, arguments.',
@@ -331,8 +336,9 @@ function confirmationRequired(decision: AthenaDecision, request: AthenaRequest):
   return true;
 }
 
-function sharedMemoryPlatform(surface: AthenaSurface): 'twitch' | 'discord' | 'app' {
-  if (surface === 'twitch-chat' || surface === 'kick-chat') return 'twitch';
+function interactionPlatform(surface: AthenaSurface): 'twitch' | 'discord' | 'kick' | 'app' {
+  if (surface === 'twitch-chat') return 'twitch';
+  if (surface === 'kick-chat') return 'kick';
   if (surface === 'discord-channel' || surface === 'discord-dm') return 'discord';
   return 'app';
 }
@@ -378,13 +384,13 @@ export async function executeAthenaDecision(request: AthenaRequest, decision: At
     };
   }
 
-  if (decision.toolId === 'bot.group-memory.share') {
+  if (decision.toolId === 'bot.relay') {
     const targetName = String(decision.arguments?.targetName || '').trim();
-    const memoryText = String(decision.arguments?.memoryText || '').trim().slice(0, 12_000);
-    if (!targetName || !memoryText) {
+    const relayMessage = String(decision.arguments?.relayMessage || '').trim().slice(0, 2_000);
+    if (!targetName || !relayMessage) {
       return {
         decision: { ...decision, executed: false, delivered: false },
-        response: 'Tell me which bot should remember it and what you want shared.',
+        response: 'Tell me which bot or streamer to contact and what you want passed along.',
       };
     }
 
@@ -404,36 +410,73 @@ export async function executeAthenaDecision(request: AthenaRequest, decision: At
     if (!resolved?.tenantId) {
       return {
         decision: { ...decision, executed: false, delivered: false },
-        response: `I could not match ${targetName} to a configured tenant bot, so I did not store or send anything.`,
+        response: `I could not match ${targetName} to a configured tenant bot, so I did not send anything.`,
       };
     }
 
-    try {
-      await appendSharedBotMemory({
-        sourceTenantId: request.tenantId,
-        targetTenantId: resolved.tenantId,
-        platform: sharedMemoryPlatform(request.location.surface),
-        channelId: request.location.channelId,
-        sourceUser: request.actor.displayName || request.actor.username,
-        speaker,
-        target: resolved.character,
-        triggerMessage: request.message,
-        memoryText,
-      });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
+    const relay = await deliverExplicitBotRelay({
+      sourceTenantId: request.tenantId,
+      sourceUserName: request.actor.displayName || request.actor.username,
+      speaker,
+      targetTenantId: resolved.tenantId,
+      target: resolved.character,
+      relayMessage,
+    });
+    if (!relay.delivered) {
       return {
         decision: { ...decision, executed: false, delivered: false },
-        response: `I did not share that with ${resolved.character.currentName}: ${detail}`,
-        toolResult: detail,
+        response: `I could not reach ${resolved.character.currentName}: ${relay.error || 'no delivery route was available'}`,
+        toolResult: relay.error,
       };
     }
 
-    const response = `I saved that in the shared bot memory for ${resolved.character.currentName}. I did not send a live message.`;
+    const relayEventId = actionId([
+      'relay',
+      request.tenantId,
+      resolved.tenantId,
+      request.actor.userId || request.actor.username,
+      relayMessage,
+    ].join('|'));
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    await appendBackstageLoreMemory({
+      sourceTenantId: request.tenantId,
+      targetTenantId: resolved.tenantId,
+      platform: interactionPlatform(request.location.surface),
+      channelId: relay.targetChannel || request.location.channelId,
+      sourceUser: request.actor.displayName || request.actor.username,
+      speaker,
+      target: resolved.character,
+      triggerMessage: request.message,
+      memoryText: `${speaker.currentName} asked ${resolved.character.currentName} to relay: ${relayMessage}`,
+      sourceEventId: relayEventId,
+      interestTags: ['relay'],
+      origin: 'explicit-relay',
+      delivered: true,
+      expiresAt,
+    });
+    await appendWorldLoreJournalEntry({
+      id: relayEventId,
+      origin: 'explicit-relay',
+      sourceTenantId: request.tenantId,
+      sourceEventId: relayEventId,
+      summary: `${speaker.currentName} sent ${resolved.character.currentName} a real relay for ${request.actor.displayName || request.actor.username}: ${relayMessage}`,
+      participantTenantIds: [request.tenantId, resolved.tenantId],
+      participantCharacterIds: [speaker.stableId, resolved.character.stableId],
+      participantBotNames: [speaker.currentName, resolved.character.currentName],
+      interestTags: ['relay'],
+      expiresAt,
+    });
+
+    const destination = relay.mode === 'live'
+      ? `${relay.targetChannel || resolved.character.currentName}'s Twitch chat`
+      : relay.mode === 'discord'
+        ? 'their active Discord channel'
+        : 'their private Discord route';
+    const response = `Okay — I got the message to ${resolved.character.currentName} through ${destination}.`;
     return {
-      decision: { ...decision, executed: true, delivered: false },
+      decision: { ...decision, executed: true, delivered: true },
       response,
-      toolResult: `${speaker.currentName} shared a group memory with ${resolved.character.currentName}: ${memoryText}`,
+      toolResult: relay.message || relayMessage,
     };
   }
 
