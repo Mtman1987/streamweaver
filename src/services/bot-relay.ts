@@ -192,7 +192,18 @@ export async function detectBotRelayRequestWithAi(input: {
   targets: WorldLoreCharacter[];
   tenantId?: string;
   platform?: 'twitch' | 'discord';
+  /**
+   * The old transport routes used to execute relays directly. AthenaOS now
+   * owns explicit relay intent so it can ignore botshare, report delivery
+   * truthfully, and use one target resolution path. Legacy execution is opt-in
+   * only for rollback/testing and is off for all current callers.
+   */
+  legacyTransportExecution?: boolean;
 }): Promise<BotRelayRequest> {
+  if (input.legacyTransportExecution !== true) {
+    return { matched: false };
+  }
+
   const parsed = detectBotRelayRequest(input);
   if (parsed.matched) return parsed;
 
