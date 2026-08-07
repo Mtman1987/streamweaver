@@ -32,9 +32,9 @@ test('routes explicit SPMT command namespace before conversational chat', () => 
   assert.equal(detectOpenBotCommand('spmt tell me a joke'), null);
 });
 
-test('rewrites uncatalogued SPMT namespace commands for the native DM dispatcher', () => {
+test('rewrites documented SPMT namespace commands for the native DM dispatcher', () => {
   assert.equal(rewriteSpmtNamespaceCommand('spmt points'), '!points');
-  assert.equal(rewriteSpmtNamespaceCommand('@spmt !checkin'), '!checkin');
+  assert.equal(rewriteSpmtNamespaceCommand('@spmt !pack'), '!pack');
   assert.equal(rewriteSpmtNamespaceCommand('Athena, how are you?'), null);
 });
 
