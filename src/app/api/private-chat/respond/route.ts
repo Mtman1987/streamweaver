@@ -47,6 +47,32 @@ const schema = z.object({
 
 type PrivateSource = NonNullable<z.infer<typeof schema>['source']>;
 
+function normalizeAttachments(value: z.infer<typeof schema>['attachments']): PrivateChatMessage['attachments'] {
+  if (!value?.length) return undefined;
+  return value.map((attachment) => ({
+    id: String(attachment.id || attachment.url),
+    url: attachment.url,
+    filename: String(attachment.filename || 'attachment'),
+    content_type: attachment.content_type,
+  }));
+}
+
+function normalizeEmbeds(value: z.infer<typeof schema>['embeds']): PrivateChatMessage['embeds'] {
+  if (!value?.length) return undefined;
+  return value
+    .map((raw) => {
+      const embed = raw as Record<string, any>;
+      return {
+        title: embed.title ? String(embed.title) : undefined,
+        description: embed.description ? String(embed.description) : undefined,
+        url: embed.url ? String(embed.url) : undefined,
+        image: embed.image?.url ? { url: String(embed.image.url) } : undefined,
+        thumbnail: embed.thumbnail?.url ? { url: String(embed.thumbnail.url) } : undefined,
+      };
+    })
+    .filter((embed) => embed.title || embed.description || embed.url || embed.image?.url || embed.thumbnail?.url);
+}
+
 function mediaContext(
   attachments: PrivateChatMessage['attachments'] | undefined,
   embeds: PrivateChatMessage['embeds'] | undefined,
@@ -102,6 +128,8 @@ export async function POST(request: NextRequest) {
 
     const resolvedSource: PrivateSource = body.source
       || (mountainViewAccess ? 'mountainview' : session?.tenantId ? 'app-private' : 'discord-dm');
+    const attachments = normalizeAttachments(body.attachments);
+    const embeds = normalizeEmbeds(body.embeds);
 
     await incrementPrivateMessageCount(tenantId);
     await checkAndCondensePrivateMemory(tenantId);
@@ -115,7 +143,7 @@ export async function POST(request: NextRequest) {
           : resolvedSource === 'internal'
             ? 'internal'
             : 'streamweaver-private';
-    const media = mediaContext(body.attachments, body.embeds);
+    const media = mediaContext(attachments, embeds);
     const messageForAthena = body.message || '[The user shared private media without accompanying text.]';
     const botName = getBotName(tenantId) || 'Athena';
 
@@ -153,8 +181,8 @@ export async function POST(request: NextRequest) {
       metadata: {
         compatibilityRoute: '/api/private-chat/respond',
         source: resolvedSource,
-        attachmentCount: body.attachments?.length || 0,
-        embedCount: body.embeds?.length || 0,
+        attachmentCount: attachments?.length || 0,
+        embedCount: embeds?.length || 0,
       },
     });
 
@@ -165,8 +193,8 @@ export async function POST(request: NextRequest) {
         username: body.username,
         message: body.message,
         timestamp,
-        attachments: body.attachments,
-        embeds: body.embeds,
+        attachments,
+        embeds,
       },
       {
         type: 'ai',
