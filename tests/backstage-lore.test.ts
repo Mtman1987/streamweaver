@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -62,15 +62,36 @@ test('tenant interests collect useful lore and idle bots create backstage contin
 
     await queueBackstageConversationTurn({
       tenantId: 'tenant-athena',
-      visibility: 'public',
+      visibility: 'private',
       sourceUser: 'Commander',
       botName: 'Athena',
       message: 'What do you call a cosmic trout ordering room service?',
       response: 'A reel guest.',
-      conversationId: 'twitch:commander',
-      platform: 'twitch',
-      channelId: 'commander',
+      conversationId: 'discord-dm:commander',
+      platform: 'discord',
+      channelId: 'commander-private-dm',
     });
+
+    const tenantQueuePath = path.join(
+      persistRoot,
+      'tenants',
+      'tenant-athena',
+      'data',
+      'backstage-lore',
+      'queue.json',
+    );
+    const rawQueue = JSON.parse(await readFile(tenantQueuePath, 'utf-8'));
+    assert.equal(rawQueue.length, 1);
+    assert.equal(rawQueue[0]?.sourceTenantId, 'tenant-athena');
+    assert.equal(rawQueue[0]?.visibility, 'private');
+    assert.match(rawQueue[0]?.text || '', /cosmic trout/i);
+
+    const obsoleteGlobalQueuePath = path.join(persistRoot, 'global', 'backstage-lore', 'queue.json');
+    await assert.rejects(
+      access(obsoleteGlobalQueuePath),
+      (error: any) => error?.code === 'ENOENT',
+      'unclassified private conversation text must never be written to a global queue',
+    );
 
     const firstCycle = await runBackstageLoreCycle({
       maxCandidates: 3,
