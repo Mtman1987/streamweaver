@@ -6,11 +6,12 @@ import { isBotTriggerIgnored } from '@/lib/bot-trigger-ignore-store';
 
 export type BotShareMode = 'off' | 'on';
 export type BotInteractionKind = 'interaction' | 'shared-memory';
+export type BotInteractionPlatform = 'twitch' | 'discord' | 'app';
 
 export type BotInteractionEntry = {
   id: string;
   timestamp: string;
-  platform: 'twitch' | 'discord';
+  platform: BotInteractionPlatform;
   tenantId?: string;
   sourceTenantId?: string;
   channelId?: string;
@@ -159,7 +160,7 @@ export async function appendBotInteraction(entry: Omit<BotInteractionEntry, 'id'
 export async function appendSharedBotMemory(input: {
   sourceTenantId: string;
   targetTenantId: string;
-  platform: 'twitch' | 'discord';
+  platform: BotInteractionPlatform;
   channelId?: string;
   sourceUser: string;
   speaker: WorldLoreCharacter;
