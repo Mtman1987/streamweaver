@@ -54,7 +54,6 @@
     ],
     "win": {
       "icon": "../public/favicon.ico",
-      "publisherName": "SignPath Foundation",
       "target": [
         "nsis"
       ]
