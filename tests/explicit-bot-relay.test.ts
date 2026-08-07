@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deliverExplicitBotRelay } from '../src/services/explicit-bot-relay';
+import {
+  deliverExplicitBotRelay,
+  normalizeExplicitBotRelayMessage,
+} from '../src/services/explicit-bot-relay';
+
+test('nested relay wording is normalized for the target streamer', () => {
+  assert.equal(
+    normalizeExplicitBotRelayMessage('to let Neph know that the Commander will be ready in 10 minutes'),
+    'the Commander will be ready in 10 minutes',
+  );
+});
 
 test('explicit human relay uses the target tenant bot in its live channel without consulting botshare', async () => {
   const sent: Array<{ message: string; as: string; channel?: string; tenantId?: string }> = [];
@@ -22,7 +32,11 @@ test('explicit human relay uses the target tenant bot in its live channel withou
   }, {
     getBroadcasterChannel: async () => 'nephalem2',
     lookupLiveTarget: async () => ({ isLive: true }),
-    generateRelayText: async () => 'Hey boss, Athena wanted me to let you know the Commander will be ready in 10 minutes to play.',
+    generateRelayText: async (input) => {
+      assert.equal(input.relayMessage, 'the Commander will be ready to play in 10 minutes');
+      assert.equal(input.targetAudienceName, 'nephalem2');
+      return 'Hey boss, Athena wanted me to let you know the Commander will be ready in 10 minutes to play.';
+    },
     sendTwitch: async (message, as, channel, tenantId) => {
       sent.push({ message, as, channel, tenantId });
     },
