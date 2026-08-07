@@ -28,15 +28,30 @@ function localModel(): string {
   ).trim() || DEFAULT_LOCAL_MODEL;
 }
 
-function localWorkerKey(): string {
-  return String(
-    process.env.SPMT_LLM_API_KEY ||
-    process.env.SPMT_API_KEY ||
-    process.env.SPMT_PLATFORM_API_KEY ||
-    process.env.LLM_WORKER_TOKEN ||
-    process.env.LLAMA_API_KEY ||
-    '',
-  ).trim();
+function isPrivateWorkerUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (
+      host === 'localhost'
+      || host === '127.0.0.1'
+      || host === '::1'
+      || host.endsWith('.internal')
+      || host.endsWith('.flycast')
+      || host.startsWith('fdaa:')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function requirePrivateWorkerUrl(): string {
+  const base = localBaseUrl();
+  if (!base) throw new Error('SPMT_LLM_BASE_URL is not configured');
+  if (process.env.NODE_ENV === 'production' && !isPrivateWorkerUrl(base)) {
+    throw new Error('SPMT_LLM_BASE_URL must use Fly private networking in production');
+  }
+  return base;
 }
 
 function extractText(payload: any): string {
@@ -64,16 +79,14 @@ async function requestLocal(input: {
   model?: string;
   fetchImpl: FetchLike;
 }): Promise<AthenaModelResult> {
-  const base = localBaseUrl();
-  if (!base) throw new Error('SPMT_LLM_BASE_URL is not configured');
+  const base = requirePrivateWorkerUrl();
   const model = String(input.model || localModel()).trim() || localModel();
-  const key = localWorkerKey();
+  // SPMT OAuth terminates at the Athena gateway. The model server is an
+  // implementation detail on Fly's private 6PN and receives no user token and
+  // no separately invented API key.
   const response = await input.fetchImpl(`${base}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(key ? { Authorization: `Bearer ${key}` } : {}),
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
       messages: input.messages,
@@ -205,11 +218,14 @@ export async function requestAthenaJson(input: {
 }
 
 export function getAthenaModelStatus() {
+  const base = localBaseUrl();
   return {
-    localReady: Boolean(localBaseUrl()),
-    localBaseUrl: localBaseUrl() || null,
+    localReady: Boolean(base),
+    localBaseUrl: base || null,
     localModel: localModel(),
-    localAuthenticationConfigured: Boolean(localWorkerKey()),
+    localTransport: base && isPrivateWorkerUrl(base) ? 'fly-private-network' : 'unconfigured',
+    authenticationBoundary: 'spmt-oauth-at-athena-gateway',
+    workerApiKeyRequired: false,
     edenFallbackConfigured: Boolean(String(process.env.EDENAI_API_KEY || '').trim()),
     cloudFallbackDefault: false,
   };
