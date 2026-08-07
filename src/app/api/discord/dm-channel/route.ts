@@ -3,6 +3,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { readDiscordConfig, updateDiscordConfig } from '@/lib/discord-config';
 import { createDiscordDmChannel, sendDiscordMessage } from '@/services/discord-local';
+import { getSpmtDiscordIdentity } from '@/lib/spmt-userinfo';
 import { z } from 'zod';
 
 const dmChannelSchema = z.object({
@@ -22,7 +23,12 @@ export async function POST(request: NextRequest) {
     }
 
     const settings = await readDiscordConfig(session.tenantId);
-    const discordUserId = String(parsed.data.discordUserId || settings.discordUserId || '').trim();
+    const spmtIdentity = !parsed.data.discordUserId && !settings.discordUserId
+      ? await getSpmtDiscordIdentity(request).catch(() => null)
+      : null;
+    const discordUserId = String(
+      parsed.data.discordUserId || settings.discordUserId || spmtIdentity?.discordUserId || '',
+    ).trim();
     if (!discordUserId || !/^\d{10,32}$/.test(discordUserId)) {
       return apiError('Connect a Discord user account first.', {
         status: 400,
@@ -33,6 +39,7 @@ export async function POST(request: NextRequest) {
     const dm = await createDiscordDmChannel(discordUserId);
     const nextSettings = {
       discordUserId,
+      ...(spmtIdentity?.discordUsername ? { discordUsername: spmtIdentity.discordUsername } : {}),
       dmChannelId: dm.id,
       dmEnabled: true,
       dmChannelUpdatedAt: new Date().toISOString(),
