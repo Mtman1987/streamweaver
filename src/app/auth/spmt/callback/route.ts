@@ -12,6 +12,17 @@ function safeEqual(left: string, right: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function appCookieOptions(appOrigin: string, maxAge: number) {
+  const secure = appOrigin.startsWith('https://');
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: secure ? 'none' as const : 'lax' as const,
+    path: '/',
+    maxAge,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
   const redirectUri = `${appOrigin}/auth/spmt/callback`;
@@ -58,7 +69,8 @@ export async function GET(request: NextRequest) {
     headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
     cache: 'no-store',
   });
-  const user = await userResponse.json().catch(() => null);
+  const userPayload = await userResponse.json().catch(() => null);
+  const user = userPayload?.user || userPayload?.profile || userPayload;
   if (!userResponse.ok || !user?.id || !user?.username) {
     console.error('[SPMT OAuth] User profile lookup failed', { status: userResponse.status });
     return NextResponse.redirect(`${appOrigin}/login?error=spmt_profile_failed`);
@@ -78,28 +90,10 @@ export async function GET(request: NextRequest) {
     displayName: String(user.displayName || user.display_name || user.username),
     avatar: String(user.avatarUrl || user.avatar_url || ''),
     loginTime: Date.now(),
-  }), {
-    httpOnly: true,
-    secure: appOrigin.startsWith('https://'),
-    sameSite: 'lax',
-    path: '/',
-    maxAge: STREAMWEAVER_SESSION_MAX_AGE,
-  });
-  response.cookies.set('streamweaver-spmt-token', String(tokenPayload.access_token), {
-    httpOnly: true,
-    secure: appOrigin.startsWith('https://'),
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60,
-  });
+  }), appCookieOptions(appOrigin, STREAMWEAVER_SESSION_MAX_AGE));
+  response.cookies.set('streamweaver-spmt-token', String(tokenPayload.access_token), appCookieOptions(appOrigin, 7 * 24 * 60 * 60));
   if (tokenPayload.refresh_token) {
-    response.cookies.set('streamweaver-spmt-refresh', String(tokenPayload.refresh_token), {
-      httpOnly: true,
-      secure: appOrigin.startsWith('https://'),
-      sameSite: 'lax',
-      path: '/',
-      maxAge: Number(tokenPayload.refresh_expires_in || 30 * 24 * 60 * 60),
-    });
+    response.cookies.set('streamweaver-spmt-refresh', String(tokenPayload.refresh_token), appCookieOptions(appOrigin, Number(tokenPayload.refresh_expires_in || 30 * 24 * 60 * 60)));
   }
   response.cookies.delete('streamweaver-spmt-state');
   response.cookies.delete('streamweaver-spmt-next');
