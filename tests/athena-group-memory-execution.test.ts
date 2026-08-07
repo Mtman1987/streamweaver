@@ -9,22 +9,18 @@ function restoreEnv(name: string, value: string | undefined) {
   else process.env[name] = value;
 }
 
-test('private tell-a-bot request resolves the configured target tenant and stores memory without live delivery', async () => {
-  const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-athena-group-execution-'));
+test('explicit tell-a-bot request selects a real relay even when visible botshare is off', async () => {
+  const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-athena-relay-intent-'));
   const previousPersistRoot = process.env.PERSIST_ROOT;
+  const previousScheduler = process.env.BACKSTAGE_LORE_DISABLE_SCHEDULER;
   process.env.PERSIST_ROOT = persistRoot;
+  process.env.BACKSTAGE_LORE_DISABLE_SCHEDULER = 'true';
 
   try {
     const { writeUserConfig } = await import('../src/lib/user-config');
     const { reloadBotSettings } = await import('../src/lib/bot-settings-store');
-    const {
-      readBotInteractionHistory,
-      setBotShareMode,
-    } = await import('../src/lib/bot-interactions-store');
-    const {
-      decideAthenaAction,
-      executeAthenaDecision,
-    } = await import('../src/services/athena-tools');
+    const { setBotShareMode } = await import('../src/lib/bot-interactions-store');
+    const { decideAthenaAction } = await import('../src/services/athena-tools');
 
     await writeUserConfig({
       AI_BOT_NAME: 'Athena',
@@ -32,52 +28,32 @@ test('private tell-a-bot request resolves the configured target tenant and store
       AI_BOT_PERSONALITY: 'Responsible archive steward.',
       TWITCH_BROADCASTER_USERNAME: 'commander',
     }, 'tenant-athena');
-    await writeUserConfig({
-      AI_BOT_NAME: 'Reaper',
-      AI_BOT_ALIASES: 'The Reaper',
-      AI_BOT_PERSONALITY: 'A theatrical abyssal guardian.',
-      TWITCH_BROADCASTER_USERNAME: 'reaper-streamer',
-    }, 'tenant-reaper');
     reloadBotSettings('tenant-athena');
-    reloadBotSettings('tenant-reaper');
-    await setBotShareMode('on', 'tenant-athena');
-    await setBotShareMode('on', 'tenant-reaper');
+    await setBotShareMode('off', 'tenant-athena');
 
-    const request = {
+    const decision = await decideAthenaAction({
       tenantId: 'tenant-athena',
-      message: 'Athena, tell Reaper that the funniest joke today involved a cosmic trout.',
+      message: 'Athena, tell Reaper to let Neph know the Commander will be ready to play in 10 minutes.',
       actor: { username: 'commander', displayName: 'Commander', isOwner: true },
       location: {
         app: 'streamweaver',
-        surface: 'discord-dm' as const,
+        surface: 'discord-dm',
         channelId: 'private-dm',
         live: false,
-        replyMode: 'structured' as const,
+        replyMode: 'structured',
       },
-      visibility: 'private' as const,
+      visibility: 'private',
       executeTools: true,
-    };
+    });
 
-    const decision = await decideAthenaAction(request);
-    const outcome = await executeAthenaDecision(request, decision);
-
-    assert.equal(decision.toolId, 'bot.group-memory.share');
-    assert.equal(outcome.decision.executed, true);
-    assert.equal(outcome.decision.delivered, false);
-    assert.match(outcome.response || '', /shared bot memory for Reaper/i);
-    assert.match(outcome.response || '', /did not send a live message/i);
-
-    const sourceHistory = await readBotInteractionHistory(10, 'tenant-athena');
-    const targetHistory = await readBotInteractionHistory(10, 'tenant-reaper');
-    assert.equal(sourceHistory.length, 1);
-    assert.equal(targetHistory.length, 1);
-    assert.equal(targetHistory[0]?.kind, 'shared-memory');
-    assert.equal(targetHistory[0]?.speakerBotName, 'Athena');
-    assert.deepEqual(targetHistory[0]?.targetBotNames, ['Reaper']);
-    assert.equal(targetHistory[0]?.delivered, false);
-    assert.match(targetHistory[0]?.responseMessage || '', /cosmic trout/i);
+    assert.equal(decision.mode, 'tool');
+    assert.equal(decision.toolId, 'bot.relay');
+    assert.equal(decision.arguments?.targetName, 'Reaper');
+    assert.match(String(decision.arguments?.relayMessage || ''), /Neph/i);
+    assert.match(String(decision.arguments?.relayMessage || ''), /10 minutes/i);
   } finally {
     restoreEnv('PERSIST_ROOT', previousPersistRoot);
+    restoreEnv('BACKSTAGE_LORE_DISABLE_SCHEDULER', previousScheduler);
     await rm(persistRoot, { recursive: true, force: true });
   }
 });
