@@ -37,9 +37,13 @@ export type ExplicitBotRelayDependencies = {
   generateRelayText?: (input: ExplicitBotRelayInput & { targetAudienceName: string }) => Promise<string>;
 };
 
-function cleanRelayMessage(value: unknown): string {
+export function normalizeExplicitBotRelayMessage(value: unknown): string {
   return String(value || '')
     .replace(/^\s*(?:that|to)\s+/i, '')
+    // A nested request such as “tell Reaper to let Neph know X” reaches this
+    // service as “let Neph know X”. Reaper is already speaking to Neph's
+    // channel, so remove the redundant inner delivery instruction.
+    .replace(/^\s*(?:please\s+)?(?:let|tell|notify|message)\s+@?[a-z0-9_][a-z0-9_-]{1,63}\s+(?:know\s+)?(?:that\s+)?/i, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 2_000);
@@ -58,7 +62,7 @@ function cleanModelReply(value: string, targetName: string): string {
 export async function generateExplicitBotRelayText(
   input: ExplicitBotRelayInput & { targetAudienceName: string },
 ): Promise<string> {
-  const relayMessage = cleanRelayMessage(input.relayMessage);
+  const relayMessage = normalizeExplicitBotRelayMessage(input.relayMessage);
   const targetPersonality = String(getBotPersonality(input.targetTenantId) || '').trim();
   const fallback = `Hey boss, ${input.speaker.currentName} wanted me to let you know ${relayMessage}`.replace(/\s+/g, ' ').trim();
   if (!relayMessage) return fallback;
@@ -104,7 +108,7 @@ export async function deliverExplicitBotRelay(
   input: ExplicitBotRelayInput,
   dependencies: ExplicitBotRelayDependencies = {},
 ): Promise<ExplicitBotRelayResult> {
-  const relayMessage = cleanRelayMessage(input.relayMessage);
+  const relayMessage = normalizeExplicitBotRelayMessage(input.relayMessage);
   if (!input.sourceTenantId || !input.targetTenantId || !relayMessage) {
     return { delivered: false, error: 'Source tenant, target tenant, and relay message are required.' };
   }
