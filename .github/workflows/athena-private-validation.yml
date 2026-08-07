@@ -21,7 +21,7 @@ on:
       - 'data/runtime/global/world-lore.json'
       - 'tests/athena-*.test.ts'
       - 'tests/backstage-lore.test.ts'
-      - 'tests/explicit-bot-relay.test.ts'
+      - 'tests/explicit-bot-relay*.test.ts'
       - 'tests/private-chat-ai.test.ts'
       - 'tests/spmt-userinfo.test.ts'
       - 'docs/ATHENA_OS_PRIVATE_VERTICAL_SLICE.md'
@@ -57,5 +57,6 @@ jobs:
           tests/athena-tools.test.ts
           tests/backstage-lore.test.ts
           tests/explicit-bot-relay.test.ts
+          tests/explicit-bot-relay-resolution.test.ts
           tests/private-chat-ai.test.ts
           tests/spmt-userinfo.test.ts
