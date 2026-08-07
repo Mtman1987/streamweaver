@@ -12,7 +12,7 @@ const REAPER = {
   aliases: ['Reaper'],
 };
 
-test('legacy public transport relay detection defers to the unified AthenaOS gateway', async () => {
+test('legacy public transport relay detection defers known bots to AthenaOS but preserves direct humans', async () => {
   const input = {
     message: 'Athena, tell Reaper the Commander will be ready in 10 minutes.',
     speakerName: 'Athena',
@@ -22,6 +22,15 @@ test('legacy public transport relay detection defers to the unified AthenaOS gat
   };
 
   assert.deepEqual(await detectBotRelayRequestWithAi(input), { matched: false });
+
+  const directHuman = await detectBotRelayRequestWithAi({
+    ...input,
+    message: 'Athena, tell SomeViewer that the game starts in 10 minutes.',
+  });
+  assert.equal(directHuman.matched, true);
+  assert.equal(directHuman.targetName, 'SomeViewer');
+  assert.match(directHuman.relayMessage || '', /game starts in 10 minutes/i);
+
   const rollbackOnly = await detectBotRelayRequestWithAi({
     ...input,
     legacyTransportExecution: true,
