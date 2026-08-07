@@ -31,9 +31,22 @@ export function extractPrivateChatResponseText(data: any): string {
     .trim();
 }
 
+function configuredLocalWorkerKey(override?: string): string {
+  return String(
+    override ||
+    process.env.SPMT_LLM_API_KEY ||
+    process.env.SPMT_API_KEY ||
+    process.env.SPMT_PLATFORM_API_KEY ||
+    process.env.LLM_WORKER_TOKEN ||
+    process.env.LLAMA_API_KEY ||
+    '',
+  ).trim();
+}
+
 async function requestLocalQwenCompletion(input: {
   baseUrl: string;
   model?: string;
+  apiKey?: string;
   systemPrompt: string;
   prompt: string;
   fetchImpl: FetchLike;
@@ -41,10 +54,14 @@ async function requestLocalQwenCompletion(input: {
   const baseUrl = String(input.baseUrl || '').trim().replace(/\/$/, '');
   if (!baseUrl) return { text: '' };
   const model = String(input.model || DEFAULT_LOCAL_MODEL).trim() || DEFAULT_LOCAL_MODEL;
+  const apiKey = configuredLocalWorkerKey(input.apiKey);
   try {
     const response = await input.fetchImpl(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
       body: JSON.stringify({
         model,
         messages: [
@@ -91,6 +108,7 @@ export async function requestPrivateChatCompletion(input: {
   prompt: string;
   localBaseUrl?: string;
   localModel?: string;
+  localApiKey?: string;
   fetchImpl?: FetchLike;
 }): Promise<PrivateChatCompletionResult> {
   const fetchImpl = input.fetchImpl || fetch;
@@ -99,6 +117,7 @@ export async function requestPrivateChatCompletion(input: {
     const local = await requestLocalQwenCompletion({
       baseUrl: input.localBaseUrl,
       model: input.localModel,
+      apiKey: input.localApiKey,
       systemPrompt: input.systemPrompt,
       prompt: input.prompt,
       fetchImpl,
