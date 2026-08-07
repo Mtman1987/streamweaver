@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   appendPrivateChatMessages,
   readPrivateChatMessages,
@@ -63,13 +63,13 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
     const messageCount = await getPrivateMessageCount(tenantId);
     if (messageCount > 0 && messageCount % 50 === 0) {
       console.log(`[Private LTM] Message count reached ${messageCount}, condensing history...`);
-      
+
       const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         console.log('[Private LTM] Successfully condensed memory:', data.title);
@@ -82,7 +82,7 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
 
 export async function POST(request: NextRequest) {
   if (VERBOSE_LOGS) console.log('[Private Chat API] POST request received');
-  
+
   try {
     const parsed = privateRespondSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
@@ -111,24 +111,22 @@ export async function POST(request: NextRequest) {
     const seaartCharacterId = generationSettings.seaartCharacterId;
     const seaartCharacterToken = process.env.SEAART_CHARACTER_TOKEN || process.env.SEAART_TOKEN || '';
     const useSeaArtCharacter = Boolean(seaartCharacterId);
+    const localQwenBaseUrl = String(process.env.SPMT_LLM_BASE_URL || '').trim().replace(/\/$/, '');
+    const localQwenModel = String(process.env.ATHENA_CHAT_LOCAL_MODEL || process.env.SPMT_LLM_MODEL || 'spmt-qwen3-4b').trim();
     const edenaiKey = process.env.EDENAI_API_KEY || '';
-    if (!useSeaArtCharacter && !edenaiKey) {
-      return apiError('Server missing EdenAI API key', { status: 500, code: 'MISSING_CONFIG' });
+    if (!useSeaArtCharacter && !localQwenBaseUrl && !edenaiKey) {
+      return apiError('Server missing private chat provider configuration', { status: 500, code: 'MISSING_CONFIG' });
     }
 
-    // Increment message count and check for LTM condensation
     const messageCount = await incrementPrivateMessageCount(tenantId);
     await checkAndCondensePrivateMemory(tenantId);
 
     const history = await readPrivateChatMessages(historyLimit, tenantId);
-
-    // Get LTM titles for context
     const ltmTitles = await getPrivateLTMTitles(tenantId);
-    const ltmContext = ltmTitles.length > 0 
+    const ltmContext = ltmTitles.length > 0
       ? `\n\nLong Term Memory titles (request full content if relevant): ${ltmTitles.join(', ')}`
       : '';
 
-    // Two-tier personality split — ALWAYS use server-side tenant personality (ignore client override)
     let systemIdentity: string;
     let extendedGuidance: string;
     const rawPersonality = botPersonality;
@@ -142,7 +140,6 @@ export async function POST(request: NextRequest) {
     }
 
     const historyText = formatHistory(history);
-
     const promptParts = [
       extendedGuidance,
       '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
@@ -186,6 +183,8 @@ export async function POST(request: NextRequest) {
         })
       : await requestPrivateChatCompletion({
           apiKey: edenaiKey,
+          localBaseUrl: localQwenBaseUrl,
+          localModel: localQwenModel,
           systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
           prompt,
         });
@@ -194,13 +193,17 @@ export async function POST(request: NextRequest) {
       console.warn('[Private Chat API] Retrying filtered DM without older conversation history');
       completion = await requestPrivateChatCompletion({
         apiKey: edenaiKey,
+        localBaseUrl: localQwenBaseUrl,
+        localModel: localQwenModel,
         systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
         prompt: reducedContextPrompt,
       });
     }
 
     if (completion.upstreamStatus || completion.upstreamError) {
-      const provider = useSeaArtCharacter ? 'SeaArt character' : 'EdenAI';
+      const provider = useSeaArtCharacter
+        ? 'SeaArt character'
+        : ('provider' in completion && completion.provider === 'local-qwen' ? 'Local Qwen' : 'EdenAI');
       console.error(`[Private Chat API] ${provider} error:`, completion.upstreamStatus || null, completion.upstreamError);
       return apiError(`${provider} API failed`, {
         status: 502,
@@ -210,19 +213,16 @@ export async function POST(request: NextRequest) {
     }
 
     let responseText = completion.text;
-
-    // Handle LTM requests
     const ltmRequestMatch = responseText.match(/LTM_REQUEST:\s*(.+)/);
     if (ltmRequestMatch) {
       const requestedTitle = ltmRequestMatch[1].trim();
-      
+
       try {
         const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
-        
+
         if (ltmContent) {
-          // Re-generate response with LTM content
           const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
-          
+
           const enhancedCompletion = useSeaArtCharacter
             ? await requestSeaArtCharacterCompletion({
                 token: seaartCharacterToken,
@@ -234,13 +234,14 @@ export async function POST(request: NextRequest) {
               })
             : await requestPrivateChatCompletion({
                 apiKey: edenaiKey,
+                localBaseUrl: localQwenBaseUrl,
+                localModel: localQwenModel,
                 systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
                 prompt: enhancedPrompt,
               });
 
           responseText = enhancedCompletion.text || responseText;
         } else {
-          // No memory found — let AI know
           responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about, Commander?`;
         }
       } catch (error) {
@@ -265,7 +266,10 @@ export async function POST(request: NextRequest) {
     await appendPrivateChatMessages([aiEntry], 100, tenantId);
 
     if (VERBOSE_LOGS) console.log('[Private Chat API] Successfully saved both messages');
-    return apiOk({ response: responseText, provider: useSeaArtCharacter ? 'seaart-character' : 'edenai' });
+    const provider = useSeaArtCharacter
+      ? 'seaart-character'
+      : ('provider' in completion && completion.provider ? completion.provider : (localQwenBaseUrl ? 'local-qwen' : 'edenai'));
+    return apiOk({ response: responseText, provider });
   } catch (error) {
     console.error('Private chat respond API error:', error);
     return apiError('Failed to generate private chat response', { status: 500, code: 'INTERNAL_ERROR' });
