@@ -7,10 +7,12 @@ import { z } from 'zod';
 
 const schema = z.object({
   mode: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
+  privateMode: z.enum(['inherit', 'eden', 'seaart', 'perchance', 'pollinations']).optional(),
   publicImageAccess: z.enum(['everyone', 'mods', 'off']).optional(),
   publicContentModeration: z.coerce.boolean().optional(),
   privateContentModeration: z.coerce.boolean().optional(),
   model: z.string().trim().max(200).optional(),
+  privateModel: z.string().trim().max(200).optional(),
   seaartCharacterId: z.string().trim().max(200).optional(),
   lora: z.string().trim().max(200).optional(),
   loraStrength: z.coerce.number().min(0).max(2).optional(),
@@ -38,6 +40,8 @@ export async function POST(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session?.tenantId) return apiError('Authentication required', { status: 401, code: 'UNAUTHORIZED' });
   const saved = await writeGenerationSettings(parsed.data, session.tenantId);
+  // Only the public provider mirrors into the legacy !genmode store. Private
+  // DM provider changes must never mutate the public StreamWeaver selection.
   if (parsed.data.mode) {
     await setGenMode(parsed.data.mode, session.tenantId).catch((err) => console.warn('[gen-settings] setGenMode sync failed:', err));
   }
