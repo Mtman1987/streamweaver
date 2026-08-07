@@ -1,0 +1,39 @@
+name: Athena private validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/app/api/ai/chat-with-memory/**'
+      - 'src/app/api/athena/**'
+      - 'src/app/api/private-chat/**'
+      - 'src/services/athena-*.ts'
+      - 'src/lib/internal-service-auth.ts'
+      - 'tests/athena-*.test.ts'
+      - 'tests/private-chat-ai.test.ts'
+      - '.github/workflows/athena-private-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Athena focused tests
+        run: >-
+          node --import tsx --test --test-force-exit
+          tests/athena-contract.test.ts
+          tests/athena-memory-boundary.test.ts
+          tests/athena-tools.test.ts
+          tests/private-chat-ai.test.ts
