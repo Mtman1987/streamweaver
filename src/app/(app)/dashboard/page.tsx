@@ -591,7 +591,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-muted-foreground">
                     {discordSettings.discordUsername
                       ? `Linked Discord user: ${discordSettings.discordUsername}`
-                      : "Connect your Discord account in Integrations, then create the private DM channel here."}
+                      : "Uses the Discord account already linked to your SPMT sign-in."}
                   </p>
                   {discordSettings.dmChannelId ? (
                     <p className="text-xs text-muted-foreground">DM channel saved: {discordSettings.dmChannelId}</p>
@@ -601,10 +601,10 @@ export default function DashboardPage() {
                   type="button"
                   variant="outline"
                   onClick={registerDiscordDmChannel}
-                  disabled={isDiscordDmRegistering || isDiscordSettingsLoading || !discordSettings.discordUserId}
+                  disabled={isDiscordDmRegistering || isDiscordSettingsLoading}
                 >
                   {isDiscordDmRegistering ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
-                  Get DM channel ID
+                  Send me a setup DM
                 </Button>
               </div>
             </div>
