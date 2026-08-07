@@ -101,6 +101,10 @@ export async function respondWithAthena(rawRequest: AthenaRequest): Promise<Athe
     conversationId,
     message: request.message,
     surface: request.location.surface,
+    actorUsername: request.actor.username,
+    actorUserId: request.actor.userId,
+    actorIsOwner: request.actor.isOwner,
+    actorIsAdmin: request.actor.isAdmin,
   });
   const decision = await decideAthenaAction(request);
   const action = await executeAthenaDecision(request, decision);
