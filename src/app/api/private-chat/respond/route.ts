@@ -1,18 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   appendPrivateChatMessages,
   readPrivateChatMessages,
   type PrivateChatMessage,
 } from '@/lib/private-chat-store';
-import { getPrivateLTMTitles, incrementPrivateMessageCount, getPrivateMessageCount, retrieveLTMByTitle } from '@/lib/private-ltm-store';
+import {
+  getPrivateLTMTitles,
+  incrementPrivateMessageCount,
+  getPrivateMessageCount,
+  retrieveLTMByTitle,
+} from '@/lib/private-ltm-store';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
-import { hasInternalServiceAccess, hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
+import {
+  hasInternalServiceAccess,
+  hasMountainViewBridgeAccess,
+  internalServiceHeaders,
+} from '@/lib/internal-service-auth';
 import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
 import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
+import { requestQwenPrivateChatCompletion } from '@/services/qwen-private-chat';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
+import {
+  applyAdultModeAction,
+  getEffectiveQwenBaseUrl,
+  getEffectiveQwenModel,
+  parseAdultModeCommand,
+  readPrivateChatSettings,
+  writePrivateChatSettings,
+} from '@/lib/private-chat-settings-store';
 import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
 
@@ -24,6 +42,14 @@ type RequestBody = {
   personality?: string;
   historyLimit?: number;
   tenantId?: string;
+};
+
+type CompletionResult = {
+  text: string;
+  provider?: string;
+  filtered?: boolean;
+  upstreamStatus?: number;
+  upstreamError?: string;
 };
 
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -48,14 +74,35 @@ const privateRespondSchema = z.object({
 function formatHistory(messages: PrivateChatMessage[]): string {
   if (messages.length === 0) return '';
 
-  const lines = messages.map((m) => {
-    const role = m.type === 'ai' ? (m.username || 'AI') : (m.username || 'User');
-    const mediaCount = (m.attachments?.length || 0) + (m.embeds?.length || 0);
+  const lines = messages.map((entry) => {
+    const role = entry.type === 'ai' ? (entry.username || 'AI') : (entry.username || 'User');
+    const mediaCount = (entry.attachments?.length || 0) + (entry.embeds?.length || 0);
     const mediaNote = mediaCount ? ` [${mediaCount} media item${mediaCount === 1 ? '' : 's'}]` : '';
-    return `${role}: ${m.message}${mediaNote}`;
+    return `${role}: ${entry.message}${mediaNote}`;
   });
 
   return `Conversation so far:\n${lines.join('\n')}`;
+}
+
+function splitPersonality(rawPersonality: string): { systemIdentity: string; extendedGuidance: string } {
+  if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
+    const splitIndex = rawPersonality.indexOf('\n---');
+    return {
+      systemIdentity: rawPersonality.substring(0, splitIndex).trim(),
+      extendedGuidance: rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim(),
+    };
+  }
+  return { systemIdentity: rawPersonality, extendedGuidance: '' };
+}
+
+function safeQwenError(value: string | undefined): string {
+  return String(value || 'The endpoint did not respond.')
+    .replace(/https?:\/\/\S+/gi, '[Qwen endpoint]')
+    .replace(/bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/sk-[a-z0-9_-]+/gi, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 220);
 }
 
 async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
@@ -63,13 +110,13 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
     const messageCount = await getPrivateMessageCount(tenantId);
     if (messageCount > 0 && messageCount % 50 === 0) {
       console.log(`[Private LTM] Message count reached ${messageCount}, condensing history...`);
-      
+
       const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         console.log('[Private LTM] Successfully condensed memory:', data.title);
@@ -80,31 +127,177 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
   }
 }
 
+async function savePrivateReply(
+  tenantId: string,
+  botName: string,
+  responseText: string,
+): Promise<void> {
+  await appendPrivateChatMessages([{
+    type: 'ai',
+    username: botName,
+    message: responseText,
+    timestamp: new Date().toISOString(),
+  }], 100, tenantId);
+}
+
 export async function POST(request: NextRequest) {
   if (VERBOSE_LOGS) console.log('[Private Chat API] POST request received');
-  
+
   try {
     const parsed = privateRespondSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
-      console.log('[Private Chat API] Missing required fields');
-      return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
+      return apiError('Missing required fields: username, message', {
+        status: 400,
+        code: 'INVALID_BODY',
+      });
     }
 
-    const { username, message, attachments, embeds, personality, historyLimit, tenantId: bodyTenantId } = parsed.data as RequestBody;
+    const {
+      username,
+      message,
+      attachments,
+      embeds,
+      historyLimit,
+      tenantId: bodyTenantId,
+    } = parsed.data as RequestBody;
     const session = getTenantFromRequest(request);
     const hasServiceAccess = hasInternalServiceAccess(request);
     const hasMountainViewAccess = hasMountainViewBridgeAccess(request);
     if (!session?.tenantId && !hasServiceAccess && !hasMountainViewAccess) {
       return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
     }
+
     const tenantId = session?.tenantId || ((hasServiceAccess || hasMountainViewAccess) ? bodyTenantId : undefined);
     if (!tenantId) {
       return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
     }
+
     const botName = getBotName(tenantId);
     const botPersonality = getBotPersonality(tenantId);
-    if (VERBOSE_LOGS) {
-      console.log('[Private Chat API] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', botName, personalitySnippet: botPersonality?.slice(0, 60) });
+    const privateSettings = await readPrivateChatSettings(tenantId);
+    const adultModeAction = parseAdultModeCommand(message, botName);
+
+    await incrementPrivateMessageCount(tenantId);
+    await checkAndCondensePrivateMemory(tenantId);
+    const history = await readPrivateChatMessages(historyLimit, tenantId);
+
+    const userEntry: PrivateChatMessage = {
+      type: 'user',
+      username,
+      message,
+      timestamp: new Date().toISOString(),
+      attachments,
+      embeds,
+    };
+    await appendPrivateChatMessages([userEntry], 100, tenantId);
+
+    if (adultModeAction) {
+      const adultMode = applyAdultModeAction(privateSettings.adultMode, adultModeAction);
+      const saved = adultModeAction === 'status'
+        ? privateSettings
+        : await writePrivateChatSettings({ adultMode }, tenantId);
+      const effectiveMode = adultModeAction === 'status' ? privateSettings.adultMode : saved.adultMode;
+      const endpointConfigured = Boolean(getEffectiveQwenBaseUrl(saved));
+      const modelConfigured = Boolean(getEffectiveQwenModel(saved));
+      const responseText = effectiveMode
+        ? [
+            'Adult Mode is ON for private DMs.',
+            endpointConfigured && modelConfigured
+              ? 'Athena will use only our configured Qwen endpoint.'
+              : 'The Qwen endpoint or model still needs to be configured on the Private Chat page.',
+            'If Qwen is unavailable, the request stops there and no cloud fallback is used.',
+            'This mode is only for fictional, consenting adults age 18 or older.',
+          ].join(' ')
+        : 'Adult Mode is OFF. Private DMs will use the normal configured Athena provider.';
+
+      await savePrivateReply(tenantId, botName, responseText);
+      return apiOk({
+        response: responseText,
+        provider: 'private-chat-control',
+        adultMode: effectiveMode,
+      });
+    }
+
+    const ltmTitles = await getPrivateLTMTitles(tenantId);
+    const { systemIdentity, extendedGuidance } = splitPersonality(botPersonality);
+    const governedSystemIdentity = [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY]
+      .filter(Boolean)
+      .join('\n\n');
+
+    if (privateSettings.adultMode) {
+      const roleplayHistory = history.filter((entry) => !parseAdultModeCommand(entry.message, botName));
+      const qwenBaseUrl = getEffectiveQwenBaseUrl(privateSettings);
+      const qwenModel = getEffectiveQwenModel(privateSettings);
+      const qwenApiKey = process.env.PRIVATE_QWEN_API_KEY || '';
+
+      let completion = await requestQwenPrivateChatCompletion({
+        baseUrl: qwenBaseUrl,
+        model: qwenModel,
+        apiKey: qwenApiKey,
+        systemPrompt: governedSystemIdentity,
+        username,
+        botName,
+        message,
+        history: roleplayHistory,
+        memoryIndex: ltmTitles,
+      });
+
+      if (completion.upstreamStatus || completion.upstreamError) {
+        console.error('[Private Chat API] Self-hosted Qwen error:', completion.upstreamStatus || null, completion.upstreamError);
+        const responseText = [
+          'Adult Mode is on, but the private Qwen model is unavailable.',
+          safeQwenError(completion.upstreamError),
+          'No fallback provider received this message.',
+        ].join(' ');
+        await savePrivateReply(tenantId, botName, responseText);
+        return apiOk({
+          response: responseText,
+          provider: 'self-hosted-qwen-unavailable',
+          adultMode: true,
+        });
+      }
+
+      let responseText = completion.text;
+      const ltmRequestMatch = responseText.match(/^\s*LTM_REQUEST:\s*(.+?)\s*$/i);
+      if (ltmRequestMatch) {
+        const requestedTitle = ltmRequestMatch[1].trim();
+        try {
+          const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
+          if (ltmContent) {
+            completion = await requestQwenPrivateChatCompletion({
+              baseUrl: qwenBaseUrl,
+              model: qwenModel,
+              apiKey: qwenApiKey,
+              systemPrompt: governedSystemIdentity,
+              username,
+              botName,
+              message,
+              history: roleplayHistory,
+              memoryContext: ltmContent,
+            });
+            responseText = completion.text || [
+              'I found the memory, but Qwen could not complete the reply.',
+              safeQwenError(completion.upstreamError),
+            ].join(' ');
+          } else {
+            responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
+          }
+        } catch (error) {
+          console.error('[Private Chat] Failed to retrieve LTM for Qwen:', error);
+          responseText = 'I had trouble accessing that memory. Could you remind me what you were referring to?';
+        }
+      }
+
+      if (!responseText) {
+        responseText = 'Qwen returned an empty private reply. No fallback provider was used.';
+      }
+
+      await savePrivateReply(tenantId, botName, responseText);
+      return apiOk({
+        response: responseText,
+        provider: 'self-hosted-qwen',
+        adultMode: true,
+      });
     }
 
     const generationSettings = await readGenerationSettings(tenantId);
@@ -116,66 +309,27 @@ export async function POST(request: NextRequest) {
       return apiError('Server missing EdenAI API key', { status: 500, code: 'MISSING_CONFIG' });
     }
 
-    // Increment message count and check for LTM condensation
-    const messageCount = await incrementPrivateMessageCount(tenantId);
-    await checkAndCondensePrivateMemory(tenantId);
-
-    const history = await readPrivateChatMessages(historyLimit, tenantId);
-
-    // Get LTM titles for context
-    const ltmTitles = await getPrivateLTMTitles(tenantId);
-    const ltmContext = ltmTitles.length > 0 
+    const ltmContext = ltmTitles.length > 0
       ? `\n\nLong Term Memory titles (request full content if relevant): ${ltmTitles.join(', ')}`
       : '';
-
-    // Two-tier personality split — ALWAYS use server-side tenant personality (ignore client override)
-    let systemIdentity: string;
-    let extendedGuidance: string;
-    const rawPersonality = botPersonality;
-    if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
-      const splitIndex = rawPersonality.indexOf('\n---');
-      systemIdentity = rawPersonality.substring(0, splitIndex).trim();
-      extendedGuidance = rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim();
-    } else {
-      systemIdentity = rawPersonality;
-      extendedGuidance = '';
-    }
-
     const historyText = formatHistory(history);
-
-    const promptParts = [
+    const privateContext = '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]';
+    const prompt = [
       extendedGuidance,
-      '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
+      privateContext,
       'If you need more context from Long Term Memory, respond with: "LTM_REQUEST: [exact title]" and I will provide the full content.',
       historyText,
       `Latest message from ${username}: ${message}${ltmContext}`,
       `Respond as ${botName}:`,
-    ].filter(Boolean);
-
-    const prompt = promptParts.join('\n\n');
+    ].filter(Boolean).join('\n\n');
     const reducedContextPrompt = [
       extendedGuidance,
-      '[Context: This is a PRIVATE conversation with the broadcaster. Not on stream. You can speak freely, be more detailed, and discuss behind-the-scenes topics.]',
+      privateContext,
       `Latest message from ${username}: ${message}${ltmContext}`,
       `Respond as ${botName}:`,
     ].filter(Boolean).join('\n\n');
 
-    const userEntry: PrivateChatMessage = {
-      type: 'user',
-      username,
-      message,
-      timestamp: new Date().toISOString(),
-      attachments,
-      embeds,
-    };
-
-    if (VERBOSE_LOGS) {
-      console.log('[Private Chat API] Saving user message to tenant:', tenantId || 'NO TENANT - LEGACY PATH');
-      console.log('[Private Chat API] File path:', (await import('@/lib/private-chat-store')).getPrivateChatFilePath(tenantId));
-    }
-    await appendPrivateChatMessages([userEntry], 100, tenantId);
-
-    let completion = useSeaArtCharacter
+    let completion: CompletionResult = useSeaArtCharacter
       ? await requestSeaArtCharacterCompletion({
           token: seaartCharacterToken,
           tenantId,
@@ -186,15 +340,15 @@ export async function POST(request: NextRequest) {
         })
       : await requestPrivateChatCompletion({
           apiKey: edenaiKey,
-          systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
+          systemPrompt: governedSystemIdentity,
           prompt,
         });
 
-    if ('filtered' in completion && completion.filtered) {
+    if (completion.filtered) {
       console.warn('[Private Chat API] Retrying filtered DM without older conversation history');
       completion = await requestPrivateChatCompletion({
         apiKey: edenaiKey,
-        systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
+        systemPrompt: governedSystemIdentity,
         prompt: reducedContextPrompt,
       });
     }
@@ -210,20 +364,14 @@ export async function POST(request: NextRequest) {
     }
 
     let responseText = completion.text;
-
-    // Handle LTM requests
     const ltmRequestMatch = responseText.match(/LTM_REQUEST:\s*(.+)/);
     if (ltmRequestMatch) {
       const requestedTitle = ltmRequestMatch[1].trim();
-      
       try {
         const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
-        
         if (ltmContent) {
-          // Re-generate response with LTM content
-          const enhancedPrompt = prompt + `\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
-          
-          const enhancedCompletion = useSeaArtCharacter
+          const enhancedPrompt = `${prompt}\n\nLTM Content for "${requestedTitle}": ${ltmContent}\n\nNow respond as ${botName} (do not repeat the LTM content verbatim, use it naturally):`;
+          const enhancedCompletion: CompletionResult = useSeaArtCharacter
             ? await requestSeaArtCharacterCompletion({
                 token: seaartCharacterToken,
                 tenantId,
@@ -234,38 +382,29 @@ export async function POST(request: NextRequest) {
               })
             : await requestPrivateChatCompletion({
                 apiKey: edenaiKey,
-                systemPrompt: [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n'),
+                systemPrompt: governedSystemIdentity,
                 prompt: enhancedPrompt,
               });
-
           responseText = enhancedCompletion.text || responseText;
         } else {
-          // No memory found — let AI know
-          responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about, Commander?`;
+          responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
         }
       } catch (error) {
         console.error('[Private Chat] Failed to retrieve LTM:', error);
-        responseText = 'I had trouble accessing my memory banks. Could you remind me what you were referring to?';
+        responseText = 'I had trouble accessing my memory. Could you remind me what you were referring to?';
       }
     }
 
     if (!responseText) {
-      console.log('[Private Chat API] AI returned empty response');
       return apiError('AI returned an empty response', { status: 502, code: 'EMPTY_RESPONSE' });
     }
 
-    const aiEntry: PrivateChatMessage = {
-      type: 'ai',
-      username: botName,
-      message: responseText,
-      timestamp: new Date().toISOString(),
-    };
-
-    if (VERBOSE_LOGS) console.log('[Private Chat API] Saving AI response:', aiEntry);
-    await appendPrivateChatMessages([aiEntry], 100, tenantId);
-
-    if (VERBOSE_LOGS) console.log('[Private Chat API] Successfully saved both messages');
-    return apiOk({ response: responseText, provider: useSeaArtCharacter ? 'seaart-character' : 'edenai' });
+    await savePrivateReply(tenantId, botName, responseText);
+    return apiOk({
+      response: responseText,
+      provider: useSeaArtCharacter ? 'seaart-character' : 'edenai',
+      adultMode: false,
+    });
   } catch (error) {
     console.error('Private chat respond API error:', error);
     return apiError('Failed to generate private chat response', { status: 500, code: 'INTERNAL_ERROR' });

@@ -2,7 +2,7 @@ import { listTenants } from '@/lib/tenant';
 import { readWorldLore } from '@/lib/world-lore-store';
 import { getBotName } from '@/lib/bot-settings-store';
 import { getStoredTokens } from '@/lib/token-utils.server';
-import { deleteMessage } from './discord-local';
+import { deleteMessage, editDiscordMessage, sendDiscordEmbed } from './discord-local';
 import {
   buildDiscordBotEmbed,
   getDiscordBotWebhookIdentity,
@@ -10,8 +10,8 @@ import {
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
 import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from './discord-message-cleanup';
 import { sendWebhookMessage } from './discord-webhooks';
-import { sendDiscordEmbed } from './discord-local';
 import { getTwitchUser } from './twitch';
+import { attachPrivateDmControls } from './private-dm-controls';
 
 const SPACEMOUNTAIN_FALLBACK_LOGO = 'https://spacemountain.live/assets/space-logo-main.png';
 
@@ -259,6 +259,23 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   }
 
   const sentId = typeof sent?.id === 'string' ? sent.id : '';
+
+  if (sentId && input.isPrivate) {
+    try {
+      const controlledEmbeds = attachPrivateDmControls(payload.embeds, {
+        channelId: input.channelId,
+        messageId: sentId,
+      });
+      await editDiscordMessage(input.channelId, sentId, {
+        embeds: controlledEmbeds,
+        ...(input.components?.length ? { components: input.components } : {}),
+      });
+    } catch (error) {
+      // Never suppress the actual DM response because the optional icon strip
+      // could not be attached. The reply itself remains usable.
+      console.warn('[Discord Reply] Failed to attach private emoji controls:', error);
+    }
+  }
 
   if (sentId && input.sourceMessageId && !input.isPrivate) {
     await deleteMessage(input.channelId, input.sourceMessageId).catch(() => {});

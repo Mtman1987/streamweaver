@@ -1,0 +1,198 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  applyAdultModeAction,
+  parseAdultModeCommand,
+} from '../src/lib/private-chat-settings-store';
+import {
+  QWEN_MAX_REPLY_CHARACTERS,
+  buildQwenMessages,
+  requestQwenPrivateChatCompletion,
+  resolveQwenEndpoint,
+  sanitizeQwenReply,
+} from '../src/services/qwen-private-chat';
+
+test('recognizes private adult-mode controls without treating ordinary conversation as a toggle', () => {
+  assert.equal(parseAdultModeCommand('adult mode on', 'Athena'), 'on');
+  assert.equal(parseAdultModeCommand('Athena, adult mode off', 'Athena'), 'off');
+  assert.equal(parseAdultModeCommand('spmt adult status', 'Athena'), 'status');
+  assert.equal(parseAdultModeCommand('!adult toggle', 'Athena'), 'toggle');
+  assert.equal(parseAdultModeCommand('Athena, tell me about the adult mode design', 'Athena'), null);
+
+  assert.equal(applyAdultModeAction(false, 'on'), true);
+  assert.equal(applyAdultModeAction(true, 'off'), false);
+  assert.equal(applyAdultModeAction(false, 'toggle'), true);
+  assert.equal(applyAdultModeAction(true, 'status'), true);
+});
+
+test('normalizes a hosted Qwen base URL to OpenAI-compatible chat completions', () => {
+  assert.deepEqual(
+    resolveQwenEndpoint('https://qwen.example.com/v1', { production: true }),
+    {
+      ok: true,
+      endpoint: 'https://qwen.example.com/v1/chat/completions',
+    },
+  );
+
+  const insecure = resolveQwenEndpoint('http://qwen.example.com/v1', { production: true });
+  assert.equal(insecure.ok, false);
+  if (!insecure.ok) assert.match(insecure.error, /must use HTTPS/i);
+});
+
+test('builds Qwen chat messages without embedding the transcript a second time', () => {
+  const messages = buildQwenMessages({
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'Continue from there.',
+    history: [
+      { type: 'user', username: 'Commander', message: 'First turn', timestamp: '1' },
+      { type: 'ai', username: 'Athena', message: 'First answer', timestamp: '2' },
+      { type: 'user', username: 'Commander', message: 'Continue from there.', timestamp: '3' },
+    ],
+    memoryIndex: ['favorite scene'],
+  });
+
+  assert.equal(messages[0].role, 'system');
+  assert.match(messages[0].content, /Return only the assistant character next turn/i);
+  assert.deepEqual(messages.slice(1).map((entry) => entry.content), [
+    'First turn',
+    'First answer',
+    'Continue from there.',
+  ]);
+  assert.equal(messages.filter((entry) => entry.content.includes('Continue from there.')).length, 1);
+  assert.equal(messages.some((entry) => /Conversation so far:/i.test(entry.content)), false);
+});
+
+test('collapses repeated Qwen blocks and stops generated multi-turn transcripts', () => {
+  const repeated = [
+    'Athena: I step closer and answer quietly.',
+    '',
+    'I step closer and answer quietly.',
+    '',
+    'I step closer and answer quietly.',
+    '',
+    'User: repeats the next prompt',
+  ].join('\n');
+
+  assert.equal(
+    sanitizeQwenReply({
+      text: repeated,
+      username: 'User',
+      botName: 'Athena',
+      latestUserMessage: 'Please continue the scene from where we stopped.',
+    }),
+    'I step closer and answer quietly.',
+  );
+});
+
+test('strips Qwen thinking blocks before the private reply is stored or sent', () => {
+  const cleaned = sanitizeQwenReply({
+    text: '<think>private chain of thought that must not be sent</think>Final visible answer.',
+    username: 'Commander',
+    botName: 'Athena',
+  });
+  assert.equal(cleaned, 'Final visible answer.');
+});
+
+test('cleans a repeated assistant message already present in private history', () => {
+  const messages = buildQwenMessages({
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'Next turn.',
+    history: [
+      {
+        type: 'ai',
+        username: 'Athena',
+        message: 'A prior answer. A prior answer. A prior answer.',
+        timestamp: '1',
+      },
+    ],
+  });
+  assert.equal(messages[1].content, 'A prior answer.');
+});
+
+test('removes a long exact echo of the latest user message', () => {
+  const latest = 'Please continue exactly from the last private scene without restating my request.';
+  const cleaned = sanitizeQwenReply({
+    text: `${latest}\n\nAthena answers with a new line.`,
+    username: 'Commander',
+    botName: 'Athena',
+    latestUserMessage: latest,
+  });
+  assert.equal(cleaned, 'Athena answers with a new line.');
+});
+
+test('caps private Qwen output below the Discord embed description limit', () => {
+  const cleaned = sanitizeQwenReply({
+    text: `${Array.from({ length: 500 }, (_, index) => `Sentence ${index} adds distinct useful detail.`).join(' ')} Final sentence.`,
+    username: 'Commander',
+    botName: 'Athena',
+  });
+  assert.ok(cleaned.length <= QWEN_MAX_REPLY_CHARACTERS);
+  assert.match(cleaned, /\.\.\.$/);
+});
+
+test('sends Qwen-specific anti-repetition sampling parameters', async () => {
+  let requestedUrl = '';
+  let requestedBody: any = null;
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: 'https://qwen.example.com/v1',
+    model: 'Qwen/private-roleplay',
+    apiKey: 'secret',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'Continue.',
+    history: [],
+    runtime: { production: true },
+    fetchImpl: async (input, init) => {
+      requestedUrl = String(input);
+      requestedBody = JSON.parse(String(init?.body || '{}'));
+      return new Response(JSON.stringify({
+        choices: [{
+          message: { content: 'A fresh response.' },
+          finish_reason: 'stop',
+        }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  assert.equal(requestedUrl, 'https://qwen.example.com/v1/chat/completions');
+  assert.equal(requestedBody.model, 'Qwen/private-roleplay');
+  assert.equal(requestedBody.temperature, 0.7);
+  assert.equal(requestedBody.top_p, 0.8);
+  assert.equal(requestedBody.top_k, 20);
+  assert.equal(requestedBody.repetition_penalty, 1.05);
+  assert.ok(requestedBody.max_tokens <= 1200);
+  assert.equal(requestedBody.messages.at(-1).content, 'Continue.');
+  assert.equal(requestedBody.prompt, undefined);
+  assert.equal(completion.text, 'A fresh response.');
+  assert.equal(completion.provider, 'self-hosted-qwen');
+});
+
+test('fails closed before fetch when the hosted Qwen endpoint is missing', async () => {
+  let fetchCalled = false;
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: '',
+    model: 'Qwen/private-roleplay',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'Private prompt',
+    history: [],
+    runtime: { production: true },
+    fetchImpl: async () => {
+      fetchCalled = true;
+      return new Response('{}');
+    },
+  });
+
+  assert.equal(fetchCalled, false);
+  assert.equal(completion.text, '');
+  assert.match(completion.upstreamError || '', /No Qwen endpoint/i);
+});
