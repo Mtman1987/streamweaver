@@ -10,15 +10,25 @@ const QWEN_HISTORY_ENTRY_CHARACTER_LIMIT = 6_000;
 
 export const QWEN_MAX_REPLY_CHARACTERS = 3_400;
 
-export const QWEN_PRIVATE_ROLEPLAY_POLICY = [
-  'This is a private fictional roleplay mode for consenting adults.',
-  'Every participant and character must be unambiguously age 18 or older.',
-  'Do not involve minors, age ambiguity, coercion, exploitation, incest, or sexualized real people.',
-  'Respect consent, limits, safe words, and any request to stop or change direction.',
+export const QWEN_PRIVATE_CHAT_POLICY = [
+  'This is a private conversation with the broadcaster.',
   'Stay in the configured character and preserve continuity from the supplied private history.',
   'Return only the assistant character next turn.',
   'Use non-thinking mode. Do not output private reasoning or <think> blocks.',
   'Do not reproduce the transcript, quote the latest user message, invent User or Assistant labels, or continue both sides of the conversation.',
+].join(' ');
+
+export const QWEN_ADULT_ROLEPLAY_POLICY = [
+  'Adult Mode is enabled for private fictional roleplay between consenting adults.',
+  'Every participant and character must be unambiguously age 18 or older.',
+  'Do not involve minors, age ambiguity, coercion, exploitation, incest, or sexualized real people.',
+  'Respect consent, limits, safe words, and any request to stop or change direction.',
+].join(' ');
+
+// Kept for compatibility with code that imported the original combined policy.
+export const QWEN_PRIVATE_ROLEPLAY_POLICY = [
+  QWEN_PRIVATE_CHAT_POLICY,
+  QWEN_ADULT_ROLEPLAY_POLICY,
 ].join(' ');
 
 export type QwenChatMessage = {
@@ -45,6 +55,7 @@ export type QwenPrivateChatRequest = {
   history: PrivateChatMessage[];
   memoryIndex?: string[];
   memoryContext?: string;
+  adultMode?: boolean;
   fetchImpl?: typeof fetch;
   runtime?: {
     production?: boolean;
@@ -69,7 +80,7 @@ export function resolveQwenEndpoint(
   if (!configured) {
     return {
       ok: false,
-      error: 'No Qwen endpoint is configured. Set PRIVATE_QWEN_BASE_URL or configure it on the Private Chat page.',
+      error: 'The built-in Qwen endpoint configuration is unavailable.',
     };
   }
 
@@ -84,15 +95,16 @@ export function resolveQwenEndpoint(
     return { ok: false, error: 'The Qwen endpoint must use HTTP or HTTPS.' };
   }
   if (url.username || url.password) {
-    return { ok: false, error: 'Do not place Qwen credentials in the endpoint URL. Use PRIVATE_QWEN_API_KEY.' };
+    return { ok: false, error: 'Do not place Qwen credentials in the endpoint URL.' };
   }
 
   const production = runtime.production ?? process.env.NODE_ENV === 'production';
-  const allowInsecureHttp = runtime.allowInsecureHttp ?? process.env.PRIVATE_QWEN_ALLOW_HTTP === 'true';
-  if (production && url.protocol === 'http:' && !isLoopbackHost(url.hostname) && !allowInsecureHttp) {
+  const isBuiltInWorker = url.hostname.toLowerCase() === 'spmt-llm-worker.internal';
+  const allowInsecureHttp = runtime.allowInsecureHttp === true;
+  if (production && url.protocol === 'http:' && !isLoopbackHost(url.hostname) && !isBuiltInWorker && !allowInsecureHttp) {
     return {
       ok: false,
-      error: 'Hosted Qwen endpoints must use HTTPS unless PRIVATE_QWEN_ALLOW_HTTP is explicitly enabled.',
+      error: 'Custom hosted Qwen endpoints must use HTTPS.',
     };
   }
 
@@ -286,8 +298,13 @@ export function buildQwenMessages(input: {
   history: PrivateChatMessage[];
   memoryIndex?: string[];
   memoryContext?: string;
+  adultMode?: boolean;
 }): QwenChatMessage[] {
-  const systemParts = [input.systemPrompt, QWEN_PRIVATE_ROLEPLAY_POLICY];
+  const systemParts = [
+    input.systemPrompt,
+    QWEN_PRIVATE_CHAT_POLICY,
+    input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
+  ];
   if (input.memoryIndex?.length) {
     systemParts.push(
       `Available long-term-memory titles: ${input.memoryIndex.join(', ')}. ` +
@@ -372,7 +389,7 @@ export async function requestQwenPrivateChatCompletion(
     return {
       text: '',
       provider,
-      upstreamError: 'No Qwen model is configured. Set PRIVATE_QWEN_MODEL or configure it on the Private Chat page.',
+      upstreamError: 'The built-in Qwen model configuration is unavailable.',
     };
   }
 
