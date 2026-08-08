@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test-athena-dm-commands:
-    name: Test Athena DM commands
+    name: Test Athena private Qwen routing
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -23,5 +23,7 @@ jobs:
         run: npm ci
       - name: Run open-command tests
         run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts
+      - name: Run private Qwen routing tests
+        run: node --import tsx --test tests/private-chat-qwen-mode.test.ts
       - name: Typecheck
         run: npm run typecheck
