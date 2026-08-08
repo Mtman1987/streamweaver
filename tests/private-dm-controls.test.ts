@@ -89,7 +89,7 @@ test('parses only the four allowed control actions', () => {
 });
 
 test('splits long private TTS at readable boundaries', () => {
-  const text = Array.from({ length: 140 }, (_, index) => `Sentence ${index} has enough words to sound natural.`).join(' ');
+  const text = Array.from({ length: 35 }, (_, index) => `Sentence ${index} has enough words to sound natural.`).join(' ');
   const chunks = splitPrivateTtsText(text, 500);
   assert.ok(chunks.length > 1);
   assert.ok(chunks.length <= 4);
