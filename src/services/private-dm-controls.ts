@@ -20,13 +20,6 @@ export type PrivateDmControlAction = keyof typeof PRIVATE_DM_CONTROL_ACTIONS;
 export type PrivateDmControlActionCode = typeof PRIVATE_DM_CONTROL_ACTIONS[PrivateDmControlAction];
 export type DiscordEmbedControlScope = 'private' | 'public';
 
-type PrivateDmControlTokenPayloadV1 = {
-  v: 1;
-  c: string;
-  m: string;
-  e: number;
-};
-
 type DiscordEmbedControlTokenPayloadV2 = {
   v: 2;
   c: string;
@@ -126,12 +119,13 @@ export function verifyPrivateDmControlToken(
   if (!encoded || !signature || extra.length || !safeEqual(signature, sign(encoded))) return null;
 
   try {
-    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<PrivateDmControlTokenPayloadV1 & DiscordEmbedControlTokenPayloadV2>;
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Record<string, unknown>;
     if (!isSnowflake(payload.c) || !isSnowflake(payload.m)) return null;
     const expiresAt = Number(payload.e);
     if (!Number.isSafeInteger(expiresAt) || expiresAt < nowSeconds) return null;
     if (expiresAt > nowSeconds + PRIVATE_DM_CONTROL_TTL_SECONDS + 300) return null;
 
+    // Version 1 tokens were issued by the original private-only implementation.
     if (payload.v === 1) {
       return {
         channelId: payload.c,
@@ -141,13 +135,22 @@ export function verifyPrivateDmControlToken(
       };
     }
     if (payload.v !== 2 || (payload.s !== 'd' && payload.s !== 'p')) return null;
-    if (payload.s === 'p' && !validTenantId(payload.t)) return null;
+    if (payload.s === 'p') {
+      const tenantId = String(payload.t || '');
+      if (!validTenantId(tenantId)) return null;
+      return {
+        channelId: payload.c,
+        messageId: payload.m,
+        expiresAt,
+        scope: 'public',
+        tenantId,
+      };
+    }
     return {
       channelId: payload.c,
       messageId: payload.m,
       expiresAt,
-      scope: payload.s === 'p' ? 'public' : 'private',
-      ...(payload.s === 'p' ? { tenantId: payload.t } : {}),
+      scope: 'private',
     };
   } catch {
     return null;
