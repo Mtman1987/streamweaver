@@ -4,22 +4,22 @@ import { tenantPath } from '@/lib/tenant';
 
 export type AdultModeAction = 'on' | 'off' | 'toggle' | 'status';
 
+export const SPMT_PRIVATE_QWEN_BASE_URL = 'http://spmt-llm-worker.internal:8080/v1';
+export const SPMT_PRIVATE_QWEN_MODEL = 'spmt-qwen3-4b';
+
 export type PrivateChatSettings = {
   adultMode: boolean;
-  qwenBaseUrl: string;
-  qwenModel: string;
 };
 
 export type PublicPrivateChatSettings = PrivateChatSettings & {
-  qwenEndpointConfigured: boolean;
-  qwenModelConfigured: boolean;
-  qwenApiKeyConfigured: boolean;
+  qwenProvider: 'spmt-qwen';
+  qwenModel: string;
+  qwenTransport: 'fly-private-network';
+  qwenReady: true;
 };
 
 const defaults: PrivateChatSettings = {
   adultMode: false,
-  qwenBaseUrl: '',
-  qwenModel: '',
 };
 
 function filePath(tenantId?: string): string {
@@ -27,11 +27,12 @@ function filePath(tenantId?: string): string {
   return resolve(process.cwd(), 'data', 'private-chat-settings.json');
 }
 
-function sanitize(input: Partial<PrivateChatSettings>): PrivateChatSettings {
+function sanitize(input: Partial<PrivateChatSettings> & Record<string, unknown>): PrivateChatSettings {
+  // Older files may contain qwenBaseUrl/qwenModel from the temporary configurable
+  // endpoint design. Ignore those fields: private DMs always use the existing
+  // SPMT Qwen worker and model.
   return {
     adultMode: input.adultMode === true,
-    qwenBaseUrl: String(input.qwenBaseUrl || '').trim().slice(0, 2000),
-    qwenModel: String(input.qwenModel || '').trim().slice(0, 300),
   };
 }
 
@@ -39,20 +40,21 @@ export function getDefaultPrivateChatSettings(): PrivateChatSettings {
   return { ...defaults };
 }
 
-export function getEffectiveQwenBaseUrl(settings: PrivateChatSettings): string {
-  return settings.qwenBaseUrl || process.env.PRIVATE_QWEN_BASE_URL || process.env.PRIVATE_QWEN_URL || '';
+export function getEffectiveQwenBaseUrl(_settings?: PrivateChatSettings): string {
+  return SPMT_PRIVATE_QWEN_BASE_URL;
 }
 
-export function getEffectiveQwenModel(settings: PrivateChatSettings): string {
-  return settings.qwenModel || process.env.PRIVATE_QWEN_MODEL || '';
+export function getEffectiveQwenModel(_settings?: PrivateChatSettings): string {
+  return SPMT_PRIVATE_QWEN_MODEL;
 }
 
 export function toPublicPrivateChatSettings(settings: PrivateChatSettings): PublicPrivateChatSettings {
   return {
     ...settings,
-    qwenEndpointConfigured: Boolean(getEffectiveQwenBaseUrl(settings)),
-    qwenModelConfigured: Boolean(getEffectiveQwenModel(settings)),
-    qwenApiKeyConfigured: Boolean(process.env.PRIVATE_QWEN_API_KEY),
+    qwenProvider: 'spmt-qwen',
+    qwenModel: SPMT_PRIVATE_QWEN_MODEL,
+    qwenTransport: 'fly-private-network',
+    qwenReady: true,
   };
 }
 
@@ -70,10 +72,7 @@ export async function writePrivateChatSettings(
   tenantId?: string,
 ): Promise<PrivateChatSettings> {
   const current = await readPrivateChatSettings(tenantId);
-  const definedPatch = Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => value !== undefined),
-  ) as Partial<PrivateChatSettings>;
-  const next = sanitize({ ...current, ...definedPatch });
+  const next = sanitize({ ...current, ...patch });
   const target = filePath(tenantId);
   const temporary = `${target}.tmp.${process.pid}.${Date.now()}`;
   await fs.mkdir(dirname(target), { recursive: true });

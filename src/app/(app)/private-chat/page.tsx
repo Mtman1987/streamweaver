@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
@@ -19,20 +18,18 @@ interface Message {
 
 interface PrivateChatSettings {
   adultMode: boolean;
-  qwenBaseUrl: string;
+  qwenProvider: "spmt-qwen";
   qwenModel: string;
-  qwenEndpointConfigured: boolean;
-  qwenModelConfigured: boolean;
-  qwenApiKeyConfigured: boolean;
+  qwenTransport: "fly-private-network";
+  qwenReady: boolean;
 }
 
 const defaultSettings: PrivateChatSettings = {
   adultMode: false,
-  qwenBaseUrl: "",
-  qwenModel: "",
-  qwenEndpointConfigured: false,
-  qwenModelConfigured: false,
-  qwenApiKeyConfigured: false,
+  qwenProvider: "spmt-qwen",
+  qwenModel: "spmt-qwen3-4b",
+  qwenTransport: "fly-private-network",
+  qwenReady: true,
 };
 
 export default function PrivateChatPage() {
@@ -75,29 +72,25 @@ export default function PrivateChatPage() {
     toast({ title: "Cleared" });
   };
 
-  const saveSettings = async (patch: Partial<PrivateChatSettings> = {}) => {
+  const saveAdultMode = async (adultMode: boolean) => {
     setSaving(true);
-    const next = { ...settings, ...patch };
+    setSettings((current) => ({ ...current, adultMode }));
     try {
       const response = await fetch("/api/private-chat/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          adultMode: next.adultMode,
-          qwenBaseUrl: next.qwenBaseUrl,
-          qwenModel: next.qwenModel,
-        }),
+        body: JSON.stringify({ adultMode }),
       });
       const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || "Settings were not saved");
+      if (!response.ok) throw new Error(data?.error || "Adult Mode was not saved");
       const saved = data.settings || data.data?.settings;
       if (saved) setSettings({ ...defaultSettings, ...saved });
-      else setSettings(next);
-      toast({ title: "Private Qwen settings saved" });
+      toast({ title: `Adult Mode ${adultMode ? "enabled" : "disabled"}` });
     } catch (error) {
+      setSettings((current) => ({ ...current, adultMode: !adultMode }));
       toast({
         variant: "destructive",
-        title: "Private chat settings were not saved",
+        title: "Adult Mode was not saved",
         description: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -105,78 +98,41 @@ export default function PrivateChatPage() {
     }
   };
 
-  const statusText = [
-    settings.qwenEndpointConfigured ? "endpoint ready" : "endpoint missing",
-    settings.qwenModelConfigured ? "model ready" : "model missing",
-    settings.qwenApiKeyConfigured ? "server key set" : "no server key",
-  ].join(" · ");
-
   return (
     <div className="max-w-3xl space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Adult Mode and hosted Qwen</CardTitle>
+          <CardTitle className="text-base">Adult Mode — SPMT Qwen</CardTitle>
           <CardDescription>
-            Adult Mode sends private DMs only to the Qwen endpoint that you control. It does not fall back to EdenAI, Gemini, OpenAI, or SeaArt.
+            Private Discord DMs use the Qwen worker that already runs for SPMT. There is no URL, model, GPU-host, or API-key setup on this page.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-5 rounded-lg border p-4">
             <div>
               <Label htmlFor="adult-mode">Adult Mode</Label>
               <p className="mt-1 text-sm text-muted-foreground">
-                Fictional roleplay is limited to consenting adults age 18 or older. If Qwen is unavailable, Athena reports the failure without forwarding the prompt elsewhere.
+                When enabled, Athena routes this tenant&apos;s private Discord conversation to SPMT Qwen only. It does not fall back to EdenAI, Gemini, OpenAI, or SeaArt.
               </p>
             </div>
             <Switch
               id="adult-mode"
               checked={settings.adultMode}
-              onCheckedChange={(adultMode) => {
-                setSettings((current) => ({ ...current, adultMode }));
-                void saveSettings({ adultMode });
-              }}
+              onCheckedChange={(adultMode) => void saveAdultMode(adultMode)}
               disabled={saving}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="qwen-url">Qwen API base URL</Label>
-            <Input
-              id="qwen-url"
-              value={settings.qwenBaseUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, qwenBaseUrl: event.target.value }))}
-              placeholder="https://qwen.example.com/v1"
-            />
-            <p className="text-xs text-muted-foreground">
-              Use the OpenAI-compatible base URL for your hosted Qwen server. Leave this blank to use the server secret PRIVATE_QWEN_BASE_URL.
-            </p>
+          <div className="rounded-md border px-3 py-3 text-sm">
+            <div className="font-medium">Current private model: {settings.qwenModel}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              SPMT-owned Qwen worker · private Fly network · {settings.qwenReady ? "ready by configuration" : "unavailable"}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="qwen-model">Qwen model ID</Label>
-            <Input
-              id="qwen-model"
-              value={settings.qwenModel}
-              onChange={(event) => setSettings((current) => ({ ...current, qwenModel: event.target.value }))}
-              placeholder="Qwen model name exposed by your server"
-            />
-            <p className="text-xs text-muted-foreground">
-              Leave this blank to use PRIVATE_QWEN_MODEL. The API key stays server-side in PRIVATE_QWEN_API_KEY.
-            </p>
-          </div>
-
-          <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
-            Qwen status: {statusText}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => void saveSettings()} disabled={saving}>
-              {saving ? "Saving..." : "Save Qwen settings"}
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              DM commands: <code>adult mode on</code>, <code>adult mode off</code>, and <code>adult mode status</code>.
-            </span>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            DM controls: <code>adult mode on</code>, <code>adult mode off</code>, <code>adult mode toggle</code>, or <code>adult mode status</code>.
+          </p>
         </CardContent>
       </Card>
 

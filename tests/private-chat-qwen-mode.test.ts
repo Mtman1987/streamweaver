@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   applyAdultModeAction,
+  getEffectiveQwenBaseUrl,
+  getEffectiveQwenModel,
   parseAdultModeCommand,
+  SPMT_PRIVATE_QWEN_BASE_URL,
+  SPMT_PRIVATE_QWEN_MODEL,
 } from '../src/lib/private-chat-settings-store';
 import {
   QWEN_MAX_REPLY_CHARACTERS,
@@ -25,21 +30,39 @@ test('recognizes private adult-mode controls without treating ordinary conversat
   assert.equal(applyAdultModeAction(true, 'status'), true);
 });
 
-test('normalizes a hosted Qwen base URL to OpenAI-compatible chat completions', () => {
+test('uses the existing SPMT Qwen worker and model without tenant or env setup', () => {
+  assert.equal(getEffectiveQwenBaseUrl({ adultMode: true }), SPMT_PRIVATE_QWEN_BASE_URL);
+  assert.equal(getEffectiveQwenModel({ adultMode: true }), SPMT_PRIVATE_QWEN_MODEL);
   assert.deepEqual(
-    resolveQwenEndpoint('https://qwen.example.com/v1', { production: true }),
+    resolveQwenEndpoint(undefined, { production: true }),
     {
       ok: true,
-      endpoint: 'https://qwen.example.com/v1/chat/completions',
+      endpoint: 'http://spmt-llm-worker.internal:8080/v1/chat/completions',
     },
   );
 
-  const insecure = resolveQwenEndpoint('http://qwen.example.com/v1', { production: true });
-  assert.equal(insecure.ok, false);
-  if (!insecure.ok) assert.match(insecure.error, /must use HTTPS/i);
+  const publicHttp = resolveQwenEndpoint('http://qwen.example.com/v1', { production: true });
+  assert.equal(publicHttp.ok, false);
+  if (!publicHttp.ok) assert.match(publicHttp.error, /private network/i);
 });
 
-test('builds Qwen chat messages without embedding the transcript a second time', () => {
+test('real Discord DMs hand off to the private-chat route that selects Qwen in Adult Mode', async () => {
+  const discordRoute = await readFile(
+    new URL('../src/app/api/discord/chat/route.ts', import.meta.url),
+    'utf8',
+  );
+  const privateRoute = await readFile(
+    new URL('../src/app/api/private-chat/respond/route.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(discordRoute, /if \(isPrivateDiscordLane\)/);
+  assert.match(discordRoute, /\/api\/private-chat\/respond/);
+  assert.match(privateRoute, /if \(privateSettings\.adultMode\)/);
+  assert.match(privateRoute, /requestQwenPrivateChatCompletion/);
+});
+
+test('builds Qwen chat messages without embedding the transcript or latest message twice', () => {
   const messages = buildQwenMessages({
     systemPrompt: 'You are Athena.',
     username: 'Commander',
@@ -95,22 +118,61 @@ test('strips Qwen thinking blocks before the private reply is stored or sent', (
   assert.equal(cleaned, 'Final visible answer.');
 });
 
-test('cleans a repeated assistant message already present in private history', () => {
+test('removes one or many copies of the previous assistant turn before keeping new text', () => {
+  const previous = 'I cross the room slowly, stop beside you, and answer in a quiet voice without breaking eye contact.';
+  const raw = [
+    previous,
+    previous,
+    previous,
+    'Then I give a completely new response that moves the scene forward.',
+  ].join('\n\n');
+
+  assert.equal(
+    sanitizeQwenReply({
+      text: raw,
+      username: 'Commander',
+      botName: 'Athena',
+      recentAssistantMessages: [previous],
+    }),
+    'Then I give a completely new response that moves the scene forward.',
+  );
+});
+
+test('removes a punctuation-reformatted copy of the previous assistant turn', () => {
+  const previous = 'I step closer, lower my voice, and wait for your answer before continuing.';
+  const raw = 'I step closer — lower my voice — and wait for your answer before continuing.\n\nA new continuation follows.';
+
+  assert.equal(
+    sanitizeQwenReply({
+      text: raw,
+      username: 'Commander',
+      botName: 'Athena',
+      recentAssistantMessages: [previous],
+    }),
+    'A new continuation follows.',
+  );
+});
+
+test('repairs cumulative assistant history before it is sent back to Qwen', () => {
+  const first = 'First assistant turn with enough words to qualify as a known echo for cleanup.';
+  const second = 'Second assistant turn that advances the conversation instead of replaying the first.';
   const messages = buildQwenMessages({
     systemPrompt: 'You are Athena.',
     username: 'Commander',
     botName: 'Athena',
-    message: 'Next turn.',
+    message: 'Continue.',
     history: [
-      {
-        type: 'ai',
-        username: 'Athena',
-        message: 'A prior answer. A prior answer. A prior answer.',
-        timestamp: '1',
-      },
+      { type: 'user', username: 'Commander', message: 'Begin.', timestamp: '1' },
+      { type: 'ai', username: 'Athena', message: first, timestamp: '2' },
+      { type: 'user', username: 'Commander', message: 'Next.', timestamp: '3' },
+      { type: 'ai', username: 'Athena', message: `${first}\n\n${second}`, timestamp: '4' },
     ],
   });
-  assert.equal(messages[1].content, 'A prior answer.');
+
+  const assistantMessages = messages
+    .filter((entry) => entry.role === 'assistant')
+    .map((entry) => entry.content);
+  assert.deepEqual(assistantMessages, [first, second]);
 });
 
 test('removes a long exact echo of the latest user message', () => {
@@ -134,13 +196,11 @@ test('caps private Qwen output below the Discord embed description limit', () =>
   assert.match(cleaned, /\.\.\.$/);
 });
 
-test('sends Qwen-specific anti-repetition sampling parameters', async () => {
+test('sends current-worker anti-repetition controls with no model authorization header', async () => {
   let requestedUrl = '';
   let requestedBody: any = null;
+  let requestedHeaders: HeadersInit | undefined;
   const completion = await requestQwenPrivateChatCompletion({
-    baseUrl: 'https://qwen.example.com/v1',
-    model: 'Qwen/private-roleplay',
-    apiKey: 'secret',
     systemPrompt: 'You are Athena.',
     username: 'Commander',
     botName: 'Athena',
@@ -150,6 +210,7 @@ test('sends Qwen-specific anti-repetition sampling parameters', async () => {
     fetchImpl: async (input, init) => {
       requestedUrl = String(input);
       requestedBody = JSON.parse(String(init?.body || '{}'));
+      requestedHeaders = init?.headers;
       return new Response(JSON.stringify({
         choices: [{
           message: { content: 'A fresh response.' },
@@ -162,37 +223,61 @@ test('sends Qwen-specific anti-repetition sampling parameters', async () => {
     },
   });
 
-  assert.equal(requestedUrl, 'https://qwen.example.com/v1/chat/completions');
-  assert.equal(requestedBody.model, 'Qwen/private-roleplay');
+  assert.equal(requestedUrl, 'http://spmt-llm-worker.internal:8080/v1/chat/completions');
+  assert.equal(requestedBody.model, 'spmt-qwen3-4b');
   assert.equal(requestedBody.temperature, 0.7);
   assert.equal(requestedBody.top_p, 0.8);
   assert.equal(requestedBody.top_k, 20);
-  assert.equal(requestedBody.repetition_penalty, 1.05);
-  assert.ok(requestedBody.max_tokens <= 1200);
-  assert.equal(requestedBody.messages.at(-1).content, 'Continue.');
+  assert.equal(requestedBody.repeat_penalty, 1.12);
+  assert.equal(requestedBody.repetition_penalty, 1.12);
+  assert.equal(requestedBody.thinking_budget_tokens, 0);
+  assert.equal(requestedBody.max_tokens, 900);
+  assert.match(requestedBody.messages.at(-1).content, /^Continue\.\n\n\/no_think$/);
   assert.equal(requestedBody.prompt, undefined);
+  assert.equal(new Headers(requestedHeaders).has('authorization'), false);
   assert.equal(completion.text, 'A fresh response.');
   assert.equal(completion.provider, 'self-hosted-qwen');
 });
 
-test('fails closed before fetch when the hosted Qwen endpoint is missing', async () => {
-  let fetchCalled = false;
+test('retries once without assistant history when Qwen returns only the previous reply', async () => {
+  const previous = 'This previous assistant reply is deliberately long enough to trigger known-echo removal during sanitization.';
+  let calls = 0;
+  const requestBodies: any[] = [];
+
   const completion = await requestQwenPrivateChatCompletion({
-    baseUrl: '',
-    model: 'Qwen/private-roleplay',
     systemPrompt: 'You are Athena.',
     username: 'Commander',
     botName: 'Athena',
-    message: 'Private prompt',
-    history: [],
+    message: 'Continue with something new.',
+    history: [
+      { type: 'ai', username: 'Athena', message: previous, timestamp: '1' },
+    ],
     runtime: { production: true },
-    fetchImpl: async () => {
-      fetchCalled = true;
-      return new Response('{}');
+    fetchImpl: async (_input, init) => {
+      calls++;
+      requestBodies.push(JSON.parse(String(init?.body || '{}')));
+      const content = calls === 1 ? previous : 'A genuinely new reply after the anti-repetition retry.';
+      return new Response(JSON.stringify({
+        choices: [{ message: { content }, finish_reason: 'stop' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
     },
   });
 
-  assert.equal(fetchCalled, false);
-  assert.equal(completion.text, '');
-  assert.match(completion.upstreamError || '', /No Qwen endpoint/i);
+  assert.equal(calls, 2);
+  assert.equal(completion.text, 'A genuinely new reply after the anti-repetition retry.');
+  assert.equal(requestBodies[0].repeat_penalty, 1.12);
+  assert.equal(requestBodies[1].repeat_penalty, 1.15);
+  assert.equal(requestBodies[1].messages.some((entry: any) => entry.role === 'assistant'), false);
+  assert.match(requestBodies[1].messages[0].content, /prior generation was discarded/i);
+});
+
+test('private Qwen configuration is not exposed as user-editable env or URL fields', async () => {
+  const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
+  const settingsPage = await readFile(
+    new URL('../src/app/(app)/private-chat/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(envExample, /PRIVATE_QWEN_/);
+  assert.doesNotMatch(settingsPage, /qwen-url|Qwen API base URL|PRIVATE_QWEN_/);
+  assert.match(settingsPage, /Private Discord DMs use the Qwen worker that already runs for SPMT/);
 });

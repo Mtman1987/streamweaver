@@ -1,63 +1,33 @@
-# Athena private DMs through owner-hosted Qwen
+# Athena private Discord DMs through the existing SPMT Qwen worker
 
-## Purpose
+## What this uses now
 
-Adult Mode routes Athena's private Discord conversations to an OpenAI-compatible Qwen endpoint controlled by the StreamWeaver owner. The endpoint can run on the same host, a private server, or a separate hosted GPU service. It does not need to run on the broadcaster's computer.
+Adult Mode uses the Qwen worker that already runs in the SPMT Fly organization:
 
-Normal private chat remains unchanged while Adult Mode is off. While Adult Mode is on, Qwen is the only text provider for that conversation. A failed Qwen request is reported privately and is not forwarded to EdenAI, Gemini, OpenAI, or SeaArt.
+- service: `spmt-llm-worker.internal:8080`;
+- API: OpenAI-compatible `/v1/chat/completions`;
+- model: `spmt-qwen3-4b`;
+- transport: Fly private networking;
+- user-facing configuration: none.
 
-## Repetition-loop fix
+This is the current CPU-hosted Qwen service. It is not the proposed future GPU host. StreamWeaver does not ask the broadcaster to configure a Qwen URL, model name, API key, or `.env` entry.
 
-The private Qwen path sends one structured message sequence:
+## This is the real Discord DM path
 
-1. one system message;
-2. recent user and assistant history; and
-3. the newest user message exactly once.
+Discord direct messages enter `src/app/api/discord/chat/route.ts`. After private commands are checked, normal DM conversation is sent to `/api/private-chat/respond`. When Adult Mode is on, that route calls the SPMT Qwen private-chat client and sends the cleaned result back to the same Discord DM.
 
-It does not place a second `Conversation so far` transcript inside the newest user prompt. Before each request it also:
+The Athena Coder/workbench is a separate surface. It can use the same underlying worker, but it is not the only place this private-chat code runs.
 
-- removes duplicate adjacent history entries;
-- cleans repeated blocks already stored in old assistant history;
-- limits history to 24 messages and a 28,000-character budget;
-- uses Qwen-oriented sampling values: temperature `0.7`, top-p `0.8`, top-k `20`, and repetition penalty `1.05`;
-- strips thinking blocks and Qwen control tokens;
-- removes a leading echo of the newest user message;
-- cuts accidental `User:` transcript continuation;
-- collapses repeated sentences, paragraphs, and exact tail blocks; and
-- caps the final Discord reply at 3,400 characters.
+## Provider behavior
 
-The sanitized reply is the only version saved back to private history, preventing one bad completion from multiplying on later turns.
+Normal private chat remains unchanged while Adult Mode is off. While Adult Mode is on:
 
-## Server configuration
+- Qwen is the only text provider for the private conversation;
+- no prompt is forwarded to EdenAI, Gemini, OpenAI, or SeaArt;
+- an unavailable Qwen worker produces a private error instead of a cloud fallback;
+- only the cleaned final response is saved into private history.
 
-Set these as deployment secrets or environment variables:
-
-```dotenv
-PRIVATE_QWEN_BASE_URL=https://your-qwen-host.example/v1
-PRIVATE_QWEN_MODEL=your-server-model-id
-PRIVATE_QWEN_API_KEY=replace-with-a-deployment-secret
-PRIVATE_QWEN_ALLOW_HTTP=false
-PRIVATE_QWEN_MAX_TOKENS=900
-```
-
-The endpoint must expose an OpenAI-compatible chat-completions API. A base URL ending in `/v1`, a base host URL, or the full `/v1/chat/completions` URL is accepted.
-
-`PRIVATE_QWEN_API_KEY` remains server-side. It is never stored in tenant JSON and is never returned to the browser.
-
-Remote production endpoints must use HTTPS unless `PRIVATE_QWEN_ALLOW_HTTP=true` is deliberately set for a trusted private network.
-
-## Per-tenant controls
-
-The Private Chat page provides:
-
-- an Adult Mode switch;
-- an optional tenant-specific Qwen base URL;
-- an optional tenant-specific model ID; and
-- configuration status without revealing the API key.
-
-Leaving the URL or model field blank uses the deployment-level environment value.
-
-Private DM commands are also supported:
+Adult Mode is controlled from the Private Chat page or directly in a Discord DM:
 
 ```text
 adult mode on
@@ -66,7 +36,25 @@ adult mode toggle
 adult mode status
 ```
 
-The same commands work after the configured bot name, `spmt`, or `!adult`.
+The same controls work after the configured bot name, `spmt`, or `!adult`.
+
+## Repetition-loop protection
+
+Each request contains one system message, recent structured user/assistant turns, and the newest user message exactly once. The Qwen client also:
+
+- removes duplicate adjacent history entries and repeated multi-message blocks;
+- repairs cumulative assistant replies already stored in old private history;
+- limits history to 24 messages and a 28,000-character budget;
+- disables Qwen thinking for the final reply;
+- uses temperature `0.7`, top-p `0.8`, top-k `20`, and llama.cpp `repeat_penalty` `1.12`;
+- strips thinking blocks, model control tokens, and a leading echo of the newest user message;
+- removes one or many copies of recent assistant turns from the start of a completion;
+- retries once without assistant history when a completion contains only copied prior text;
+- stops accidental `User:` or `Human:` transcript continuation;
+- collapses repeated sentences, paragraphs, and exact tail blocks; and
+- caps the final Discord response at 3,400 characters.
+
+Because only the cleaned reply is stored, a bad cumulative completion cannot multiply on every later turn.
 
 ## Roleplay boundary
 
@@ -74,11 +62,9 @@ Adult Mode is limited to fictional roleplay involving consenting characters who 
 
 ## Validation
 
-Run the focused regression suite and the normal typecheck:
-
 ```bash
 node --import tsx --test tests/private-chat-qwen-mode.test.ts
 npm run typecheck
 ```
 
-The regression tests cover command parsing, endpoint normalization, single-copy history construction, old-history cleanup, thinking-block removal, user-message echo removal, repeated-block collapse, Discord output capping, Qwen sampling parameters, and fail-closed behavior.
+The focused tests cover real-DM handoff, built-in SPMT worker selection, no API-key header, no duplicate newest message, old-history cleanup, cumulative assistant-echo removal, anti-loop retry, non-thinking request controls, output capping, and fail-closed behavior.
