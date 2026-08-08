@@ -6,8 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Trash2 } from "lucide-react";
+
+const QWEN_ENDPOINT_OPTIONS = [
+  { label: "MountainView rotator (Fly.io)", value: "https://mtman-machine-rotator.fly.dev" },
+  { label: "Ollama local", value: "http://localhost:11434" },
+  { label: "Custom...", value: "__custom__" },
+];
+
+const QWEN_MODEL_OPTIONS = [
+  { label: "qwen2.5", value: "qwen2.5" },
+  { label: "qwen2.5:7b", value: "qwen2.5:7b" },
+  { label: "qwen2.5:14b", value: "qwen2.5:14b" },
+  { label: "qwen2.5:32b", value: "qwen2.5:32b" },
+  { label: "qwen2.5:72b", value: "qwen2.5:72b" },
+  { label: "qwen3", value: "qwen3" },
+  { label: "qwen3:8b", value: "qwen3:8b" },
+  { label: "qwen3:14b", value: "qwen3:14b" },
+  { label: "qwen3:32b", value: "qwen3:32b" },
+  { label: "Custom...", value: "__custom__" },
+];
 import { useToast } from "@/hooks/use-toast";
 
 interface Message {
@@ -41,6 +61,8 @@ export default function PrivateChatPage() {
   const [settings, setSettings] = useState<PrivateChatSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [customUrl, setCustomUrl] = useState(false);
+  const [customModel, setCustomModel] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +77,10 @@ export default function PrivateChatPage() {
       }
       if (settingsResponse.ok) {
         const data = await settingsResponse.json();
-        setSettings({ ...defaultSettings, ...(data.settings || data.data?.settings || {}) });
+        const loaded = { ...defaultSettings, ...(data.settings || data.data?.settings || {}) };
+        setSettings(loaded);
+        setCustomUrl(!QWEN_ENDPOINT_OPTIONS.some((o) => o.value === loaded.qwenBaseUrl && o.value !== "__custom__") && loaded.qwenBaseUrl !== "");
+        setCustomModel(!QWEN_MODEL_OPTIONS.some((o) => o.value === loaded.qwenModel && o.value !== "__custom__") && loaded.qwenModel !== "");
       }
     } catch {
       // Keep the page usable if one private endpoint is temporarily offline.
@@ -141,28 +166,54 @@ export default function PrivateChatPage() {
 
           <div className="space-y-2">
             <Label htmlFor="qwen-url">Qwen API base URL</Label>
-            <Input
-              id="qwen-url"
-              value={settings.qwenBaseUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, qwenBaseUrl: event.target.value }))}
-              placeholder="https://qwen.example.com/v1"
-            />
-            <p className="text-xs text-muted-foreground">
-              Use the OpenAI-compatible base URL for your hosted Qwen server. Leave this blank to use the server secret PRIVATE_QWEN_BASE_URL.
-            </p>
+            <Select
+              value={customUrl ? "__custom__" : (settings.qwenBaseUrl || "")}
+              onValueChange={(v) => {
+                if (v === "__custom__") { setCustomUrl(true); return; }
+                setCustomUrl(false);
+                setSettings((c) => ({ ...c, qwenBaseUrl: v }));
+              }}
+            >
+              <SelectTrigger id="qwen-url"><SelectValue placeholder="Select endpoint..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— use server env var —</SelectItem>
+                {QWEN_ENDPOINT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {customUrl && (
+              <Input
+                value={settings.qwenBaseUrl}
+                onChange={(e) => setSettings((c) => ({ ...c, qwenBaseUrl: e.target.value }))}
+                placeholder="https://your-qwen-host/v1"
+              />
+            )}
+            <p className="text-xs text-muted-foreground">Leave blank to use PRIVATE_QWEN_BASE_URL server secret.</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="qwen-model">Qwen model ID</Label>
-            <Input
-              id="qwen-model"
-              value={settings.qwenModel}
-              onChange={(event) => setSettings((current) => ({ ...current, qwenModel: event.target.value }))}
-              placeholder="Qwen model name exposed by your server"
-            />
-            <p className="text-xs text-muted-foreground">
-              Leave this blank to use PRIVATE_QWEN_MODEL. The API key stays server-side in PRIVATE_QWEN_API_KEY.
-            </p>
+            <Label htmlFor="qwen-model">Qwen model</Label>
+            <Select
+              value={customModel ? "__custom__" : (settings.qwenModel || "")}
+              onValueChange={(v) => {
+                if (v === "__custom__") { setCustomModel(true); return; }
+                setCustomModel(false);
+                setSettings((c) => ({ ...c, qwenModel: v }));
+              }}
+            >
+              <SelectTrigger id="qwen-model"><SelectValue placeholder="Select model..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— use server env var —</SelectItem>
+                {QWEN_MODEL_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {customModel && (
+              <Input
+                value={settings.qwenModel}
+                onChange={(e) => setSettings((c) => ({ ...c, qwenModel: e.target.value }))}
+                placeholder="model name exposed by your server"
+              />
+            )}
+            <p className="text-xs text-muted-foreground">Leave blank to use PRIVATE_QWEN_MODEL. API key stays server-side in PRIVATE_QWEN_API_KEY.</p>
           </div>
 
           <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
