@@ -1,5 +1,6 @@
 import AppShell from '@/components/layout/app-shell';
 import { OBSBridge } from '@/components/obs-bridge';
+import { DiscordMediaVideoEnhancer } from '@/components/discord-media-video-enhancer';
 import { parseSessionCookie } from '@/lib/session-cookie';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -21,6 +22,7 @@ export default async function AppLayout({
     <WorkspaceThemeProvider>
       <AppShell>
         <OBSBridge />
+        <DiscordMediaVideoEnhancer />
         {children}
       </AppShell>
     </WorkspaceThemeProvider>
