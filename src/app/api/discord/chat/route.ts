@@ -25,6 +25,7 @@ import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/b
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import { parseDiscordChatPayload } from '@/lib/discord-chat-payload';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
 import {
   beginPendingMtSupportRequest,
   consumePendingMtSupportRequest,
@@ -742,6 +743,7 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: false, error: 'empty-private-response' });
       }
 
+      const dmSettings = await readPrivateChatSettings(tenantId).catch(() => null);
       if (channelId) {
         await sendDiscordBotEmbedReply(channelId, privateReply, tenantId, {
           sourceMessageId: normalized.messageId,
@@ -749,6 +751,9 @@ export async function POST(request: NextRequest) {
           sourceUser: userName,
           sourceUserAvatarUrl: userAvatar,
           responseType: 'AI Answer',
+          gifEnabled: dmSettings?.gifEnabled !== false,
+          ttsEnabled: dmSettings?.ttsEnabled === true,
+          adultMode: dmSettings?.adultMode === true,
         });
       }
       await markHandled();
@@ -1524,6 +1529,9 @@ async function sendDiscordBotEmbedReply(
     sourceUser?: string;
     sourceUserAvatarUrl?: string;
     responseType?: string;
+    gifEnabled?: boolean;
+    ttsEnabled?: boolean;
+    adultMode?: boolean;
   },
 ) {
   const botName = getBotName(tenantId);

@@ -138,12 +138,18 @@ export function buildPrivateDmControlField(input: {
   channelId: string;
   messageId: string;
   nowSeconds?: number;
+  gifEnabled?: boolean;
+  ttsEnabled?: boolean;
+  adultMode?: boolean;
 }): { name: string; value: string; inline: false } {
   const token = createPrivateDmControlToken(input);
+  const gifEmoji = input.gifEnabled !== false ? '🖼️' : '🚫';
+  const ttsEmoji = input.ttsEnabled ? '🔇' : '🔊';
+  const adultEmoji = input.adultMode ? '🔞' : '🔒';
   const links: Array<[string, PrivateDmControlAction]> = [
-    ['🖼️', 'gif'],
-    ['🔊', 'tts'],
-    ['🔞', 'adult'],
+    [gifEmoji, 'gif'],
+    [ttsEmoji, 'tts'],
+    [adultEmoji, 'adult'],
     ['⚙️', 'settings'],
   ];
   const value = links
@@ -158,12 +164,19 @@ export function buildPrivateDmControlField(input: {
 export function isPrivateDmControlField(field: unknown): boolean {
   if (!field || typeof field !== 'object') return false;
   const value = String((field as Record<string, unknown>).value || '');
-  return value.includes(PRIVATE_DM_CONTROL_PATH) && value.includes('[🖼️]') && value.includes('[⚙️]');
+  return value.includes(PRIVATE_DM_CONTROL_PATH) && value.includes('[⚙️]');
 }
 
 export function attachPrivateDmControls(
   embeds: Record<string, unknown>[],
-  input: { channelId: string; messageId: string; nowSeconds?: number },
+  input: {
+    channelId: string;
+    messageId: string;
+    nowSeconds?: number;
+    gifEnabled?: boolean;
+    ttsEnabled?: boolean;
+    adultMode?: boolean;
+  },
 ): Record<string, unknown>[] {
   if (!embeds.length) return embeds;
   const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
@@ -219,24 +232,20 @@ export function resolvePrivateDmMediaUrl(tenantId: string): string {
   return configured ? rewriteLegacyPrivateMediaUrl(configured, tenantId) : '';
 }
 
-export function togglePrivateDmGif(
+export function applyPrivateDmGif(
   embeds: Record<string, unknown>[],
   configuredMediaUrl: string,
-): { embeds: Record<string, unknown>[]; visible: boolean } {
-  if (!embeds.length) throw new Error('The Discord message has no embed to update.');
+  gifEnabled: boolean,
+): Record<string, unknown>[] {
+  if (!embeds.length) return embeds;
   const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
   const first = next[0];
-  const imageUrl = String(first?.image?.url || '').trim();
-
-  if (imageUrl) {
+  if (gifEnabled && configuredMediaUrl) {
+    first.image = { url: configuredMediaUrl };
+  } else {
     delete first.image;
-    return { embeds: next, visible: false };
   }
-  if (!configuredMediaUrl) {
-    throw new Error('No private Discord GIF is configured to restore.');
-  }
-  first.image = { url: configuredMediaUrl };
-  return { embeds: next, visible: true };
+  return next;
 }
 
 export function privateDmMessageText(message: unknown): string {

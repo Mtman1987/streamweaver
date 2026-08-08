@@ -6,6 +6,8 @@ export type AdultModeAction = 'on' | 'off' | 'toggle' | 'status';
 
 export type PrivateChatSettings = {
   adultMode: boolean;
+  ttsEnabled: boolean;
+  gifEnabled: boolean;
   qwenBaseUrl: string;
   qwenModel: string;
 };
@@ -18,6 +20,8 @@ export type PublicPrivateChatSettings = PrivateChatSettings & {
 
 const defaults: PrivateChatSettings = {
   adultMode: false,
+  ttsEnabled: false,
+  gifEnabled: true,
   qwenBaseUrl: '',
   qwenModel: '',
 };
@@ -30,6 +34,8 @@ function filePath(tenantId?: string): string {
 function sanitize(input: Partial<PrivateChatSettings>): PrivateChatSettings {
   return {
     adultMode: input.adultMode === true,
+    ttsEnabled: input.ttsEnabled === true,
+    gifEnabled: input.gifEnabled !== false,
     qwenBaseUrl: String(input.qwenBaseUrl || '').trim().slice(0, 2000),
     qwenModel: String(input.qwenModel || '').trim().slice(0, 300),
   };

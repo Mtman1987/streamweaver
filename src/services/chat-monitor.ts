@@ -11,6 +11,7 @@ import { loadDmLastMessageId, saveDmLastMessageId } from './discord-dm-sweep-sta
 import { runImageCommand } from './image-command';
 import { queueTtsOverlay } from './tts-overlay-queue';
 import { appendPrivateChatMessages } from '@/lib/private-chat-store';
+import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
@@ -355,6 +356,7 @@ export async function checkDmChannelActivity(): Promise<void> {
                     if (!result.ok) console.warn(`[DM Sweep:${tenantId || 'global'}] TTS overlay queue failed:`, result.error);
                 });
                 const requester = msg.author?.global_name || msg.author?.globalName || msg.author?.username || 'DiscordUser';
+                const privateSettings = await readPrivateChatSettings(tenantId).catch(() => null);
                 await sendStructuredDiscordReply({
                     channelId: dmChannelId,
                     message: reply,
@@ -365,6 +367,9 @@ export async function checkDmChannelActivity(): Promise<void> {
                     sourceUser: requester,
                     sourceUserAvatarUrl: msg.author?.avatarUrl || msg.author?.displayAvatarURL,
                     isPrivate: true,
+                    gifEnabled: privateSettings?.gifEnabled !== false,
+                    ttsEnabled: privateSettings?.ttsEnabled === true,
+                    adultMode: privateSettings?.adultMode === true,
                 });
             } catch (error) {
                 console.warn(`[DM Sweep:${tenantId}] Failed to process DM message`, error);

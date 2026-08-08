@@ -2,12 +2,13 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getDiscordMessage, editDiscordMessage } from '@/services/discord-local';
 import {
+  applyPrivateDmGif,
+  attachPrivateDmControls,
   parsePrivateDmControlAction,
   privateDmMessageText,
   resolvePrivateDmMediaUrl,
   resolvePrivateDmTenantId,
   splitPrivateTtsText,
-  togglePrivateDmGif,
   verifyPrivateDmControlToken,
 } from '@/services/private-dm-controls';
 import {
@@ -52,9 +53,27 @@ export async function POST(request: NextRequest) {
       return apiOk({ action, redirectUrl: '/bot-functions' });
     }
 
+    const current = await readPrivateChatSettings(tenantId);
+
     if (action === 'adult') {
-      const current = await readPrivateChatSettings(tenantId);
       const next = await writePrivateChatSettings({ adultMode: !current.adultMode }, tenantId);
+      // Edit the embed icon to reflect new state
+      try {
+        const message = await getDiscordMessage(control.channelId, control.messageId) as any;
+        const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
+        if (currentEmbeds.length) {
+          const updatedEmbeds = attachPrivateDmControls(currentEmbeds, {
+            channelId: control.channelId,
+            messageId: control.messageId,
+            gifEnabled: next.gifEnabled,
+            ttsEnabled: next.ttsEnabled,
+            adultMode: next.adultMode,
+          });
+          await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
+        }
+      } catch {
+        // Icon update is best-effort; don't fail the toggle
+      }
       return apiOk({
         action,
         adultMode: next.adultMode,
@@ -62,26 +81,63 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const message = await getDiscordMessage(control.channelId, control.messageId) as any;
-
     if (action === 'gif') {
+      const next = await writePrivateChatSettings({ gifEnabled: !current.gifEnabled }, tenantId);
+      const message = await getDiscordMessage(control.channelId, control.messageId) as any;
       const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
-      const result = togglePrivateDmGif(currentEmbeds, resolvePrivateDmMediaUrl(tenantId));
-      await editDiscordMessage(control.channelId, control.messageId, { embeds: result.embeds });
+      const mediaUrl = resolvePrivateDmMediaUrl(tenantId);
+      // Apply gif visibility based on new setting
+      let updatedEmbeds = applyPrivateDmGif(currentEmbeds, mediaUrl, next.gifEnabled);
+      // Rebuild control field with updated icons
+      updatedEmbeds = attachPrivateDmControls(updatedEmbeds, {
+        channelId: control.channelId,
+        messageId: control.messageId,
+        gifEnabled: next.gifEnabled,
+        ttsEnabled: next.ttsEnabled,
+        adultMode: next.adultMode,
+      });
+      await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
       return apiOk({
         action,
-        visible: result.visible,
-        message: `Private GIF is now ${result.visible ? 'visible' : 'hidden'} on that Discord reply.`,
+        gifEnabled: next.gifEnabled,
+        message: `Private GIF is now ${next.gifEnabled ? 'visible' : 'hidden'}.`,
       });
     }
 
-    const text = privateDmMessageText(message);
+    // TTS: toggle persistent setting, update icon, return audio for current message
+    const next = await writePrivateChatSettings({ ttsEnabled: !current.ttsEnabled }, tenantId);
+    // Update icon on the embed
+    try {
+      const message = await getDiscordMessage(control.channelId, control.messageId) as any;
+      const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
+      if (currentEmbeds.length) {
+        const updatedEmbeds = attachPrivateDmControls(currentEmbeds, {
+          channelId: control.channelId,
+          messageId: control.messageId,
+          gifEnabled: next.gifEnabled,
+          ttsEnabled: next.ttsEnabled,
+          adultMode: next.adultMode,
+        });
+        await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
+      }
+    } catch {
+      // Icon update is best-effort
+    }
+
+    if (!next.ttsEnabled) {
+      return apiOk({
+        action,
+        ttsEnabled: false,
+        message: 'Private TTS is now OFF.',
+      });
+    }
+
+    // TTS just turned on — read and speak the current message
+    const discordMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
+    const text = privateDmMessageText(discordMessage);
     const chunks = splitPrivateTtsText(text);
     if (!chunks.length) {
-      return apiError('That private Discord reply has no text to read.', {
-        status: 400,
-        code: 'NO_PRIVATE_TTS_TEXT',
-      });
+      return apiOk({ action, ttsEnabled: true, message: 'Private TTS is ON. No text to read on this message.' });
     }
 
     const audioDataUris: string[] = [];
@@ -89,20 +145,15 @@ export async function POST(request: NextRequest) {
       const audioDataUri = await generateTTS(chunk, undefined, tenantId);
       if (audioDataUri) audioDataUris.push(audioDataUri);
     }
-    if (!audioDataUris.length) {
-      return apiError('Private TTS returned no audio.', {
-        status: 502,
-        code: 'PRIVATE_TTS_EMPTY',
-      });
-    }
 
     return apiOk({
       action,
+      ttsEnabled: true,
       audioDataUris,
       chunkCount: audioDataUris.length,
-      message: audioDataUris.length === 1
-        ? 'Private TTS is ready.'
-        : `Private TTS is ready in ${audioDataUris.length} parts.`,
+      message: audioDataUris.length
+        ? `Private TTS is ON. ${audioDataUris.length === 1 ? 'Audio ready.' : `${audioDataUris.length} parts ready.`}`
+        : 'Private TTS is ON.',
     });
   } catch (error) {
     console.error('[Private DM Control] Action failed:', action, error);

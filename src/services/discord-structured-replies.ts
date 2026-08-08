@@ -35,6 +35,9 @@ export type StructuredDiscordReplyInput = {
   sourceUser?: string;
   sourceUserAvatarUrl?: string;
   isPrivate?: boolean;
+  gifEnabled?: boolean;
+  ttsEnabled?: boolean;
+  adultMode?: boolean;
   imageUrl?: string;
   thumbnailUrl?: string;
   color?: number;
@@ -202,7 +205,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     sourceUserAvatarUrl: requesterLogo,
     deleteAt: deleteAt || undefined,
     mediaSlot: input.isPrivate ? 'private' : 'public',
-    includeConfiguredMedia: Boolean(input.isPrivate),
+    includeConfiguredMedia: Boolean(input.isPrivate) && input.gifEnabled !== false,
     imageUrl: input.imageUrl,
     thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
     color: input.color,
@@ -265,6 +268,9 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
       const controlledEmbeds = attachPrivateDmControls(payload.embeds, {
         channelId: input.channelId,
         messageId: sentId,
+        gifEnabled: input.gifEnabled !== false,
+        ttsEnabled: input.ttsEnabled === true,
+        adultMode: input.adultMode === true,
       });
       await editDiscordMessage(input.channelId, sentId, {
         embeds: controlledEmbeds,

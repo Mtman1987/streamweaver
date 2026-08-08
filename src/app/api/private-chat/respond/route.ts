@@ -22,6 +22,10 @@ import {
 import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
 import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
 import { requestQwenPrivateChatCompletion } from '@/services/qwen-private-chat';
+import { splitPrivateTtsText } from '@/services/private-dm-controls';
+import { generateTTS } from '@/services/tts-provider';
+import { attachPrivateDmControls, resolvePrivateDmMediaUrl, splitPrivateTtsText } from '@/services/private-dm-controls';
+import { generateTTS } from '@/services/tts-provider';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import {
   applyAdultModeAction,
@@ -220,7 +224,11 @@ export async function POST(request: NextRequest) {
 
     const ltmTitles = await getPrivateLTMTitles(tenantId);
     const { systemIdentity, extendedGuidance } = splitPersonality(botPersonality);
-    const governedSystemIdentity = [systemIdentity, BOT_NO_SELF_PROMOTION_POLICY]
+    const adultFilteredIdentity = privateSettings.adultMode
+      ? systemIdentity.replace(/\b(family[- ]friendly|family safe|safe[- ]for[- ]work|sfw|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly)\b[^.
+]*/gi, '').trim()
+      : systemIdentity;
+    const governedSystemIdentity = [adultFilteredIdentity, privateSettings.adultMode ? '' : BOT_NO_SELF_PROMOTION_POLICY]
       .filter(Boolean)
       .join('\n\n');
 
@@ -297,6 +305,8 @@ export async function POST(request: NextRequest) {
         response: responseText,
         provider: 'self-hosted-qwen',
         adultMode: true,
+        ttsEnabled: privateSettings.ttsEnabled,
+        gifEnabled: privateSettings.gifEnabled,
       });
     }
 
@@ -404,6 +414,8 @@ export async function POST(request: NextRequest) {
       response: responseText,
       provider: useSeaArtCharacter ? 'seaart-character' : 'edenai',
       adultMode: false,
+      ttsEnabled: privateSettings.ttsEnabled,
+      gifEnabled: privateSettings.gifEnabled,
     });
   } catch (error) {
     console.error('Private chat respond API error:', error);
