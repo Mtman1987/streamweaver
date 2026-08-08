@@ -61,8 +61,8 @@ function sign(encodedPayload: string): string {
 
 function safeEqual(left: string, right: string): boolean {
   try {
-    const a = Buffer.from(left, 'base64url');
-    const b = Buffer.from(right, 'base64url');
+    const a = Buffer.from(left, 'utf8');
+    const b = Buffer.from(right, 'utf8');
     return a.length === b.length && timingSafeEqual(a, b);
   } catch {
     return false;
