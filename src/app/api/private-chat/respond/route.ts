@@ -22,8 +22,6 @@ import {
 import { requestPrivateChatCompletion } from '@/services/private-chat-ai';
 import { requestSeaArtCharacterCompletion } from '@/services/seaart-character-chat';
 import { requestQwenPrivateChatCompletion } from '@/services/qwen-private-chat';
-import { splitPrivateTtsText } from '@/services/private-dm-controls';
-import { generateTTS } from '@/services/tts-provider';
 import { attachPrivateDmControls, resolvePrivateDmMediaUrl, splitPrivateTtsText } from '@/services/private-dm-controls';
 import { generateTTS } from '@/services/tts-provider';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
@@ -225,8 +223,11 @@ export async function POST(request: NextRequest) {
     const ltmTitles = await getPrivateLTMTitles(tenantId);
     const { systemIdentity, extendedGuidance } = splitPersonality(botPersonality);
     const adultFilteredIdentity = privateSettings.adultMode
-      ? systemIdentity.replace(/\b(family[- ]friendly|family safe|safe[- ]for[- ]work|sfw|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly)\b[^.
-]*/gi, '').trim()
+      ? systemIdentity
+          .split(/(?<=[.!?])\s+|\n/)
+          .filter((s) => !/\b(family[- ]friendly|family[- ]safe|safe[- ]for[- ]work|\bsfw\b|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly|not explicit|not mature|avoid explicit|avoid adult|avoid mature|pg[- ]?1?3?[- ]?rated?|keep.*appropriate|appropriate.*all)\b/i.test(s))
+          .join(' ')
+          .trim()
       : systemIdentity;
     const governedSystemIdentity = [adultFilteredIdentity, privateSettings.adultMode ? '' : BOT_NO_SELF_PROMOTION_POLICY]
       .filter(Boolean)
