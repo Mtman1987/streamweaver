@@ -65,6 +65,7 @@ const workspaceGroups = [
     label: "Go Live",
     items: [
       { href: "/chat", icon: MessageSquareText, label: "Messaging" },
+      { href: "/private-chat", icon: MessageSquareText, label: "Private Chat" },
       { href: "/overlay-urls", icon: Sparkles, label: "Overlay URLs" },
       { action: "logs", icon: FileText, label: "Logs" },
     ],

@@ -18,12 +18,15 @@ export type PublicPrivateChatSettings = PrivateChatSettings & {
   qwenApiKeyConfigured: boolean;
 };
 
+export const DEFAULT_PRIVATE_QWEN_BASE_URL = 'http://spmt-llm-worker.internal:8080/v1';
+export const DEFAULT_PRIVATE_QWEN_MODEL = 'spmt-qwen3-4b';
+
 const defaults: PrivateChatSettings = {
   adultMode: false,
   ttsEnabled: false,
   gifEnabled: true,
-  qwenBaseUrl: '',
-  qwenModel: '',
+  qwenBaseUrl: DEFAULT_PRIVATE_QWEN_BASE_URL,
+  qwenModel: DEFAULT_PRIVATE_QWEN_MODEL,
 };
 
 function filePath(tenantId?: string): string {
@@ -36,8 +39,8 @@ function sanitize(input: Partial<PrivateChatSettings>): PrivateChatSettings {
     adultMode: input.adultMode === true,
     ttsEnabled: input.ttsEnabled === true,
     gifEnabled: input.gifEnabled !== false,
-    qwenBaseUrl: String(input.qwenBaseUrl || '').trim().slice(0, 2000),
-    qwenModel: String(input.qwenModel || '').trim().slice(0, 300),
+    qwenBaseUrl: String(input.qwenBaseUrl || DEFAULT_PRIVATE_QWEN_BASE_URL).trim().slice(0, 2000),
+    qwenModel: String(input.qwenModel || DEFAULT_PRIVATE_QWEN_MODEL).trim().slice(0, 300),
   };
 }
 
@@ -46,11 +49,11 @@ export function getDefaultPrivateChatSettings(): PrivateChatSettings {
 }
 
 export function getEffectiveQwenBaseUrl(settings: PrivateChatSettings): string {
-  return settings.qwenBaseUrl || process.env.PRIVATE_QWEN_BASE_URL || process.env.PRIVATE_QWEN_URL || '';
+  return settings.qwenBaseUrl || DEFAULT_PRIVATE_QWEN_BASE_URL;
 }
 
 export function getEffectiveQwenModel(settings: PrivateChatSettings): string {
-  return settings.qwenModel || process.env.PRIVATE_QWEN_MODEL || '';
+  return settings.qwenModel || DEFAULT_PRIVATE_QWEN_MODEL;
 }
 
 export function toPublicPrivateChatSettings(settings: PrivateChatSettings): PublicPrivateChatSettings {
