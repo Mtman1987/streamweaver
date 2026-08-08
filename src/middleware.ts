@@ -5,6 +5,7 @@ const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').r
 
 const PUBLIC_PATHS = [
   '/login', '/auth/', '/api/auth/', '/api/__health', '/api/health', '/api/session',
+  '/private-chat/control', '/api/private-chat/control',
   '/overlay/', '/xpn/', '/tts-listener', '/tts-player', '/say-player', '/tts-mixer',
   '/brb-player', '/shoutout-player', '/partner-checkin', '/pokemon-pack-overlay',
   '/pokemon-collection-overlay', '/pokemon-trade-overlay', '/gym-battle-overlay',
