@@ -106,8 +106,6 @@ export function verifyPrivateDmControlToken(
     if (payload.v !== 1 || !isSnowflake(payload.c) || !isSnowflake(payload.m)) return null;
     const expiresAt = Number(payload.e);
     if (!Number.isSafeInteger(expiresAt) || expiresAt < nowSeconds) return null;
-    // Tokens should never be accepted if a malformed payload claims an
-    // implausibly distant expiration date.
     if (expiresAt > nowSeconds + PRIVATE_DM_CONTROL_TTL_SECONDS + 300) return null;
     return {
       channelId: payload.c,
@@ -145,11 +143,10 @@ export function buildPrivateDmControlField(input: {
   const token = createPrivateDmControlToken(input);
   const gifEmoji = input.gifEnabled !== false ? '🖼️' : '🚫';
   const ttsEmoji = input.ttsEnabled ? '🔇' : '🔊';
-  const adultEmoji = input.adultMode ? '🔞' : '🔒';
   const links: Array<[string, PrivateDmControlAction]> = [
     [gifEmoji, 'gif'],
     [ttsEmoji, 'tts'],
-    [adultEmoji, 'adult'],
+    ['🔞', 'adult'],
     ['⚙️', 'settings'],
   ];
   const value = links
@@ -246,6 +243,18 @@ export function applyPrivateDmGif(
     delete first.image;
   }
   return next;
+}
+
+export function togglePrivateDmGif(
+  embeds: Record<string, unknown>[],
+  configuredMediaUrl: string,
+): { embeds: Record<string, unknown>[]; visible: boolean } {
+  const currentImage = String((embeds[0] as DiscordEmbed | undefined)?.image?.url || '').trim();
+  const visible = !(configuredMediaUrl && currentImage === configuredMediaUrl);
+  return {
+    embeds: applyPrivateDmGif(embeds, configuredMediaUrl, visible),
+    visible,
+  };
 }
 
 export function privateDmMessageText(message: unknown): string {
