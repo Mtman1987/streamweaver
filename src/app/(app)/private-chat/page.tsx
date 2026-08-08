@@ -104,8 +104,6 @@ export default function PrivateChatPage() {
     }
   };
 
-  const qwenReady = settings.qwenEndpointConfigured && settings.qwenModelConfigured;
-
   return (
     <div className="max-w-3xl space-y-4">
       <Card>
@@ -120,7 +118,7 @@ export default function PrivateChatPage() {
             <div>
               <Label htmlFor="adult-mode">Adult Mode</Label>
               <p className="mt-1 text-sm text-muted-foreground">
-                When enabled, private DMs use the SPMT Qwen private-chat path and do not fall back to the normal cloud provider.
+                This changes Athena&apos;s private-chat policy only. The built-in SPMT Qwen model is used whether Adult Mode is on or off.
               </p>
             </div>
             <Switch
@@ -134,9 +132,7 @@ export default function PrivateChatPage() {
           <div className="rounded-md border px-3 py-3 text-sm">
             <div className="font-medium">Private LLM</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {qwenReady
-                ? `Ready · ${settings.qwenModel || "SPMT Qwen"}`
-                : "SPMT Qwen worker is not available right now."}
+              {`Built in · ${settings.qwenModel || "SPMT Qwen"}`}
             </div>
           </div>
 
