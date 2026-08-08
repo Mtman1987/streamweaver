@@ -29,9 +29,33 @@ test('signs private DM controls and rejects tampering or expiration', () => {
     channelId,
     messageId,
     expiresAt: 1_600,
+    scope: 'private',
   });
   assert.equal(verifyPrivateDmControlToken(`${token}x`, 1_100), null);
   assert.equal(verifyPrivateDmControlToken(token, 1_601), null);
+});
+
+test('signs public controls with tenant ownership embedded in the token', () => {
+  const token = createPrivateDmControlToken({
+    channelId,
+    messageId,
+    scope: 'public',
+    tenantId: 'tenant-public',
+    nowSeconds: 2_000,
+    ttlSeconds: 900,
+  });
+  assert.deepEqual(verifyPrivateDmControlToken(token, 2_100), {
+    channelId,
+    messageId,
+    expiresAt: 2_900,
+    scope: 'public',
+    tenantId: 'tenant-public',
+  });
+  assert.throws(() => createPrivateDmControlToken({
+    channelId,
+    messageId,
+    scope: 'public',
+  }), /tenant ID/i);
 });
 
 test('creates four emoji-only markdown links without Discord buttons', () => {
@@ -49,6 +73,20 @@ test('creates four emoji-only markdown links without Discord buttons', () => {
   assert.match(field.value, /\[🔞\]/u);
   assert.match(field.value, /\[⚙️\]/u);
   assert.equal(/button|components|toggle gif|settings/i.test(field.value), false);
+});
+
+test('creates the same emoji strip for owner-controlled public embeds', () => {
+  const field = buildPrivateDmControlField({
+    channelId,
+    messageId,
+    scope: 'public',
+    tenantId: 'tenant-public',
+    nowSeconds: 1_000,
+  });
+  assert.equal((field.value.match(/\]\(/g) || []).length, 4);
+  const token = new URL(field.value.match(/\((https?:\/\/[^)]+)\)/)?.[1] || '').searchParams.get('k');
+  assert.equal(verifyPrivateDmControlToken(token || '', 1_100)?.scope, 'public');
+  assert.equal(verifyPrivateDmControlToken(token || '', 1_100)?.tenantId, 'tenant-public');
 });
 
 test('attaches one titleless control field and replaces an older copy', () => {
