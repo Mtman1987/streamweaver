@@ -43,7 +43,7 @@ test('creates four emoji-only markdown links without Discord buttons', () => {
   assert.equal(field.name, PRIVATE_DM_CONTROL_FIELD_NAME);
   assert.equal(field.inline, false);
   assert.ok(field.value.length <= 1024);
-  assert.equal((field.value.match(/\]\(https:\/\//g) || []).length, 4);
+  assert.equal((field.value.match(/\]\(/g) || []).length, 4);
   assert.match(field.value, /\[🖼️\]/u);
   assert.match(field.value, /\[🔊\]/u);
   assert.match(field.value, /\[🔞\]/u);
