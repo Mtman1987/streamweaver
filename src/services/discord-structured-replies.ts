@@ -2,6 +2,7 @@ import { listTenants } from '@/lib/tenant';
 import { readWorldLore } from '@/lib/world-lore-store';
 import { getBotName } from '@/lib/bot-settings-store';
 import { getStoredTokens } from '@/lib/token-utils.server';
+import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { deleteMessage, editDiscordMessage, sendDiscordEmbed } from './discord-local';
 import {
   buildDiscordBotEmbed,
@@ -53,6 +54,18 @@ function firstUrl(...values: unknown[]): string {
     if (/^https?:\/\//i.test(text)) return text;
   }
   return '';
+}
+
+function imageCommandHelpMessage(message: string, tenantId: string | undefined, isPrivate: boolean): string {
+  if (!tenantId || !/^Usage:\s*!img\b/i.test(String(message || '').trim())) return message;
+  const params = new URLSearchParams({ tenantId, view: 'rotate', interval: '90' });
+  if (isPrivate) params.set('scope', 'private');
+  const label = isPrivate ? 'Private rotating image library' : 'Public rotating image library';
+  return [
+    'Usage: !img <description> (alias: !mg)',
+    `${label}: ${getConfiguredAppUrl()}/api/ai/image/library?${params.toString()}`,
+    'The gallery changes images every 90 seconds and updates its page URL as it rotates.',
+  ].join('\n');
 }
 
 function uniqueSpeakers(speakers: DiscordReplySpeaker[]): DiscordReplySpeaker[] {
@@ -174,6 +187,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   username: string;
   deleteAt: string;
   speaker: DiscordReplySpeaker;
+  renderedMessage: string;
 }> {
   const speaker = input.speaker || await resolveStructuredDiscordReplySpeaker({
     tenantId: input.tenantId,
@@ -190,9 +204,10 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   );
   const owner = await resolveTenantOwnerBranding(speaker.tenantId);
   const requesterLogo = firstUrl(input.sourceUserAvatarUrl, SPACEMOUNTAIN_FALLBACK_LOGO);
+  const renderedMessage = imageCommandHelpMessage(input.message, input.tenantId || speaker.tenantId, Boolean(input.isPrivate));
 
   const embed = await buildDiscordBotEmbed({
-    description: input.message,
+    description: renderedMessage,
     tenantId: speaker.tenantId,
     botName: speaker.botName,
     title: input.title,
@@ -202,7 +217,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     sourceUserAvatarUrl: requesterLogo,
     deleteAt: deleteAt || undefined,
     mediaSlot: input.isPrivate ? 'private' : 'public',
-    includeConfiguredMedia: Boolean(input.isPrivate),
+    includeConfiguredMedia: Boolean(input.isPrivate || input.tenantId || speaker.tenantId),
     imageUrl: input.imageUrl,
     thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
     color: input.color,
@@ -229,18 +244,21 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     username: webhookIdentity.username,
     deleteAt,
     speaker,
+    renderedMessage,
   };
 }
 
 export async function sendStructuredDiscordReply(input: StructuredDiscordReplyInput): Promise<{ messageId?: string; deleteAt: string; speaker: DiscordReplySpeaker }> {
   const payload = await buildStructuredDiscordReplyPayload(input);
-  const { deleteAt, speaker } = payload;
+  const { deleteAt, speaker, renderedMessage } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const avatarUrl = firstUrl(
     webhookIdentity.avatarUrl,
     await getAvatarUrlForTenant(speaker.tenantId),
     SPACEMOUNTAIN_FALLBACK_LOGO,
   );
+  const controlTenantId = input.tenantId || speaker.tenantId;
+  const shouldAttachControls = Boolean(input.isPrivate || controlTenantId);
 
   const botTokenPayload = {
     content: '',
@@ -250,9 +268,9 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
 
   let sent: any;
   try {
-    sent = input.isPrivate || input.components?.length || (!speaker.tenantId && !input.tenantId)
+    sent = shouldAttachControls || input.components?.length || (!speaker.tenantId && !input.tenantId)
       ? await sendDiscordEmbed(input.channelId, botTokenPayload)
-      : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
+      : await sendWebhookMessage(input.channelId, renderedMessage, webhookIdentity.username, avatarUrl, payload.embeds);
   } catch (error) {
     console.warn('[Discord Reply] Webhook reply failed; retrying through the bot-token embed route:', error);
     sent = await sendDiscordEmbed(input.channelId, botTokenPayload);
@@ -260,20 +278,22 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
 
   const sentId = typeof sent?.id === 'string' ? sent.id : '';
 
-  if (sentId && input.isPrivate) {
+  if (sentId && shouldAttachControls) {
     try {
       const controlledEmbeds = attachPrivateDmControls(payload.embeds, {
         channelId: input.channelId,
         messageId: sentId,
+        scope: input.isPrivate ? 'private' : 'public',
+        ...(input.isPrivate ? {} : { tenantId: controlTenantId }),
       });
       await editDiscordMessage(input.channelId, sentId, {
         embeds: controlledEmbeds,
         ...(input.components?.length ? { components: input.components } : {}),
       });
     } catch (error) {
-      // Never suppress the actual DM response because the optional icon strip
-      // could not be attached. The reply itself remains usable.
-      console.warn('[Discord Reply] Failed to attach private emoji controls:', error);
+      // Never suppress the actual reply because the optional icon strip could
+      // not be attached. The reply itself remains usable.
+      console.warn('[Discord Reply] Failed to attach emoji controls:', error);
     }
   }
 
@@ -287,7 +307,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
       channelId: input.channelId,
       triggerMessageId: sentId ? input.sourceMessageId : undefined,
       replyMessageIds: [sentId],
-      replyMessages: [input.message],
+      replyMessages: [renderedMessage],
       sourceUser: input.sourceUser,
       botName: speaker.botName,
       triggerMessage: input.sourceMessage,
