@@ -66,7 +66,7 @@ function clampCount(value: unknown, fallback: number): number {
 }
 
 export function parseImageCommand(input: string): ParsedImageCommand {
-  let value = String(input || '').replace(/^!img\s*/i, '').trim();
+  let value = String(input || '').replace(/^!(?:img|mg)\s*/i, '').trim();
   let raw = false;
   let provider: ProviderMode | undefined;
   let count: number | undefined;
