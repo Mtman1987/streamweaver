@@ -5,6 +5,7 @@ import {
   parseAdultModeCommand,
 } from '../src/lib/private-chat-settings-store';
 import {
+  QWEN_ADULT_ROLEPLAY_POLICY,
   QWEN_MAX_REPLY_CHARACTERS,
   buildQwenMessages,
   requestQwenPrivateChatCompletion,
@@ -39,6 +40,16 @@ test('normalizes a hosted Qwen base URL to OpenAI-compatible chat completions', 
   if (!insecure.ok) assert.match(insecure.error, /must use HTTPS/i);
 });
 
+test('accepts the built-in Fly private Qwen worker without an environment flag', () => {
+  assert.deepEqual(
+    resolveQwenEndpoint('http://spmt-llm-worker.internal:8080/v1', { production: true }),
+    {
+      ok: true,
+      endpoint: 'http://spmt-llm-worker.internal:8080/v1/chat/completions',
+    },
+  );
+});
+
 test('builds Qwen chat messages without embedding the transcript a second time', () => {
   const messages = buildQwenMessages({
     systemPrompt: 'You are Athena.',
@@ -62,6 +73,22 @@ test('builds Qwen chat messages without embedding the transcript a second time',
   ]);
   assert.equal(messages.filter((entry) => entry.content.includes('Continue from there.')).length, 1);
   assert.equal(messages.some((entry) => /Conversation so far:/i.test(entry.content)), false);
+  assert.equal(messages[0].content.includes(QWEN_ADULT_ROLEPLAY_POLICY), false);
+});
+
+test('Adult Mode changes only the Qwen policy and keeps the same message path', () => {
+  const base = {
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'Continue.',
+    history: [],
+  };
+  const normal = buildQwenMessages(base);
+  const adult = buildQwenMessages({ ...base, adultMode: true });
+  assert.equal(normal[0].content.includes(QWEN_ADULT_ROLEPLAY_POLICY), false);
+  assert.equal(adult[0].content.includes(QWEN_ADULT_ROLEPLAY_POLICY), true);
+  assert.deepEqual(normal.slice(1), adult.slice(1));
 });
 
 test('collapses repeated Qwen blocks and stops generated multi-turn transcripts', () => {
@@ -194,5 +221,5 @@ test('fails closed before fetch when the hosted Qwen endpoint is missing', async
 
   assert.equal(fetchCalled, false);
   assert.equal(completion.text, '');
-  assert.match(completion.upstreamError || '', /No Qwen endpoint/i);
+  assert.match(completion.upstreamError || '', /Qwen endpoint configuration is unavailable/i);
 });
