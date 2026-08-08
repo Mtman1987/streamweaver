@@ -75,22 +75,41 @@ function extractJsonStringField(source: string, key: string, nextKeys: string[] 
   return source.slice(firstQuoteIndex + 1, endIndex);
 }
 
+export function normalizeDiscordImageCommandAlias(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  return value.replace(/^(\s*)!mg(?=\s|$)/i, '$1!img');
+}
+
+function normalizeDiscordPayloadAliases<T>(payload: T): T {
+  const root = payload && typeof payload === 'object'
+    ? ((payload as any).root && typeof (payload as any).root === 'object' ? (payload as any).root : payload as any)
+    : null;
+  if (!root) return payload;
+
+  for (const key of ['message', 'content', 'cleanContent']) {
+    if (typeof root[key] === 'string') {
+      root[key] = normalizeDiscordImageCommandAlias(root[key]);
+    }
+  }
+  return payload;
+}
+
 export function parseDiscordChatPayload(rawBody: string) {
   const raw = rawBody.trim();
   if (!raw) return {};
 
   try {
-    return JSON.parse(raw);
+    return normalizeDiscordPayloadAliases(JSON.parse(raw));
   } catch {}
 
   const escapedControls = escapeControlCharactersInsideStrings(raw);
   try {
-    return JSON.parse(escapedControls);
+    return normalizeDiscordPayloadAliases(JSON.parse(escapedControls));
   } catch {}
 
   const cleaned = raw.replace(/[\u0000-\u001F\u007F]/g, '');
   try {
-    return JSON.parse(cleaned);
+    return normalizeDiscordPayloadAliases(JSON.parse(cleaned));
   } catch (parseError) {
     const salvaged = {
       userId: extractJsonStringField(raw, 'userId', DISCORD_CHAT_STRING_FIELDS.filter((key) => key !== 'userId')),
@@ -107,7 +126,7 @@ export function parseDiscordChatPayload(rawBody: string) {
         keys: Object.keys(salvaged).filter((key) => Boolean((salvaged as any)[key])),
         error: parseError instanceof Error ? parseError.message : String(parseError),
       });
-      return salvaged;
+      return normalizeDiscordPayloadAliases(salvaged);
     }
 
     console.log('[Discord Chat] Rejected malformed JSON payload', {
