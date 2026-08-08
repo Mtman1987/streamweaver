@@ -18,18 +18,30 @@ export const PRIVATE_DM_CONTROL_ACTIONS = {
 
 export type PrivateDmControlAction = keyof typeof PRIVATE_DM_CONTROL_ACTIONS;
 export type PrivateDmControlActionCode = typeof PRIVATE_DM_CONTROL_ACTIONS[PrivateDmControlAction];
+export type DiscordEmbedControlScope = 'private' | 'public';
 
-type PrivateDmControlTokenPayload = {
+type PrivateDmControlTokenPayloadV1 = {
   v: 1;
   c: string;
   m: string;
   e: number;
 };
 
+type DiscordEmbedControlTokenPayloadV2 = {
+  v: 2;
+  c: string;
+  m: string;
+  e: number;
+  s: 'd' | 'p';
+  t?: string;
+};
+
 export type VerifiedPrivateDmControl = {
   channelId: string;
   messageId: string;
   expiresAt: number;
+  scope: DiscordEmbedControlScope;
+  tenantId?: string;
 };
 
 type DiscordEmbed = Record<string, any>;
@@ -46,7 +58,7 @@ function controlSecret(): string {
     '',
   ).trim();
   if (!secret) {
-    throw new Error('Private DM controls require PRIVATE_DM_CONTROL_SECRET or an existing bot service secret.');
+    throw new Error('Discord embed controls require PRIVATE_DM_CONTROL_SECRET or an existing bot service secret.');
   }
   return secret;
 }
@@ -73,22 +85,34 @@ function isSnowflake(value: unknown): value is string {
   return typeof value === 'string' && /^\d{15,22}$/.test(value);
 }
 
+function validTenantId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
+}
+
 export function createPrivateDmControlToken(input: {
   channelId: string;
   messageId: string;
+  scope?: DiscordEmbedControlScope;
+  tenantId?: string;
   nowSeconds?: number;
   ttlSeconds?: number;
 }): string {
   if (!isSnowflake(input.channelId) || !isSnowflake(input.messageId)) {
-    throw new Error('Private DM controls require valid Discord channel and message IDs.');
+    throw new Error('Discord embed controls require valid Discord channel and message IDs.');
+  }
+  const scope = input.scope || 'private';
+  if (scope === 'public' && !validTenantId(input.tenantId)) {
+    throw new Error('Public Discord embed controls require a valid tenant ID.');
   }
   const nowSeconds = Math.floor(input.nowSeconds ?? Date.now() / 1000);
   const ttlSeconds = Math.max(60, Math.floor(input.ttlSeconds ?? PRIVATE_DM_CONTROL_TTL_SECONDS));
-  const payload: PrivateDmControlTokenPayload = {
-    v: 1,
+  const payload: DiscordEmbedControlTokenPayloadV2 = {
+    v: 2,
     c: input.channelId,
     m: input.messageId,
     e: nowSeconds + ttlSeconds,
+    s: scope === 'public' ? 'p' : 'd',
+    ...(scope === 'public' ? { t: input.tenantId } : {}),
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
   return `${encoded}.${sign(encoded)}`;
@@ -102,17 +126,28 @@ export function verifyPrivateDmControlToken(
   if (!encoded || !signature || extra.length || !safeEqual(signature, sign(encoded))) return null;
 
   try {
-    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<PrivateDmControlTokenPayload>;
-    if (payload.v !== 1 || !isSnowflake(payload.c) || !isSnowflake(payload.m)) return null;
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<PrivateDmControlTokenPayloadV1 & DiscordEmbedControlTokenPayloadV2>;
+    if (!isSnowflake(payload.c) || !isSnowflake(payload.m)) return null;
     const expiresAt = Number(payload.e);
     if (!Number.isSafeInteger(expiresAt) || expiresAt < nowSeconds) return null;
-    // Tokens should never be accepted if a malformed payload claims an
-    // implausibly distant expiration date.
     if (expiresAt > nowSeconds + PRIVATE_DM_CONTROL_TTL_SECONDS + 300) return null;
+
+    if (payload.v === 1) {
+      return {
+        channelId: payload.c,
+        messageId: payload.m,
+        expiresAt,
+        scope: 'private',
+      };
+    }
+    if (payload.v !== 2 || (payload.s !== 'd' && payload.s !== 'p')) return null;
+    if (payload.s === 'p' && !validTenantId(payload.t)) return null;
     return {
       channelId: payload.c,
       messageId: payload.m,
       expiresAt,
+      scope: payload.s === 'p' ? 'public' : 'private',
+      ...(payload.s === 'p' ? { tenantId: payload.t } : {}),
     };
   } catch {
     return null;
@@ -137,6 +172,8 @@ function privateDmControlUrl(token: string, action: PrivateDmControlAction): str
 export function buildPrivateDmControlField(input: {
   channelId: string;
   messageId: string;
+  scope?: DiscordEmbedControlScope;
+  tenantId?: string;
   nowSeconds?: number;
 }): { name: string; value: string; inline: false } {
   const token = createPrivateDmControlToken(input);
@@ -150,7 +187,7 @@ export function buildPrivateDmControlField(input: {
     .map(([emoji, action]) => `[${emoji}](${privateDmControlUrl(token, action)})`)
     .join(' \u2003 ');
   if (value.length > 1024) {
-    throw new Error(`Private DM control links exceed Discord's field limit (${value.length}/1024).`);
+    throw new Error(`Discord embed control links exceed the field limit (${value.length}/1024).`);
   }
   return { name: PRIVATE_DM_CONTROL_FIELD_NAME, value, inline: false };
 }
@@ -163,7 +200,13 @@ export function isPrivateDmControlField(field: unknown): boolean {
 
 export function attachPrivateDmControls(
   embeds: Record<string, unknown>[],
-  input: { channelId: string; messageId: string; nowSeconds?: number },
+  input: {
+    channelId: string;
+    messageId: string;
+    scope?: DiscordEmbedControlScope;
+    tenantId?: string;
+    nowSeconds?: number;
+  },
 ): Record<string, unknown>[] {
   if (!embeds.length) return embeds;
   const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
@@ -191,7 +234,7 @@ function firstUrl(...values: unknown[]): string {
   return '';
 }
 
-function rewriteLegacyPrivateMediaUrl(value: string, tenantId: string): string {
+function rewriteLegacyDiscordMediaUrl(value: string, tenantId: string): string {
   try {
     const url = new URL(value);
     if (url.pathname.toLowerCase() === '/avatars/private-dm.gif') {
@@ -206,20 +249,35 @@ function rewriteLegacyPrivateMediaUrl(value: string, tenantId: string): string {
   return value;
 }
 
-export function resolvePrivateDmMediaUrl(tenantId: string): string {
+export function resolveDiscordEmbedMediaUrl(
+  tenantId: string,
+  scope: DiscordEmbedControlScope = 'private',
+): string {
   const config = readUserConfigSync(tenantId);
-  const configured = firstUrl(
-    config.PRIVATE_DM_GIF_URL,
-    config.PUBLIC_DISCORD_GIF_URL,
-    config.PUBLIC_AVATAR_URL,
-    config.TWITCH_BOT_AVATAR_GIF_URL,
-    config.TWITCH_BOT_AVATAR_URL,
-    config.BOT_AVATAR_URL,
-  );
-  return configured ? rewriteLegacyPrivateMediaUrl(configured, tenantId) : '';
+  const configured = scope === 'public'
+    ? firstUrl(
+        config.PUBLIC_DISCORD_GIF_URL,
+        config.PUBLIC_AVATAR_URL,
+        config.TWITCH_BOT_AVATAR_GIF_URL,
+        config.TWITCH_BOT_AVATAR_URL,
+        config.BOT_AVATAR_URL,
+      )
+    : firstUrl(
+        config.PRIVATE_DM_GIF_URL,
+        config.PUBLIC_DISCORD_GIF_URL,
+        config.PUBLIC_AVATAR_URL,
+        config.TWITCH_BOT_AVATAR_GIF_URL,
+        config.TWITCH_BOT_AVATAR_URL,
+        config.BOT_AVATAR_URL,
+      );
+  return configured ? rewriteLegacyDiscordMediaUrl(configured, tenantId) : '';
 }
 
-export function togglePrivateDmGif(
+export function resolvePrivateDmMediaUrl(tenantId: string): string {
+  return resolveDiscordEmbedMediaUrl(tenantId, 'private');
+}
+
+export function toggleDiscordEmbedGif(
   embeds: Record<string, unknown>[],
   configuredMediaUrl: string,
 ): { embeds: Record<string, unknown>[]; visible: boolean } {
@@ -233,10 +291,17 @@ export function togglePrivateDmGif(
     return { embeds: next, visible: false };
   }
   if (!configuredMediaUrl) {
-    throw new Error('No private Discord GIF is configured to restore.');
+    throw new Error('No Discord GIF is configured to restore.');
   }
   first.image = { url: configuredMediaUrl };
   return { embeds: next, visible: true };
+}
+
+export function togglePrivateDmGif(
+  embeds: Record<string, unknown>[],
+  configuredMediaUrl: string,
+): { embeds: Record<string, unknown>[]; visible: boolean } {
+  return toggleDiscordEmbedGif(embeds, configuredMediaUrl);
 }
 
 export function privateDmMessageText(message: unknown): string {
