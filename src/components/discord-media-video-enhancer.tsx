@@ -27,19 +27,33 @@ function updateControlledInput(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+function setTextIfChanged(element: HTMLElement | null, value: string): void {
+  if (element && element.textContent !== value) element.textContent = value;
+}
+
 function enhanceMediaInputs(root: ParentNode = document): void {
   const inputs = root.querySelectorAll<HTMLInputElement>('input[type="file"][aria-label*="Discord GIF"], input[type="file"][aria-label*="DM GIF"]');
   for (const input of inputs) {
-    input.accept = MEDIA_ACCEPT;
+    if (input.accept !== MEDIA_ACCEPT) input.accept = MEDIA_ACCEPT;
     const slot = slotForInput(input);
-    if (slot === 'private-dm') input.setAttribute('aria-label', 'Upload private DM GIF or video');
-    if (slot === 'public-discord') input.setAttribute('aria-label', 'Upload public Discord GIF or video');
+    const nextLabel = slot === 'private-dm'
+      ? 'Upload private DM GIF or video'
+      : slot === 'public-discord'
+        ? 'Upload public Discord GIF or video'
+        : '';
+    if (nextLabel && input.getAttribute('aria-label') !== nextLabel) {
+      input.setAttribute('aria-label', nextLabel);
+    }
   }
 
-  const privateLabel = root.querySelector<HTMLLabelElement>('label[for="private-dm-gif"]');
-  if (privateLabel) privateLabel.textContent = 'Private DM / app private chat GIF URL (or upload a video)';
-  const publicLabel = root.querySelector<HTMLLabelElement>('label[for="public-discord-gif"]');
-  if (publicLabel) publicLabel.textContent = 'Public Discord / embed GIF URL (or upload a video)';
+  setTextIfChanged(
+    root.querySelector<HTMLLabelElement>('label[for="private-dm-gif"]'),
+    'Private DM / app private chat GIF URL (or upload a video)',
+  );
+  setTextIfChanged(
+    root.querySelector<HTMLLabelElement>('label[for="public-discord-gif"]'),
+    'Public Discord / embed GIF URL (or upload a video)',
+  );
 }
 
 export function DiscordMediaVideoEnhancer() {
