@@ -1,0 +1,35 @@
+name: Qwen Gallery Full Validation
+
+on:
+  push:
+    branches:
+      - fix/qwen-repetition-recovery-model-ui
+
+permissions:
+  contents: read
+
+jobs:
+  full-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused Qwen, model, and gallery tests
+        run: node --import tsx --test tests/private-chat-qwen-mode.test.ts tests/private-chat-response-guard.test.ts tests/qwen-quality.test.ts tests/qwen-recovery-fallback.test.ts tests/private-chat-model-selection.test.ts tests/private-gallery-navigation.test.ts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Full repository and persistence tests
+        run: npm run test:isolation
+      - name: Verify flow packages
+        run: npm run flow-packages:verify
+      - name: Smoke flow tooling
+        run: npm run flow-packages:smoke
+      - name: Check companion
+        run: npm run companion:check
+      - name: Production build
+        run: npm run build
