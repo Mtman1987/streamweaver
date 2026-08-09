@@ -20,6 +20,12 @@ import {
   internalServiceHeaders,
 } from '@/lib/internal-service-auth';
 import { requestQwenPrivateChatCompletion } from '@/services/qwen-private-chat';
+import {
+  extractPrivateLtmDirective,
+  isPrivateReplyRepetitive,
+  prunePrivateChatHistoryLoops,
+  shouldOfferPrivateLtm,
+} from '@/services/private-chat-response-guard';
 import { attachPrivateDmControls, resolvePrivateDmMediaUrl, splitPrivateTtsText } from '@/services/private-dm-controls';
 import { generateTTS } from '@/services/tts-provider';
 import {
@@ -195,7 +201,10 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join('\n\n');
 
-    const qwenHistory = history.filter((entry) => !parseAdultModeCommand(entry.message, botName));
+    const qwenHistory = prunePrivateChatHistoryLoops(
+      history.filter((entry) => !parseAdultModeCommand(entry.message, botName)),
+    );
+    const memoryIndexForTurn = shouldOfferPrivateLtm(message) ? ltmTitles : [];
     const qwenBaseUrl = getEffectiveQwenBaseUrl(privateSettings);
     const qwenModel = getEffectiveQwenModel(privateSettings);
     const qwenApiKey = process.env.PRIVATE_QWEN_API_KEY || '';
@@ -214,7 +223,7 @@ export async function POST(request: NextRequest) {
       botName,
       message,
       history: qwenHistory,
-      memoryIndex: ltmTitles,
+      memoryIndex: memoryIndexForTurn.length ? memoryIndexForTurn : undefined,
       adultMode: privateSettings.adultMode,
     });
 
@@ -233,34 +242,81 @@ export async function POST(request: NextRequest) {
     }
 
     let responseText = completion.text;
-    const ltmRequestMatch = responseText.match(/^\s*LTM_REQUEST:\s*(.+?)\s*$/i);
-    if (ltmRequestMatch) {
-      const requestedTitle = ltmRequestMatch[1].trim();
-      try {
-        const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
-        if (ltmContent) {
-          completion = await requestQwenPrivateChatCompletion({
-            baseUrl: qwenBaseUrl,
-            model: qwenModel,
-            apiKey: qwenApiKey,
-            systemPrompt: qwenSystemPrompt,
-            username,
-            botName,
-            message,
-            history: qwenHistory,
-            memoryContext: ltmContent,
-            adultMode: privateSettings.adultMode,
-          });
-          responseText = completion.text || [
-            'I found the memory, but Qwen could not complete the reply.',
-            safeQwenError(completion.upstreamError),
-          ].join(' ');
-        } else {
-          responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
+    const ltmDirective = extractPrivateLtmDirective(responseText);
+    if (ltmDirective) {
+      const canonicalTitle = memoryIndexForTurn.find(
+        (title) => title.trim().toLowerCase() === ltmDirective.title.trim().toLowerCase(),
+      );
+
+      if (!canonicalTitle) {
+        console.warn('[Private Chat] Ignoring unsolicited LTM request:', ltmDirective.title);
+        responseText = ltmDirective.visibleText;
+      } else {
+        try {
+          const ltmContent = await retrieveLTMByTitle(canonicalTitle, tenantId);
+          if (ltmContent) {
+            completion = await requestQwenPrivateChatCompletion({
+              baseUrl: qwenBaseUrl,
+              model: qwenModel,
+              apiKey: qwenApiKey,
+              systemPrompt: qwenSystemPrompt,
+              username,
+              botName,
+              message,
+              history: qwenHistory,
+              memoryContext: ltmContent,
+              adultMode: privateSettings.adultMode,
+            });
+            responseText = completion.text || [
+              'I found the memory, but Qwen could not complete the reply.',
+              safeQwenError(completion.upstreamError),
+            ].join(' ');
+          } else {
+            responseText = `I tried to recall "${canonicalTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
+          }
+        } catch (error) {
+          console.error('[Private Chat] Failed to retrieve LTM for Qwen:', error);
+          responseText = 'I had trouble accessing that memory. Could you remind me what you were referring to?';
         }
-      } catch (error) {
-        console.error('[Private Chat] Failed to retrieve LTM for Qwen:', error);
-        responseText = 'I had trouble accessing that memory. Could you remind me what you were referring to?';
+      }
+    }
+
+    const trailingDirective = extractPrivateLtmDirective(responseText);
+    if (trailingDirective) {
+      console.warn('[Private Chat] Stripped LTM directive from final reply:', trailingDirective.title);
+      responseText = trailingDirective.visibleText;
+    }
+
+    if (!responseText || isPrivateReplyRepetitive(responseText, qwenHistory)) {
+      console.warn('[Private Chat] Blocking repetitive private reply before save/send; requesting clean recovery turn.');
+      const recoverySystemPrompt = [
+        qwenSystemPrompt,
+        'REPETITION RECOVERY: The previous candidate was blocked because it repeated a recent assistant turn or an old memory. Answer only the newest user message. Use a genuinely different opening, actions, imagery, sentence structure, and closing. Do not mention old memory titles or reuse an earlier scene unless the user explicitly asked to recall it.',
+      ].join('\n\n');
+
+      const recovery = await requestQwenPrivateChatCompletion({
+        baseUrl: qwenBaseUrl,
+        model: qwenModel,
+        apiKey: qwenApiKey,
+        systemPrompt: recoverySystemPrompt,
+        username,
+        botName,
+        message,
+        history: qwenHistory,
+        adultMode: privateSettings.adultMode,
+      });
+      const recoveryDirective = extractPrivateLtmDirective(recovery.text);
+      const recoveryText = (recoveryDirective?.visibleText || recovery.text || '').trim();
+
+      if (
+        recoveryText &&
+        !recovery.upstreamStatus &&
+        !recovery.upstreamError &&
+        !isPrivateReplyRepetitive(recoveryText, qwenHistory)
+      ) {
+        responseText = recoveryText;
+      } else {
+        responseText = `${botName} caught a repetition loop and blocked the duplicate instead of sending it again. Send your last line once more and I will answer from that point.`;
       }
     }
 
