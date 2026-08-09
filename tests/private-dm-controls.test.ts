@@ -98,8 +98,7 @@ test('splits long private TTS at readable boundaries', () => {
   assert.equal(chunks.join(' ').replace(/\s+/g, ' ').trim(), text.replace(/\s+/g, ' ').trim());
 });
 
-
-test('settings control redirects through the configured public app URL', () => {
+test('settings and TTS controls redirect through the configured public app URL', () => {
   const routeSource = readFileSync(
     new URL('../src/app/private-chat/control/route.ts', import.meta.url),
     'utf8',
@@ -110,6 +109,26 @@ test('settings control redirects through the configured public app URL', () => {
   );
 
   assert.match(routeSource, /new URL\('\/private-chat', getConfiguredAppUrl\(\)\)/);
+  assert.match(routeSource, /new URL\('\/private-chat\/tts', getConfiguredAppUrl\(\)\)/);
   assert.doesNotMatch(routeSource, /new URL\('\/bot-functions', request\.url\)/);
   assert.match(apiRouteSource, /redirectUrl: '\/private-chat'/);
+  assert.match(apiRouteSource, /listPrivateAiTurnsAfter\(history, after, 4\)/);
+  assert.match(apiRouteSource, /mode === 'poll'/);
+  assert.match(apiRouteSource, /mode === 'off'/);
+});
+
+test('private TTS player keeps the say-style controls but listens only to private Athena polling', () => {
+  const playerSource = readFileSync(
+    new URL('../src/app/private-chat/tts/page.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(playerSource, /TTS_VOICE_OPTIONS/);
+  assert.match(playerSource, /type="range"/);
+  assert.match(playerSource, /Push to talk/);
+  assert.match(playerSource, /mode: 'poll'/);
+  assert.match(playerSource, /mode: 'off'/);
+  assert.match(playerSource, /pagehide/);
+  assert.doesNotMatch(playerSource, /\/api\/say\/next/);
+  assert.doesNotMatch(playerSource, /\/api\/say\/chat/);
 });
