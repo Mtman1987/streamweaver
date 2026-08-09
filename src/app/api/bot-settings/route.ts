@@ -7,8 +7,10 @@ import { z } from 'zod';
 import { normalizeTtsVoice } from '@/lib/tts-voices';
 import { getMode, setMode } from '@/services/modes-manager';
 
+const MAX_PERSONALITY_CHARACTERS = 20_000;
+
 const botSettingsSchema = z.object({
-  personality: z.string().trim().min(1).max(5000).optional(),
+  personality: z.string().trim().min(1).max(MAX_PERSONALITY_CHARACTERS).optional(),
   voice: z.string().trim().min(1).max(128).optional(),
   name: z.string().trim().min(1).max(128).optional(),
   interests: z.string().trim().max(500).optional(),
@@ -71,7 +73,15 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = botSettingsSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
-      return apiError('Invalid request body', { status: 400, code: 'INVALID_BODY' });
+      const personalityTooLong = parsed.error.issues.some(
+        (issue) => issue.path[0] === 'personality' && issue.code === 'too_big',
+      );
+      return apiError(
+        personalityTooLong
+          ? `Personality is too large. Maximum length is ${MAX_PERSONALITY_CHARACTERS.toLocaleString()} characters.`
+          : 'Invalid request body',
+        { status: 400, code: 'INVALID_BODY' },
+      );
     }
 
     const { personality: rawPersonality, voice, name, interests, aliases, skipShoutoutOverlay } = parsed.data;
