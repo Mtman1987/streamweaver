@@ -310,3 +310,99 @@ test('fails closed before fetch when the hosted Qwen endpoint is missing', async
   assert.equal(completion.text, '');
   assert.match(completion.upstreamError || '', /Qwen endpoint configuration is unavailable/i);
 });
+
+
+test('does not leak the third rejected repetitive draft', async () => {
+  let calls = 0;
+  const repeated = 'I step closer with a crooked smile and lower my voice as the room goes quiet.';
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: 'https://qwen.example.com/v1',
+    model: 'Qwen/private-roleplay',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'What happens next?',
+    history: [{ type: 'ai', username: 'Athena', message: repeated, timestamp: '1' }],
+    runtime: { production: true },
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: repeated } }] }), { status: 200 });
+    },
+  });
+
+  assert.equal(calls, 3);
+  assert.equal(completion.text, '');
+  assert.match(completion.upstreamError || '', /only repetitive replies after 3 attempts/i);
+});
+
+test('does not leak an already rejected draft when a retry request fails', async () => {
+  let calls = 0;
+  const repeated = 'I step closer with a crooked smile and lower my voice as the room goes quiet.';
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: 'https://qwen.example.com/v1',
+    model: 'Qwen/private-roleplay',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'What happens next?',
+    history: [{ type: 'ai', username: 'Athena', message: repeated, timestamp: '1' }],
+    runtime: { production: true },
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls == 1) {
+        return new Response(JSON.stringify({ choices: [{ message: { content: repeated } }] }), { status: 200 });
+      }
+      throw new Error('retry transport failed');
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(completion.text, '');
+  assert.match(completion.upstreamError || '', /retry transport failed/i);
+});
+
+test('drops near-duplicate assistant turns from the Qwen history prompt', () => {
+  const messages = buildQwenMessages({
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'Give me a new answer.',
+    history: [
+      { type: 'user', username: 'Commander', message: 'Start.', timestamp: '1' },
+      { type: 'ai', username: 'Athena', message: 'I step closer with a crooked smile and lower my voice as the room goes quiet.', timestamp: '2' },
+      { type: 'user', username: 'Commander', message: 'And then?', timestamp: '3' },
+      { type: 'ai', username: 'Athena', message: 'I step closer with a crooked smile and lower my voice while the room goes quiet.', timestamp: '4' },
+    ],
+  });
+
+  const assistantMessages = messages.filter((entry) => entry.role === 'assistant');
+  assert.equal(assistantMessages.length, 1);
+});
+
+test('uses stronger anti-loop sampling on regeneration attempts', async () => {
+  const bodies: any[] = [];
+  const repeated = 'I step closer with a crooked smile and lower my voice as the room goes quiet.';
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: 'https://qwen.example.com/v1',
+    model: 'Qwen/private-roleplay',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'What happens next?',
+    history: [{ type: 'ai', username: 'Athena', message: repeated, timestamp: '1' }],
+    runtime: { production: true },
+    fetchImpl: async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body || '{}')));
+      const content = bodies.length === 1
+        ? repeated
+        : 'I stop, change direction completely, and answer the new point instead.';
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+    },
+  });
+
+  assert.equal(completion.text, 'I stop, change direction completely, and answer the new point instead.');
+  assert.equal(bodies[0].repetition_penalty, 1.12);
+  assert.equal(bodies[1].repetition_penalty, 1.24);
+  assert.ok(bodies[1].temperature > bodies[0].temperature);
+  assert.ok(bodies[1].frequency_penalty > bodies[0].frequency_penalty);
+});
