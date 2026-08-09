@@ -12,6 +12,10 @@ function timestampMs(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeText(value: unknown): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
 export function latestPrivateAiCursor(messages: PrivateChatMessage[]): number {
   let latest = 0;
   for (const entry of messages) {
@@ -19,6 +23,22 @@ export function latestPrivateAiCursor(messages: PrivateChatMessage[]): number {
     latest = Math.max(latest, timestampMs(entry.timestamp));
   }
   return latest;
+}
+
+export function findPrivateAiCursorByText(
+  messages: PrivateChatMessage[],
+  text: string,
+): number {
+  const target = normalizeText(text);
+  if (!target) return 0;
+
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const entry = messages[index];
+    if (entry.type !== 'ai') continue;
+    if (normalizeText(entry.message) !== target) continue;
+    return timestampMs(entry.timestamp);
+  }
+  return 0;
 }
 
 export function listPrivateAiTurnsAfter(
