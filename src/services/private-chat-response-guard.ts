@@ -1,5 +1,5 @@
 import type { PrivateChatMessage } from '@/lib/private-chat-store';
-import { isTooSimilarToRecentAssistantReplies } from '@/services/qwen-private-chat';
+import { isNearDuplicateToRecentAssistantReplies } from '@/services/qwen-private-chat';
 
 const PRIVATE_RECALL_INTENT = /\b(?:remember|recall|memory|memories|last time|earlier|previously|where we left off|pick up where|continue from (?:before|last time|where we left off))\b/i;
 const LTM_DIRECTIVE_PATTERN = /(?:^|\n)\s*LTM_REQUEST:\s*([^\n]+?)\s*(?=\n|$)/gi;
@@ -31,7 +31,9 @@ export function isPrivateReplyRepetitive(
   candidate: string,
   history: PrivateChatMessage[],
 ): boolean {
-  return isTooSimilarToRecentAssistantReplies(candidate, history);
+  // This is the final save/send boundary. Only block actual near-duplicates here.
+  // Softer style/cliche overlap is handled inside Qwen generation as a retry preference.
+  return isNearDuplicateToRecentAssistantReplies(candidate, history);
 }
 
 export function prunePrivateChatHistoryLoops(history: PrivateChatMessage[]): PrivateChatMessage[] {
@@ -45,7 +47,7 @@ export function prunePrivateChatHistoryLoops(history: PrivateChatMessage[]): Pri
       const other = history[right];
       if (other.type !== 'ai') continue;
 
-      if (isTooSimilarToRecentAssistantReplies(entry.message, [other])) {
+      if (isNearDuplicateToRecentAssistantReplies(entry.message, [other])) {
         repeatedAssistantIndexes.add(left);
         repeatedAssistantIndexes.add(right);
       }

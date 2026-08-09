@@ -3,11 +3,19 @@ import { z } from 'zod';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import {
+  getEffectiveQwenBaseUrl,
+  getEffectiveQwenModel,
   readPrivateChatSettings,
   toPublicPrivateChatSettings,
   writePrivateChatSettings,
+  type PrivateChatSettings,
 } from '@/lib/private-chat-settings-store';
 import { resolveQwenEndpoint } from '@/services/qwen-private-chat';
+import {
+  DEFAULT_BUILT_IN_QWEN_MODEL,
+  discoverAvailableBuiltInQwenModels,
+  selectPreferredBuiltInQwenModel,
+} from '@/services/qwen-quality';
 
 const settingsPatchSchema = z.object({
   adultMode: z.boolean().optional(),
@@ -17,6 +25,28 @@ const settingsPatchSchema = z.object({
 
 export const dynamic = 'force-dynamic';
 
+async function buildSettingsPayload(settings: PrivateChatSettings) {
+  const qwenBaseUrl = getEffectiveQwenBaseUrl(settings);
+  const configuredQwenModel = getEffectiveQwenModel(settings);
+  const availableQwenModels = await discoverAvailableBuiltInQwenModels({
+    baseUrl: qwenBaseUrl,
+    apiKey: process.env.PRIVATE_QWEN_API_KEY,
+  });
+  const effectiveQwenModel = selectPreferredBuiltInQwenModel(
+    configuredQwenModel,
+    availableQwenModels,
+  );
+
+  return {
+    ...toPublicPrivateChatSettings(settings),
+    configuredQwenModel,
+    effectiveQwenModel,
+    availableQwenModels,
+    qwenAutoSelectEnabled: configuredQwenModel === DEFAULT_BUILT_IN_QWEN_MODEL,
+    qwenModelDiscoveryAvailable: availableQwenModels.length > 0,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session?.tenantId) {
@@ -24,7 +54,7 @@ export async function GET(request: NextRequest) {
   }
 
   const settings = await readPrivateChatSettings(session.tenantId);
-  return apiOk({ settings: toPublicPrivateChatSettings(settings) });
+  return apiOk({ settings: await buildSettingsPayload(settings) });
 }
 
 export async function POST(request: NextRequest) {
@@ -59,5 +89,5 @@ export async function POST(request: NextRequest) {
     qwenModel: patch.qwenModel,
   }, session.tenantId);
 
-  return apiOk({ settings: toPublicPrivateChatSettings(settings) });
+  return apiOk({ settings: await buildSettingsPayload(settings) });
 }

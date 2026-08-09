@@ -1,7 +1,7 @@
 import type { PrivateChatMessage } from '@/lib/private-chat-store';
 
 const BUILT_IN_QWEN_HOST = 'spmt-llm-worker.internal';
-const DEFAULT_BUILT_IN_QWEN_MODEL = 'spmt-qwen3-4b';
+export const DEFAULT_BUILT_IN_QWEN_MODEL = 'spmt-qwen3-4b';
 const MODEL_DISCOVERY_TIMEOUT_MS = 5_000;
 const MODEL_DISCOVERY_CACHE_MS = 5 * 60_000;
 
@@ -167,10 +167,18 @@ export function buildRecentLanguageAvoidancePrompt(history: PrivateChatMessage[]
 
   return [
     'VARIETY GUARD: Recent assistant turns have overused the language below.',
-    'Do not reuse these phrases, pet-name habits, stage-direction openings, or signature metaphors unless the newest user message makes one genuinely necessary.',
+    'Avoid these phrases, pet-name habits, stage-direction openings, and signature metaphors when a natural alternative exists.',
+    'Do not sacrifice a correct, direct answer merely to avoid one familiar word or phrase.',
     'Prefer plain, specific language tied to the newest turn rather than swapping in another generic cosmic metaphor.',
     avoid.join('; '),
   ].join(' ');
+}
+
+export function countRecentLanguageHits(candidate: string, history: PrivateChatMessage[]): number {
+  const recurring = extractRecurringAssistantLanguage(history);
+  if (!recurring.phrases.length) return 0;
+  const padded = ` ${normalize(candidate)} `;
+  return recurring.phrases.filter((phrase) => padded.includes(` ${phrase} `)).length;
 }
 
 export function isCandidateOverusingRecentLanguage(candidate: string, history: PrivateChatMessage[]): boolean {
@@ -178,8 +186,11 @@ export function isCandidateOverusingRecentLanguage(candidate: string, history: P
   if (!recurring.phrases.length) return false;
   const padded = ` ${normalize(candidate)} `;
   const phraseHits = recurring.phrases.filter((phrase) => padded.includes(` ${phrase} `));
-  if (phraseHits.some((phrase) => phrase.split(' ').length >= 4)) return true;
-  return phraseHits.length >= 2;
+
+  // Style overlap should encourage a retry, not make ordinary answers impossible.
+  // Require multiple recurring phrases before classifying a draft as overusing style.
+  if (phraseHits.length >= 3) return true;
+  return phraseHits.length >= 2 && phraseHits.some((phrase) => phrase.split(' ').length >= 4);
 }
 
 function modelRank(model: string): number {
@@ -228,22 +239,16 @@ export function clearQwenModelCapabilityCacheForTests(): void {
   modelCache.clear();
 }
 
-export async function resolvePreferredBuiltInQwenModel(input: {
+export async function discoverAvailableBuiltInQwenModels(input: {
   baseUrl: string;
-  configuredModel: string;
   apiKey?: string;
   fetchImpl?: typeof fetch;
-}): Promise<string> {
-  const configured = String(input.configuredModel || '').trim();
-  if (!configured || configured.toLowerCase() !== DEFAULT_BUILT_IN_QWEN_MODEL) return configured;
-
+}): Promise<string[]> {
   const endpoint = buildModelsEndpoint(input.baseUrl);
-  if (!endpoint) return configured;
+  if (!endpoint) return [];
 
   const cached = modelCache.get(endpoint.key);
-  if (cached && cached.expiresAt > Date.now()) {
-    return selectPreferredBuiltInQwenModel(configured, cached.models);
-  }
+  if (cached && cached.expiresAt > Date.now()) return [...cached.models];
 
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (input.apiKey?.trim()) headers.Authorization = `Bearer ${input.apiKey.trim()}`;
@@ -254,17 +259,35 @@ export async function resolvePreferredBuiltInQwenModel(input: {
       headers,
       signal: AbortSignal.timeout(MODEL_DISCOVERY_TIMEOUT_MS),
     });
-    if (!response.ok) return configured;
+    if (!response.ok) return [];
     const payload = await response.json().catch(() => null) as any;
     const models = Array.isArray(payload?.data)
       ? payload.data.map((entry: any) => String(entry?.id || '').trim()).filter(Boolean)
       : [];
+    const uniqueModels = [...new Set<string>(models)];
     modelCache.set(endpoint.key, {
       expiresAt: Date.now() + MODEL_DISCOVERY_CACHE_MS,
-      models,
+      models: uniqueModels,
     });
-    return selectPreferredBuiltInQwenModel(configured, models);
+    return [...uniqueModels];
   } catch {
-    return configured;
+    return [];
   }
+}
+
+export async function resolvePreferredBuiltInQwenModel(input: {
+  baseUrl: string;
+  configuredModel: string;
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const configured = String(input.configuredModel || '').trim();
+  if (!configured || configured.toLowerCase() !== DEFAULT_BUILT_IN_QWEN_MODEL) return configured;
+
+  const models = await discoverAvailableBuiltInQwenModels({
+    baseUrl: input.baseUrl,
+    apiKey: input.apiKey,
+    fetchImpl: input.fetchImpl,
+  });
+  return selectPreferredBuiltInQwenModel(configured, models);
 }
