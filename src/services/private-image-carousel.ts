@@ -5,7 +5,7 @@ import { tenantPath } from '@/lib/tenant';
 import { editDiscordMessage, getDiscordMessage } from '@/services/discord-local';
 
 const STORE_FILE = 'data/private-image-carousels.json';
-export const PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS = 30_000;
+export const PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS = 60_000;
 
 type CarouselRecord = { channelId: string; messageId: string; images: string[]; updatedAt: string };
 type CarouselStore = Record<string, CarouselRecord>;
