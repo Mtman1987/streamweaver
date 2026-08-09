@@ -3,6 +3,7 @@ import {
   parsePrivateDmControlAction,
   verifyPrivateDmControlToken,
 } from '@/services/private-dm-controls';
+import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,8 +136,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (action === 'settings') {
-    const settingsUrl = new URL('/bot-functions', request.url);
-    settingsUrl.hash = 'bot-identity';
+    const settingsUrl = new URL('/private-chat', getConfiguredAppUrl());
     return NextResponse.redirect(settingsUrl);
   }
 
