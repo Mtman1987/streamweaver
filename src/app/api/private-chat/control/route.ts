@@ -15,10 +15,25 @@ import {
   readPrivateChatSettings,
   writePrivateChatSettings,
 } from '@/lib/private-chat-settings-store';
+import { readPrivateChatMessages } from '@/lib/private-chat-store';
+import { getBotName } from '@/lib/bot-settings-store';
 import { generateTTS } from '@/services/tts-provider';
 import { restartPrivateImageCarousel } from '@/services/private-image-carousel';
+import {
+  findPrivateAiCursorByText,
+  latestPrivateAiCursor,
+  listPrivateAiTurnsAfter,
+} from '@/services/private-dm-live-tts';
 
 export const dynamic = 'force-dynamic';
+
+type PrivateControlBody = {
+  token?: unknown;
+  action?: unknown;
+  mode?: unknown;
+  after?: unknown;
+  voice?: unknown;
+};
 
 function safeError(error: unknown): string {
   return String(error instanceof Error ? error.message : error || 'Control action failed')
@@ -29,8 +44,51 @@ function safeError(error: unknown): string {
     .slice(0, 300);
 }
 
+function ttsMode(value: unknown): 'toggle' | 'poll' | 'off' {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'poll') return 'poll';
+  if (normalized === 'off') return 'off';
+  return 'toggle';
+}
+
+function voiceOverride(value: unknown): string | undefined {
+  const normalized = String(value || '').trim();
+  return normalized ? normalized.slice(0, 128) : undefined;
+}
+
+async function generatePrivateAudio(
+  text: string,
+  tenantId: string,
+  voice?: string,
+): Promise<string[]> {
+  const audioDataUris: string[] = [];
+  for (const chunk of splitPrivateTtsText(text)) {
+    const audioDataUri = await generateTTS(chunk, voice, tenantId);
+    if (audioDataUri) audioDataUris.push(audioDataUri);
+  }
+  return audioDataUris;
+}
+
+async function updateControlIcons(input: {
+  channelId: string;
+  messageId: string;
+  gifEnabled: boolean;
+  ttsEnabled: boolean;
+  adultMode: boolean;
+}): Promise<void> {
+  try {
+    const message = await getDiscordMessage(input.channelId, input.messageId) as any;
+    const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
+    if (!currentEmbeds.length) return;
+    const updatedEmbeds = attachPrivateDmControls(currentEmbeds, input);
+    await editDiscordMessage(input.channelId, input.messageId, { embeds: updatedEmbeds });
+  } catch {
+    // The private action remains valid even if Discord cannot refresh the icon strip.
+  }
+}
+
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null) as { token?: unknown; action?: unknown } | null;
+  const body = await request.json().catch(() => null) as PrivateControlBody | null;
   const token = String(body?.token || '').trim();
   const action = parsePrivateDmControlAction(body?.action);
   const control = verifyPrivateDmControlToken(token);
@@ -58,23 +116,13 @@ export async function POST(request: NextRequest) {
 
     if (action === 'adult') {
       const next = await writePrivateChatSettings({ adultMode: !current.adultMode }, tenantId);
-      // Edit the embed icon to reflect new state
-      try {
-        const message = await getDiscordMessage(control.channelId, control.messageId) as any;
-        const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
-        if (currentEmbeds.length) {
-          const updatedEmbeds = attachPrivateDmControls(currentEmbeds, {
-            channelId: control.channelId,
-            messageId: control.messageId,
-            gifEnabled: next.gifEnabled,
-            ttsEnabled: next.ttsEnabled,
-            adultMode: next.adultMode,
-          });
-          await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
-        }
-      } catch {
-        // Icon update is best-effort; don't fail the toggle
-      }
+      await updateControlIcons({
+        channelId: control.channelId,
+        messageId: control.messageId,
+        gifEnabled: next.gifEnabled,
+        ttsEnabled: next.ttsEnabled,
+        adultMode: next.adultMode,
+      });
       return apiOk({
         action,
         adultMode: next.adultMode,
@@ -99,9 +147,7 @@ export async function POST(request: NextRequest) {
       const message = await getDiscordMessage(control.channelId, control.messageId) as any;
       const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
       const mediaUrl = resolvePrivateDmMediaUrl(tenantId);
-      // Apply gif visibility based on new setting
       let updatedEmbeds = applyPrivateDmGif(currentEmbeds, mediaUrl, next.gifEnabled);
-      // Rebuild control field with updated icons
       updatedEmbeds = attachPrivateDmControls(updatedEmbeds, {
         channelId: control.channelId,
         messageId: control.messageId,
@@ -117,56 +163,102 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // TTS: toggle persistent setting, update icon, return audio for current message
-    const next = await writePrivateChatSettings({ ttsEnabled: !current.ttsEnabled }, tenantId);
-    // Update icon on the embed
-    try {
-      const message = await getDiscordMessage(control.channelId, control.messageId) as any;
-      const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];
-      if (currentEmbeds.length) {
-        const updatedEmbeds = attachPrivateDmControls(currentEmbeds, {
-          channelId: control.channelId,
-          messageId: control.messageId,
-          gifEnabled: next.gifEnabled,
-          ttsEnabled: next.ttsEnabled,
-          adultMode: next.adultMode,
-        });
-        await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
-      }
-    } catch {
-      // Icon update is best-effort
+    const mode = ttsMode(body?.mode);
+    const selectedVoice = voiceOverride(body?.voice);
+
+    if (mode === 'off') {
+      const next = current.ttsEnabled
+        ? await writePrivateChatSettings({ ttsEnabled: false }, tenantId)
+        : current;
+      await updateControlIcons({
+        channelId: control.channelId,
+        messageId: control.messageId,
+        gifEnabled: next.gifEnabled,
+        ttsEnabled: false,
+        adultMode: next.adultMode,
+      });
+      return apiOk({ action, ttsEnabled: false, message: 'Private Athena TTS is OFF.' });
     }
+
+    if (mode === 'poll') {
+      if (!current.ttsEnabled) {
+        return apiOk({
+          action,
+          ttsEnabled: false,
+          cursor: Math.max(0, Number(body?.after) || 0),
+          items: [],
+          message: 'Private Athena TTS is OFF.',
+        });
+      }
+
+      const after = Math.max(0, Number(body?.after) || 0);
+      const history = await readPrivateChatMessages(60, tenantId);
+      const turns = listPrivateAiTurnsAfter(history, after, 4);
+      const items = [] as Array<{
+        cursor: number;
+        text: string;
+        question: string;
+        timestamp: string;
+        audioDataUris: string[];
+      }>;
+
+      for (const turn of turns) {
+        items.push({
+          ...turn,
+          audioDataUris: await generatePrivateAudio(turn.text, tenantId, selectedVoice),
+        });
+      }
+
+      return apiOk({
+        action,
+        ttsEnabled: true,
+        botName: getBotName(tenantId),
+        mediaUrl: current.gifEnabled ? resolvePrivateDmMediaUrl(tenantId) : '',
+        cursor: items.at(-1)?.cursor || after,
+        items,
+        message: items.length ? 'New Athena reply ready.' : 'Listening for Athena replies…',
+      });
+    }
+
+    // Opening the signed speaker link toggles the private Athena-only listening session.
+    const next = await writePrivateChatSettings({ ttsEnabled: !current.ttsEnabled }, tenantId);
+    await updateControlIcons({
+      channelId: control.channelId,
+      messageId: control.messageId,
+      gifEnabled: next.gifEnabled,
+      ttsEnabled: next.ttsEnabled,
+      adultMode: next.adultMode,
+    });
 
     if (!next.ttsEnabled) {
       return apiOk({
         action,
         ttsEnabled: false,
-        message: 'Private TTS is now OFF.',
+        message: 'Private Athena TTS is now OFF.',
       });
     }
 
-    // TTS just turned on — read and speak the current message
     const discordMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
     const text = privateDmMessageText(discordMessage);
-    const chunks = splitPrivateTtsText(text);
-    if (!chunks.length) {
-      return apiOk({ action, ttsEnabled: true, message: 'Private TTS is ON. No text to read on this message.' });
-    }
-
-    const audioDataUris: string[] = [];
-    for (const chunk of chunks) {
-      const audioDataUri = await generateTTS(chunk, undefined, tenantId);
-      if (audioDataUri) audioDataUris.push(audioDataUri);
-    }
+    const history = await readPrivateChatMessages(60, tenantId);
+    const matchedCursor = findPrivateAiCursorByText(history, text);
+    const cursor = matchedCursor || latestPrivateAiCursor(history);
+    const audioDataUris = text
+      ? await generatePrivateAudio(text, tenantId, selectedVoice)
+      : [];
 
     return apiOk({
       action,
       ttsEnabled: true,
+      tenantId,
+      botName: getBotName(tenantId),
+      cursor,
+      currentText: text,
+      currentEmbed: Array.isArray(discordMessage?.embeds) ? (discordMessage.embeds[0] || null) : null,
+      mediaUrl: next.gifEnabled ? resolvePrivateDmMediaUrl(tenantId) : '',
       audioDataUris,
       chunkCount: audioDataUris.length,
-      message: audioDataUris.length
-        ? `Private TTS is ON. ${audioDataUris.length === 1 ? 'Audio ready.' : `${audioDataUris.length} parts ready.`}`
-        : 'Private TTS is ON.',
+      message: 'Private Athena TTS is ON. This page will read Athena replies until you stop it or close the page.',
     });
   } catch (error) {
     console.error('[Private DM Control] Action failed:', action, error);
