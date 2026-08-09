@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   PRIVATE_DM_CONTROL_FIELD_NAME,
@@ -95,4 +96,20 @@ test('splits long private TTS at readable boundaries', () => {
   assert.ok(chunks.length <= 4);
   assert.ok(chunks.every((chunk) => chunk.length <= 501));
   assert.equal(chunks.join(' ').replace(/\s+/g, ' ').trim(), text.replace(/\s+/g, ' ').trim());
+});
+
+
+test('settings control redirects through the configured public app URL', () => {
+  const routeSource = readFileSync(
+    new URL('../src/app/private-chat/control/route.ts', import.meta.url),
+    'utf8',
+  );
+  const apiRouteSource = readFileSync(
+    new URL('../src/app/api/private-chat/control/route.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(routeSource, /new URL\('\/private-chat', getConfiguredAppUrl\(\)\)/);
+  assert.doesNotMatch(routeSource, /new URL\('\/bot-functions', request\.url\)/);
+  assert.match(apiRouteSource, /redirectUrl: '\/private-chat'/);
 });
