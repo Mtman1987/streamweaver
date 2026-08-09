@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Images, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const AUTO_QWEN_MODEL = "spmt-qwen3-4b";
 
 interface Message {
   type: "user" | "ai";
@@ -22,6 +24,11 @@ interface PrivateChatSettings {
   gifEnabled: boolean;
   qwenBaseUrl: string;
   qwenModel: string;
+  configuredQwenModel: string;
+  effectiveQwenModel: string;
+  availableQwenModels: string[];
+  qwenAutoSelectEnabled: boolean;
+  qwenModelDiscoveryAvailable: boolean;
   qwenEndpointConfigured: boolean;
   qwenModelConfigured: boolean;
   qwenApiKeyConfigured: boolean;
@@ -32,7 +39,12 @@ const defaultSettings: PrivateChatSettings = {
   ttsEnabled: false,
   gifEnabled: true,
   qwenBaseUrl: "",
-  qwenModel: "",
+  qwenModel: AUTO_QWEN_MODEL,
+  configuredQwenModel: AUTO_QWEN_MODEL,
+  effectiveQwenModel: AUTO_QWEN_MODEL,
+  availableQwenModels: [],
+  qwenAutoSelectEnabled: true,
+  qwenModelDiscoveryAvailable: false,
   qwenEndpointConfigured: false,
   qwenModelConfigured: false,
   qwenApiKeyConfigured: false,
@@ -44,6 +56,15 @@ export default function PrivateChatPage() {
   const [settings, setSettings] = useState<PrivateChatSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingModel, setSavingModel] = useState(false);
+
+  const modelOptions = useMemo(() => {
+    const options = new Set<string>(settings.availableQwenModels || []);
+    if (settings.configuredQwenModel && settings.configuredQwenModel !== AUTO_QWEN_MODEL) {
+      options.add(settings.configuredQwenModel);
+    }
+    return [...options].filter((model) => model && model !== AUTO_QWEN_MODEL);
+  }, [settings.availableQwenModels, settings.configuredQwenModel]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,6 +125,42 @@ export default function PrivateChatPage() {
     }
   };
 
+  const setQwenModel = async (qwenModel: string) => {
+    const previous = settings;
+    setSavingModel(true);
+    setSettings((current) => ({
+      ...current,
+      qwenModel,
+      configuredQwenModel: qwenModel,
+    }));
+    try {
+      const response = await fetch("/api/private-chat/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qwenModel }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "Model selection was not saved");
+      const saved = data.settings || data.data?.settings;
+      if (saved) setSettings({ ...defaultSettings, ...saved });
+      toast({
+        title: qwenModel === AUTO_QWEN_MODEL ? "Private model set to Auto" : "Private model updated",
+        description: saved?.effectiveQwenModel
+          ? `Athena will use ${saved.effectiveQwenModel}.`
+          : undefined,
+      });
+    } catch (error) {
+      setSettings(previous);
+      toast({
+        variant: "destructive",
+        title: "Private model was not changed",
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
   return (
     <div className="max-w-3xl space-y-4">
       <Card>
@@ -112,7 +169,7 @@ export default function PrivateChatPage() {
             <div className="space-y-1.5">
               <CardTitle className="text-base">Private Chat</CardTitle>
               <CardDescription>
-                These settings and this history belong to your signed-in StreamWeaver tenant. Athena uses the built-in SPMT Qwen worker automatically; there is nothing to configure for its URL or model name.
+                These settings and this history belong to your signed-in StreamWeaver tenant. The SPMT worker URL stays managed by StreamWeaver, while the model selector below shows what the private worker actually advertises.
               </CardDescription>
             </div>
             <Button asChild size="sm" variant="outline">
@@ -128,7 +185,7 @@ export default function PrivateChatPage() {
             <div>
               <Label htmlFor="adult-mode">Adult Mode</Label>
               <p className="mt-1 text-sm text-muted-foreground">
-                This changes Athena&apos;s private-chat policy only. The built-in SPMT Qwen model is used whether Adult Mode is on or off.
+                This changes Athena&apos;s private-chat policy only. It does not switch to a different moderation path or provider.
               </p>
             </div>
             <Switch
@@ -139,10 +196,35 @@ export default function PrivateChatPage() {
             />
           </div>
 
-          <div className="rounded-md border px-3 py-3 text-sm">
-            <div className="font-medium">Private LLM</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {`Built in · ${settings.qwenModel || "SPMT Qwen"}`}
+          <div className="space-y-3 rounded-md border px-3 py-3 text-sm">
+            <div>
+              <div className="font-medium">Private LLM</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {`Effective runtime model: ${settings.effectiveQwenModel || settings.qwenModel || "SPMT Qwen"}`}
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="private-qwen-model">Model selection</Label>
+              <select
+                id="private-qwen-model"
+                value={settings.configuredQwenModel || AUTO_QWEN_MODEL}
+                disabled={savingModel}
+                onChange={(event) => void setQwenModel(event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value={AUTO_QWEN_MODEL}>
+                  {`Auto — best available (4B fallback${settings.qwenAutoSelectEnabled && settings.effectiveQwenModel ? `; now ${settings.effectiveQwenModel}` : ""})`}
+                </option>
+                {modelOptions.map((model) => (
+                  <option key={model} value={model}>{model}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {settings.qwenModelDiscoveryAvailable
+                  ? `Worker currently advertises: ${settings.availableQwenModels.join(", ")}.`
+                  : "The worker model list could not be read right now. Auto safely falls back to spmt-qwen3-4b."}
+              </p>
             </div>
           </div>
 
