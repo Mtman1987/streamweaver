@@ -24,6 +24,8 @@ jobs:
         run: npm ci
       - name: Apply repetition repair
         run: python3 scripts/ci-repair-qwen-loop.py
+      - name: Align stale regression tests with current contracts
+        run: python3 scripts/ci-fix-full-validation.py
       - name: Focused Qwen tests
         run: node --import tsx --test tests/private-chat-qwen-mode.test.ts tests/personality-prompt.test.ts tests/bot-personality-defaults.test.ts
       - name: Full repository tests and persistence verification
@@ -39,12 +41,12 @@ jobs:
       - name: Commit repair after validation passes
         if: success()
         run: |
-          if git diff --quiet -- src/services/qwen-private-chat.ts tests/private-chat-qwen-mode.test.ts; then
+          if git diff --quiet; then
             echo "Repair already committed; validation-only run complete."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/services/qwen-private-chat.ts tests/private-chat-qwen-mode.test.ts
-          git commit -m "Fix private Qwen repetition loop end to end"
+          git add src/services/qwen-private-chat.ts tests/private-chat-qwen-mode.test.ts tests/discord-points-commands.test.ts tests/discord-structured-replies.test.ts tests/mt-support-report.test.ts tests/private-image-carousel.test.ts tests/signed-session.test.ts
+          git commit -m "Fix private Qwen loop and align current regression contracts"
           git push origin HEAD:fix/private-qwen-repetition-loop-v2
