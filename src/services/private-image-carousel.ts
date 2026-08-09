@@ -5,7 +5,7 @@ import { tenantPath } from '@/lib/tenant';
 import { editDiscordMessage, getDiscordMessage } from '@/services/discord-local';
 
 const STORE_FILE = 'data/private-image-carousels.json';
-export const PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS = 60_000;
+export const PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS = 10_000;
 
 type CarouselRecord = { channelId: string; messageId: string; images: string[]; updatedAt: string };
 type CarouselStore = Record<string, CarouselRecord>;
@@ -97,7 +97,7 @@ function beginRun(tenantId: string, record: CarouselRecord, nextIndex: number, d
   const runId = (activeRuns.get(key) || 0) + 1;
   activeRuns.set(key, runId);
   const schedule = (index: number) => {
-    const intervalMs = Math.max(10, dependencies.intervalMs ?? PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS);
+    const intervalMs = Math.max(250, dependencies.intervalMs ?? PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS);
     const timer = setTimeout(async () => {
       if (activeRuns.get(key) !== runId) return;
       try {
@@ -105,7 +105,7 @@ function beginRun(tenantId: string, record: CarouselRecord, nextIndex: number, d
           await editFrame(record, record.images[index], dependencies);
           schedule(index + 1);
         } else {
-          // Keep the last image visible — just update the control button to show restart
+          // Keep the last image visible and change the image control to restart.
           await editFrame(record, record.images[record.images.length - 1], dependencies, true);
           if (activeRuns.get(key) === runId) activeRuns.delete(key);
         }
@@ -128,7 +128,14 @@ export async function registerPrivateImageCarousel(input: {
   await updateStore(input.tenantId, (store) => {
     store[recordKey(input.channelId, input.messageId)] = record;
   });
-  beginRun(input.tenantId, record, 1, dependencies);
+
+  // Do not trust the initial Discord render. Private replies may briefly show the
+  // tenant GIF or stale media while the message is being finalized. Force the
+  // first generated image into the embed immediately, then rotate the rest.
+  await editFrame(record, record.images[0], dependencies);
+  if (record.images.length > 1) {
+    beginRun(input.tenantId, record, 1, dependencies);
+  }
   return true;
 }
 
@@ -154,6 +161,8 @@ export async function restartPrivateImageCarousel(input: {
     });
     await (dependencies.editMessage || editDiscordMessage)(record.channelId, record.messageId, { embeds: updated });
   }
-  beginRun(input.tenantId, record, 1, dependencies);
+  if (record.images.length > 1) {
+    beginRun(input.tenantId, record, 1, dependencies);
+  }
   return true;
 }
