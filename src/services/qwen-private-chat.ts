@@ -180,20 +180,6 @@ export function isTooSimilarToRecentAssistantReplies(
     });
 }
 
-function recentAssistantWording(history: PrivateChatMessage[]): string {
-  const excerpts = history
-    .filter((entry) => entry.type === 'ai')
-    .slice(-6)
-    .map((entry) => stripQwenControlTokens(entry.message).replace(/\s+/g, ' ').slice(0, 180).trim())
-    .filter(Boolean);
-  if (!excerpts.length) return '';
-  return [
-    'Recent assistant wording is supplied only as an anti-repetition list.',
-    'Do not copy its openings, distinctive phrases, stage directions, metaphors, or closings:',
-    ...excerpts.map((excerpt) => `- ${excerpt}`),
-  ].join('\n');
-}
-
 function stripQwenControlTokens(value: string): string {
   return String(value || '')
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -370,7 +356,6 @@ export function buildQwenMessages(input: {
     input.systemPrompt,
     QWEN_PRIVATE_CHAT_POLICY,
     input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
-    recentAssistantWording(input.history),
     input.retryAfterRepetition
       ? [
           'The previous draft was rejected because it repeated a recent reply.',
@@ -479,12 +464,12 @@ export async function requestQwenPrivateChatCompletion(
         body: JSON.stringify({
           model: input.model.trim(),
           messages,
-          temperature: 0.7,
+          temperature: input.adultMode ? 0.78 : 0.72,
           top_p: 0.8,
           top_k: 20,
-          repetition_penalty: 1.05,
-          presence_penalty: 0.25,
-          frequency_penalty: 0.25,
+          repetition_penalty: 1.12,
+          presence_penalty: 0.3,
+          frequency_penalty: 0.35,
           max_tokens: configuredMaxTokens(),
           stream: false,
           stop: ['<|im_end|>', '<|endoftext|>'],
@@ -527,15 +512,29 @@ export async function requestQwenPrivateChatCompletion(
       return { text, provider, finishReason: finishReason || undefined };
     };
 
-    const first = await complete();
-    if (!first.text || !isTooSimilarToRecentAssistantReplies(first.text, input.history)) return first;
-
-    try {
-      const retry = await complete(first.text);
-      return retry.text ? retry : first;
-    } catch {
-      return first;
+    const rejectedDrafts: string[] = [];
+    let last: QwenPrivateChatCompletion | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const completion = await complete(rejectedDrafts.at(-1));
+        last = completion;
+        if (!completion.text) return completion;
+        const comparisonHistory: PrivateChatMessage[] = [
+          ...input.history,
+          ...rejectedDrafts.map((message, index) => ({
+            type: 'ai' as const,
+            username: input.botName,
+            message,
+            timestamp: `rejected-${index}`,
+          })),
+        ];
+        if (!isTooSimilarToRecentAssistantReplies(completion.text, comparisonHistory)) return completion;
+        rejectedDrafts.push(completion.text);
+      } catch {
+        if (last) return last;
+      }
     }
+    return last || { text: '', provider, upstreamError: 'Qwen did not produce a distinct reply.' };
   } catch (error) {
     return {
       text: '',

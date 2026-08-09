@@ -460,7 +460,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                 body: formData,
             });
             if (!uploadResponse.ok) {
-                throw new Error(`Upload failed: ${uploadResponse.status}`);
+                const failure = await uploadResponse.json().catch(() => ({}));
+                throw new Error(failure?.error || `Upload failed: ${uploadResponse.status}`);
             }
 
             const { url: mediaUrl } = await uploadResponse.json();
