@@ -13,7 +13,7 @@ export function splitPersonalityPrompt(rawPersonality: string): {
   systemIdentity: string;
   extendedGuidance: string;
 } {
-  const raw = String(rawPersonality || '').trim();
+  const raw = String(rawPersonality || '').replace(/\r\n?/g, '\n').trim();
   const splitIndex = raw.search(/\n---(?:\n|$)/);
   if (splitIndex < 0) {
     return { systemIdentity: raw, extendedGuidance: '' };
