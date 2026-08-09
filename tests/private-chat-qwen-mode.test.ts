@@ -218,12 +218,12 @@ test('sends Qwen-specific anti-repetition sampling parameters', async () => {
 
   assert.equal(requestedUrl, 'https://qwen.example.com/v1/chat/completions');
   assert.equal(requestedBody.model, 'Qwen/private-roleplay');
-  assert.equal(requestedBody.temperature, 0.7);
+  assert.equal(requestedBody.temperature, 0.72);
   assert.equal(requestedBody.top_p, 0.8);
   assert.equal(requestedBody.top_k, 20);
-  assert.equal(requestedBody.repetition_penalty, 1.05);
-  assert.equal(requestedBody.presence_penalty, 0.25);
-  assert.equal(requestedBody.frequency_penalty, 0.25);
+  assert.equal(requestedBody.repetition_penalty, 1.12);
+  assert.equal(requestedBody.presence_penalty, 0.3);
+  assert.equal(requestedBody.frequency_penalty, 0.35);
   assert.ok(requestedBody.max_tokens <= 1200);
   assert.equal(requestedBody.messages.at(-1).content, 'Continue.');
   assert.equal(requestedBody.prompt, undefined);
@@ -262,6 +262,31 @@ test('automatically regenerates a reply that repeats a recent assistant turn', a
   assert.equal(requestBodies.length, 2);
   assert.match(requestBodies[1].messages[0].content, /previous draft was rejected/i);
   assert.equal(completion.text, 'I pause by the window, let the silence settle, and answer the actual question.');
+});
+
+test('tries a third draft when the first retry is still repetitive', async () => {
+  let calls = 0;
+  const repeated = 'I step closer with a crooked smile and lower my voice as the room goes quiet.';
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: 'https://qwen.example.com/v1',
+    model: 'Qwen/private-roleplay',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'What happens next?',
+    history: [{ type: 'ai', username: 'Athena', message: repeated, timestamp: '1' }],
+    runtime: { production: true },
+    fetchImpl: async () => {
+      calls += 1;
+      const content = calls < 3
+        ? repeated
+        : 'I answer the question plainly, then wait to see which direction you choose.';
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+    },
+  });
+
+  assert.equal(calls, 3);
+  assert.equal(completion.text, 'I answer the question plainly, then wait to see which direction you choose.');
 });
 
 test('fails closed before fetch when the hosted Qwen endpoint is missing', async () => {

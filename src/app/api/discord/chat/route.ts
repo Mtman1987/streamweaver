@@ -38,6 +38,7 @@ import { canUsePublicImageGeneration, runImageCommand } from '@/services/image-c
 import { isImagePromptModerationError } from '@/services/image-content-moderation';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { registerPrivateImageCarousel } from '@/services/private-image-carousel';
+import { deleteMessage } from '@/services/discord-local';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { recordSharedChatDeadLetter, recordSharedChatEvent } from '@/services/shared-chat-ingestion';
@@ -224,6 +225,12 @@ export async function POST(request: NextRequest) {
       username = 'StreamWeaver',
       responseType?: string,
       imageUrl?: string,
+      privateControls?: {
+        gifEnabled?: boolean;
+        ttsEnabled?: boolean;
+        adultMode?: boolean;
+        includeConfiguredMedia?: boolean;
+      },
     ) => {
       if (!replyChannelId) return;
       const structuredInput = {
@@ -239,6 +246,7 @@ export async function POST(request: NextRequest) {
         sourceUserAvatarUrl: userAvatar,
         isPrivate: isDirectMessage,
         imageUrl,
+        ...privateControls,
       };
       if (relayOnly) {
         const payload = await buildStructuredDiscordReplyPayload(structuredInput);
@@ -600,8 +608,33 @@ export async function POST(request: NextRequest) {
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image' });
         }
 
+        const dmSettings = await readPrivateChatSettings(tenantId).catch(() => null);
+        const privateControls = {
+          gifEnabled: dmSettings?.gifEnabled !== false,
+          ttsEnabled: dmSettings?.ttsEnabled === true,
+          adultMode: dmSettings?.adultMode === true,
+          // An image command owns the frame. Do not substitute the tenant's
+          // bonus GIF while generation is pending or if an explicit URL fails.
+          includeConfiguredMedia: false,
+        };
+        let processingMessageId = '';
+        const clearProcessingMessage = async () => {
+          if (!processingMessageId || !channelId || relayOnly) return;
+          const messageId = processingMessageId;
+          processingMessageId = '';
+          await deleteMessage(channelId, messageId).catch(() => undefined);
+        };
+
         if (channelId) {
-          await sendDiscordRouteReplyOrCollect(channelId, "I'm processing your image now, Commander.", getBotName(tenantId), 'Generating Image');
+          const processing = await sendDiscordRouteReplyOrCollect(
+            channelId,
+            'Generating your images…',
+            getBotName(tenantId),
+            'Generating Image',
+            undefined,
+            privateControls,
+          ) as any;
+          processingMessageId = String(processing?.messageId || '').trim();
         }
 
         let result;
@@ -609,6 +642,7 @@ export async function POST(request: NextRequest) {
           result = await runImageCommand(message, tenantId, { scope: 'private' });
         } catch (error) {
           console.warn(`[Discord Chat:${tenantId}] !img failed:`, error);
+          await clearProcessingMessage();
           if (channelId) {
             await sendDiscordRouteReplyOrCollect(
               channelId,
@@ -624,6 +658,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!result.images.length) {
+          await clearProcessingMessage();
           if (channelId) {
             await sendDiscordRouteReplyOrCollect(channelId, 'Image generation returned no image URL.', getBotName(tenantId), 'Image Generation Failed');
           }
@@ -640,6 +675,8 @@ export async function POST(request: NextRequest) {
                 `Optimized prompt: ${result.optimizedPrompt.slice(0, 1500)}`,
                 getBotName(tenantId),
                 'Optimized Prompt',
+                undefined,
+                privateControls,
               );
             }
           }
@@ -650,11 +687,13 @@ export async function POST(request: NextRequest) {
             getBotName(tenantId),
             'Image Generated',
             imageUrls[0],
+            privateControls,
           );
           if (!relayOnly && sent?.messageId) {
             await registerPrivateImageCarousel({ tenantId, channelId, messageId: sent.messageId, images: imageUrls })
               .catch((error) => console.warn('[Discord Chat] Could not persist private image carousel:', error));
           }
+          await clearProcessingMessage();
         }
         await markHandled();
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', images: result.images });

@@ -38,6 +38,7 @@ export type StructuredDiscordReplyInput = {
   gifEnabled?: boolean;
   ttsEnabled?: boolean;
   adultMode?: boolean;
+  includeConfiguredMedia?: boolean;
   imageUrl?: string;
   thumbnailUrl?: string;
   color?: number;
@@ -205,7 +206,8 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     sourceUserAvatarUrl: requesterLogo,
     deleteAt: deleteAt || undefined,
     mediaSlot: input.isPrivate ? 'private' : 'public',
-    includeConfiguredMedia: Boolean(input.isPrivate) && input.gifEnabled !== false,
+    includeConfiguredMedia: input.includeConfiguredMedia
+      ?? (Boolean(input.isPrivate) && input.gifEnabled !== false),
     imageUrl: input.imageUrl,
     thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
     color: input.color,

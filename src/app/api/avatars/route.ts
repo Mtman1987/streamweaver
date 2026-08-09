@@ -9,6 +9,13 @@ import { DISCORD_MEDIA_MAX_FILE_BYTES, DISCORD_MEDIA_MAX_FILE_MB } from '@/lib/d
 
 const AVATAR_MEDIA_TYPES = ['idle', 'talking', 'gesture', 'private-dm', 'public-discord'];
 
+export function avatarGifConversionSlot(type: string): 'avatar-idle' | 'avatar-talking' | 'private-dm' | 'public-discord' | null {
+    if (type === 'idle') return 'avatar-idle';
+    if (type === 'talking') return 'avatar-talking';
+    if (type === 'private-dm' || type === 'public-discord') return type;
+    return null;
+}
+
 function avatarDir(tenantId?: string): string {
   if (tenantId) return tenantPath(tenantId, 'data/avatars');
   return resolve(process.cwd(), 'data', 'avatars');
@@ -66,10 +73,8 @@ export async function POST(request: NextRequest) {
 
         let remoteUrl = '';
         if (fileExt === 'mp4') {
-            if (type !== 'idle' && type !== 'talking') {
-                return apiError('MP4 conversion is supported for idle and talking avatar slots', { status: 400, code: 'INVALID_MEDIA_SLOT' });
-            }
-            const slot = type === 'talking' ? 'avatar-talking' : 'avatar-idle';
+            const slot = avatarGifConversionSlot(type);
+            if (!slot) return apiError('MP4 conversion is not supported for this media slot', { status: 400, code: 'INVALID_MEDIA_SLOT' });
             const converted = await convertDiscordStreamHubMp4ToGif({
                 bytes: fileBuffer,
                 fileName: `${type}.mp4`,

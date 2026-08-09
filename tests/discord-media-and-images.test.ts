@@ -50,6 +50,13 @@ test('Discord embeds use responder branding, requester footer, and explicit medi
       sourceUser: 'TestUser',
       imageUrl: 'https://media.test/generated.png',
     });
+    const generatedFrameWithoutBonusGif = await buildDiscordBotEmbed({
+      description: 'processing image',
+      tenantId: 'tenant-media',
+      botName: 'MediaBot',
+      mediaSlot: 'private',
+      includeConfiguredMedia: false,
+    });
     const optimizedAvatar = await readDiscordAvatarThumbnail('tenant-media');
 
     assert.match(privateEmbed.thumbnail.url, /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
@@ -68,6 +75,7 @@ test('Discord embeds use responder branding, requester footer, and explicit medi
     assert.equal(imageEmbed.title, 'MediaBot • Image Generated');
     assert.equal(imageEmbed.image?.url, 'https://media.test/generated.png');
     assert.equal(imageEmbed.fields, undefined);
+    assert.equal(generatedFrameWithoutBonusGif.image, undefined);
     assert.ok(optimizedAvatar);
     assert.ok(optimizedAvatar.length < DISCORD_AVATAR_THUMBNAIL_MAX_BYTES);
     const sharp = (await import('sharp')).default;
@@ -107,6 +115,15 @@ test('Discord media upload rejects oversized and malformed multipart requests wi
   }));
   assert.equal(malformed.status, 400);
   assert.match(JSON.stringify(await malformed.json()), /multipart/i);
+});
+
+test('avatar MP4 conversion maps avatar and Discord bonus slots to DiscordStreamHub', async () => {
+  const { avatarGifConversionSlot } = await import('../src/app/api/avatars/route');
+  assert.equal(avatarGifConversionSlot('idle'), 'avatar-idle');
+  assert.equal(avatarGifConversionSlot('talking'), 'avatar-talking');
+  assert.equal(avatarGifConversionSlot('private-dm'), 'private-dm');
+  assert.equal(avatarGifConversionSlot('public-discord'), 'public-discord');
+  assert.equal(avatarGifConversionSlot('gesture'), null);
 });
 
 test('image command preserves all requested durable image results', async () => {
