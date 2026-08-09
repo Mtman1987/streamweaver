@@ -86,6 +86,7 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId }),
+        body: JSON.stringify({ tenantId }),
       });
 
       if (response.ok) {
