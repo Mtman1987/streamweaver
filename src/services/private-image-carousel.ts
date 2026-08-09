@@ -27,14 +27,17 @@ function isDiscordId(value: string): boolean {
 }
 
 function validImages(images: string[]): string[] {
-  return images.map((value) => String(value || '').trim()).filter((value) => {
-    try {
-      const url = new URL(value);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }).slice(0, 4);
+  return images
+    .map((value) => String(value || '').trim())
+    .filter((value) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    })
+    .filter((value, index, all) => all.indexOf(value) === index);
 }
 
 async function readStore(tenantId: string): Promise<CarouselStore> {
@@ -129,9 +132,7 @@ export async function registerPrivateImageCarousel(input: {
     store[recordKey(input.channelId, input.messageId)] = record;
   });
 
-  // Do not trust the initial Discord render. Private replies may briefly show the
-  // tenant GIF or stale media while the message is being finalized. Force the
-  // first generated image into the embed immediately, then rotate the rest.
+  // Own the Discord frame immediately, then advance the remaining images on the timer.
   await editFrame(record, record.images[0], dependencies);
   if (record.images.length > 1) {
     beginRun(input.tenantId, record, 1, dependencies);
