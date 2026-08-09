@@ -5,14 +5,16 @@ import { NextRequest } from 'next/server';
 
 process.env.STREAMWEAVER_SESSION_SECRET = 'private-gallery-navigation-test-secret';
 process.env.APP_URL = 'https://streamweaver-new.fly.dev';
+process.env.NODE_ENV = 'production';
+process.env.PORT = '3000';
 
 test('private gallery shortcut redirects the signed-in tenant to the production private library', async () => {
   const { serializeSessionCookie } = await import('../src/lib/session-cookie');
   const { GET } = await import('../src/app/private-gallery/route');
   const cookie = serializeSessionCookie({ id: 'tenant-private-gallery', username: 'owner' });
 
-  // Fly/Next can expose an internal listener origin such as 0.0.0.0:3000 here.
-  // The redirect must never leak that internal address to the browser.
+  // Fly/Next exposes an internal listener origin such as 0.0.0.0:3000 here.
+  // Production routing must ignore it and use the configured public app URL.
   const response = await GET(new NextRequest('https://0.0.0.0:3000/private-gallery', {
     headers: { cookie: `streamweaver-session=${cookie}` },
   }));
