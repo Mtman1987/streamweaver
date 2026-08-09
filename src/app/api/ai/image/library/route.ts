@@ -8,8 +8,8 @@ import {
   readPrivateGeneratedGif,
 } from '@/services/private-image-library';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
-import { getDiscordMediaPublicPath, writeDiscordMedia } from '@/lib/discord-media-store';
-import { writeUserConfig } from '@/lib/user-config';
+import { getDiscordMediaPublicPath, readDiscordMedia, writeDiscordMedia } from '@/lib/discord-media-store';
+import { readUserConfigSync, writeUserConfig } from '@/lib/user-config';
 import { writePrivateChatSettings } from '@/lib/private-chat-settings-store';
 
 // SECURITY NOTE: GET intentionally takes tenantId from the query string without
@@ -75,6 +75,32 @@ function renderCard(input: {
   </article>`;
 }
 
+function renderActiveGifCard(url: string): string {
+  const safeUrl = escapeHtml(url);
+  return `<article class="image-card active-gif-card" data-image-card data-library-kind="gif" data-active-dm-gif>
+    <div class="image-toolbar">
+      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open full size</a>
+      <div class="card-actions"><span class="active-badge">✓ Active DM GIF</span></div>
+    </div>
+    <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="image-link">
+      <img src="${safeUrl}" loading="lazy" alt="Active private DM GIF" />
+    </a>
+    <div class="filename" title="Active private-DM media slot">Active private-DM media slot</div>
+  </article>`;
+}
+
+async function resolveActivePrivateGifUrl(tenantId: string): Promise<string> {
+  const stored = await readDiscordMedia('private-dm', tenantId).catch(() => null);
+  if (stored) {
+    const relativeUrl = getDiscordMediaPublicPath('private-dm', tenantId);
+    const baseUrl = getConfiguredAppUrl();
+    return baseUrl ? `${baseUrl}${relativeUrl}` : relativeUrl;
+  }
+
+  const configured = String(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL || '').trim();
+  return /^https?:\/\//i.test(configured) ? configured : '';
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = new URL(request.url).searchParams;
   const tenantId = (searchParams.get('tenantId') || '').trim();
@@ -97,6 +123,11 @@ export async function GET(request: NextRequest) {
   const canMutate = scope === 'private' && Boolean(tenantId) && session?.tenantId === tenantId;
   const gifFiles = scope === 'private' ? files.filter((filename) => /\.gif$/i.test(filename)) : [];
   const imageFiles = scope === 'private' ? files.filter((filename) => !/\.gif$/i.test(filename)) : files;
+  const activePrivateGifUrl = scope === 'private' && tenantId
+    ? await resolveActivePrivateGifUrl(tenantId)
+    : '';
+  const savedGifCount = gifFiles.length + (activePrivateGifUrl ? 1 : 0);
+  const totalMediaCount = imageFiles.length + savedGifCount;
 
   const imageRows = imageFiles.map((filename) => renderCard({
     filename,
@@ -105,18 +136,22 @@ export async function GET(request: NextRequest) {
     canMutate,
     gif: false,
   })).join('');
-  const gifRows = gifFiles.map((filename) => renderCard({
+  const generatedGifRows = gifFiles.map((filename) => renderCard({
     filename,
     tenantId,
     scope,
     canMutate,
     gif: true,
   })).join('');
+  const gifRows = [
+    activePrivateGifUrl ? renderActiveGifCard(activePrivateGifUrl) : '',
+    generatedGifRows,
+  ].filter(Boolean).join('');
 
   const title = scope === 'private' ? 'Private Generated Media' : 'Generated Images';
   const ownerNote = scope === 'private'
     ? canMutate
-      ? '<p class="note">Images and GIFs are stored separately below. Delete anything you do not want to keep. In <strong>Saved GIFs</strong>, use <strong>Apply to DM</strong> to make that GIF the active private Discord media.</p>'
+      ? '<p class="note">Images and GIFs are stored separately below. The Saved GIFs count includes the active private-DM media slot plus saved generated GIFs. Delete generated GIFs you do not want to keep, or use <strong>Apply to DM</strong> to replace the active private Discord media.</p>'
       : '<p class="note warning">Viewing mode. Sign in to StreamWeaver as this account in this browser to enable Delete and Apply controls.</p>'
     : '';
 
@@ -178,6 +213,7 @@ export async function GET(request: NextRequest) {
           button.textContent = button === applyButton ? '✓ Active DM GIF' : 'Apply to DM';
           button.classList.toggle('active', button === applyButton);
         });
+        window.location.reload();
       } catch (error) {
         window.alert(error && error.message ? error.message : 'Apply failed.');
         applyButton.disabled = false;
@@ -190,8 +226,8 @@ export async function GET(request: NextRequest) {
     <section class="library-section">
       <div class="section-heading">
         <div>
-          <h2>Saved GIFs (<span id="gif-count">${gifFiles.length}</span>)</h2>
-          <p>Keep multiple GIFs here, delete old ones, or apply any saved GIF as the active Athena private-DM GIF.</p>
+          <h2>Saved GIFs (<span id="gif-count">${savedGifCount}</span>)</h2>
+          <p>The active DM slot appears first, followed by saved generated GIFs you can delete or apply.</p>
         </div>
       </div>
       <div id="gif-gallery" class="media-gallery">${gifRows || '<p class="empty">Nothing saved in this section yet.</p>'}</div>
@@ -215,6 +251,7 @@ export async function GET(request: NextRequest) {
     .section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
     .media-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding-top: 14px; }
     .image-card { min-width: 0; background: #1a1d24; border: 1px solid #30343c; border-radius: 12px; overflow: hidden; }
+    .active-gif-card { border-color: #247a4b; }
     .image-toolbar { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
     .image-toolbar a { color: #9ecbff; text-decoration: none; font-size: 14px; }
     .image-toolbar a:hover { text-decoration: underline; }
@@ -223,6 +260,7 @@ export async function GET(request: NextRequest) {
     .delete-button { background: #b4232d; }
     .apply-button { background: #2459a8; }
     .apply-button.active { background: #247a4b; }
+    .active-badge { border-radius: 7px; padding: 8px 11px; color: white; background: #247a4b; font-size: 12px; font-weight: 700; }
     .delete-button:hover, .apply-button:hover { filter: brightness(1.12); }
     .delete-button:disabled, .apply-button:disabled { opacity: .65; cursor: wait; }
     .image-link { display: block; background: #090a0d; }
@@ -239,7 +277,7 @@ export async function GET(request: NextRequest) {
 <body>
   <main class="page">
     <header class="header">
-      <h1>${title} (<span id="media-count">${files.length}</span>)</h1>
+      <h1>${title} (<span id="media-count">${totalMediaCount}</span>)</h1>
       ${ownerNote}
     </header>
     <section class="library-section">
