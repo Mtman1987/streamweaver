@@ -3,6 +3,7 @@ import { promises as fsp } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { tenantPath } from './tenant';
+import { migrateLegacyBotPersonality } from './bot-personality-defaults';
 
 export type UserConfig = Record<string, string>;
 
@@ -28,6 +29,15 @@ function normalizeString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeConfigEntry(key: string, value: unknown): string | undefined {
+  const normalized = normalizeString(value);
+  if (!normalized) return undefined;
+  if (key === 'AI_BOT_PERSONALITY') {
+    return migrateLegacyBotPersonality(normalized);
+  }
+  return normalized;
+}
+
 export function getUserConfigPath(tenantId?: string): string {
   return configPath(tenantId);
 }
@@ -42,7 +52,7 @@ export function readUserConfigSync(tenantId?: string): Partial<UserConfig> {
 
     const out: Partial<UserConfig> = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      const v = normalizeString(value);
+      const v = normalizeConfigEntry(key, value);
       if (v) out[key] = v;
     }
     return out;
@@ -59,7 +69,7 @@ export async function readUserConfig(tenantId?: string): Promise<Partial<UserCon
 
     const out: Partial<UserConfig> = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      const v = normalizeString(value);
+      const v = normalizeConfigEntry(key, value);
       if (v) out[key] = v;
     }
     return out;
@@ -73,7 +83,7 @@ export async function writeUserConfig(patch: Record<string, unknown>, tenantId?:
 
   const next: Partial<UserConfig> = { ...existing };
   for (const [key, value] of Object.entries(patch)) {
-    const v = normalizeString(value);
+    const v = normalizeConfigEntry(key, value);
     if (v) {
       next[key] = v;
     } else {
