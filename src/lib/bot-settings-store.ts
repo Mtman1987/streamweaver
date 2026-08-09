@@ -118,10 +118,9 @@ function getEffectiveSettings(tenantId?: string) {
     return { ...DEFAULTS };
   }
 
-  // Try reading config directly — if AI_BOT_NAME is set, use custom settings
-  // This handles the case where hasBotAccount() fails due to path issues
+  // Use saved settings if the config file has any name set at all
   const settings = getBotSettings(tenantId);
-  if (settings.name !== DEFAULTS.name) {
+  if (settings.name) {
     return settings;
   }
 
