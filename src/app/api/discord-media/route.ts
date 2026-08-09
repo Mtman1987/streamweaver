@@ -1,14 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
-import { getDiscordMediaPublicPath, isDiscordMediaSlot, writeDiscordMedia } from '@/lib/discord-media-store';
+import {
+  deleteTenantDiscordMedia,
+  getDiscordMediaPublicPath,
+  importDiscordStreamHubMedia,
+  isDiscordMediaSlot,
+  writeDiscordMedia,
+} from '@/lib/discord-media-store';
 import {
   DISCORD_MEDIA_MAX_FILE_BYTES,
   DISCORD_MEDIA_MAX_FILE_MB,
   DISCORD_MEDIA_MAX_REQUEST_BYTES,
 } from '@/lib/discord-media-limits';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { writeUserConfig } from '@/lib/user-config';
 import { convertDiscordStreamHubMp4ToGif } from '@/services/discord-stream-hub';
+
+function configKeyForSlot(slot: 'private-dm' | 'public-discord') {
+  return slot === 'private-dm' ? 'PRIVATE_DM_GIF_URL' : 'PUBLIC_DISCORD_GIF_URL';
+}
+
+function canonicalMediaUrl(slot: 'private-dm' | 'public-discord', tenantId: string) {
+  return `${getConfiguredAppUrl()}${getDiscordMediaPublicPath(slot, tenantId)}`;
+}
+
+async function persistCanonicalSlot(slot: 'private-dm' | 'public-discord', tenantId: string) {
+  const url = canonicalMediaUrl(slot, tenantId);
+  await writeUserConfig({ [configKeyForSlot(slot)]: url }, tenantId);
+  return url;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,25 +73,48 @@ export async function POST(request: NextRequest) {
     }
 
     if (ext === 'mp4') {
-      const buffer = Buffer.from(await file.arrayBuffer());
       const converted = await convertDiscordStreamHubMp4ToGif({
-        bytes: buffer,
+        bytes: Buffer.from(await file.arrayBuffer()),
         fileName: file.name,
         sessionToken: request.cookies.get('streamweaver-session')?.value || '',
         slot,
       });
-      return apiOk({ success: true, url: converted.url, filename: converted.url.split('/').pop(), converted: true });
+      await importDiscordStreamHubMedia(slot, converted.url, session.tenantId);
+      const url = await persistCanonicalSlot(slot, session.tenantId);
+      return apiOk({
+        success: true,
+        url,
+        filename: url.split('/').pop(),
+        converted: true,
+        source: 'streamweaver',
+      });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { filename } = await writeDiscordMedia(slot, buffer, session.tenantId);
-
-    const baseUrl = getConfiguredAppUrl();
-    const publicUrl = `${baseUrl}${getDiscordMediaPublicPath(slot, session.tenantId)}`;
-
-    return apiOk({ success: true, url: publicUrl, filename });
+    const { filename } = await writeDiscordMedia(slot, Buffer.from(await file.arrayBuffer()), session.tenantId);
+    const url = await persistCanonicalSlot(slot, session.tenantId);
+    return apiOk({ success: true, url, filename, converted: false, source: 'streamweaver' });
   } catch (error: any) {
     console.error('[Discord Media API] Error:', error);
     return apiError(error?.message || 'Failed to save media', { status: 500, code: 'INTERNAL_ERROR' });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = getTenantFromRequest(request);
+    if (!session?.tenantId) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    const slot = new URL(request.url).searchParams.get('slot') || '';
+    if (!isDiscordMediaSlot(slot)) {
+      return apiError('Invalid slot', { status: 400, code: 'INVALID_SLOT' });
+    }
+
+    const deleted = await deleteTenantDiscordMedia(slot, session.tenantId);
+    await writeUserConfig({ [configKeyForSlot(slot)]: '' }, session.tenantId);
+    return apiOk({ success: true, deleted, slot });
+  } catch (error: any) {
+    console.error('[Discord Media API] Delete error:', error);
+    return apiError(error?.message || 'Failed to delete media', { status: 500, code: 'INTERNAL_ERROR' });
   }
 }
