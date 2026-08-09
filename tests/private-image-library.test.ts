@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-test('private image library returns all saved images newest first with Discord-fetchable URLs', async () => {
+test('private image library returns all saved images newest first with Discord-fetchable URLs and safely deletes selected images', async () => {
   const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-library-'));
   const originalPersistRoot = process.env.PERSIST_ROOT;
   const originalNodeEnv = process.env.NODE_ENV;
@@ -30,7 +30,11 @@ test('private image library returns all saved images newest first with Discord-f
     await utimes(middle, new Date('2026-08-02T00:00:00Z'), new Date('2026-08-02T00:00:00Z'));
     await utimes(newest, new Date('2026-08-03T00:00:00Z'), new Date('2026-08-03T00:00:00Z'));
 
-    const { listPrivateGeneratedImages, listPrivateGeneratedImageUrls } = await import('../src/services/private-image-library');
+    const {
+      deletePrivateGeneratedImage,
+      listPrivateGeneratedImages,
+      listPrivateGeneratedImageUrls,
+    } = await import('../src/services/private-image-library');
     const images = await listPrivateGeneratedImages('tenant-private-library');
     const urls = await listPrivateGeneratedImageUrls('tenant-private-library');
 
@@ -43,6 +47,22 @@ test('private image library returns all saved images newest first with Discord-f
     assert.match(urls[0], /^https:\/\/streamweaver\.test\/api\/ai\/image\/file\//);
     assert.match(urls[0], /tenantId=tenant-private-library/);
     assert.match(urls[0], /scope=private/);
+
+    assert.equal(
+      await deletePrivateGeneratedImage('tenant-private-library', path.basename(middle)),
+      'deleted',
+    );
+    await assert.rejects(access(middle));
+    assert.deepEqual(
+      (await listPrivateGeneratedImages('tenant-private-library')).map((entry) => entry.filename),
+      [path.basename(newest), path.basename(oldest)],
+    );
+
+    assert.equal(
+      await deletePrivateGeneratedImage('tenant-private-library', '../11111111-1111-1111-1111-111111111111.png'),
+      'invalid',
+    );
+    await access(oldest);
   } finally {
     if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
     else process.env.PERSIST_ROOT = originalPersistRoot;
