@@ -73,3 +73,41 @@ test('private image library returns all saved images newest first with Discord-f
     await rm(runtimeRoot, { recursive: true, force: true });
   }
 });
+
+test('private gallery counts the active private-DM GIF even when no generated GIF exists', async () => {
+  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-active-gif-'));
+  const originalPersistRoot = process.env.PERSIST_ROOT;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAppUrl = process.env.APP_URL;
+  process.env.PERSIST_ROOT = runtimeRoot;
+  process.env.NODE_ENV = 'production';
+  process.env.APP_URL = 'https://streamweaver.test';
+
+  try {
+    const tenantId = 'tenant-active-gif';
+    const { writeDiscordMedia } = await import('../src/lib/discord-media-store');
+    await writeDiscordMedia('private-dm', Buffer.from('GIF89a-active-private-slot'), tenantId);
+
+    const { NextRequest } = await import('next/server');
+    const { GET } = await import('../src/app/api/ai/image/library/route');
+    const request = new NextRequest(
+      `https://streamweaver.test/api/ai/image/library?tenantId=${tenantId}&scope=private`,
+    );
+    const response = await GET(request);
+    const html = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(html, /Saved GIFs \(<span id="gif-count">1<\/span>\)/);
+    assert.match(html, /Private Generated Media \(<span id="media-count">1<\/span>\)/);
+    assert.match(html, /✓ Active DM GIF/);
+    assert.match(html, /\/api\/discord-media\/private-dm\.gif\?tenant=tenant-active-gif/);
+  } finally {
+    if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
+    else process.env.PERSIST_ROOT = originalPersistRoot;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = originalAppUrl;
+    await rm(runtimeRoot, { recursive: true, force: true });
+  }
+});
