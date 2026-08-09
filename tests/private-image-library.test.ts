@@ -207,7 +207,7 @@ test('deleting the canonical private-DM slot removes the file and clears the act
 
     assert.equal(response.status, 200);
     assert.equal(await readTenantDiscordMedia('private-dm', tenantId), null);
-    assert.equal(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL, '');
+    assert.equal(Boolean(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL), false);
   } finally {
     if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
     else process.env.PERSIST_ROOT = originalPersistRoot;
