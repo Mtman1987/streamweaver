@@ -71,7 +71,7 @@ async function updateStore(tenantId: string, update: (store: CarouselStore) => v
   }
 }
 
-async function editFrame(record: CarouselRecord, imageUrl: string | null, dependencies: CarouselDependencies): Promise<void> {
+async function editFrame(record: CarouselRecord, imageUrl: string | null, dependencies: CarouselDependencies, carouselDone = false): Promise<void> {
   const message = await (dependencies.getMessage || getDiscordMessage)(record.channelId, record.messageId) as any;
   const embeds = Array.isArray(message?.embeds)
     ? message.embeds.map((embed: Record<string, unknown>) => ({ ...embed }))
@@ -79,6 +79,16 @@ async function editFrame(record: CarouselRecord, imageUrl: string | null, depend
   if (!embeds.length) return;
   if (imageUrl) embeds[0].image = { url: imageUrl };
   else delete embeds[0].image;
+  if (carouselDone) {
+    const { attachPrivateDmControls } = await import('@/services/private-dm-controls');
+    const updated = attachPrivateDmControls(embeds, {
+      channelId: record.channelId,
+      messageId: record.messageId,
+      carouselDone: true,
+    });
+    await (dependencies.editMessage || editDiscordMessage)(record.channelId, record.messageId, { embeds: updated });
+    return;
+  }
   await (dependencies.editMessage || editDiscordMessage)(record.channelId, record.messageId, { embeds });
 }
 
@@ -95,7 +105,8 @@ function beginRun(tenantId: string, record: CarouselRecord, nextIndex: number, d
           await editFrame(record, record.images[index], dependencies);
           schedule(index + 1);
         } else {
-          await editFrame(record, null, dependencies);
+          // Keep the last image visible — just update the control button to show restart
+          await editFrame(record, record.images[record.images.length - 1], dependencies, true);
           if (activeRuns.get(key) === runId) activeRuns.delete(key);
         }
       } catch (error) {
@@ -131,6 +142,18 @@ export async function restartPrivateImageCarousel(input: {
   record.images = validImages(record.images);
   if (!record.images.length) return false;
   await editFrame(record, record.images[0], dependencies);
+  // Flip control field back from 🔄 to 🖼️
+  const message = await (dependencies.getMessage || getDiscordMessage)(record.channelId, record.messageId) as any;
+  const embeds = Array.isArray(message?.embeds) ? message.embeds.map((e: Record<string, unknown>) => ({ ...e })) : [];
+  if (embeds.length) {
+    const { attachPrivateDmControls } = await import('@/services/private-dm-controls');
+    const updated = attachPrivateDmControls(embeds, {
+      channelId: record.channelId,
+      messageId: record.messageId,
+      carouselDone: false,
+    });
+    await (dependencies.editMessage || editDiscordMessage)(record.channelId, record.messageId, { embeds: updated });
+  }
   beginRun(input.tenantId, record, 1, dependencies);
   return true;
 }

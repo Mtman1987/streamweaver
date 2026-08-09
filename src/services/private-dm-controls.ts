@@ -139,9 +139,10 @@ export function buildPrivateDmControlField(input: {
   gifEnabled?: boolean;
   ttsEnabled?: boolean;
   adultMode?: boolean;
+  carouselDone?: boolean;
 }): { name: string; value: string; inline: false } {
   const token = createPrivateDmControlToken(input);
-  const gifEmoji = input.gifEnabled !== false ? '🖼️' : '🚫';
+  const gifEmoji = input.carouselDone ? '🔄' : (input.gifEnabled !== false ? '🖼️' : '🚫');
   const ttsEmoji = input.ttsEnabled ? '🔇' : '🔊';
   const links: Array<[string, PrivateDmControlAction]> = [
     [gifEmoji, 'gif'],
@@ -173,6 +174,7 @@ export function attachPrivateDmControls(
     gifEnabled?: boolean;
     ttsEnabled?: boolean;
     adultMode?: boolean;
+    carouselDone?: boolean;
   },
 ): Record<string, unknown>[] {
   if (!embeds.length) return embeds;
