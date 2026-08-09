@@ -86,12 +86,13 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId }),
-        body: JSON.stringify({ tenantId }),
       });
 
       if (response.ok) {
         const data = await response.json();
         console.log('[Private LTM] Successfully condensed memory:', data.title);
+      } else {
+        console.error('[Private LTM] Condense request failed:', response.status);
       }
     }
   } catch (error) {
@@ -205,76 +206,76 @@ export async function POST(request: NextRequest) {
     ].filter(Boolean).join('\n\n');
 
     let completion = await requestQwenPrivateChatCompletion({
-        baseUrl: qwenBaseUrl,
-        model: qwenModel,
-        apiKey: qwenApiKey,
-        systemPrompt: qwenSystemPrompt,
-        username,
-        botName,
-        message,
-        history: qwenHistory,
-        memoryIndex: ltmTitles,
-        adultMode: privateSettings.adultMode,
-      });
+      baseUrl: qwenBaseUrl,
+      model: qwenModel,
+      apiKey: qwenApiKey,
+      systemPrompt: qwenSystemPrompt,
+      username,
+      botName,
+      message,
+      history: qwenHistory,
+      memoryIndex: ltmTitles,
+      adultMode: privateSettings.adultMode,
+    });
 
-      if (completion.upstreamStatus || completion.upstreamError) {
-        console.error('[Private Chat API] Built-in Qwen error:', completion.upstreamStatus || null, completion.upstreamError);
-        const responseText = [
-          'The built-in SPMT Qwen model is unavailable right now.',
-          safeQwenError(completion.upstreamError),
-        ].join(' ');
-        await savePrivateReply(tenantId, botName, responseText);
-        return apiOk({
-          response: responseText,
-          provider: 'self-hosted-qwen-unavailable',
-          adultMode: privateSettings.adultMode,
-        });
-      }
-
-      let responseText = completion.text;
-      const ltmRequestMatch = responseText.match(/^\s*LTM_REQUEST:\s*(.+?)\s*$/i);
-      if (ltmRequestMatch) {
-        const requestedTitle = ltmRequestMatch[1].trim();
-        try {
-          const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
-          if (ltmContent) {
-            completion = await requestQwenPrivateChatCompletion({
-              baseUrl: qwenBaseUrl,
-              model: qwenModel,
-              apiKey: qwenApiKey,
-              systemPrompt: qwenSystemPrompt,
-              username,
-              botName,
-              message,
-              history: qwenHistory,
-              memoryContext: ltmContent,
-              adultMode: privateSettings.adultMode,
-            });
-            responseText = completion.text || [
-              'I found the memory, but Qwen could not complete the reply.',
-              safeQwenError(completion.upstreamError),
-            ].join(' ');
-          } else {
-            responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
-          }
-        } catch (error) {
-          console.error('[Private Chat] Failed to retrieve LTM for Qwen:', error);
-          responseText = 'I had trouble accessing that memory. Could you remind me what you were referring to?';
-        }
-      }
-
-      if (!responseText) {
-        responseText = 'Qwen returned an empty private reply.';
-      }
-
+    if (completion.upstreamStatus || completion.upstreamError) {
+      console.error('[Private Chat API] Built-in Qwen error:', completion.upstreamStatus || null, completion.upstreamError);
+      const responseText = [
+        'The built-in SPMT Qwen model is unavailable right now.',
+        safeQwenError(completion.upstreamError),
+      ].join(' ');
       await savePrivateReply(tenantId, botName, responseText);
       return apiOk({
         response: responseText,
-        provider: 'self-hosted-qwen',
+        provider: 'self-hosted-qwen-unavailable',
         adultMode: privateSettings.adultMode,
-        ttsEnabled: privateSettings.ttsEnabled,
-        gifEnabled: privateSettings.gifEnabled,
       });
+    }
+
+    let responseText = completion.text;
+    const ltmRequestMatch = responseText.match(/^\s*LTM_REQUEST:\s*(.+?)\s*$/i);
+    if (ltmRequestMatch) {
+      const requestedTitle = ltmRequestMatch[1].trim();
+      try {
+        const ltmContent = await retrieveLTMByTitle(requestedTitle, tenantId);
+        if (ltmContent) {
+          completion = await requestQwenPrivateChatCompletion({
+            baseUrl: qwenBaseUrl,
+            model: qwenModel,
+            apiKey: qwenApiKey,
+            systemPrompt: qwenSystemPrompt,
+            username,
+            botName,
+            message,
+            history: qwenHistory,
+            memoryContext: ltmContent,
+            adultMode: privateSettings.adultMode,
+          });
+          responseText = completion.text || [
+            'I found the memory, but Qwen could not complete the reply.',
+            safeQwenError(completion.upstreamError),
+          ].join(' ');
+        } else {
+          responseText = `I tried to recall "${requestedTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
+        }
+      } catch (error) {
+        console.error('[Private Chat] Failed to retrieve LTM for Qwen:', error);
+        responseText = 'I had trouble accessing that memory. Could you remind me what you were referring to?';
+      }
+    }
+
+    if (!responseText) {
+      responseText = 'Qwen returned an empty private reply.';
+    }
+
+    await savePrivateReply(tenantId, botName, responseText);
+    return apiOk({
+      response: responseText,
+      provider: 'self-hosted-qwen',
+      adultMode: privateSettings.adultMode,
+      ttsEnabled: privateSettings.ttsEnabled,
+      gifEnabled: privateSettings.gifEnabled,
+    });
   } catch (error) {
     console.error('Private chat respond API error:', error);
     return apiError('Failed to generate private chat response', { status: 500, code: 'INTERNAL_ERROR' });
