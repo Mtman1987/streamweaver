@@ -1,0 +1,48 @@
+export const NATURAL_DIALOGUE_POLICY = [
+  'Sound like a present conversational partner, not a mascot performing a script.',
+  'Respond to the specific meaning, mood, and new detail in the latest message before adding character flavor.',
+  'Vary openings, sentence structure, pacing, emotional intensity, and response length when the channel allows it.',
+  'Do not force catchphrases, pet names, signature metaphors, stage directions, jokes, or lore references into every reply.',
+  'Never reuse example dialogue verbatim. Treat examples as tone references only.',
+  'Avoid generic filler, canned reassurance, theatrical narration, and tidy closing slogans unless the moment genuinely calls for them.',
+].join(' ');
+
+const ADULT_MODE_CONFLICT = /\b(?:family[- ]friendly|family[- ]safe|safe[- ]for[- ]work|sfw|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly|not explicit|not mature|avoid explicit|avoid adult|avoid mature|pg[- ]?1?3?[- ]?rated?|keep.*appropriate|appropriate.*all)\b|\b(?:no|never|avoid|without)\b[^\n]{0,120}\b(?:adult|explicit|mature)\b/i;
+
+export function splitPersonalityPrompt(rawPersonality: string): {
+  systemIdentity: string;
+  extendedGuidance: string;
+} {
+  const raw = String(rawPersonality || '').trim();
+  const splitIndex = raw.search(/\n---(?:\n|$)/);
+  if (splitIndex < 0) {
+    return { systemIdentity: raw, extendedGuidance: '' };
+  }
+
+  return {
+    systemIdentity: raw.slice(0, splitIndex).trim(),
+    extendedGuidance: raw.slice(splitIndex).replace(/^\n---\n?/, '').trim(),
+  };
+}
+
+/** Remove only old SFW restrictions while preserving the tenant's character. */
+export function filterAdultModePersonalitySection(section: string): string {
+  return String(section || '')
+    .split('\n')
+    .filter((line) => !ADULT_MODE_CONFLICT.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function buildPersonalityPrompt(rawPersonality: string, adultMode = false): {
+  systemIdentity: string;
+  extendedGuidance: string;
+} {
+  const parts = splitPersonalityPrompt(rawPersonality);
+  if (!adultMode) return parts;
+  return {
+    systemIdentity: filterAdultModePersonalitySection(parts.systemIdentity),
+    extendedGuidance: filterAdultModePersonalitySection(parts.extendedGuidance),
+  };
+}

@@ -16,6 +16,7 @@ import {
   writePrivateChatSettings,
 } from '@/lib/private-chat-settings-store';
 import { generateTTS } from '@/services/tts-provider';
+import { restartPrivateImageCarousel } from '@/services/private-image-carousel';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +83,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'gif') {
+      const carouselRestarted = await restartPrivateImageCarousel({
+        tenantId,
+        channelId: control.channelId,
+        messageId: control.messageId,
+      });
+      if (carouselRestarted) {
+        return apiOk({
+          action,
+          carouselRestarted: true,
+          message: 'Image slideshow restarted. Each image displays for 60 seconds.',
+        });
+      }
       const next = await writePrivateChatSettings({ gifEnabled: !current.gifEnabled }, tenantId);
       const message = await getDiscordMessage(control.channelId, control.messageId) as any;
       const currentEmbeds = Array.isArray(message?.embeds) ? message.embeds : [];

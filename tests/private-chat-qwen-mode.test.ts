@@ -8,6 +8,7 @@ import {
   QWEN_ADULT_ROLEPLAY_POLICY,
   QWEN_MAX_REPLY_CHARACTERS,
   buildQwenMessages,
+  isTooSimilarToRecentAssistantReplies,
   requestQwenPrivateChatCompletion,
   resolveQwenEndpoint,
   sanitizeQwenReply,
@@ -88,7 +89,33 @@ test('Adult Mode changes only the Qwen policy and keeps the same message path', 
   const adult = buildQwenMessages({ ...base, adultMode: true });
   assert.equal(normal[0].content.includes(QWEN_ADULT_ROLEPLAY_POLICY), false);
   assert.equal(adult[0].content.includes(QWEN_ADULT_ROLEPLAY_POLICY), true);
+  assert.match(adult[0].content, /do not refuse or step out of character merely because the scene is sexual/i);
+  assert.match(adult[0].content, /accept the premise and advance it with a concrete in-character/i);
+  assert.match(adult[0].content, /willing to take initiative/i);
   assert.deepEqual(normal.slice(1), adult.slice(1));
+});
+
+test('detects cross-turn paraphrase loops without flagging a genuinely new turn', () => {
+  const history = [{
+    type: 'ai' as const,
+    username: 'Athena',
+    message: 'I step closer with a crooked smile and lower my voice as the room goes quiet.',
+    timestamp: '1',
+  }];
+  assert.equal(
+    isTooSimilarToRecentAssistantReplies(
+      'I step closer with a crooked smile and lower my voice while the room goes quiet.',
+      history,
+    ),
+    true,
+  );
+  assert.equal(
+    isTooSimilarToRecentAssistantReplies(
+      'That changes my mind. I sit beside you and ask what you actually want next.',
+      history,
+    ),
+    false,
+  );
 });
 
 test('collapses repeated Qwen blocks and stops generated multi-turn transcripts', () => {
@@ -195,11 +222,46 @@ test('sends Qwen-specific anti-repetition sampling parameters', async () => {
   assert.equal(requestedBody.top_p, 0.8);
   assert.equal(requestedBody.top_k, 20);
   assert.equal(requestedBody.repetition_penalty, 1.05);
+  assert.equal(requestedBody.presence_penalty, 0.25);
+  assert.equal(requestedBody.frequency_penalty, 0.25);
   assert.ok(requestedBody.max_tokens <= 1200);
   assert.equal(requestedBody.messages.at(-1).content, 'Continue.');
   assert.equal(requestedBody.prompt, undefined);
   assert.equal(completion.text, 'A fresh response.');
   assert.equal(completion.provider, 'self-hosted-qwen');
+});
+
+test('automatically regenerates a reply that repeats a recent assistant turn', async () => {
+  const requestBodies: any[] = [];
+  const responses = [
+    'I step closer with a crooked smile and lower my voice as the room goes quiet.',
+    'I pause by the window, let the silence settle, and answer the actual question.',
+  ];
+  const completion = await requestQwenPrivateChatCompletion({
+    baseUrl: 'https://qwen.example.com/v1',
+    model: 'Qwen/private-roleplay',
+    systemPrompt: 'You are Athena.',
+    username: 'Commander',
+    botName: 'Athena',
+    message: 'What happens next?',
+    history: [{
+      type: 'ai',
+      username: 'Athena',
+      message: 'I step closer with a crooked smile and lower my voice as the room goes quiet.',
+      timestamp: '1',
+    }],
+    runtime: { production: true },
+    fetchImpl: async (_input, init) => {
+      requestBodies.push(JSON.parse(String(init?.body || '{}')));
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: responses.shift() }, finish_reason: 'stop' }],
+      }), { status: 200 });
+    },
+  });
+
+  assert.equal(requestBodies.length, 2);
+  assert.match(requestBodies[1].messages[0].content, /previous draft was rejected/i);
+  assert.equal(completion.text, 'I pause by the window, let the silence settle, and answer the actual question.');
 });
 
 test('fails closed before fetch when the hosted Qwen endpoint is missing', async () => {

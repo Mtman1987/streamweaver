@@ -60,8 +60,8 @@ export default function AvatarOverlayPage() {
                 setAvatarState(prev => ({
                     ...prev,
                     animationType: serverType || prev.animationType,
-                    idleUrl: data.idleFile ? `/api/avatars?type=idle&format=${serverType}${tenantParam}` : prev.idleUrl,
-                    talkingUrl: data.talkingFile ? `/api/avatars?type=talking&format=${serverType}${tenantParam}` : prev.talkingUrl,
+                    idleUrl: data.idleUrl || (data.idleFile ? `/api/avatars?type=idle&format=${serverType}${tenantParam}` : prev.idleUrl),
+                    talkingUrl: data.talkingUrl || (data.talkingFile ? `/api/avatars?type=talking&format=${serverType}${tenantParam}` : prev.talkingUrl),
                     isVisible: shouldShow || prev.isVisible,
                 }));
 

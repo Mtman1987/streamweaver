@@ -59,15 +59,15 @@ export default function TTSPlayer() {
         .then(r => r.ok ? r.json() : null)
         .then(payload => {
           const d = payload?.data;
-          if (!d?.idleFile) {
+          if (!d?.idleFile && !d?.idleUrl) {
             setAvatar(null);
             return;
           }
           const t = (d.animationType === 'json' ? 'lottie' : d.animationType) as AvatarSettings['animationType'];
           setAvatar({
             animationType: t,
-            idleUrl: `/api/avatars?type=idle&format=${t}${suffix}`,
-            talkingUrl: d.talkingFile ? `/api/avatars?type=talking&format=${t}${suffix}` : `/api/avatars?type=idle&format=${t}${suffix}`,
+            idleUrl: d.idleUrl || `/api/avatars?type=idle&format=${t}${suffix}`,
+            talkingUrl: d.talkingUrl || (d.talkingFile ? `/api/avatars?type=talking&format=${t}${suffix}` : (d.idleUrl || `/api/avatars?type=idle&format=${t}${suffix}`)),
             displayMode: d.displayMode || 'auto',
           });
           const always = d.displayMode === 'always';

@@ -101,6 +101,34 @@ async function postDiscordStreamHub<T>(path: string, payload: Record<string, unk
   return response.json() as Promise<T>;
 }
 
+export async function convertDiscordStreamHubMp4ToGif(input: {
+  bytes: Buffer;
+  fileName?: string;
+  sessionToken: string;
+  slot: 'avatar-idle' | 'avatar-talking' | 'private-dm' | 'public-discord';
+}): Promise<{ url: string; bytes?: number }> {
+  const sessionToken = String(input.sessionToken || '').trim();
+  if (!sessionToken) throw new Error('A signed-in StreamWeaver session is required');
+  const formData = new FormData();
+  formData.append('file', new Blob([new Uint8Array(input.bytes)], { type: 'video/mp4' }), input.fileName || 'upload.mp4');
+  formData.append('slot', input.slot);
+  const response = await fetch(`${getDiscordStreamHubUrl()}/api/media/convert-gif`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body: formData,
+    cache: 'no-store',
+    signal: createDiscordStreamHubAbortSignal(180_000),
+  });
+  if (!response.ok) {
+    const details = await readDiscordStreamHubErrorBody(response);
+    throw new Error(`DiscordStreamHub GIF conversion failed: ${response.status}${details ? ` ${details}` : ''}`);
+  }
+  const data = await response.json().catch(() => null) as any;
+  const url = String(data?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) throw new Error('DiscordStreamHub GIF conversion returned no public URL');
+  return { url, bytes: Number(data?.bytes) || undefined };
+}
+
 async function getDiscordStreamHub<T>(path: string, searchParams?: Record<string, string | number | undefined>): Promise<T> {
   const secret = getDiscordStreamHubSecret();
   if (!secret) throw new Error('DSH_SERVICE_SECRET is not configured');
