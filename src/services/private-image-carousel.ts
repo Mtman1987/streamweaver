@@ -27,14 +27,17 @@ function isDiscordId(value: string): boolean {
 }
 
 function validImages(images: string[]): string[] {
-  return images.map((value) => String(value || '').trim()).filter((value) => {
-    try {
-      const url = new URL(value);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }).slice(0, 4);
+  return images
+    .map((value) => String(value || '').trim())
+    .filter((value) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    })
+    .filter((value, index, all) => all.indexOf(value) === index);
 }
 
 async function readStore(tenantId: string): Promise<CarouselStore> {
@@ -97,7 +100,7 @@ function beginRun(tenantId: string, record: CarouselRecord, nextIndex: number, d
   const runId = (activeRuns.get(key) || 0) + 1;
   activeRuns.set(key, runId);
   const schedule = (index: number) => {
-    const intervalMs = Math.max(10, dependencies.intervalMs ?? PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS);
+    const intervalMs = Math.max(250, dependencies.intervalMs ?? PRIVATE_IMAGE_CAROUSEL_INTERVAL_MS);
     const timer = setTimeout(async () => {
       if (activeRuns.get(key) !== runId) return;
       try {
@@ -105,7 +108,7 @@ function beginRun(tenantId: string, record: CarouselRecord, nextIndex: number, d
           await editFrame(record, record.images[index], dependencies);
           schedule(index + 1);
         } else {
-          // Keep the last image visible — just update the control button to show restart
+          // Keep the last image visible and change the image control to restart.
           await editFrame(record, record.images[record.images.length - 1], dependencies, true);
           if (activeRuns.get(key) === runId) activeRuns.delete(key);
         }
@@ -128,7 +131,12 @@ export async function registerPrivateImageCarousel(input: {
   await updateStore(input.tenantId, (store) => {
     store[recordKey(input.channelId, input.messageId)] = record;
   });
-  beginRun(input.tenantId, record, 1, dependencies);
+
+  // Own the Discord frame immediately, then advance the remaining images on the timer.
+  await editFrame(record, record.images[0], dependencies);
+  if (record.images.length > 1) {
+    beginRun(input.tenantId, record, 1, dependencies);
+  }
   return true;
 }
 
@@ -154,6 +162,8 @@ export async function restartPrivateImageCarousel(input: {
     });
     await (dependencies.editMessage || editDiscordMessage)(record.channelId, record.messageId, { embeds: updated });
   }
-  beginRun(input.tenantId, record, 1, dependencies);
+  if (record.images.length > 1) {
+    beginRun(input.tenantId, record, 1, dependencies);
+  }
   return true;
 }

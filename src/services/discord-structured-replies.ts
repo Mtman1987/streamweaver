@@ -12,6 +12,8 @@ import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from '.
 import { sendWebhookMessage } from './discord-webhooks';
 import { getTwitchUser } from './twitch';
 import { attachPrivateDmControls } from './private-dm-controls';
+import { listPrivateGeneratedImageUrls } from './private-image-library';
+import { registerPrivateImageCarousel } from './private-image-carousel';
 
 const SPACEMOUNTAIN_FALLBACK_LOGO = 'https://spacemountain.live/assets/space-logo-main.png';
 
@@ -238,7 +240,26 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
 }
 
 export async function sendStructuredDiscordReply(input: StructuredDiscordReplyInput): Promise<{ messageId?: string; deleteAt: string; speaker: DiscordReplySpeaker }> {
-  const payload = await buildStructuredDiscordReplyPayload(input);
+  const isPrivateImageLibraryRequest = Boolean(
+    input.isPrivate &&
+    input.tenantId &&
+    /^!img\s*$/i.test(String(input.sourceMessage || ''))
+  );
+  const galleryImages = isPrivateImageLibraryRequest && input.tenantId
+    ? await listPrivateGeneratedImageUrls(input.tenantId).catch((error) => {
+        console.warn('[Discord Reply] Failed to load private image library:', error);
+        return [] as string[];
+      })
+    : [];
+  const replyInput: StructuredDiscordReplyInput = isPrivateImageLibraryRequest
+    ? {
+        ...input,
+        includeConfiguredMedia: false,
+        ...(galleryImages[0] ? { imageUrl: galleryImages[0] } : {}),
+      }
+    : input;
+
+  const payload = await buildStructuredDiscordReplyPayload(replyInput);
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const avatarUrl = firstUrl(
@@ -250,33 +271,33 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const botTokenPayload = {
     content: '',
     embeds: payload.embeds,
-    ...(input.components?.length ? { components: input.components } : {}),
+    ...(replyInput.components?.length ? { components: replyInput.components } : {}),
   };
 
   let sent: any;
   try {
-    sent = input.isPrivate || input.components?.length || (!speaker.tenantId && !input.tenantId)
-      ? await sendDiscordEmbed(input.channelId, botTokenPayload)
-      : await sendWebhookMessage(input.channelId, input.message, webhookIdentity.username, avatarUrl, payload.embeds);
+    sent = replyInput.isPrivate || replyInput.components?.length || (!speaker.tenantId && !replyInput.tenantId)
+      ? await sendDiscordEmbed(replyInput.channelId, botTokenPayload)
+      : await sendWebhookMessage(replyInput.channelId, replyInput.message, webhookIdentity.username, avatarUrl, payload.embeds);
   } catch (error) {
     console.warn('[Discord Reply] Webhook reply failed; retrying through the bot-token embed route:', error);
-    sent = await sendDiscordEmbed(input.channelId, botTokenPayload);
+    sent = await sendDiscordEmbed(replyInput.channelId, botTokenPayload);
   }
 
   const sentId = typeof sent?.id === 'string' ? sent.id : '';
 
-  if (sentId && input.isPrivate) {
+  if (sentId && replyInput.isPrivate) {
     try {
       const controlledEmbeds = attachPrivateDmControls(payload.embeds, {
-        channelId: input.channelId,
+        channelId: replyInput.channelId,
         messageId: sentId,
-        gifEnabled: input.gifEnabled !== false,
-        ttsEnabled: input.ttsEnabled === true,
-        adultMode: input.adultMode === true,
+        gifEnabled: replyInput.gifEnabled !== false,
+        ttsEnabled: replyInput.ttsEnabled === true,
+        adultMode: replyInput.adultMode === true,
       });
-      await editDiscordMessage(input.channelId, sentId, {
+      await editDiscordMessage(replyInput.channelId, sentId, {
         embeds: controlledEmbeds,
-        ...(input.components?.length ? { components: input.components } : {}),
+        ...(replyInput.components?.length ? { components: replyInput.components } : {}),
       });
     } catch (error) {
       // Never suppress the actual DM response because the optional icon strip
@@ -285,20 +306,32 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
     }
   }
 
-  if (sentId && input.sourceMessageId && !input.isPrivate) {
-    await deleteMessage(input.channelId, input.sourceMessageId).catch(() => {});
+  if (sentId && isPrivateImageLibraryRequest && replyInput.tenantId && galleryImages.length) {
+    await registerPrivateImageCarousel({
+      tenantId: replyInput.tenantId,
+      channelId: replyInput.channelId,
+      messageId: sentId,
+      images: galleryImages,
+    }).catch((error) => {
+      console.warn('[Discord Reply] Failed to start private image library carousel:', error);
+      return false;
+    });
   }
 
-  if (!input.isPrivate) {
+  if (sentId && replyInput.sourceMessageId && !replyInput.isPrivate) {
+    await deleteMessage(replyInput.channelId, replyInput.sourceMessageId).catch(() => {});
+  }
+
+  if (!replyInput.isPrivate) {
     await recordDiscordMessageCleanup({
-      tenantId: speaker.tenantId || input.tenantId,
-      channelId: input.channelId,
-      triggerMessageId: sentId ? input.sourceMessageId : undefined,
+      tenantId: speaker.tenantId || replyInput.tenantId,
+      channelId: replyInput.channelId,
+      triggerMessageId: sentId ? replyInput.sourceMessageId : undefined,
       replyMessageIds: [sentId],
-      replyMessages: [input.message],
-      sourceUser: input.sourceUser,
+      replyMessages: [replyInput.message],
+      sourceUser: replyInput.sourceUser,
       botName: speaker.botName,
-      triggerMessage: input.sourceMessage,
+      triggerMessage: replyInput.sourceMessage,
     }).catch(() => {});
   }
 
