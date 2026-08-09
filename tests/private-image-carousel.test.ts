@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import test, { after, before } from 'node:test';
 
-const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-carousel-suite-'));
-process.env.PERSIST_ROOT = runtimeRoot;
+let runtimeRoot = '';
+before(async () => {
+  runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-carousel-suite-'));
+  process.env.PERSIST_ROOT = runtimeRoot;
+});
 after(async () => {
   await rm(runtimeRoot, { recursive: true, force: true });
 });
