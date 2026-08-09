@@ -218,12 +218,12 @@ test('sends Qwen-specific anti-repetition sampling parameters', async () => {
 
   assert.equal(requestedUrl, 'https://qwen.example.com/v1/chat/completions');
   assert.equal(requestedBody.model, 'Qwen/private-roleplay');
-  assert.equal(requestedBody.temperature, 0.72);
-  assert.equal(requestedBody.top_p, 0.8);
-  assert.equal(requestedBody.top_k, 20);
-  assert.equal(requestedBody.repetition_penalty, 1.12);
-  assert.equal(requestedBody.presence_penalty, 0.3);
-  assert.equal(requestedBody.frequency_penalty, 0.35);
+  assert.equal(requestedBody.temperature, 0.68);
+  assert.equal(requestedBody.top_p, 0.88);
+  assert.equal(requestedBody.top_k, 35);
+  assert.equal(requestedBody.repetition_penalty, 1.08);
+  assert.equal(requestedBody.presence_penalty, 0.12);
+  assert.equal(requestedBody.frequency_penalty, 0.16);
   assert.ok(requestedBody.max_tokens <= 1200);
   assert.equal(requestedBody.messages.at(-1).content, 'Continue.');
   assert.equal(requestedBody.prompt, undefined);
@@ -401,8 +401,8 @@ test('uses stronger anti-loop sampling on regeneration attempts', async () => {
   });
 
   assert.equal(completion.text, 'I stop, change direction completely, and answer the new point instead.');
-  assert.equal(bodies[0].repetition_penalty, 1.12);
-  assert.equal(bodies[1].repetition_penalty, 1.24);
+  assert.equal(bodies[0].repetition_penalty, 1.08);
+  assert.equal(bodies[1].repetition_penalty, 1.10);
   assert.ok(bodies[1].temperature > bodies[0].temperature);
   assert.ok(bodies[1].frequency_penalty > bodies[0].frequency_penalty);
 });

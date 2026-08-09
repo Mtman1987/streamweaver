@@ -1,4 +1,10 @@
 import type { PrivateChatMessage } from '@/lib/private-chat-store';
+import {
+  buildRecentLanguageAvoidancePrompt,
+  getQwenSamplingProfile,
+  isCandidateOverusingRecentLanguage,
+  resolvePreferredBuiltInQwenModel,
+} from '@/services/qwen-quality';
 
 const QWEN_TIMEOUT_MS = 90_000;
 const DEFAULT_QWEN_MAX_TOKENS = 900;
@@ -47,6 +53,7 @@ export type QwenPrivateChatCompletion = {
   upstreamStatus?: number;
   upstreamError?: string;
   finishReason?: string;
+  model?: string;
 };
 
 export type QwenPrivateChatRequest = {
@@ -159,6 +166,7 @@ export function isTooSimilarToRecentAssistantReplies(
 ): boolean {
   const candidateWords = comparisonWords(candidate);
   if (candidateWords.length < 5) return false;
+  if (isCandidateOverusingRecentLanguage(candidate, history)) return true;
   const candidateKey = candidateWords.join(' ');
   const candidateTrigrams = ngrams(candidateWords, 3);
 
@@ -364,6 +372,8 @@ export function buildQwenMessages(input: {
         ].join(' ')
       : '',
   ];
+  const languageAvoidancePrompt = buildRecentLanguageAvoidancePrompt(input.history);
+  if (languageAvoidancePrompt) systemParts.push(languageAvoidancePrompt);
   if (input.memoryIndex?.length) {
     systemParts.push(
       `Available long-term-memory titles: ${input.memoryIndex.join(', ')}. ` +
@@ -467,6 +477,16 @@ export async function requestQwenPrivateChatCompletion(
     };
   }
 
+  const resolvedModel = await resolvePreferredBuiltInQwenModel({
+    baseUrl: input.baseUrl,
+    configuredModel: input.model,
+    apiKey: input.apiKey,
+    fetchImpl: input.fetchImpl,
+  });
+  if (resolvedModel && resolvedModel !== input.model.trim()) {
+    console.info('[Private Qwen] Built-in worker advertised ' + resolvedModel + '; using it instead of ' + input.model.trim() + '.');
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (input.apiKey?.trim()) headers.Authorization = `Bearer ${input.apiKey.trim()}`;
 
@@ -476,18 +496,14 @@ export async function requestQwenPrivateChatCompletion(
       attempt = 0,
     ): Promise<QwenPrivateChatCompletion> => {
       const messages = buildQwenMessages({ ...input, retryAfterRepetition });
+      const sampling = getQwenSamplingProfile(attempt, input.adultMode === true);
       const response = await (input.fetchImpl || fetch)(target.endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          model: input.model.trim(),
+          model: resolvedModel || input.model.trim(),
           messages,
-          temperature: attempt > 0 ? (input.adultMode ? 0.92 : 0.88) : (input.adultMode ? 0.78 : 0.72),
-          top_p: attempt > 0 ? 0.9 : 0.8,
-          top_k: attempt > 0 ? 40 : 20,
-          repetition_penalty: attempt > 0 ? 1.24 : 1.12,
-          presence_penalty: attempt > 0 ? 0.65 : 0.3,
-          frequency_penalty: attempt > 0 ? 0.7 : 0.35,
+          ...sampling,
           max_tokens: configuredMaxTokens(),
           stream: false,
           stop: ['<|im_end|>', '<|endoftext|>'],
@@ -527,7 +543,7 @@ export async function requestQwenPrivateChatCompletion(
           finishReason: finishReason || undefined,
         };
       }
-      return { text, provider, finishReason: finishReason || undefined };
+      return { text, provider, finishReason: finishReason || undefined, model: resolvedModel || input.model.trim() };
     };
 
     const rejectedDrafts: string[] = [];
