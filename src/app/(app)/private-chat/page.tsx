@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
-import { Trash2 } from "lucide-react";
+import { Images, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Message {
@@ -108,10 +108,20 @@ export default function PrivateChatPage() {
     <div className="max-w-3xl space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Private Chat</CardTitle>
-          <CardDescription>
-            These settings and this history belong to your signed-in StreamWeaver tenant. Athena uses the built-in SPMT Qwen worker automatically; there is nothing to configure for its URL or model name.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-base">Private Chat</CardTitle>
+              <CardDescription>
+                These settings and this history belong to your signed-in StreamWeaver tenant. Athena uses the built-in SPMT Qwen worker automatically; there is nothing to configure for its URL or model name.
+              </CardDescription>
+            </div>
+            <Button asChild size="sm" variant="outline">
+              <a href="/private-gallery" target="_blank" rel="noreferrer">
+                <Images className="mr-2 h-4 w-4" />
+                Open private gallery
+              </a>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-5 rounded-lg border p-4">
