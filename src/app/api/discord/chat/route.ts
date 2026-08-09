@@ -37,6 +37,7 @@ import {
 import { canUsePublicImageGeneration, runImageCommand } from '@/services/image-command';
 import { isImagePromptModerationError } from '@/services/image-content-moderation';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
+import { registerPrivateImageCarousel } from '@/services/private-image-carousel';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { recordSharedChatDeadLetter, recordSharedChatEvent } from '@/services/shared-chat-ingestion';
@@ -244,7 +245,7 @@ export async function POST(request: NextRequest) {
         collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
         return;
       }
-      await sendStructuredDiscordReply(structuredInput);
+      return sendStructuredDiscordReply(structuredInput);
     };
 
     if (!isDirectMessage) {
@@ -642,15 +643,17 @@ export async function POST(request: NextRequest) {
               );
             }
           }
-          for (const image of result.images) {
-            const imageUrl = await maybeShortenUrl(image);
-            await sendDiscordRouteReplyOrCollect(
-              channelId,
-              result.originalPrompt || prompt,
-              getBotName(tenantId),
-              'Image Generated',
-              imageUrl,
-            );
+          const imageUrls = await Promise.all(result.images.map((image) => maybeShortenUrl(image)));
+          const sent = await sendDiscordRouteReplyOrCollect(
+            channelId,
+            result.originalPrompt || prompt,
+            getBotName(tenantId),
+            'Image Generated',
+            imageUrls[0],
+          );
+          if (!relayOnly && sent?.messageId) {
+            await registerPrivateImageCarousel({ tenantId, channelId, messageId: sent.messageId, images: imageUrls })
+              .catch((error) => console.warn('[Discord Chat] Could not persist private image carousel:', error));
           }
         }
         await markHandled();

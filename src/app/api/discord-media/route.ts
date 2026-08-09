@@ -8,6 +8,7 @@ import {
   DISCORD_MEDIA_MAX_REQUEST_BYTES,
 } from '@/lib/discord-media-limits';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { convertDiscordStreamHubMp4ToGif } from '@/services/discord-stream-hub';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
     const declaredLength = Number(request.headers.get('content-length') || 0);
     if (Number.isFinite(declaredLength) && declaredLength > DISCORD_MEDIA_MAX_REQUEST_BYTES) {
-      return apiError(`GIF uploads must be ${DISCORD_MEDIA_MAX_FILE_MB} MB or smaller`, {
+      return apiError(`GIF or MP4 uploads must be ${DISCORD_MEDIA_MAX_FILE_MB} MB or smaller`, {
         status: 413,
         code: 'FILE_TOO_LARGE',
       });
@@ -40,14 +41,25 @@ export async function POST(request: NextRequest) {
     }
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'gif') {
-      return apiError('Only GIF files are supported', { status: 400, code: 'INVALID_FILE' });
+    if (ext !== 'gif' && ext !== 'mp4') {
+      return apiError('Only GIF and MP4 files are supported', { status: 400, code: 'INVALID_FILE' });
     }
     if (file.size > DISCORD_MEDIA_MAX_FILE_BYTES) {
-      return apiError(`GIF uploads must be ${DISCORD_MEDIA_MAX_FILE_MB} MB or smaller`, {
+      return apiError(`GIF or MP4 uploads must be ${DISCORD_MEDIA_MAX_FILE_MB} MB or smaller`, {
         status: 413,
         code: 'FILE_TOO_LARGE',
       });
+    }
+
+    if (ext === 'mp4') {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const converted = await convertDiscordStreamHubMp4ToGif({
+        bytes: buffer,
+        fileName: file.name,
+        sessionToken: request.cookies.get('streamweaver-session')?.value || '',
+        slot,
+      });
+      return apiOk({ success: true, url: converted.url, filename: converted.url.split('/').pop(), converted: true });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());

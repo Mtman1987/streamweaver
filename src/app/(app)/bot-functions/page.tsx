@@ -223,14 +223,8 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     if (d) {
                         const serverType = (d.animationType === 'json' ? 'lottie' : d.animationType) as 'lottie' | 'mp4' | 'gif';
                         if (serverType) setAnimationType(serverType);
-                        if (d.idleFile) {
-                            const url = `/api/avatars?type=idle&format=${serverType}`;
-                            setIdleUrl(url);
-                        }
-                        if (d.talkingFile) {
-                            const url = `/api/avatars?type=talking&format=${serverType}`;
-                            setTalkingUrl(url);
-                        }
+                        if (d.idleUrl || d.idleFile) setIdleUrl(d.idleUrl || `/api/avatars?type=idle&format=${serverType}`);
+                        if (d.talkingUrl || d.talkingFile) setTalkingUrl(d.talkingUrl || `/api/avatars?type=talking&format=${serverType}`);
                         if (d.displayMode) {
                             setDisplayMode(d.displayMode);
                         }
@@ -337,29 +331,31 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
                     method: 'POST',
                     body: formData
                 });
-                if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-                
-                const stableUrl = `/api/avatars?type=${type}&format=${fileExt}`;
+                const uploaded = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(uploaded?.error || `Upload failed: ${res.status}`);
+
+                const stableUrl = uploaded.url || `/api/avatars?type=${type}&format=${fileExt}`;
+                const savedType = (uploaded.animationType || fileExt) as 'mp4' | 'gif';
                 if (type === 'idle') setIdleUrl(stableUrl); else setTalkingUrl(stableUrl);
+                setAnimationType(savedType);
                 
                 if (typeof window !== 'undefined' && (window as any).ws) {
                     (window as any).ws.send(JSON.stringify({
                         type: 'update-avatar-settings',
                         payload: {
                             [type === 'idle' ? 'idleUrl' : 'talkingUrl']: stableUrl,
-                            animationType: fileExt
+                            animationType: savedType
                         }
                     }));
                 }
+                toast({
+                    title: `${type.charAt(0).toUpperCase() + type.slice(1)} avatar updated!`,
+                    description: uploaded.converted ? 'MP4 converted to GIF by Discord Stream Hub.' : `${fileExt.toUpperCase()} file loaded successfully.`,
+                });
             } catch (error) {
                 console.error('Failed to save avatar:', error);
                 toast({ variant: 'destructive', title: 'Upload failed', description: String(error) });
             }
-            
-            toast({
-                title: `${type.charAt(0).toUpperCase() + type.slice(1)} avatar updated!`,
-                description: `${fileExt.toUpperCase()} file loaded successfully.`,
-            });
         } else if (fileExt === 'json') {
             // Handle Lottie JSON files
             const reader = new FileReader();
@@ -435,19 +431,19 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         if (!file) return;
 
         const fileExt = file.name.split('.').pop()?.toLowerCase();
-        if (fileExt !== 'gif') {
+        if (fileExt !== 'gif' && fileExt !== 'mp4') {
             toast({
                 variant: 'destructive',
                 title: 'Invalid file',
-                description: 'Pick a GIF file for this Discord media slot.',
+                description: 'Pick a GIF or MP4 file for this Discord media slot.',
             });
             return;
         }
         if (file.size > DISCORD_MEDIA_MAX_FILE_BYTES) {
             toast({
                 variant: 'destructive',
-                title: 'GIF is too large',
-                description: `Pick a GIF no larger than ${DISCORD_MEDIA_MAX_FILE_MB} MB.`,
+                title: 'Media file is too large',
+                description: `Pick a GIF or MP4 no larger than ${DISCORD_MEDIA_MAX_FILE_MB} MB.`,
             });
             return;
         }
@@ -548,7 +544,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         type="file"
         ref={privateDmGifInputRef}
         className="hidden"
-        accept=".gif"
+        accept=".gif,.mp4"
         onChange={(e) => handleDiscordMediaUpload(e, 'private-dm')}
         aria-label="Upload private DM GIF"
       />
@@ -556,7 +552,7 @@ StreamWeaver87: "Ah, a traveler seeking treasure - simply chat and your loyalty 
         type="file"
         ref={publicDiscordGifInputRef}
         className="hidden"
-        accept=".gif"
+        accept=".gif,.mp4"
         onChange={(e) => handleDiscordMediaUpload(e, 'public-discord')}
         aria-label="Upload public Discord GIF"
       />

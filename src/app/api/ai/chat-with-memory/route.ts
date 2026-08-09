@@ -11,6 +11,7 @@ import { resolveResearchMode } from '@/services/research-mode';
 import { isEdenContentPolicyRejection } from '@/services/eden-policy';
 import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
+import { NATURAL_DIALOGUE_POLICY, splitPersonalityPrompt } from '@/lib/personality-prompt';
 
 type RequestBody = {
   username: string;
@@ -147,18 +148,7 @@ export async function POST(request: NextRequest) {
       return apiOk({ response: research.response, research: { state: 'awaiting-query', sources: [] } });
     }
 
-    // Two-tier split: above --- is compact system identity, below is extended guidance
-    let systemIdentity: string;
-    let extendedGuidance: string;
-    if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
-      const splitIndex = rawPersonality.indexOf('\n---');
-      systemIdentity = rawPersonality.substring(0, splitIndex).trim();
-      extendedGuidance = rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim();
-    } else {
-      // No delimiter — use whole thing as system (graceful fallback)
-      systemIdentity = rawPersonality;
-      extendedGuidance = '';
-    }
+    const { systemIdentity, extendedGuidance } = splitPersonalityPrompt(rawPersonality);
 
     const historyText = formatHistory(history, botResponseName);
     const worldLoreText = await formatWorldLoreForPrompt();
@@ -209,6 +199,7 @@ export async function POST(request: NextRequest) {
     const promptParts = [
       botConductPolicy,
       extendedGuidance,
+      NATURAL_DIALOGUE_POLICY,
       worldLoreText,
       botInteractionHistory,
       commanderContext,

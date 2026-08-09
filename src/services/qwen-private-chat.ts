@@ -21,6 +21,11 @@ export const QWEN_PRIVATE_CHAT_POLICY = [
 export const QWEN_ADULT_ROLEPLAY_POLICY = [
   'Adult Mode is enabled for private fictional roleplay between consenting adults.',
   'Every participant and character must be unambiguously age 18 or older.',
+  'Consensual fictional sexual content between those adults is allowed in this mode; do not refuse or step out of character merely because the scene is sexual.',
+  'When the user clearly invites an adult scene, accept the premise and advance it with a concrete in-character reaction, choice, or action instead of giving a disclaimer or asking whether they are sure.',
+  'Be responsive and willing to take initiative; build intimacy and intensity from the user\'s cues rather than remaining coy, vague, clinical, or passive.',
+  'If a role, consent boundary, or desired direction is genuinely unclear, ask one brief natural in-character question, then use the answer to continue without repeating the check.',
+  'Follow the user\'s requested pace, viewpoint, tone, and level of detail without narrating actions for the user.',
   'Do not involve minors, age ambiguity, coercion, exploitation, incest, or sexualized real people.',
   'Respect consent, limits, safe words, and any request to stop or change direction.',
 ].join(' ');
@@ -127,6 +132,66 @@ function normalizeForComparison(value: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function comparisonWords(value: string): string[] {
+  return normalizeForComparison(value).split(' ').filter(Boolean);
+}
+
+function ngrams(words: string[], size: number): Set<string> {
+  const result = new Set<string>();
+  for (let index = 0; index <= words.length - size; index++) {
+    result.add(words.slice(index, index + size).join(' '));
+  }
+  return result;
+}
+
+function overlapRatio(left: Set<string>, right: Set<string>): number {
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const value of left) if (right.has(value)) shared++;
+  return shared / Math.min(left.size, right.size);
+}
+
+export function isTooSimilarToRecentAssistantReplies(
+  candidate: string,
+  history: PrivateChatMessage[],
+): boolean {
+  const candidateWords = comparisonWords(candidate);
+  if (candidateWords.length < 5) return false;
+  const candidateKey = candidateWords.join(' ');
+  const candidateTrigrams = ngrams(candidateWords, 3);
+
+  return history
+    .filter((entry) => entry.type === 'ai')
+    .slice(-8)
+    .some((entry) => {
+      const previousWords = comparisonWords(entry.message);
+      if (previousWords.length < 5) return false;
+      const previousKey = previousWords.join(' ');
+      if (candidateKey === previousKey) return true;
+
+      const sharedPrefix = candidateWords
+        .slice(0, Math.min(8, candidateWords.length, previousWords.length))
+        .every((word, index) => word === previousWords[index]);
+      if (sharedPrefix && Math.min(candidateWords.length, previousWords.length) >= 8) return true;
+
+      return overlapRatio(candidateTrigrams, ngrams(previousWords, 3)) >= 0.62;
+    });
+}
+
+function recentAssistantWording(history: PrivateChatMessage[]): string {
+  const excerpts = history
+    .filter((entry) => entry.type === 'ai')
+    .slice(-6)
+    .map((entry) => stripQwenControlTokens(entry.message).replace(/\s+/g, ' ').slice(0, 180).trim())
+    .filter(Boolean);
+  if (!excerpts.length) return '';
+  return [
+    'Recent assistant wording is supplied only as an anti-repetition list.',
+    'Do not copy its openings, distinctive phrases, stage directions, metaphors, or closings:',
+    ...excerpts.map((excerpt) => `- ${excerpt}`),
+  ].join('\n');
 }
 
 function stripQwenControlTokens(value: string): string {
@@ -299,11 +364,20 @@ export function buildQwenMessages(input: {
   memoryIndex?: string[];
   memoryContext?: string;
   adultMode?: boolean;
+  retryAfterRepetition?: string;
 }): QwenChatMessage[] {
   const systemParts = [
     input.systemPrompt,
     QWEN_PRIVATE_CHAT_POLICY,
     input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
+    recentAssistantWording(input.history),
+    input.retryAfterRepetition
+      ? [
+          'The previous draft was rejected because it repeated a recent reply.',
+          'Write a genuinely new next turn with a different opening, actions, imagery, sentence structure, and closing.',
+          `Do not reuse wording from this rejected draft: ${truncateAtNaturalBoundary(input.retryAfterRepetition, 900)}`,
+        ].join(' ')
+      : '',
   ];
   if (input.memoryIndex?.length) {
     systemParts.push(
@@ -393,64 +467,75 @@ export async function requestQwenPrivateChatCompletion(
     };
   }
 
-  const messages = buildQwenMessages(input);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (input.apiKey?.trim()) headers.Authorization = `Bearer ${input.apiKey.trim()}`;
 
-  const body = {
-    model: input.model.trim(),
-    messages,
-    temperature: 0.7,
-    top_p: 0.8,
-    top_k: 20,
-    repetition_penalty: 1.05,
-    max_tokens: configuredMaxTokens(),
-    stream: false,
-    stop: ['<|im_end|>', '<|endoftext|>'],
-  };
-
   try {
-    const response = await (input.fetchImpl || fetch)(target.endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(QWEN_TIMEOUT_MS),
-    });
-    const raw = await response.text();
-    let payload: any = {};
+    const complete = async (retryAfterRepetition?: string): Promise<QwenPrivateChatCompletion> => {
+      const messages = buildQwenMessages({ ...input, retryAfterRepetition });
+      const response = await (input.fetchImpl || fetch)(target.endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: input.model.trim(),
+          messages,
+          temperature: 0.7,
+          top_p: 0.8,
+          top_k: 20,
+          repetition_penalty: 1.05,
+          presence_penalty: 0.25,
+          frequency_penalty: 0.25,
+          max_tokens: configuredMaxTokens(),
+          stream: false,
+          stop: ['<|im_end|>', '<|endoftext|>'],
+        }),
+        signal: AbortSignal.timeout(QWEN_TIMEOUT_MS),
+      });
+      const raw = await response.text();
+      let payload: any = {};
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = { choices: [{ message: { content: raw } }] };
+      }
+
+      if (!response.ok) {
+        return {
+          text: '',
+          provider,
+          upstreamStatus: response.status,
+          upstreamError: String(payload?.error?.message || payload?.message || raw || 'Qwen request failed').slice(0, 500),
+        };
+      }
+
+      const finishReason = String(payload?.choices?.[0]?.finish_reason || '');
+      const text = sanitizeQwenReply({
+        text: extractQwenText(payload),
+        username: input.username,
+        botName: input.botName,
+        latestUserMessage: input.message,
+      });
+      if (!text) {
+        return {
+          text: '',
+          provider,
+          upstreamStatus: response.status,
+          upstreamError: 'The Qwen model returned no usable text.',
+          finishReason: finishReason || undefined,
+        };
+      }
+      return { text, provider, finishReason: finishReason || undefined };
+    };
+
+    const first = await complete();
+    if (!first.text || !isTooSimilarToRecentAssistantReplies(first.text, input.history)) return first;
+
     try {
-      payload = JSON.parse(raw);
+      const retry = await complete(first.text);
+      return retry.text ? retry : first;
     } catch {
-      payload = { choices: [{ message: { content: raw } }] };
+      return first;
     }
-
-    if (!response.ok) {
-      return {
-        text: '',
-        provider,
-        upstreamStatus: response.status,
-        upstreamError: String(payload?.error?.message || payload?.message || raw || 'Qwen request failed').slice(0, 500),
-      };
-    }
-
-    const finishReason = String(payload?.choices?.[0]?.finish_reason || '');
-    const text = sanitizeQwenReply({
-      text: extractQwenText(payload),
-      username: input.username,
-      botName: input.botName,
-      latestUserMessage: input.message,
-    });
-    if (!text) {
-      return {
-        text: '',
-        provider,
-        upstreamStatus: response.status,
-        upstreamError: 'The Qwen model returned no usable text.',
-        finishReason: finishReason || undefined,
-      };
-    }
-
-    return { text, provider, finishReason: finishReason || undefined };
   } catch (error) {
     return {
       text: '',

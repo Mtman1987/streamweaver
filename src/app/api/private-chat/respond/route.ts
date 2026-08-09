@@ -32,6 +32,10 @@ import {
 } from '@/lib/private-chat-settings-store';
 import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
+import {
+  buildPersonalityPrompt,
+  NATURAL_DIALOGUE_POLICY,
+} from '@/lib/personality-prompt';
 
 type RequestBody = {
   username: string;
@@ -61,17 +65,6 @@ const privateRespondSchema = z.object({
 }).refine((value) => value.message || value.attachments?.length || value.embeds?.length, {
   message: 'message or media is required',
 });
-
-function splitPersonality(rawPersonality: string): { systemIdentity: string; extendedGuidance: string } {
-  if (rawPersonality.includes('\n---\n') || rawPersonality.includes('\n---')) {
-    const splitIndex = rawPersonality.indexOf('\n---');
-    return {
-      systemIdentity: rawPersonality.substring(0, splitIndex).trim(),
-      extendedGuidance: rawPersonality.substring(splitIndex).replace(/^\n---\n?/, '').trim(),
-    };
-  }
-  return { systemIdentity: rawPersonality, extendedGuidance: '' };
-}
 
 function safeQwenError(value: string | undefined): string {
   return String(value || 'The endpoint did not respond.')
@@ -192,15 +185,11 @@ export async function POST(request: NextRequest) {
     }
 
     const ltmTitles = await getPrivateLTMTitles(tenantId);
-    const { systemIdentity, extendedGuidance } = splitPersonality(botPersonality);
-    const adultFilteredIdentity = privateSettings.adultMode
-      ? systemIdentity
-          .split(/(?<=[.!?])\s+|\n/)
-          .filter((s) => !/\b(family[- ]friendly|family[- ]safe|safe[- ]for[- ]work|\bsfw\b|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly|not explicit|not mature|avoid explicit|avoid adult|avoid mature|pg[- ]?1?3?[- ]?rated?|keep.*appropriate|appropriate.*all)\b/i.test(s))
-          .join(' ')
-          .trim()
-      : systemIdentity;
-    const governedSystemIdentity = [adultFilteredIdentity, privateSettings.adultMode ? '' : BOT_NO_SELF_PROMOTION_POLICY]
+    const { systemIdentity, extendedGuidance } = buildPersonalityPrompt(
+      botPersonality,
+      privateSettings.adultMode,
+    );
+    const governedSystemIdentity = [systemIdentity, privateSettings.adultMode ? '' : BOT_NO_SELF_PROMOTION_POLICY]
       .filter(Boolean)
       .join('\n\n');
 
@@ -210,7 +199,8 @@ export async function POST(request: NextRequest) {
     const qwenApiKey = process.env.PRIVATE_QWEN_API_KEY || '';
     const qwenSystemPrompt = [
       governedSystemIdentity,
-      privateSettings.adultMode ? '' : extendedGuidance,
+      extendedGuidance,
+      NATURAL_DIALOGUE_POLICY,
     ].filter(Boolean).join('\n\n');
 
     let completion = await requestQwenPrivateChatCompletion({

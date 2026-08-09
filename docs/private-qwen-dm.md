@@ -18,8 +18,10 @@ It does not place a second `Conversation so far` transcript inside the newest us
 
 - removes duplicate adjacent history entries;
 - cleans repeated blocks already stored in old assistant history;
+- warns Qwen away from distinctive openings and phrases in the six most recent assistant turns;
+- detects high-overlap cross-turn replies and automatically regenerates once with a different opening, structure, imagery, and closing;
 - limits history to 24 messages and a 28,000-character budget;
-- uses Qwen-oriented sampling values: temperature `0.7`, top-p `0.8`, top-k `20`, and repetition penalty `1.05`;
+- uses Qwen-oriented sampling values: temperature `0.7`, top-p `0.8`, top-k `20`, repetition penalty `1.05`, and light presence/frequency penalties;
 - strips thinking blocks and Qwen control tokens;
 - removes a leading echo of the newest user message;
 - cuts accidental `User:` transcript continuation;
@@ -27,6 +29,8 @@ It does not place a second `Conversation so far` transcript inside the newest us
 - caps the final Discord reply at 3,400 characters.
 
 The sanitized reply is the only version saved back to private history, preventing one bad completion from multiplying on later turns.
+
+The tenant's full personality remains active in Adult Mode. StreamWeaver removes only old lines that explicitly require SFW/family-friendly output; it no longer discards the entire extended voice, relationship, and behavior section.
 
 ## Server configuration
 
@@ -71,6 +75,8 @@ The same commands work after the configured bot name, `spmt`, or `!adult`.
 ## Roleplay boundary
 
 Adult Mode is limited to fictional roleplay involving consenting characters who are unambiguously age 18 or older. It excludes minors, age ambiguity, coercion, exploitation, incest, and sexualized real people. Requests to stop or change direction must be respected.
+
+Within those boundaries, Adult Mode positively directs the character to accept a clear adult-roleplay invitation, respond with a concrete in-character action or choice, and take initiative from the user's cues. It asks a single natural clarification only when a role, boundary, or direction is genuinely unclear; it does not default to disclaimers, coy stalling, or repeated consent boilerplate.
 
 ## Validation
 

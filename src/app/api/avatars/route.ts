@@ -4,6 +4,8 @@ import { resolve } from 'path';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { tenantPath } from '@/lib/tenant';
+import { convertDiscordStreamHubMp4ToGif } from '@/services/discord-stream-hub';
+import { DISCORD_MEDIA_MAX_FILE_BYTES, DISCORD_MEDIA_MAX_FILE_MB } from '@/lib/discord-media-limits';
 
 const AVATAR_MEDIA_TYPES = ['idle', 'talking', 'gesture', 'private-dm', 'public-discord'];
 
@@ -35,6 +37,9 @@ export async function POST(request: NextRequest) {
             if (!file || !type || !AVATAR_MEDIA_TYPES.includes(type)) {
                 return apiError('Missing file or type', { status: 400, code: 'INVALID_BODY' });
             }
+            if (file.size > DISCORD_MEDIA_MAX_FILE_BYTES) {
+                return apiError(`Avatar uploads must be ${DISCORD_MEDIA_MAX_FILE_MB} MB or smaller`, { status: 413, code: 'FILE_TOO_LARGE' });
+            }
             const ext = file.name.split('.').pop()?.toLowerCase() || '';
             fileExt = ext === 'json' ? 'json' : ext;
             fileBuffer = Buffer.from(await file.arrayBuffer());
@@ -59,10 +64,28 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const filename = `${type}.${fileExt}`;
-        const dir = avatarDir(tid);
-        await mkdir(dir, { recursive: true });
-        await writeFile(resolve(dir, filename), fileBuffer);
+        let remoteUrl = '';
+        if (fileExt === 'mp4') {
+            if (type !== 'idle' && type !== 'talking') {
+                return apiError('MP4 conversion is supported for idle and talking avatar slots', { status: 400, code: 'INVALID_MEDIA_SLOT' });
+            }
+            const slot = type === 'talking' ? 'avatar-talking' : 'avatar-idle';
+            const converted = await convertDiscordStreamHubMp4ToGif({
+                bytes: fileBuffer,
+                fileName: `${type}.mp4`,
+                sessionToken: request.cookies.get('streamweaver-session')?.value || '',
+                slot,
+            });
+            remoteUrl = converted.url;
+            fileExt = 'gif';
+        }
+
+        const filename = remoteUrl ? '' : `${type}.${fileExt}`;
+        if (!remoteUrl) {
+            const dir = avatarDir(tid);
+            await mkdir(dir, { recursive: true });
+            await writeFile(resolve(dir, filename), fileBuffer);
+        }
 
         // Persist settings
         const normalizedType = fileExt === 'json' ? 'lottie' : fileExt;
@@ -76,12 +99,13 @@ export async function POST(request: NextRequest) {
         } catch {}
         settings.animationType = normalizedType;
         settings[`${type}File`] = filename;
+        settings[`${type}Url`] = remoteUrl;
         const settingsDir = resolve(settingsFile(tid), '..');
         await mkdir(settingsDir, { recursive: true });
         await writeFile(settingsFile(tid), JSON.stringify(settings, null, 2));
 
-        console.log(`[Avatar API] Saved ${filename} for tenant ${tid || 'global'} (${(fileBuffer.length / 1024).toFixed(0)} KB)`);
-        return apiOk({ success: true, filename });
+        console.log(`[Avatar API] Saved ${remoteUrl || filename} for tenant ${tid || 'global'} (${(fileBuffer.length / 1024).toFixed(0)} KB)`);
+        return apiOk({ success: true, filename, url: remoteUrl || `/api/avatars?type=${type}&format=${normalizedType}`, animationType: normalizedType, converted: Boolean(remoteUrl) });
     } catch (error: any) {
         console.error('[Avatar API] Error:', error);
         return apiError(error?.message || 'Failed to save avatar', { status: 500, code: 'INTERNAL_ERROR' });
@@ -133,6 +157,12 @@ export async function GET(request: NextRequest) {
         if (!type || !AVATAR_MEDIA_TYPES.includes(type)) {
             return apiError('Invalid type', { status: 400, code: 'INVALID_QUERY' });
         }
+
+        try {
+            const settings = JSON.parse(await readFile(settingsFile(tid), 'utf-8'));
+            const remoteUrl = String(settings?.[`${type}Url`] || '').trim();
+            if (/^https?:\/\//i.test(remoteUrl)) return NextResponse.redirect(remoteUrl);
+        } catch {}
 
         const tryFiles =
             format !== 'lottie'
