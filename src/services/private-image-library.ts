@@ -5,12 +5,15 @@ import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 
 const PRIVATE_IMAGE_DIR = 'data/private-generated-images';
 const IMAGE_FILE_PATTERN = /\.(gif|png|jpg|jpeg|webp)$/i;
+const SAFE_IMAGE_FILENAME_PATTERN = /^[a-zA-Z0-9_-]+\.(gif|png|jpg|jpeg|webp)$/i;
 
 export type PrivateGeneratedImage = {
   filename: string;
   url: string;
   modifiedAtMs: number;
 };
+
+export type DeletePrivateGeneratedImageResult = 'deleted' | 'not_found' | 'invalid';
 
 export async function listPrivateGeneratedImages(tenantId: string): Promise<PrivateGeneratedImage[]> {
   const normalizedTenantId = String(tenantId || '').trim();
@@ -50,4 +53,23 @@ export async function listPrivateGeneratedImages(tenantId: string): Promise<Priv
 
 export async function listPrivateGeneratedImageUrls(tenantId: string): Promise<string[]> {
   return (await listPrivateGeneratedImages(tenantId)).map((entry) => entry.url);
+}
+
+export async function deletePrivateGeneratedImage(
+  tenantId: string,
+  filename: string,
+): Promise<DeletePrivateGeneratedImageResult> {
+  const normalizedTenantId = String(tenantId || '').trim();
+  const normalizedFilename = String(filename || '').trim();
+  if (!normalizedTenantId || !SAFE_IMAGE_FILENAME_PATTERN.test(normalizedFilename)) return 'invalid';
+  if (path.basename(normalizedFilename) !== normalizedFilename) return 'invalid';
+
+  const filePath = path.join(tenantPath(normalizedTenantId, PRIVATE_IMAGE_DIR), normalizedFilename);
+  try {
+    await fs.unlink(filePath);
+    return 'deleted';
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return 'not_found';
+    throw error;
+  }
 }
