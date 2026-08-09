@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (action === 'settings') {
-      return apiOk({ action, redirectUrl: '/bot-functions' });
+      return apiOk({ action, redirectUrl: '/private-chat' });
     }
 
     const current = await readPrivateChatSettings(tenantId);
