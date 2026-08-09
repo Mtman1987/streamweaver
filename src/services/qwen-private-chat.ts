@@ -382,6 +382,7 @@ export function buildQwenMessages(input: {
     .filter((entry): entry is QwenChatMessage => Boolean(entry));
 
   const deduplicated: QwenChatMessage[] = [];
+  const keptAssistantHistory: PrivateChatMessage[] = [];
   for (const entry of historyEntries) {
     const previous = deduplicated[deduplicated.length - 1];
     if (
@@ -391,7 +392,21 @@ export function buildQwenMessages(input: {
     ) {
       continue;
     }
+    if (
+      entry.role === 'assistant' &&
+      isTooSimilarToRecentAssistantReplies(entry.content, keptAssistantHistory)
+    ) {
+      continue;
+    }
     deduplicated.push(entry);
+    if (entry.role === 'assistant') {
+      keptAssistantHistory.push({
+        type: 'ai',
+        username: input.botName,
+        message: entry.content,
+        timestamp: `history-${keptAssistantHistory.length}`,
+      });
+    }
   }
 
   const latestMessage = stripQwenControlTokens(input.message);
@@ -456,7 +471,10 @@ export async function requestQwenPrivateChatCompletion(
   if (input.apiKey?.trim()) headers.Authorization = `Bearer ${input.apiKey.trim()}`;
 
   try {
-    const complete = async (retryAfterRepetition?: string): Promise<QwenPrivateChatCompletion> => {
+    const complete = async (
+      retryAfterRepetition?: string,
+      attempt = 0,
+    ): Promise<QwenPrivateChatCompletion> => {
       const messages = buildQwenMessages({ ...input, retryAfterRepetition });
       const response = await (input.fetchImpl || fetch)(target.endpoint, {
         method: 'POST',
@@ -464,12 +482,12 @@ export async function requestQwenPrivateChatCompletion(
         body: JSON.stringify({
           model: input.model.trim(),
           messages,
-          temperature: input.adultMode ? 0.78 : 0.72,
-          top_p: 0.8,
-          top_k: 20,
-          repetition_penalty: 1.12,
-          presence_penalty: 0.3,
-          frequency_penalty: 0.35,
+          temperature: attempt > 0 ? (input.adultMode ? 0.92 : 0.88) : (input.adultMode ? 0.78 : 0.72),
+          top_p: attempt > 0 ? 0.9 : 0.8,
+          top_k: attempt > 0 ? 40 : 20,
+          repetition_penalty: attempt > 0 ? 1.24 : 1.12,
+          presence_penalty: attempt > 0 ? 0.65 : 0.3,
+          frequency_penalty: attempt > 0 ? 0.7 : 0.35,
           max_tokens: configuredMaxTokens(),
           stream: false,
           stop: ['<|im_end|>', '<|endoftext|>'],
@@ -513,11 +531,9 @@ export async function requestQwenPrivateChatCompletion(
     };
 
     const rejectedDrafts: string[] = [];
-    let last: QwenPrivateChatCompletion | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const completion = await complete(rejectedDrafts.at(-1));
-        last = completion;
+        const completion = await complete(rejectedDrafts.at(-1), attempt);
         if (!completion.text) return completion;
         const comparisonHistory: PrivateChatMessage[] = [
           ...input.history,
@@ -530,11 +546,19 @@ export async function requestQwenPrivateChatCompletion(
         ];
         if (!isTooSimilarToRecentAssistantReplies(completion.text, comparisonHistory)) return completion;
         rejectedDrafts.push(completion.text);
-      } catch {
-        if (last) return last;
+      } catch (error) {
+        return {
+          text: '',
+          provider,
+          upstreamError: error instanceof Error ? error.message : String(error),
+        };
       }
     }
-    return last || { text: '', provider, upstreamError: 'Qwen did not produce a distinct reply.' };
+    return {
+      text: '',
+      provider,
+      upstreamError: `Qwen produced only repetitive replies after ${rejectedDrafts.length} attempts.`,
+    };
   } catch (error) {
     return {
       text: '',

@@ -192,6 +192,6 @@ test('embed footer uses the requester avatar and falls back to the SPMT logo thu
     const embed = lastEmbed(sent);
     assert.ok(embed, 'expected an embed reply');
     assert.equal(embed.footer.icon_url, 'https://cdn.discordapp.com/avatars/999999999999999999/abc123.png?size=128');
-    assert.match(String(embed.thumbnail.url), /StreamWeaver\.png$/);
+    assert.match(String(embed.thumbnail.url), /space-logo-main\.png$/);
   });
 });

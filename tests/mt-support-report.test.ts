@@ -8,17 +8,17 @@ import {
   hasPendingMtSupportRequest,
 } from '../src/services/mt-support-report';
 
-test('detectMtFixItIntent supports command and voice alias forms', () => {
-  assert.deepEqual(detectMtFixItIntent('!mtfixit obs crashed'), { matched: true, description: 'obs crashed' });
-  assert.deepEqual(detectMtFixItIntent('mt fix it alerts are stuck'), { matched: true, description: 'alerts are stuck' });
+test('retired StreamWeaver mtfixit ingress never claims commands now owned by DiscordStreamHub', () => {
+  assert.deepEqual(detectMtFixItIntent('!mtfixit obs crashed'), { matched: false, description: '' });
+  assert.deepEqual(detectMtFixItIntent('mt fix it alerts are stuck'), { matched: false, description: '' });
   assert.deepEqual(detectMtFixItIntent('hello there'), { matched: false, description: '' });
 });
 
-test('pending support requests can be tracked per user context', () => {
+test('retired StreamWeaver mtfixit ingress does not keep pending support state', () => {
   const context = { platform: 'twitch' as const, tenantId: 'tenant-1', username: 'MtUser', channelId: 'chan-1' };
   beginPendingMtSupportRequest(context);
-  assert.equal(hasPendingMtSupportRequest(context), true);
-  assert.equal(consumePendingMtSupportRequest(context), true);
+  assert.equal(hasPendingMtSupportRequest(context), false);
+  assert.equal(consumePendingMtSupportRequest(context), false);
   assert.equal(hasPendingMtSupportRequest(context), false);
 });
 

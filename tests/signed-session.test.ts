@@ -16,12 +16,25 @@ test('StreamWeaver session rejects unsigned and tampered tenant cookies', () => 
   assert.equal(parseSessionCookie(tampered), null);
 });
 
-test('middleware passes signed session candidates to the Node page guard', async () => {
-  const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard', {
-    headers: { cookie: 'streamweaver-session=payload.signature' },
+test('middleware accepts a verified SPMT identity and forwards identity headers to the Node page guard', async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => Response.json({
+    id: 'spmt-user-a',
+    username: 'owner',
+    displayName: 'Owner',
+    isAdmin: true,
   });
-  const response = await middleware(request);
-  assert.equal(response.headers.get('x-middleware-next'), '1');
+  try {
+    const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard', {
+      headers: { cookie: 'streamweaver-spmt-token=provider-token' },
+    });
+    const response = await middleware(request);
+    assert.equal(response.headers.get('x-middleware-next'), '1');
+    assert.equal(response.headers.get('x-middleware-request-x-spmt-user-id'), 'spmt-user-a');
+    assert.equal(response.headers.get('x-middleware-request-x-spmt-is-admin'), '1');
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test('middleware rejects requests without a signed session candidate', async () => {
@@ -31,24 +44,19 @@ test('middleware rejects requests without a signed session candidate', async () 
   assert.equal(new URL(String(response.headers.get('location'))).pathname, '/login');
 });
 
-test('middleware limits SPMT service access to the feed and dispatch routes', async () => {
-  const original = process.env.SPMT_SYSTEM_KEY;
-  process.env.SPMT_SYSTEM_KEY = 'test-spmt-system-key';
-  try {
-    for (const pathname of ['/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator']) {
-      const allowed = await middleware(new NextRequest(`https://streamweaver-new.fly.dev${pathname}`, {
-        headers: { 'x-spmt-key': 'test-spmt-system-key' },
-      }));
-      assert.equal(allowed.headers.get('x-middleware-next'), '1');
-    }
-    const denied = await middleware(new NextRequest('https://streamweaver-new.fly.dev/api/shared-chat/spmt-dispatch', {
-      headers: { 'x-spmt-key': 'wrong' },
+test('middleware passes SPMT machine routes through to route-level service authentication', async () => {
+  for (const pathname of ['/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator']) {
+    const allowed = await middleware(new NextRequest(`https://streamweaver-new.fly.dev${pathname}`, {
+      headers: { 'x-spmt-key': 'test-spmt-system-key' },
     }));
-    assert.equal(denied.status, 401);
-  } finally {
-    if (original === undefined) delete process.env.SPMT_SYSTEM_KEY;
-    else process.env.SPMT_SYSTEM_KEY = original;
+    assert.equal(allowed.headers.get('x-middleware-next'), '1');
   }
+
+  const wrongKeyStillReachesRouteGuard = await middleware(new NextRequest(
+    'https://streamweaver-new.fly.dev/api/shared-chat/spmt-dispatch',
+    { headers: { 'x-spmt-key': 'wrong' } },
+  ));
+  assert.equal(wrongKeyStillReachesRouteGuard.headers.get('x-middleware-next'), '1');
 });
 
 test('legacy SPMT migration verifies the provider identity and signs in Node runtime', async () => {
