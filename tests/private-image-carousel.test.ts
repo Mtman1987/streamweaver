@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
+
+const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-carousel-suite-'));
+process.env.PERSIST_ROOT = runtimeRoot;
+after(async () => {
+  await rm(runtimeRoot, { recursive: true, force: true });
+});
 
 test('private image carousel replaces stale GIF immediately, rotates, and replays', async () => {
-  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-carousel-'));
-  process.env.PERSIST_ROOT = runtimeRoot;
   const originalControlSecret = process.env.PRIVATE_DM_CONTROL_SECRET;
   process.env.PRIVATE_DM_CONTROL_SECRET = 'test-private-dm-control-secret';
   const { registerPrivateImageCarousel, restartPrivateImageCarousel } = await import('../src/services/private-image-carousel');
@@ -37,7 +41,6 @@ test('private image carousel replaces stale GIF immediately, rotates, and replay
       images,
     }, dependencies), true);
 
-    // Registration owns the frame immediately instead of waiting for the timer.
     assert.equal(seen[0], images[0]);
     assert.equal(message.embeds[0].image.url, images[0]);
 
@@ -57,74 +60,61 @@ test('private image carousel replaces stale GIF immediately, rotates, and replay
   } finally {
     if (originalControlSecret === undefined) delete process.env.PRIVATE_DM_CONTROL_SECRET;
     else process.env.PRIVATE_DM_CONTROL_SECRET = originalControlSecret;
-    await rm(runtimeRoot, { recursive: true, force: true });
   }
 });
 
 test('single private image replaces stale GIF immediately without scheduling a fake rotation', async () => {
-  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-carousel-single-'));
-  process.env.PERSIST_ROOT = runtimeRoot;
   const { registerPrivateImageCarousel } = await import('../src/services/private-image-carousel');
   const image = 'https://images.example/only.png';
   let message: any = { embeds: [{ description: 'generated', image: { url: 'https://media.example/private.gif' } }] };
   const seen: string[] = [];
 
-  try {
-    assert.equal(await registerPrivateImageCarousel({
-      tenantId: 'tenant-carousel-single',
-      channelId: '1234567890123456789',
-      messageId: '9876543210987654321',
-      images: [image],
-    }, {
-      intervalMs: 250,
-      getMessage: async () => message,
-      editMessage: async (_channelId: string, _messageId: string, payload: any) => {
-        message = { ...message, ...payload };
-        seen.push(payload.embeds[0].image?.url || '');
-        return message;
-      },
-    } as any), true);
+  assert.equal(await registerPrivateImageCarousel({
+    tenantId: 'tenant-carousel-single',
+    channelId: '1234567890123456789',
+    messageId: '9876543210987654321',
+    images: [image],
+  }, {
+    intervalMs: 250,
+    getMessage: async () => message,
+    editMessage: async (_channelId: string, _messageId: string, payload: any) => {
+      message = { ...message, ...payload };
+      seen.push(payload.embeds[0].image?.url || '');
+      return message;
+    },
+  } as any), true);
 
-    assert.deepEqual(seen, [image]);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    assert.deepEqual(seen, [image]);
-  } finally {
-    await rm(runtimeRoot, { recursive: true, force: true });
-  }
+  assert.deepEqual(seen, [image]);
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  assert.deepEqual(seen, [image]);
 });
 
 test('private image carousel persists all 90 saved gallery images instead of truncating to four', async () => {
-  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-carousel-library-'));
-  process.env.PERSIST_ROOT = runtimeRoot;
   const { registerPrivateImageCarousel } = await import('../src/services/private-image-carousel');
   const { tenantPath } = await import('../src/lib/tenant');
   const images = Array.from({ length: 90 }, (_, index) => `https://images.example/library-${String(index + 1).padStart(2, '0')}.png`);
   let message: any = { embeds: [{ description: 'Private image library' }] };
 
-  try {
-    assert.equal(await registerPrivateImageCarousel({
-      tenantId: 'tenant-carousel-library',
-      channelId: '1234567890123456789',
-      messageId: '9876543210987654321',
-      images,
-    }, {
-      intervalMs: 60_000,
-      getMessage: async () => message,
-      editMessage: async (_channelId: string, _messageId: string, payload: any) => {
-        message = { ...message, ...payload };
-        return message;
-      },
-    } as any), true);
+  assert.equal(await registerPrivateImageCarousel({
+    tenantId: 'tenant-carousel-library',
+    channelId: '1234567890123456789',
+    messageId: '9876543210987654321',
+    images,
+  }, {
+    intervalMs: 60_000,
+    getMessage: async () => message,
+    editMessage: async (_channelId: string, _messageId: string, payload: any) => {
+      message = { ...message, ...payload };
+      return message;
+    },
+  } as any), true);
 
-    assert.equal(message.embeds[0].image.url, images[0]);
-    const store = JSON.parse(await readFile(
-      tenantPath('tenant-carousel-library', 'data/private-image-carousels.json'),
-      'utf8',
-    ));
-    const [record] = Object.values(store) as Array<{ images: string[] }>;
-    assert.equal(record.images.length, 90);
-    assert.deepEqual(record.images, images);
-  } finally {
-    await rm(runtimeRoot, { recursive: true, force: true });
-  }
+  assert.equal(message.embeds[0].image.url, images[0]);
+  const store = JSON.parse(await readFile(
+    tenantPath('tenant-carousel-library', 'data/private-image-carousels.json'),
+    'utf8',
+  ));
+  const [record] = Object.values(store) as Array<{ images: string[] }>;
+  assert.equal(record.images.length, 90);
+  assert.deepEqual(record.images, images);
 });
