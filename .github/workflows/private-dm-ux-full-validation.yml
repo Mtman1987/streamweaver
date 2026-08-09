@@ -1,0 +1,36 @@
+name: Private DM UX Full Validation
+
+on:
+  push:
+    branches:
+      - feat/private-dm-live-tts-gif-library
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Focused private DM UX tests
+        run: node --import tsx --test tests/private-dm-controls.test.ts tests/private-dm-tts-privacy.test.ts tests/private-dm-live-tts.test.ts tests/private-dm-live-tts-page.test.ts tests/private-image-carousel.test.ts tests/private-image-library.test.ts tests/private-image-library-route.test.ts tests/discord-media-and-images.test.ts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Full repository and persistence tests
+        run: npm run test:isolation
+      - name: Verify flow packages
+        run: npm run flow-packages:verify
+      - name: Smoke flow tooling
+        run: npm run flow-packages:smoke
+      - name: Check companion
+        run: npm run companion:check
+      - name: Production build
+        run: npm run build
