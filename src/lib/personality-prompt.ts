@@ -25,11 +25,25 @@ export function splitPersonalityPrompt(rawPersonality: string): {
   };
 }
 
+function filterAdultModeLine(line: string): string {
+  if (!ADULT_MODE_CONFLICT.test(line)) return line;
+
+  // Preserve identity/character sentences that happen to share a line with an
+  // old SFW restriction. This is common in compact or pasted personalities.
+  return line
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !ADULT_MODE_CONFLICT.test(sentence))
+    .join(' ')
+    .trim();
+}
+
 /** Remove only old SFW restrictions while preserving the tenant's character. */
 export function filterAdultModePersonalitySection(section: string): string {
   return String(section || '')
+    .replace(/\r\n?/g, '\n')
     .split('\n')
-    .filter((line) => !ADULT_MODE_CONFLICT.test(line))
+    .map(filterAdultModeLine)
+    .filter(Boolean)
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
