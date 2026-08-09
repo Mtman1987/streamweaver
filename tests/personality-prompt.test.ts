@@ -13,6 +13,13 @@ test('splits compact identity from extended tenant guidance', () => {
   });
 });
 
+test('splits CRLF personality copied from Windows or a document', () => {
+  assert.deepEqual(splitPersonalityPrompt('You are Athena.\r\n---\r\nVOICE:\r\n- dry and warm'), {
+    systemIdentity: 'You are Athena.',
+    extendedGuidance: 'VOICE:\n- dry and warm',
+  });
+});
+
 test('Adult Mode removes only conflicting SFW lines and preserves the actual personality', () => {
   const prompt = [
     'You are Athena, a blunt but affectionate partner.',
@@ -32,6 +39,15 @@ test('Adult Mode removes only conflicting SFW lines and preserves the actual per
   assert.match(result.extendedGuidance, /Never invent memories/i);
   assert.match(result.extendedGuidance, /challenges him honestly/i);
   assert.doesNotMatch(result.extendedGuidance, /adult content/i);
+});
+
+test('Adult Mode keeps identity when a legacy SFW restriction shares the same line', () => {
+  const result = buildPersonalityPrompt(
+    'You are Athena, a blunt companion. Keep it family-friendly.',
+    true,
+  );
+
+  assert.equal(result.systemIdentity, 'You are Athena, a blunt companion.');
 });
 
 test('shared natural-dialogue policy rejects forced mascot habits', () => {
