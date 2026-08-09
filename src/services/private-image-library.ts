@@ -6,6 +6,7 @@ import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 const PRIVATE_IMAGE_DIR = 'data/private-generated-images';
 const IMAGE_FILE_PATTERN = /\.(gif|png|jpg|jpeg|webp)$/i;
 const SAFE_IMAGE_FILENAME_PATTERN = /^[a-zA-Z0-9_-]+\.(gif|png|jpg|jpeg|webp)$/i;
+const SAFE_GIF_FILENAME_PATTERN = /^[a-zA-Z0-9_-]+\.gif$/i;
 
 export type PrivateGeneratedImage = {
   filename: string;
@@ -14,6 +15,27 @@ export type PrivateGeneratedImage = {
 };
 
 export type DeletePrivateGeneratedImageResult = 'deleted' | 'not_found' | 'invalid';
+
+export function isSafePrivateGeneratedGifFilename(filename: string): boolean {
+  const normalized = String(filename || '').trim();
+  return SAFE_GIF_FILENAME_PATTERN.test(normalized) && path.basename(normalized) === normalized;
+}
+
+export async function readPrivateGeneratedGif(
+  tenantId: string,
+  filename: string,
+): Promise<Buffer | null> {
+  const normalizedTenantId = String(tenantId || '').trim();
+  const normalizedFilename = String(filename || '').trim();
+  if (!normalizedTenantId || !isSafePrivateGeneratedGifFilename(normalizedFilename)) return null;
+
+  try {
+    return await fs.readFile(path.join(tenantPath(normalizedTenantId, PRIVATE_IMAGE_DIR), normalizedFilename));
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
 
 export async function listPrivateGeneratedImages(tenantId: string): Promise<PrivateGeneratedImage[]> {
   const normalizedTenantId = String(tenantId || '').trim();
