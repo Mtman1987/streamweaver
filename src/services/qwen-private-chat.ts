@@ -1,6 +1,7 @@
 import type { PrivateChatMessage } from '@/lib/private-chat-store';
 import {
   buildRecentLanguageAvoidancePrompt,
+  countRecentLanguageHits,
   getQwenSamplingProfile,
   isCandidateOverusingRecentLanguage,
   resolvePreferredBuiltInQwenModel,
@@ -160,13 +161,12 @@ function overlapRatio(left: Set<string>, right: Set<string>): number {
   return shared / Math.min(left.size, right.size);
 }
 
-export function isTooSimilarToRecentAssistantReplies(
+export function isNearDuplicateToRecentAssistantReplies(
   candidate: string,
   history: PrivateChatMessage[],
 ): boolean {
   const candidateWords = comparisonWords(candidate);
   if (candidateWords.length < 5) return false;
-  if (isCandidateOverusingRecentLanguage(candidate, history)) return true;
   const candidateKey = candidateWords.join(' ');
   const candidateTrigrams = ngrams(candidateWords, 3);
 
@@ -184,8 +184,18 @@ export function isTooSimilarToRecentAssistantReplies(
         .every((word, index) => word === previousWords[index]);
       if (sharedPrefix && Math.min(candidateWords.length, previousWords.length) >= 8) return true;
 
-      return overlapRatio(candidateTrigrams, ngrams(previousWords, 3)) >= 0.62;
+      return overlapRatio(candidateTrigrams, ngrams(previousWords, 3)) >= 0.74;
     });
+}
+
+export function isTooSimilarToRecentAssistantReplies(
+  candidate: string,
+  history: PrivateChatMessage[],
+): boolean {
+  return (
+    isNearDuplicateToRecentAssistantReplies(candidate, history) ||
+    isCandidateOverusingRecentLanguage(candidate, history)
+  );
 }
 
 function stripQwenControlTokens(value: string): string {
@@ -546,23 +556,52 @@ export async function requestQwenPrivateChatCompletion(
       return { text, provider, finishReason: finishReason || undefined, model: resolvedModel || input.model.trim() };
     };
 
-    const rejectedDrafts: string[] = [];
+    type RejectedDraft = {
+      completion: QwenPrivateChatCompletion;
+      hardDuplicate: boolean;
+      styleHits: number;
+    };
+    const rejectedDrafts: RejectedDraft[] = [];
+    const pickStyleFallback = (): QwenPrivateChatCompletion | null => {
+      const best = rejectedDrafts
+        .filter((draft) => !draft.hardDuplicate && draft.completion.text)
+        .sort((left, right) => (
+          left.styleHits - right.styleHits ||
+          right.completion.text.length - left.completion.text.length
+        ))[0];
+      if (!best) return null;
+      return {
+        ...best.completion,
+        finishReason: best.completion.finishReason || 'style_fallback',
+      };
+    };
+
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const completion = await complete(rejectedDrafts.at(-1), attempt);
-        if (!completion.text) return completion;
+        const completion = await complete(rejectedDrafts.at(-1)?.completion.text, attempt);
+        if (!completion.text) {
+          return pickStyleFallback() || completion;
+        }
         const comparisonHistory: PrivateChatMessage[] = [
           ...input.history,
-          ...rejectedDrafts.map((message, index) => ({
+          ...rejectedDrafts.map((draft, index) => ({
             type: 'ai' as const,
             username: input.botName,
-            message,
+            message: draft.completion.text,
             timestamp: `rejected-${index}`,
           })),
         ];
-        if (!isTooSimilarToRecentAssistantReplies(completion.text, comparisonHistory)) return completion;
-        rejectedDrafts.push(completion.text);
+        const hardDuplicate = isNearDuplicateToRecentAssistantReplies(completion.text, comparisonHistory);
+        const styleOveruse = isCandidateOverusingRecentLanguage(completion.text, comparisonHistory);
+        if (!hardDuplicate && !styleOveruse) return completion;
+        rejectedDrafts.push({
+          completion,
+          hardDuplicate,
+          styleHits: countRecentLanguageHits(completion.text, comparisonHistory),
+        });
       } catch (error) {
+        const fallback = pickStyleFallback();
+        if (fallback) return fallback;
         return {
           text: '',
           provider,
@@ -570,6 +609,9 @@ export async function requestQwenPrivateChatCompletion(
         };
       }
     }
+
+    const fallback = pickStyleFallback();
+    if (fallback) return fallback;
     return {
       text: '',
       provider,
