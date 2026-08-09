@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   buildRecentLanguageAvoidancePrompt,
   clearQwenModelCapabilityCacheForTests,
+  countRecentLanguageHits,
+  discoverAvailableBuiltInQwenModels,
   extractRecurringAssistantLanguage,
   getQwenSamplingProfile,
   isCandidateOverusingRecentLanguage,
@@ -10,7 +12,7 @@ import {
   selectPreferredBuiltInQwenModel,
 } from '../src/services/qwen-quality';
 
-test('detects the recurring cosmic and stage-direction language from the production pattern', () => {
+test('detects recurring cosmic language without hard-failing one familiar phrase', () => {
   const history = [
     { type: 'ai' as const, username: 'Athena', message: '(leans in, breath warm) I will keep it slow and steady, like a comet tail through the stars.', timestamp: '1' },
     { type: 'user' as const, username: 'Mt', message: 'continue', timestamp: '2' },
@@ -26,15 +28,16 @@ test('detects the recurring cosmic and stage-direction language from the product
   const prompt = buildRecentLanguageAvoidancePrompt(history);
   assert.match(prompt, /VARIETY GUARD/);
   assert.match(prompt, /slow and steady/);
-  assert.match(prompt, /generic cosmic metaphor/);
+  assert.match(prompt, /do not sacrifice a correct, direct answer/i);
 
-  assert.equal(
-    isCandidateOverusingRecentLanguage(
-      '(leans in, breath warm) This answer changes the rest of its wording completely and talks about something specific.',
-      history,
-    ),
-    true,
-  );
+  const oneFamiliarPhrase = '(leans in, breath warm) I answer your actual question directly with concrete new information.';
+  assert.ok(countRecentLanguageHits(oneFamiliarPhrase, history) >= 1);
+  assert.equal(isCandidateOverusingRecentLanguage(oneFamiliarPhrase, history), false);
+
+  const collapsedStyle = '(leans in, breath warm) I keep it slow and steady beneath the stars while repeating the same familiar imagery.';
+  assert.ok(countRecentLanguageHits(collapsedStyle, history) >= 2);
+  assert.equal(isCandidateOverusingRecentLanguage(collapsedStyle, history), true);
+
   assert.equal(
     isCandidateOverusingRecentLanguage(
       'I answer the newest detail directly with a grounded reaction and no recycled imagery.',
@@ -83,6 +86,12 @@ test('discovers the built-in worker model list and selects the largest advertise
       ],
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
+
+  const models = await discoverAvailableBuiltInQwenModels({
+    baseUrl: 'http://spmt-llm-worker.internal:8080/v1',
+    fetchImpl,
+  });
+  assert.deepEqual(models, ['spmt-qwen3-4b', 'spmt-qwen3-8b', 'spmt-qwen3-14b']);
 
   const selected = await resolvePreferredBuiltInQwenModel({
     baseUrl: 'http://spmt-llm-worker.internal:8080/v1',
