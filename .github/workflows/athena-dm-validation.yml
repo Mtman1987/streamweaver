@@ -23,7 +23,7 @@ jobs:
         run: npm ci
       - name: Run open-command tests
         run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts
-      - name: Run private Qwen, personality, emoji-control, and TTS privacy tests
-        run: node --import tsx --test tests/private-chat-qwen-mode.test.ts tests/personality-prompt.test.ts tests/bot-personality-defaults.test.ts tests/private-dm-controls.test.ts tests/private-dm-tts-privacy.test.ts
+      - name: Run private Qwen, personality, media, emoji-control, and TTS privacy tests
+        run: node --import tsx --test tests/private-chat-qwen-mode.test.ts tests/personality-prompt.test.ts tests/bot-personality-defaults.test.ts tests/private-dm-controls.test.ts tests/private-dm-tts-privacy.test.ts tests/private-image-carousel.test.ts tests/discord-media-and-images.test.ts
       - name: Typecheck
         run: npm run typecheck
