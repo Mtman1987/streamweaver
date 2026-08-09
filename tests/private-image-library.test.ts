@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { serializeSessionCookie } from '../src/lib/session-cookie';
 
 test('private image library returns all saved images newest first with Discord-fetchable URLs and safely deletes selected images', async () => {
   const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-library-'));
@@ -74,14 +75,16 @@ test('private image library returns all saved images newest first with Discord-f
   }
 });
 
-test('private gallery counts the active private-DM GIF even when no generated GIF exists', async () => {
+test('private gallery counts the active private-DM GIF and gives its owner a delete control', async () => {
   const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-active-gif-'));
   const originalPersistRoot = process.env.PERSIST_ROOT;
   const originalNodeEnv = process.env.NODE_ENV;
   const originalAppUrl = process.env.APP_URL;
+  const originalSessionSecret = process.env.STREAMWEAVER_SESSION_SECRET;
   process.env.PERSIST_ROOT = runtimeRoot;
   process.env.NODE_ENV = 'production';
   process.env.APP_URL = 'https://streamweaver.test';
+  process.env.STREAMWEAVER_SESSION_SECRET = 'private-library-test-secret';
 
   try {
     const tenantId = 'tenant-active-gif';
@@ -90,8 +93,10 @@ test('private gallery counts the active private-DM GIF even when no generated GI
 
     const { NextRequest } = await import('next/server');
     const { GET } = await import('../src/app/api/ai/image/library/route');
+    const cookie = serializeSessionCookie({ id: tenantId, username: 'owner' });
     const request = new NextRequest(
       `https://streamweaver.test/api/ai/image/library?tenantId=${tenantId}&scope=private`,
+      { headers: { cookie: `streamweaver-session=${cookie}` } },
     );
     const response = await GET(request);
     const html = await response.text();
@@ -100,6 +105,7 @@ test('private gallery counts the active private-DM GIF even when no generated GI
     assert.match(html, /Saved GIFs \(<span id="gif-count">1<\/span>\)/);
     assert.match(html, /Private Generated Media \(<span id="media-count">1<\/span>\)/);
     assert.match(html, /✓ Active DM GIF/);
+    assert.match(html, /data-delete-url="\/api\/discord-media\?slot=private-dm"/);
     assert.match(html, /\/api\/discord-media\/private-dm\.gif\?tenant=tenant-active-gif/);
   } finally {
     if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
@@ -108,6 +114,109 @@ test('private gallery counts the active private-DM GIF even when no generated GI
     else process.env.NODE_ENV = originalNodeEnv;
     if (originalAppUrl === undefined) delete process.env.APP_URL;
     else process.env.APP_URL = originalAppUrl;
+    if (originalSessionSecret === undefined) delete process.env.STREAMWEAVER_SESSION_SECRET;
+    else process.env.STREAMWEAVER_SESSION_SECRET = originalSessionSecret;
+    await rm(runtimeRoot, { recursive: true, force: true });
+  }
+});
+
+test('private gallery migrates the configured DSH-converted GIF over an older StreamWeaver slot', async () => {
+  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-dsh-migration-'));
+  const originalPersistRoot = process.env.PERSIST_ROOT;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAppUrl = process.env.APP_URL;
+  const originalDshUrl = process.env.DISCORD_STREAM_HUB_URL;
+  const originalFetch = global.fetch;
+  process.env.PERSIST_ROOT = runtimeRoot;
+  process.env.NODE_ENV = 'production';
+  process.env.APP_URL = 'https://streamweaver.test';
+  process.env.DISCORD_STREAM_HUB_URL = 'https://discord-stream-hub-new.fly.dev';
+
+  try {
+    const tenantId = 'tenant-dsh-active';
+    const dshUrl = `https://discord-stream-hub-new.fly.dev/api/media/streamweaver/${tenantId}/private-dm/current.gif`;
+    const { tenantPath } = await import('../src/lib/tenant');
+    const { writeDiscordMedia } = await import('../src/lib/discord-media-store');
+    const { writeUserConfig, readUserConfigSync } = await import('../src/lib/user-config');
+    await writeDiscordMedia('private-dm', Buffer.from('GIF89a-old-local-slot'), tenantId);
+    await writeUserConfig({ PRIVATE_DM_GIF_URL: dshUrl }, tenantId);
+
+    global.fetch = (async (input) => {
+      assert.equal(String(input), dshUrl);
+      return new Response(Buffer.from('GIF89a-current-dsh-converted'), {
+        status: 200,
+        headers: { 'content-type': 'image/gif' },
+      });
+    }) as typeof fetch;
+
+    const { NextRequest } = await import('next/server');
+    const { GET } = await import('../src/app/api/ai/image/library/route');
+    const response = await GET(new NextRequest(
+      `https://streamweaver.test/api/ai/image/library?tenantId=${tenantId}&scope=private`,
+    ));
+    const html = await response.text();
+    const canonicalUrl = `https://streamweaver.test/api/discord-media/private-dm.gif?tenant=${tenantId}`;
+
+    assert.equal(response.status, 200);
+    assert.match(html, new RegExp(canonicalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(html, /discord-stream-hub-new\.fly\.dev\/api\/media\/streamweaver/);
+    assert.equal(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL, canonicalUrl);
+    const canonicalFile = tenantPath(tenantId, 'data/discord-media/private-dm.gif');
+    assert.equal((await readFile(canonicalFile)).toString(), 'GIF89a-current-dsh-converted');
+  } finally {
+    global.fetch = originalFetch;
+    if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
+    else process.env.PERSIST_ROOT = originalPersistRoot;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = originalAppUrl;
+    if (originalDshUrl === undefined) delete process.env.DISCORD_STREAM_HUB_URL;
+    else process.env.DISCORD_STREAM_HUB_URL = originalDshUrl;
+    await rm(runtimeRoot, { recursive: true, force: true });
+  }
+});
+
+test('deleting the canonical private-DM slot removes the file and clears the active URL', async () => {
+  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-active-delete-'));
+  const originalPersistRoot = process.env.PERSIST_ROOT;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAppUrl = process.env.APP_URL;
+  const originalSessionSecret = process.env.STREAMWEAVER_SESSION_SECRET;
+  process.env.PERSIST_ROOT = runtimeRoot;
+  process.env.NODE_ENV = 'production';
+  process.env.APP_URL = 'https://streamweaver.test';
+  process.env.STREAMWEAVER_SESSION_SECRET = 'private-library-delete-secret';
+
+  try {
+    const tenantId = 'tenant-delete-active';
+    const { writeDiscordMedia, readTenantDiscordMedia } = await import('../src/lib/discord-media-store');
+    const { writeUserConfig, readUserConfigSync } = await import('../src/lib/user-config');
+    await writeDiscordMedia('private-dm', Buffer.from('GIF89a-delete-me'), tenantId);
+    await writeUserConfig({
+      PRIVATE_DM_GIF_URL: `https://streamweaver.test/api/discord-media/private-dm.gif?tenant=${tenantId}`,
+    }, tenantId);
+
+    const { NextRequest } = await import('next/server');
+    const { DELETE } = await import('../src/app/api/discord-media/route');
+    const cookie = serializeSessionCookie({ id: tenantId, username: 'owner' });
+    const response = await DELETE(new NextRequest(
+      'https://streamweaver.test/api/discord-media?slot=private-dm',
+      { method: 'DELETE', headers: { cookie: `streamweaver-session=${cookie}` } },
+    ));
+
+    assert.equal(response.status, 200);
+    assert.equal(await readTenantDiscordMedia('private-dm', tenantId), null);
+    assert.equal(Boolean(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL), false);
+  } finally {
+    if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
+    else process.env.PERSIST_ROOT = originalPersistRoot;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = originalAppUrl;
+    if (originalSessionSecret === undefined) delete process.env.STREAMWEAVER_SESSION_SECRET;
+    else process.env.STREAMWEAVER_SESSION_SECRET = originalSessionSecret;
     await rm(runtimeRoot, { recursive: true, force: true });
   }
 });

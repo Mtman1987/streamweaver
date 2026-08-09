@@ -8,7 +8,13 @@ import {
   readPrivateGeneratedGif,
 } from '@/services/private-image-library';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
-import { getDiscordMediaPublicPath, readDiscordMedia, writeDiscordMedia } from '@/lib/discord-media-store';
+import {
+  getDiscordMediaPublicPath,
+  importDiscordStreamHubMedia,
+  isDiscordStreamHubStoredMediaUrl,
+  readTenantDiscordMedia,
+  writeDiscordMedia,
+} from '@/lib/discord-media-store';
 import { readUserConfigSync, writeUserConfig } from '@/lib/user-config';
 import { writePrivateChatSettings } from '@/lib/private-chat-settings-store';
 
@@ -75,30 +81,77 @@ function renderCard(input: {
   </article>`;
 }
 
-function renderActiveGifCard(url: string): string {
+function renderActiveGifCard(url: string, canMutate: boolean): string {
   const safeUrl = escapeHtml(url);
+  const controls = [
+    canMutate
+      ? '<button class="delete-button" type="button" data-delete-url="/api/discord-media?slot=private-dm" data-filename="active private-DM GIF">Delete</button>'
+      : '',
+    '<span class="active-badge">✓ Active DM GIF</span>',
+  ].filter(Boolean).join('');
+
   return `<article class="image-card active-gif-card" data-image-card data-library-kind="gif" data-active-dm-gif>
     <div class="image-toolbar">
       <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open full size</a>
-      <div class="card-actions"><span class="active-badge">✓ Active DM GIF</span></div>
+      <div class="card-actions">${controls}</div>
     </div>
     <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="image-link">
       <img src="${safeUrl}" loading="lazy" alt="Active private DM GIF" />
     </a>
-    <div class="filename" title="Active private-DM media slot">Active private-DM media slot</div>
+    <div class="filename" title="Canonical private-DM media slot">Canonical private-DM media slot</div>
   </article>`;
 }
 
+function canonicalPrivateGifUrl(tenantId: string): string {
+  const relativeUrl = getDiscordMediaPublicPath('private-dm', tenantId);
+  const baseUrl = getConfiguredAppUrl();
+  return baseUrl ? `${baseUrl}${relativeUrl}` : relativeUrl;
+}
+
+function isCanonicalPrivateGifUrl(value: string, tenantId: string): boolean {
+  const configured = String(value || '').trim();
+  if (!configured) return false;
+  try {
+    const url = new URL(configured, getConfiguredAppUrl());
+    return url.pathname === '/api/discord-media/private-dm.gif' &&
+      url.searchParams.get('tenant') === tenantId;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveActivePrivateGifUrl(tenantId: string): Promise<string> {
-  const stored = await readDiscordMedia('private-dm', tenantId).catch(() => null);
-  if (stored) {
-    const relativeUrl = getDiscordMediaPublicPath('private-dm', tenantId);
-    const baseUrl = getConfiguredAppUrl();
-    return baseUrl ? `${baseUrl}${relativeUrl}` : relativeUrl;
+  const configured = String(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL || '').trim();
+  const canonicalUrl = canonicalPrivateGifUrl(tenantId);
+
+  // Existing MP4 conversions used to remain hosted by DiscordStreamHub while an
+  // older StreamWeaver GIF could still exist. The configured URL is what the bot
+  // actually uses, so migrate that file into the tenant slot before considering
+  // any older local bytes.
+  if (configured && isDiscordStreamHubStoredMediaUrl(configured)) {
+    try {
+      await importDiscordStreamHubMedia('private-dm', configured, tenantId);
+      await writeUserConfig({ PRIVATE_DM_GIF_URL: canonicalUrl }, tenantId);
+      return canonicalUrl;
+    } catch (error) {
+      console.warn('[Private Image Library] Failed to migrate DSH active GIF into StreamWeaver:', error);
+      return configured;
+    }
   }
 
-  const configured = String(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL || '').trim();
-  return /^https?:\/\//i.test(configured) ? configured : '';
+  if (configured && /^https?:\/\//i.test(configured) && !isCanonicalPrivateGifUrl(configured, tenantId)) {
+    return configured;
+  }
+
+  const stored = await readTenantDiscordMedia('private-dm', tenantId).catch(() => null);
+  if (stored) {
+    if (configured !== canonicalUrl) {
+      await writeUserConfig({ PRIVATE_DM_GIF_URL: canonicalUrl }, tenantId).catch(() => undefined);
+    }
+    return canonicalUrl;
+  }
+
+  return '';
 }
 
 export async function GET(request: NextRequest) {
@@ -144,14 +197,14 @@ export async function GET(request: NextRequest) {
     gif: true,
   })).join('');
   const gifRows = [
-    activePrivateGifUrl ? renderActiveGifCard(activePrivateGifUrl) : '',
+    activePrivateGifUrl ? renderActiveGifCard(activePrivateGifUrl, canMutate) : '',
     generatedGifRows,
   ].filter(Boolean).join('');
 
   const title = scope === 'private' ? 'Private Generated Media' : 'Generated Images';
   const ownerNote = scope === 'private'
     ? canMutate
-      ? '<p class="note">Images and GIFs are stored separately below. The Saved GIFs count includes the active private-DM media slot plus saved generated GIFs. Delete generated GIFs you do not want to keep, or use <strong>Apply to DM</strong> to replace the active private Discord media.</p>'
+      ? '<p class="note">Images and GIFs are stored separately below. The active private-DM GIF is one canonical StreamWeaver media slot, including MP4s converted by DiscordStreamHub. Delete the active slot directly, delete generated GIFs you do not want to keep, or use <strong>Apply to DM</strong> to replace it.</p>'
       : '<p class="note warning">Viewing mode. Sign in to StreamWeaver as this account in this browser to enable Delete and Apply controls.</p>'
     : '';
 
