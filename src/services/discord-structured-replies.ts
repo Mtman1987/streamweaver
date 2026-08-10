@@ -270,11 +270,11 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
     : [];
   const replyInput: StructuredDiscordReplyInput = isPrivateImageLibraryRequest
     ? {
-        ...input,
+        ...effectiveInput,
         includeConfiguredMedia: false,
         ...(galleryImages[0] ? { imageUrl: galleryImages[0] } : {}),
       }
-    : input;
+    : effectiveInput;
 
   const payload = await buildStructuredDiscordReplyPayload(replyInput);
   const { deleteAt, speaker } = payload;
