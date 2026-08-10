@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     : [];
   if (!currentEmbeds.length) {
     return apiOk({
+      success: true,
       finalized: false,
       skipped: 'message-has-no-embeds',
       tenantId,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
   await editDiscordMessage(channelId, messageId, { embeds });
 
   return apiOk({
+    success: true,
     finalized: true,
     tenantId,
     gifEnabled: settings.gifEnabled,
