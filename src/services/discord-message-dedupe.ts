@@ -4,6 +4,8 @@ import { globalPath } from '@/lib/tenant';
 
 const MAX_TRACKED_MESSAGE_IDS = 2000;
 const PERSISTED_DEDUPE_FILE = 'discord-handled-message-ids.json';
+const PROCESS_STARTED_AT = Date.now();
+const INITIAL_EVENT_GRACE_MS = 2 * 60 * 1000;
 
 const globalState = global as typeof globalThis & {
   __streamweaverDiscordHandledMessageIds?: Set<string>;
@@ -174,6 +176,22 @@ export async function registerHandledDiscordMessagePersisted(
   const watermarks = getMessageWatermarks();
   const watermark = channelId ? watermarks.get(channelId) : undefined;
   if (watermark && messageId && compareDiscordMessageIds(messageId, watermark) <= 0) {
+    return false;
+  }
+
+  const createdAt = Date.parse(String(input.createdAt || ''));
+  const staleInitialEvent = !watermark
+    && channelId
+    && messageId
+    && Number.isFinite(createdAt)
+    && createdAt < PROCESS_STARTED_AT - INITIAL_EVENT_GRACE_MS;
+  if (staleInitialEvent) {
+    watermarks.set(channelId, messageId);
+    try {
+      await persistHandledMessageIds();
+    } catch (error) {
+      console.warn('[Discord Dedupe] Failed to seed stale-message watermark:', error);
+    }
     return false;
   }
 
