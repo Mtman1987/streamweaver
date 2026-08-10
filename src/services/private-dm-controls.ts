@@ -14,6 +14,7 @@ export const PRIVATE_DM_CONTROL_ACTIONS = {
   tts: 't',
   adult: 'a',
   settings: 's',
+  delete: 'd',
 } as const;
 
 export type PrivateDmControlAction = keyof typeof PRIVATE_DM_CONTROL_ACTIONS;
@@ -149,6 +150,7 @@ export function buildPrivateDmControlField(input: {
     [ttsEmoji, 'tts'],
     ['🔞', 'adult'],
     ['⚙️', 'settings'],
+    ['🗑️', 'delete'],
   ];
   const value = links
     .map(([emoji, action]) => `[${emoji}](${privateDmControlUrl(token, action)})`)
