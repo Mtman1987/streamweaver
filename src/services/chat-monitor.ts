@@ -13,6 +13,7 @@ import { queueTtsOverlay } from './tts-overlay-queue';
 import { appendPrivateChatMessages } from '@/lib/private-chat-store';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { pollOwns } from './discord-processing-owner';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -225,6 +226,7 @@ export async function checkChatActivity() {
 
 
 export async function checkDmChannelActivity(): Promise<void> {
+    if (!pollOwns('dm-private-ai')) return;
     // !img is now handled by /api/discord/chat route directly.
     // DM sweep only handles conversational AI responses, not commands.
     if (!process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN.trim() === '') return;
