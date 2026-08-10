@@ -256,23 +256,27 @@ export async function POST(request: NextRequest) {
       return sendStructuredDiscordReply(structuredInput);
     };
 
-    if (!isDirectMessage) {
-      const isFirstSeen = registerHandledDiscordMessage({
-        messageId: normalized.messageId,
-        channelId,
-        userId,
-        username: normalized.username,
-        content: message,
-        createdAt: normalized.createdAt,
+    const isFirstSeen = registerHandledDiscordMessage({
+      messageId: normalized.messageId,
+      channelId,
+      userId,
+      username: normalized.username,
+      content: message,
+      createdAt: normalized.createdAt,
+    });
+    if (!isFirstSeen) {
+      console.log('[Discord Chat] Skipping duplicate message:', {
+        messageId: normalized.messageId || null,
+        channelId: channelId || null,
+        isDirectMessage,
       });
-      if (!isFirstSeen) {
-        console.log('[Discord Chat] Skipping duplicate public message:', {
-          messageId: normalized.messageId || null,
-          channelId: channelId || null,
-        });
-        logDiscordTrace(traceId, 'skipped', { reason: 'duplicate-public-message' });
-        return apiOk({ success: true, botResponded: false, duplicate: true });
-      }
+      logDiscordTrace(traceId, 'skipped', {
+        reason: isDirectMessage ? 'duplicate-private-message' : 'duplicate-public-message',
+      });
+      return apiOk({ success: true, botResponded: false, duplicate: true });
+    }
+
+    if (!isDirectMessage) {
       recordDiscordLastSeen({
         userId,
         username: normalized.username,
