@@ -7,8 +7,12 @@
   "license": "MIT",
   "main": "main.cjs",
   "scripts": {
+    "patch:workspace": "node scripts/patch-spmt-workspace.cjs",
+    "prestart": "npm run patch:workspace",
     "start": "electron .",
+    "precheck": "npm run patch:workspace",
     "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
+    "predist:win": "npm run patch:workspace",
     "dist:win": "electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never"
   },
   "build": {
@@ -34,38 +38,20 @@
       {
         "from": "../dist/companion-runtime",
         "to": "runtime",
-        "filter": [
-          "**/*",
-          "!node_modules/**/*",
-          "!smoke.*.log"
-        ]
+        "filter": ["**/*", "!node_modules/**/*", "!smoke.*.log"]
       },
       {
         "from": "../dist/companion-runtime/node_modules",
         "to": "runtime/node_modules",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "../public/app-icon.png",
         "to": "assets/app-icon.png"
       }
     ],
-    "win": {
-      "icon": "../public/favicon.ico",
-      "target": [
-        "nsis"
-      ]
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Mtman1987",
-        "repo": "streamweaver",
-        "releaseType": "release"
-      }
-    ],
+    "win": { "icon": "../public/favicon.ico", "target": ["nsis"] },
+    "publish": [{ "provider": "github", "owner": "Mtman1987", "repo": "streamweaver", "releaseType": "release" }],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
