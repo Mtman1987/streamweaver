@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
-import { getDiscordMessage, editDiscordMessage } from '@/services/discord-local';
+import { deleteMessage, getDiscordMessage, editDiscordMessage } from '@/services/discord-local';
 import {
   applyPrivateDmGif,
   attachPrivateDmControls,
@@ -110,6 +110,15 @@ export async function POST(request: NextRequest) {
   try {
     if (action === 'settings') {
       return apiOk({ action, redirectUrl: '/private-chat' });
+    }
+
+    if (action === 'delete') {
+      await deleteMessage(control.channelId, control.messageId);
+      return apiOk({
+        action,
+        deleted: true,
+        message: 'Private DM deleted.',
+      });
     }
 
     const current = await readPrivateChatSettings(tenantId);
