@@ -4,6 +4,7 @@ import { parseSessionCookie } from '@/lib/session-cookie';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { WorkspaceThemeProvider } from '@/components/workspace-theme-provider';
+import { SpmtWorkspaceHost } from '@/components/spmt-workspace-host';
 
 export default async function AppLayout({
   children,
@@ -13,8 +14,6 @@ export default async function AppLayout({
   const cookieStore = await cookies();
   const session = parseSessionCookie(cookieStore.get('streamweaver-session')?.value);
 
-  // Signed sessions use a runtime-only Fly secret. This Node layout is the
-  // authoritative page guard; Edge middleware never needs access to the secret.
   if (!session) redirect('/login');
 
   return (
@@ -23,6 +22,7 @@ export default async function AppLayout({
         <OBSBridge />
         {children}
       </AppShell>
+      <SpmtWorkspaceHost />
     </WorkspaceThemeProvider>
   );
 }
