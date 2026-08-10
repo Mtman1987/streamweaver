@@ -5,6 +5,7 @@ import {
   requestPrivateChatCompletion,
 } from '../src/services/private-chat-ai';
 import { isEdenContentPolicyRejection } from '../src/services/eden-policy';
+import { removeLatestMatchingPrivateAiMessage } from '../src/lib/private-chat-store';
 
 test('extracts text from string and structured EdenAI message content', () => {
   assert.equal(extractPrivateChatResponseText({
@@ -88,4 +89,19 @@ test('recognizes EdenAI policy rejection errors as filtered results', async () =
     },
   })), true);
   assert.equal(isEdenContentPolicyRejection(500, 'Content rejected due to the violation code invalid_parameter'), false);
+});
+
+
+test('removes only the newest matching Athena turn from private history', () => {
+  const history = [
+    { type: 'user' as const, username: 'Commander', message: 'Try it.', timestamp: '1' },
+    { type: 'ai' as const, username: 'Athena', message: 'Repeated reply.', timestamp: '2' },
+    { type: 'user' as const, username: 'Commander', message: 'Again.', timestamp: '3' },
+    { type: 'ai' as const, username: 'Athena', message: 'Repeated reply.', timestamp: '4' },
+  ];
+
+  const result = removeLatestMatchingPrivateAiMessage(history, 'Repeated reply.');
+  assert.equal(result.removed, true);
+  assert.deepEqual(result.messages.map((entry) => entry.timestamp), ['1', '2', '3']);
+  assert.equal(removeLatestMatchingPrivateAiMessage(history, 'Missing reply.').removed, false);
 });
