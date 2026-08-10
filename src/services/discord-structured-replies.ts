@@ -14,6 +14,7 @@ import { getTwitchUser } from './twitch';
 import { attachPrivateDmControls } from './private-dm-controls';
 import { listPrivateGeneratedImageUrls } from './private-image-library';
 import { registerPrivateImageCarousel } from './private-image-carousel';
+import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
 
 const SPACEMOUNTAIN_FALLBACK_LOGO = 'https://spacemountain.live/assets/space-logo-main.png';
 
@@ -174,6 +175,20 @@ async function resolveTenantOwnerBranding(
   return { name: ownerName || 'SpaceMountain.live', logo: SPACEMOUNTAIN_FALLBACK_LOGO };
 }
 
+export async function resolveStructuredDiscordReplyInput(
+  input: StructuredDiscordReplyInput,
+): Promise<StructuredDiscordReplyInput> {
+  if (!input.isPrivate || !input.tenantId) return input;
+  const settings = await readPrivateChatSettings(input.tenantId).catch(() => null);
+  if (!settings) return input;
+  return {
+    ...input,
+    gifEnabled: settings.gifEnabled,
+    ttsEnabled: settings.ttsEnabled,
+    adultMode: settings.adultMode,
+  };
+}
+
 export async function buildStructuredDiscordReplyPayload(input: StructuredDiscordReplyInput): Promise<{
   content: string;
   embeds: Record<string, unknown>[];
@@ -181,13 +196,14 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   deleteAt: string;
   speaker: DiscordReplySpeaker;
 }> {
-  const speaker = input.speaker || await resolveStructuredDiscordReplySpeaker({
-    tenantId: input.tenantId,
-    botName: input.botName,
-    rotateSpeaker: input.isPrivate ? false : input.rotateSpeaker,
-    isPrivate: input.isPrivate,
+  const effectiveInput = await resolveStructuredDiscordReplyInput(input);
+  const speaker = effectiveInput.speaker || await resolveStructuredDiscordReplySpeaker({
+    tenantId: effectiveInput.tenantId,
+    botName: effectiveInput.botName,
+    rotateSpeaker: effectiveInput.isPrivate ? false : effectiveInput.rotateSpeaker,
+    isPrivate: effectiveInput.isPrivate,
   });
-  const deleteAt = input.isPrivate ? '' : getDiscordMessageCleanupDeleteAt();
+  const deleteAt = effectiveInput.isPrivate ? '' : getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const botAvatar = firstUrl(
     webhookIdentity.avatarUrl,
@@ -195,25 +211,25 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     SPACEMOUNTAIN_FALLBACK_LOGO,
   );
   const owner = await resolveTenantOwnerBranding(speaker.tenantId);
-  const requesterLogo = firstUrl(input.sourceUserAvatarUrl, SPACEMOUNTAIN_FALLBACK_LOGO);
+  const requesterLogo = firstUrl(effectiveInput.sourceUserAvatarUrl, SPACEMOUNTAIN_FALLBACK_LOGO);
 
   const embed = await buildDiscordBotEmbed({
-    description: input.message,
+    description: effectiveInput.message,
     tenantId: speaker.tenantId,
     botName: speaker.botName,
-    title: input.title,
-    responseType: input.responseType,
-    sourceMessage: input.sourceMessage,
-    sourceUser: input.sourceUser,
+    title: effectiveInput.title,
+    responseType: effectiveInput.responseType,
+    sourceMessage: effectiveInput.sourceMessage,
+    sourceUser: effectiveInput.sourceUser,
     sourceUserAvatarUrl: requesterLogo,
     deleteAt: deleteAt || undefined,
-    mediaSlot: input.isPrivate ? 'private' : 'public',
-    includeConfiguredMedia: input.includeConfiguredMedia
-      ?? (Boolean(input.isPrivate) && input.gifEnabled !== false),
-    imageUrl: input.imageUrl,
-    thumbnailUrl: firstUrl(input.thumbnailUrl, botAvatar),
-    color: input.color,
-    fields: input.fields,
+    mediaSlot: effectiveInput.isPrivate ? 'private' : 'public',
+    includeConfiguredMedia: effectiveInput.includeConfiguredMedia
+      ?? (Boolean(effectiveInput.isPrivate) && effectiveInput.gifEnabled !== false),
+    imageUrl: effectiveInput.imageUrl,
+    thumbnailUrl: firstUrl(effectiveInput.thumbnailUrl, botAvatar),
+    color: effectiveInput.color,
+    fields: effectiveInput.fields,
   });
 
   embed.author = {
@@ -221,7 +237,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     name: `Bot owned by ${owner.name}`,
     icon_url: firstUrl(owner.logo, SPACEMOUNTAIN_FALLBACK_LOGO),
   };
-  embed.thumbnail = { url: firstUrl(input.thumbnailUrl, botAvatar, SPACEMOUNTAIN_FALLBACK_LOGO) };
+  embed.thumbnail = { url: firstUrl(effectiveInput.thumbnailUrl, botAvatar, SPACEMOUNTAIN_FALLBACK_LOGO) };
   embed.footer = {
     ...embed.footer,
     icon_url: requesterLogo,
@@ -230,8 +246,8 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   return {
     content: '',
     embeds: [
-      input.embedUrl ? { ...embed, url: input.embedUrl } : embed,
-      ...(input.extraEmbeds || []),
+      effectiveInput.embedUrl ? { ...embed, url: effectiveInput.embedUrl } : embed,
+      ...(effectiveInput.extraEmbeds || []),
     ],
     username: webhookIdentity.username,
     deleteAt,
@@ -240,13 +256,14 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
 }
 
 export async function sendStructuredDiscordReply(input: StructuredDiscordReplyInput): Promise<{ messageId?: string; deleteAt: string; speaker: DiscordReplySpeaker }> {
+  const effectiveInput = await resolveStructuredDiscordReplyInput(input);
   const isPrivateImageLibraryRequest = Boolean(
-    input.isPrivate &&
-    input.tenantId &&
-    /^!img\s*$/i.test(String(input.sourceMessage || ''))
+    effectiveInput.isPrivate &&
+    effectiveInput.tenantId &&
+    /^!img\s*$/i.test(String(effectiveInput.sourceMessage || ''))
   );
-  const galleryImages = isPrivateImageLibraryRequest && input.tenantId
-    ? await listPrivateGeneratedImageUrls(input.tenantId).catch((error) => {
+  const galleryImages = isPrivateImageLibraryRequest && effectiveInput.tenantId
+    ? await listPrivateGeneratedImageUrls(effectiveInput.tenantId).catch((error) => {
         console.warn('[Discord Reply] Failed to load private image library:', error);
         return [] as string[];
       })
