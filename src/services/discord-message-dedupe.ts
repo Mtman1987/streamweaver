@@ -1,4 +1,9 @@
+import { promises as fs } from 'node:fs';
+import { dirname } from 'node:path';
+import { globalPath } from '@/lib/tenant';
+
 const MAX_TRACKED_MESSAGE_IDS = 2000;
+const PERSISTED_DEDUPE_FILE = 'discord-handled-message-ids.json';
 
 const globalState = global as typeof globalThis & {
   __streamweaverDiscordHandledMessageIds?: Set<string>;
@@ -18,7 +23,7 @@ function normalizeMessageKey(messageId?: string | null, channelId?: string | nul
   return normalizedChannelId ? `${normalizedChannelId}:${normalizedMessageId}` : normalizedMessageId;
 }
 
-type DiscordMessageDedupeInput = {
+export type DiscordMessageDedupeInput = {
   messageId?: string | null;
   channelId?: string | null;
   userId?: string | null;
@@ -48,17 +53,20 @@ function trimHandledKeys(handled: Set<string>): void {
   }
 }
 
+function dedupeKeys(input: DiscordMessageDedupeInput): string[] {
+  return [
+    normalizeMessageKey(input.messageId, input.channelId),
+    normalizeSignatureKey(input),
+  ].filter(Boolean);
+}
+
 export function registerHandledDiscordMessage(inputOrMessageId?: DiscordMessageDedupeInput | string | null, channelId?: string | null): boolean {
   const input: DiscordMessageDedupeInput =
     typeof inputOrMessageId === 'object' && inputOrMessageId !== null
       ? inputOrMessageId
       : { messageId: inputOrMessageId, channelId };
 
-  const keys = [
-    normalizeMessageKey(input.messageId, input.channelId),
-    normalizeSignatureKey(input),
-  ].filter(Boolean);
-
+  const keys = dedupeKeys(input);
   if (keys.length === 0) return true;
 
   const handled = getHandledMessageIds();
@@ -70,6 +78,69 @@ export function registerHandledDiscordMessage(inputOrMessageId?: DiscordMessageD
     handled.add(key);
   }
   trimHandledKeys(handled);
+  return true;
+}
 
+function persistedDedupePath(): string {
+  return globalPath(PERSISTED_DEDUPE_FILE);
+}
+
+let persistedStateLoad: Promise<void> | null = null;
+let persistedWriteQueue: Promise<void> = Promise.resolve();
+
+async function loadPersistedHandledMessageIds(): Promise<void> {
+  if (!persistedStateLoad) {
+    persistedStateLoad = (async () => {
+      try {
+        const parsed = JSON.parse(await fs.readFile(persistedDedupePath(), 'utf8'));
+        const keys = Array.isArray(parsed?.keys) ? parsed.keys : [];
+        const handled = getHandledMessageIds();
+        for (const key of keys.slice(-MAX_TRACKED_MESSAGE_IDS)) {
+          const normalized = String(key || '').trim();
+          if (normalized) handled.add(normalized);
+        }
+        trimHandledKeys(handled);
+      } catch {
+        // A missing or malformed state file starts with an empty dedupe set.
+      }
+    })();
+  }
+  await persistedStateLoad;
+}
+
+async function persistHandledMessageIds(): Promise<void> {
+  const statePath = persistedDedupePath();
+  const snapshot = Array.from(getHandledMessageIds()).slice(-MAX_TRACKED_MESSAGE_IDS);
+  persistedWriteQueue = persistedWriteQueue
+    .catch(() => {})
+    .then(async () => {
+      await fs.mkdir(dirname(statePath), { recursive: true });
+      const tempPath = `${statePath}.tmp`;
+      await fs.writeFile(tempPath, JSON.stringify({
+        version: 1,
+        keys: snapshot,
+        updatedAt: new Date().toISOString(),
+      }, null, 2));
+      await fs.rename(tempPath, statePath);
+    });
+  await persistedWriteQueue;
+}
+
+/**
+ * Restart-safe ingress claim. The message is persisted before any response side
+ * effect, so Discord/Kite/DSH retries cannot replay an old question after a
+ * process restart. This covers both public channels and private DMs.
+ */
+export async function registerHandledDiscordMessagePersisted(
+  input: DiscordMessageDedupeInput,
+): Promise<boolean> {
+  await loadPersistedHandledMessageIds();
+  const firstSeen = registerHandledDiscordMessage(input);
+  if (!firstSeen) return false;
+  try {
+    await persistHandledMessageIds();
+  } catch (error) {
+    console.warn('[Discord Dedupe] Failed to persist handled message state:', error);
+  }
   return true;
 }
