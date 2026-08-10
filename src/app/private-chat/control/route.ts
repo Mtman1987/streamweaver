@@ -34,9 +34,12 @@ function renderError(message: string): string {
 </html>`;
 }
 
-function renderControlPage(token: string, action: 'gif' | 'adult'): string {
-  const icon = action === 'gif' ? '🖼️' : '🔞';
-  const title = action === 'gif' ? 'Private GIF' : 'Adult Mode';
+function renderControlPage(token: string, action: 'gif' | 'adult' | 'delete'): string {
+  const icon = action === 'gif' ? '🖼️' : action === 'adult' ? '🔞' : '🗑️';
+  const title = action === 'gif' ? 'Private GIF' : action === 'adult' ? 'Adult Mode' : 'Delete private message';
+  const initialStatus = action === 'delete'
+    ? 'Tap the trash can again to delete this exact Discord message.'
+    : 'Working…';
   const tokenLiteral = JSON.stringify(token);
   const actionLiteral = JSON.stringify(action);
 
@@ -51,12 +54,13 @@ function renderControlPage(token: string, action: 'gif' | 'adult'): string {
   <main style="width:min(34rem,calc(100vw - 2rem));padding:2rem;text-align:center;border:1px solid #292f43;border-radius:1rem;background:#111522;box-shadow:0 1rem 4rem rgba(0,0,0,.35)">
     <div id="icon" role="button" tabindex="0" aria-label="${title}" style="font-size:4rem;line-height:1;cursor:pointer;user-select:none">${icon}</div>
     <h1 style="font-size:1.2rem;margin:1rem 0 .5rem">${title}</h1>
-    <p id="status" style="min-height:3rem;margin:0;color:#b7bdd1;line-height:1.5">Working…</p>
+    <p id="status" style="min-height:3rem;margin:0;color:#b7bdd1;line-height:1.5">${initialStatus}</p>
   </main>
   <script>
     const token = ${tokenLiteral};
     const action = ${actionLiteral};
     const status = document.getElementById('status');
+    const icon = document.getElementById('icon');
 
     function setStatus(message) {
       status.textContent = String(message || 'Done. Return to Discord.');
@@ -79,7 +83,17 @@ function renderControlPage(token: string, action: 'gif' | 'adult'): string {
       }
     }
 
-    void run();
+    icon.addEventListener('click', () => {
+      if (action === 'delete') void run();
+    });
+    icon.addEventListener('keydown', (event) => {
+      if (action === 'delete' && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        void run();
+      }
+    });
+
+    if (action !== 'delete') void run();
   </script>
 </body>
 </html>`;

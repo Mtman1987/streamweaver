@@ -35,7 +35,7 @@ test('signs private DM controls and rejects tampering or expiration', () => {
   assert.equal(verifyPrivateDmControlToken(token, 1_601), null);
 });
 
-test('creates four emoji-only markdown links without Discord buttons', () => {
+test('creates five emoji-only markdown links without Discord buttons', () => {
   const field = buildPrivateDmControlField({
     channelId,
     messageId,
@@ -44,11 +44,12 @@ test('creates four emoji-only markdown links without Discord buttons', () => {
   assert.equal(field.name, PRIVATE_DM_CONTROL_FIELD_NAME);
   assert.equal(field.inline, false);
   assert.ok(field.value.length <= 1024);
-  assert.equal((field.value.match(/\]\(/g) || []).length, 4);
+  assert.equal((field.value.match(/\]\(/g) || []).length, 5);
   assert.match(field.value, /\[🖼️\]/u);
   assert.match(field.value, /\[🔊\]/u);
   assert.match(field.value, /\[🔞\]/u);
   assert.match(field.value, /\[⚙️\]/u);
+  assert.match(field.value, /\[🗑️\]/u);
   assert.equal(/button|components|toggle gif|settings/i.test(field.value), false);
 });
 
@@ -81,12 +82,14 @@ test('toggles only the private GIF while preserving the answer and icon field', 
   assert.equal((shown.embeds[0] as any).image.url, 'https://streamweaver.example/private.gif');
 });
 
-test('parses only the four allowed control actions', () => {
+test('parses only the five allowed control actions', () => {
   assert.equal(parsePrivateDmControlAction('g'), 'gif');
   assert.equal(parsePrivateDmControlAction('tts'), 'tts');
   assert.equal(parsePrivateDmControlAction('a'), 'adult');
   assert.equal(parsePrivateDmControlAction('settings'), 'settings');
-  assert.equal(parsePrivateDmControlAction('delete'), null);
+  assert.equal(parsePrivateDmControlAction('delete'), 'delete');
+  assert.equal(parsePrivateDmControlAction('d'), 'delete');
+  assert.equal(parsePrivateDmControlAction('purge'), null);
 });
 
 test('splits long private TTS at readable boundaries', () => {
@@ -112,6 +115,8 @@ test('settings and TTS controls redirect through the configured public app URL',
   assert.match(routeSource, /new URL\('\/private-chat\/tts', getConfiguredAppUrl\(\)\)/);
   assert.doesNotMatch(routeSource, /new URL\('\/bot-functions', request\.url\)/);
   assert.match(apiRouteSource, /redirectUrl: '\/private-chat'/);
+  assert.match(apiRouteSource, /deleteMessage\(control\.channelId, control\.messageId\)/);
+  assert.match(routeSource, /action !== 'delete'/);
   assert.match(apiRouteSource, /listPrivateAiTurnsAfter\(history, after, 4\)/);
   assert.match(apiRouteSource, /mode === 'poll'/);
   assert.match(apiRouteSource, /mode === 'off'/);
