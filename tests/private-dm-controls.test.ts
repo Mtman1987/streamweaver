@@ -82,6 +82,30 @@ test('toggles only the private GIF while preserving the answer and icon field', 
   assert.equal((shown.embeds[0] as any).image.url, 'https://streamweaver.example/private.gif');
 });
 
+test('private GIF settings preserve app-specific embed artwork', () => {
+  const appImage = 'https://chat-tag.example/card.png';
+  const hidden = togglePrivateDmGif([{
+    description: 'Chat Tag pack',
+    image: { url: appImage },
+  }], 'https://streamweaver.example/private.gif');
+  assert.equal(hidden.visible, true);
+  assert.equal((hidden.embeds[0] as any).image.url, appImage);
+});
+
+test('shared private DM finalizer is authenticated and applies saved controls', () => {
+  const routeSource = readFileSync(
+    new URL('../src/app/api/private-chat/finalize-discord-message/route.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(routeSource, /hasInternalServiceAccess\(request\)/);
+  assert.match(routeSource, /resolvePrivateDmTenantId\(channelId\)/);
+  assert.match(routeSource, /readPrivateChatSettings\(tenantId\)/);
+  assert.match(routeSource, /applyPrivateDmGif\(currentEmbeds, mediaUrl, settings\.gifEnabled\)/);
+  assert.match(routeSource, /attachPrivateDmControls\(embeds/);
+  assert.match(routeSource, /editDiscordMessage\(channelId, messageId, \{ embeds \}\)/);
+});
+
 test('parses only the five allowed control actions', () => {
   assert.equal(parsePrivateDmControlAction('g'), 'gif');
   assert.equal(parsePrivateDmControlAction('tts'), 'tts');
