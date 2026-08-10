@@ -116,4 +116,45 @@ export async function appendPrivateChatMessages(
   return trimmed;
 }
 
+
+export function removeLatestMatchingPrivateAiMessage(
+  messages: PrivateChatMessage[],
+  message: string,
+): { messages: PrivateChatMessage[]; removed: boolean } {
+  const target = String(message || '').trim();
+  if (!target) return { messages, removed: false };
+
+  let matchIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const entry = messages[index];
+    if (entry.type === 'ai' && entry.message.trim() === target) {
+      matchIndex = index;
+      break;
+    }
+  }
+  if (matchIndex < 0) return { messages, removed: false };
+
+  return {
+    messages: [...messages.slice(0, matchIndex), ...messages.slice(matchIndex + 1)],
+    removed: true,
+  };
+}
+
+export async function deletePrivateChatAiMessage(
+  message: string,
+  tenantId?: string,
+): Promise<boolean> {
+  const existing = await readPrivateChatMessages(undefined, tenantId);
+  const result = removeLatestMatchingPrivateAiMessage(existing, message);
+  if (!result.removed) return false;
+
+  const filePath = getPrivateChatFilePath(tenantId);
+  const dir = resolve(filePath, '..');
+  const temporary = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(temporary, JSON.stringify(result.messages, null, 2));
+  await fs.rename(temporary, filePath);
+  return true;
+}
+
 export { getPrivateChatFilePath };

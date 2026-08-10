@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { deleteMessage, getDiscordMessage, editDiscordMessage } from '@/services/discord-local';
+import { deletePrivateChatAiMessage } from '@/lib/private-chat-store';
 import {
   applyPrivateDmGif,
   attachPrivateDmControls,
@@ -113,11 +114,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'delete') {
+      const discordMessage = await getDiscordMessage(control.channelId, control.messageId);
+      const text = privateDmMessageText(discordMessage);
+      const historyDeleted = text
+        ? await deletePrivateChatAiMessage(text, tenantId)
+        : false;
       await deleteMessage(control.channelId, control.messageId);
       return apiOk({
         action,
         deleted: true,
-        message: 'Private DM deleted.',
+        historyDeleted,
+        message: historyDeleted
+          ? 'Private DM deleted from Discord and Athena history.'
+          : 'Private DM deleted from Discord.',
       });
     }
 
