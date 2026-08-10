@@ -241,9 +241,10 @@ export function applyPrivateDmGif(
   if (!embeds.length) return embeds;
   const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
   const first = next[0];
-  if (gifEnabled && configuredMediaUrl) {
+  const currentImage = String(first.image?.url || '').trim();
+  if (gifEnabled && configuredMediaUrl && !currentImage) {
     first.image = { url: configuredMediaUrl };
-  } else {
+  } else if (!gifEnabled && configuredMediaUrl && currentImage === configuredMediaUrl) {
     delete first.image;
   }
   return next;
