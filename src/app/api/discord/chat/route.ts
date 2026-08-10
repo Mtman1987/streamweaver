@@ -18,7 +18,7 @@ import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
 import { buildDirectHumanRelayMessage, deliverBotRelay, handleDiscordMessage, isDirectHumanRelayTarget, resolveRelayTarget } from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
-import { registerHandledDiscordMessage } from '@/services/discord-message-dedupe';
+import { registerHandledDiscordMessagePersisted } from '@/services/discord-message-dedupe';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
 import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/bot-relay';
@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
       return sendStructuredDiscordReply(structuredInput);
     };
 
-    const isFirstSeen = registerHandledDiscordMessage({
+    const isFirstSeen = await registerHandledDiscordMessagePersisted({
       messageId: normalized.messageId,
       channelId,
       userId,
