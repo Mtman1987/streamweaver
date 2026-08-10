@@ -31,3 +31,18 @@ test('every StreamWeaver private structured reply resolves saved presentation se
   assert.match(replies, /adultMode: settings\.adultMode/);
   assert.match(replies, /const effectiveInput = await resolveStructuredDiscordReplyInput\(input\)/);
 });
+
+test('Discord ingress dedupe is persisted before public or private dispatch', () => {
+  const dedupe = source('../src/services/discord-message-dedupe.ts');
+  const route = source('../src/app/api/discord/chat/route.ts');
+
+  assert.match(dedupe, /discord-handled-message-ids\.json/);
+  assert.match(dedupe, /export async function registerHandledDiscordMessagePersisted/);
+  assert.match(dedupe, /await loadPersistedHandledMessageIds\(\)/);
+  assert.match(dedupe, /await persistHandledMessageIds\(\)/);
+  assert.match(route, /await registerHandledDiscordMessagePersisted\(\{/);
+
+  const claimIndex = route.indexOf('await registerHandledDiscordMessagePersisted({');
+  const privateLaneIndex = route.indexOf('const isPrivateDiscordLane = isDirectMessage');
+  assert.ok(claimIndex >= 0 && privateLaneIndex > claimIndex);
+});
