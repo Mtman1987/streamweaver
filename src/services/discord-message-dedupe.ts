@@ -7,6 +7,7 @@ const PERSISTED_DEDUPE_FILE = 'discord-handled-message-ids.json';
 
 const globalState = global as typeof globalThis & {
   __streamweaverDiscordHandledMessageIds?: Set<string>;
+  __streamweaverDiscordMessageWatermarks?: Map<string, string>;
 };
 
 function getHandledMessageIds(): Set<string> {
@@ -14,6 +15,25 @@ function getHandledMessageIds(): Set<string> {
     globalState.__streamweaverDiscordHandledMessageIds = new Set<string>();
   }
   return globalState.__streamweaverDiscordHandledMessageIds;
+}
+
+function getMessageWatermarks(): Map<string, string> {
+  if (!globalState.__streamweaverDiscordMessageWatermarks) {
+    globalState.__streamweaverDiscordMessageWatermarks = new Map<string, string>();
+  }
+  return globalState.__streamweaverDiscordMessageWatermarks;
+}
+
+function compareDiscordMessageIds(left: string, right: string): number {
+  try {
+    const leftId = BigInt(left);
+    const rightId = BigInt(right);
+    if (leftId === rightId) return 0;
+    return leftId > rightId ? 1 : -1;
+  } catch {
+    if (left === right) return 0;
+    return left > right ? 1 : -1;
+  }
 }
 
 function normalizeMessageKey(messageId?: string | null, channelId?: string | null): string {
@@ -100,6 +120,18 @@ async function loadPersistedHandledMessageIds(): Promise<void> {
           if (normalized) handled.add(normalized);
         }
         trimHandledKeys(handled);
+
+        const watermarks = parsed?.watermarks && typeof parsed.watermarks === 'object'
+          ? parsed.watermarks as Record<string, unknown>
+          : {};
+        const messageWatermarks = getMessageWatermarks();
+        for (const [channelId, messageId] of Object.entries(watermarks)) {
+          const normalizedChannelId = String(channelId || '').trim();
+          const normalizedMessageId = String(messageId || '').trim();
+          if (normalizedChannelId && normalizedMessageId) {
+            messageWatermarks.set(normalizedChannelId, normalizedMessageId);
+          }
+        }
       } catch {
         // A missing or malformed state file starts with an empty dedupe set.
       }
@@ -117,8 +149,9 @@ async function persistHandledMessageIds(): Promise<void> {
       await fs.mkdir(dirname(statePath), { recursive: true });
       const tempPath = `${statePath}.tmp`;
       await fs.writeFile(tempPath, JSON.stringify({
-        version: 1,
+        version: 2,
         keys: snapshot,
+        watermarks: Object.fromEntries(getMessageWatermarks()),
         updatedAt: new Date().toISOString(),
       }, null, 2));
       await fs.rename(tempPath, statePath);
@@ -135,8 +168,20 @@ export async function registerHandledDiscordMessagePersisted(
   input: DiscordMessageDedupeInput,
 ): Promise<boolean> {
   await loadPersistedHandledMessageIds();
+
+  const channelId = String(input.channelId || '').trim();
+  const messageId = String(input.messageId || '').trim();
+  const watermarks = getMessageWatermarks();
+  const watermark = channelId ? watermarks.get(channelId) : undefined;
+  if (watermark && messageId && compareDiscordMessageIds(messageId, watermark) <= 0) {
+    return false;
+  }
+
   const firstSeen = registerHandledDiscordMessage(input);
   if (!firstSeen) return false;
+  if (channelId && messageId) {
+    watermarks.set(channelId, messageId);
+  }
   try {
     await persistHandledMessageIds();
   } catch (error) {
