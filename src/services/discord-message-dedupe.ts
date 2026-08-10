@@ -175,23 +175,24 @@ export async function registerHandledDiscordMessagePersisted(
   const messageId = String(input.messageId || '').trim();
   const watermarks = getMessageWatermarks();
   const watermark = channelId ? watermarks.get(channelId) : undefined;
-  if (watermark && messageId && compareDiscordMessageIds(messageId, watermark) <= 0) {
-    return false;
-  }
-
   const createdAt = Date.parse(String(input.createdAt || ''));
-  const staleInitialEvent = !watermark
-    && channelId
+  const staleEvent = channelId
     && messageId
     && Number.isFinite(createdAt)
     && createdAt < PROCESS_STARTED_AT - INITIAL_EVENT_GRACE_MS;
-  if (staleInitialEvent) {
-    watermarks.set(channelId, messageId);
-    try {
-      await persistHandledMessageIds();
-    } catch (error) {
-      console.warn('[Discord Dedupe] Failed to seed stale-message watermark:', error);
+  if (staleEvent) {
+    if (!watermark || compareDiscordMessageIds(messageId, watermark) > 0) {
+      watermarks.set(channelId, messageId);
+      try {
+        await persistHandledMessageIds();
+      } catch (error) {
+        console.warn('[Discord Dedupe] Failed to seed stale-message watermark:', error);
+      }
     }
+    return false;
+  }
+
+  if (watermark && messageId && compareDiscordMessageIds(messageId, watermark) <= 0) {
     return false;
   }
 
