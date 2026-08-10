@@ -40,6 +40,8 @@ test('Discord ingress dedupe is persisted before public or private dispatch', ()
   assert.match(dedupe, /export async function registerHandledDiscordMessagePersisted/);
   assert.match(dedupe, /await loadPersistedHandledMessageIds\(\)/);
   assert.match(dedupe, /await persistHandledMessageIds\(\)/);
+  assert.match(dedupe, /createdAt < PROCESS_STARTED_AT - INITIAL_EVENT_GRACE_MS/);
+  assert.match(dedupe, /if \(staleEvent\)/);
   assert.match(route, /await registerHandledDiscordMessagePersisted\(\{/);
 
   const claimIndex = route.indexOf('await registerHandledDiscordMessagePersisted({');
