@@ -6,12 +6,23 @@ import { Copy, Check, ExternalLink } from 'lucide-react';
 interface OverlayInfo {
   name: string;
   path: string;
+  absoluteUrl?: string;
   description: string;
   recommended?: string;
   xpnCompatible?: boolean;
+  scopes?: string[];
 }
 
 const OVERLAYS: OverlayInfo[] = [
+  {
+    name: 'SpaceMountain Personal / Universal Overlay',
+    path: '/',
+    absoluteUrl: 'https://spacemountain.live/?desktopOverlay=1',
+    description: 'Account-saved personal canvas shared with SpaceMountain Companion. Includes independently movable widgets and embeds, visibility, opacity, interaction modes, parallax opt-in, and layer order.',
+    recommended: 'Match your display or OBS canvas',
+    xpnCompatible: false,
+    scopes: ['identity:read', 'overlay:control', 'workspace:read'],
+  },
   {
     name: 'Featured Live Chat Message',
     path: '/overlay/shared-chat-featured',
@@ -120,8 +131,10 @@ export default function OverlayUrlsPage() {
   }, []);
 
   function buildUrl(overlay: OverlayInfo): string {
-    const url = `${baseUrl}${overlay.path}`;
-    return tenantId ? `${url}?tenant=${tenantId}` : url;
+    const url = new URL(overlay.absoluteUrl || overlay.path, baseUrl);
+    if (tenantId) url.searchParams.set('tenant', tenantId);
+    if (overlay.scopes?.length) url.searchParams.set('scopes', overlay.scopes.join(','));
+    return url.toString();
   }
 
   function buildXpnUrl(index: number): string {
@@ -136,7 +149,7 @@ export default function OverlayUrlsPage() {
       <div>
         <h1 className="text-2xl font-bold">Overlay URLs</h1>
         <p className="text-muted-foreground mt-1">
-          Copy these URLs into OBS browser sources. Each URL includes your tenant ID so overlays only show your stream's events.
+          Copy these URLs into OBS browser sources or SpaceMountain Companion. Each URL includes your tenant ID so overlays only show your stream's events.
         </p>
         {!tenantId && (
           <p className="text-sm text-yellow-500 mt-2">
