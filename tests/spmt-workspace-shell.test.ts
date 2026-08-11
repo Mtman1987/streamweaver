@@ -30,9 +30,13 @@ test('desktop sidebar has a working collapse trigger and rail', () => {
   assert.match(sidebar, /group-data-\[collapsible=icon\]:hidden/);
 });
 
-test('duplicate utility actions are not pinned above every page', () => {
+test('global shell does not duplicate feature utilities or page actions', () => {
   assert.doesNotMatch(shell, /Open private gallery/);
   assert.doesNotMatch(shell, /Send me a bot DM/);
+  assert.doesNotMatch(header, /Review setup/);
+  assert.doesNotMatch(header, /Build commands/);
+  assert.doesNotMatch(header, />\s*Refresh\s*</);
+  assert.doesNotMatch(header, /GlobalActivityPulse/);
 });
 
 test('canonical workspace owns the background and glass surfaces', () => {
