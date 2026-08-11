@@ -28,15 +28,19 @@ npm start
 
 ## Install on Windows
 
-Download the signed installer from the **SpaceMountain Companion** card on
+Download the installer from the **SpaceMountain Companion** card on
 [SPMT](https://spmt.live) or [SpaceMountain](https://spacemountain.live),
 run the installer, and launch **SpaceMountain Companion** from the Start menu
 or desktop shortcut.
 
-Node.js is not required for the installed build. The download is the installer
-itself (`SpaceMountain-Companion-Setup.exe`), not a ZIP archive. Public releases
-are created only after the workflow verifies the installer Authenticode
-signature, trusted timestamp, update metadata, and checksum.
+Node.js is not required for the installed build. The public download is the
+installer itself (`SpaceMountain-Companion-Setup.exe`), not a ZIP archive.
+The release also includes a SHA-256 checksum and `latest.yml` update metadata.
+
+The installer is currently **unsigned** because the SignPath Foundation
+open-source certificate application was not approved. Windows may therefore
+show an **Unknown publisher** or Microsoft Defender SmartScreen warning. The
+release workflow does not claim or require an Authenticode signature.
 
 The application uses a single-instance lock. Closing its settings window hides
 it; it continues running in the tray and does not remain in the taskbar.
@@ -100,34 +104,16 @@ downloads/uploads, destructive media actions, and a documented licensed
 singing-renderer adapter remain release gates. Tenant uploads/downloads and
 viewer-submitted jobs are intentionally deferred.
 
-## Code signing policy and trusted Windows releases
+## Windows release workflow
 
-Free code signing is provided by [SignPath.io](https://signpath.io/), with the
-certificate provided by [SignPath Foundation](https://signpath.org/). The full
-[code signing policy](CODE_SIGNING_POLICY.md),
-[privacy policy](PRIVACY.md), and SignPath
-[artifact configuration](signpath-artifact-configuration.xml) are kept beside
-the Companion source.
+The release workflow builds the NSIS installer on a GitHub-hosted Windows
+runner, runs the Companion checks and packaged-runtime smoke test, generates a
+SHA-256 checksum and update metadata, and publishes the fixed-name
+`SpaceMountain-Companion-Setup.exe` directly as a GitHub release asset.
 
-The release workflow never receives a certificate or certificate password. It
-builds the unsigned installer on a GitHub-hosted Windows runner, uploads that
-exact build as a trusted workflow artifact, and submits its artifact ID to
-SignPath. Only SignPath's returned installer can pass the workflow's
-Authenticode, publisher, and timestamp checks.
-
-After SignPath Foundation approves the open-source project:
-
-1. Link `Mtman1987/streamweaver` to SignPath's GitHub trusted build system and
-   install the SignPath GitHub App for this repository.
-2. Create the project artifact configuration from
-   `signpath-artifact-configuration.xml` and a release signing policy.
-3. Add the `SIGNPATH_API_TOKEN` GitHub Actions secret. Add the non-secret
-   repository variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`,
-   `SIGNPATH_SIGNING_POLICY_SLUG`, and
-   `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`.
-4. Push a `companion-v*` version tag. After the signing request is approved,
-   the workflow publishes the fixed-name setup executable, SHA-256 checksum,
-   signed update metadata, and signature manifest.
+There is no SignPath step in the active release path. If a trusted signing
+certificate becomes available later, signing can be added back without
+changing the public installer filename or download endpoint.
 
 The two website download buttons resolve through
 `https://spmt.live/downloads/companion/windows`. That endpoint redirects to the
