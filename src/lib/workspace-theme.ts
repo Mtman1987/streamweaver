@@ -1,5 +1,12 @@
 import type { WorkspaceThemeTokensV1 } from '@spmt/sdk';
 
+const WORKSPACE_BACKGROUND_IMAGES: Record<string, string> = {
+  'solar-flare': 'https://spacemountain.live/assets/theme-solar-flare-background.webp',
+  'nebula-purple': 'https://spacemountain.live/assets/theme-nebula-purple-background.webp',
+  'oceanic-blue': 'https://spacemountain.live/assets/theme-oceanic-blue-background.webp',
+  'aurora-green': 'https://spacemountain.live/assets/theme-aurora-green-background.webp',
+};
+
 export function hexToHslComponents(hex: string): string {
   const normalized = hex.trim().replace(/^#/, '');
   if (!/^[0-9a-f]{6}$/i.test(normalized)) throw new Error(`Invalid workspace color: ${hex}`);
@@ -32,6 +39,7 @@ const WORKSPACE_PROPERTIES = [
   '--accent',
   '--ring',
   '--radius',
+  '--workspace-background-image',
   '--workspace-glow-intensity',
   '--workspace-star-density',
   '--workspace-glass-opacity',
@@ -82,7 +90,11 @@ export function applyWorkspaceThemeTokens(root: HTMLElement, tokens: WorkspaceTh
   root.style.setProperty('--primary', accent);
   root.style.setProperty('--accent', accent);
   root.style.setProperty('--ring', accent);
-  const radius = ({ sm: '0.25rem', md: '0.5rem', lg: '0.8rem', full: '9999px' } as Record<string, string>)[tokens.radius] || tokens.radius;
+  root.style.setProperty(
+    '--workspace-background-image',
+    `url("${WORKSPACE_BACKGROUND_IMAGES[tokens.themeId] || WORKSPACE_BACKGROUND_IMAGES['solar-flare']}")`,
+  );
+  const radius = ({ sm: '12px', md: '18px', lg: '26px', full: '999px' } as Record<string, string>)[tokens.radius] || tokens.radius;
   root.style.setProperty('--radius', radius);
   const appearance = tokens.appearance;
   if (appearance) {

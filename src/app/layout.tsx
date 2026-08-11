@@ -1,5 +1,6 @@
 import type {Metadata} from 'next';
 import './globals.css';
+import './workspace-parity.css';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/toaster';
 import { Inter, Space_Grotesk } from 'next/font/google';

@@ -31,8 +31,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
 } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { UserNav } from "@/components/layout/user-nav";
 import type { UserProfile } from "./app-shell";
 
@@ -126,21 +126,21 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="icon" className="border-r-0 bg-transparent" data-workspace-sidebar>
-      <SidebarHeader className="gap-4 border-b border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(10,14,28,0.94),rgba(10,14,28,0.72))] px-4 py-4 backdrop-blur-xl">
-        <Link href="/dashboard" className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 shadow-[0_18px_40px_rgba(3,8,24,0.22)]">
-          <div className="relative h-10 w-10 overflow-hidden rounded-xl border border-sidebar-border bg-sidebar">
+      <SidebarHeader className="gap-4 border-b border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(10,14,28,0.94),rgba(10,14,28,0.72))] px-4 py-4 backdrop-blur-xl group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-2">
+        <Link href="/dashboard" className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2 shadow-[0_18px_40px_rgba(3,8,24,0.22)] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:shadow-none">
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-sidebar-border bg-sidebar group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
             <Image src="/app-icon.png" alt="StreamWeaver" fill className="object-cover" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <div className="text-sm font-semibold tracking-tight">StreamWeaver</div>
             <div className="text-xs text-sidebar-foreground/65">Flow-based stream control</div>
           </div>
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="bg-[linear-gradient(180deg,rgba(8,11,24,0.84),rgba(8,11,24,0.66))] px-3 py-3 backdrop-blur-xl">
+      <SidebarContent className="bg-[linear-gradient(180deg,rgba(8,11,24,0.84),rgba(8,11,24,0.66))] px-3 py-3 backdrop-blur-xl group-data-[collapsible=icon]:px-1">
         {workspaceGroups.map((group) => (
-          <SidebarGroup key={group.label} className="py-2">
+          <SidebarGroup key={group.label} className="py-2 group-data-[collapsible=icon]:px-0">
             <SidebarGroupLabel className="px-2 text-[11px] uppercase tracking-[0.24em] text-sidebar-foreground/45">
               {group.label}
             </SidebarGroupLabel>
@@ -163,10 +163,10 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(8,11,24,0.74),rgba(8,11,24,0.94))] px-4 py-4 backdrop-blur-xl">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3 shadow-[0_16px_36px_rgba(3,8,24,0.2)]">
+      <SidebarFooter className="border-t border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(8,11,24,0.74),rgba(8,11,24,0.94))] px-4 py-4 backdrop-blur-xl group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-2">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3 shadow-[0_16px_36px_rgba(3,8,24,0.2)] group-data-[collapsible=icon]:hidden">
           <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-xs uppercase tracking-[0.22em] text-sidebar-foreground/45">Account</div>
               <div className="truncate text-sm font-medium">
                 {(userProfile?.twitch?.name || userProfile?.discord?.name || "Signed in")}
@@ -177,10 +177,11 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
             </div>
           </div>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 group-data-[collapsible=icon]:mt-0">
           <UserNav userProfile={userProfile} />
         </div>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   );
 }

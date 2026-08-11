@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = fs.readFileSync(path.join(root, 'src/components/spmt-workspace-host.tsx'), 'utf8');
 const header = fs.readFileSync(path.join(root, 'src/components/layout/header.tsx'), 'utf8');
+const shell = fs.readFileSync(path.join(root, 'src/components/layout/app-shell.tsx'), 'utf8');
+const sidebar = fs.readFileSync(path.join(root, 'src/components/layout/sidebar.tsx'), 'utf8');
+const parityCss = fs.readFileSync(path.join(root, 'src/app/workspace-parity.css'), 'utf8');
 
 test('shared workspace footer survives a disconnected SPMT bridge', () => {
   assert.doesNotMatch(host, /hiddenRoute\s*\|\|\s*embedded\s*\|\|\s*!connected/);
@@ -20,7 +23,20 @@ test('saved overlay positions use canonical percentage coordinates', () => {
   assert.match(host, /top:\s*`\$\{Number\(widget\.y \|\| 0\)\}%`/);
 });
 
-test('desktop header exposes the existing sidebar collapse trigger', () => {
+test('desktop sidebar has a working collapse trigger and rail', () => {
   assert.match(header, /Collapse or expand StreamWeaver navigation/);
   assert.doesNotMatch(header, /className="md:hidden"[\s\S]{0,120}<SidebarTrigger/);
+  assert.match(sidebar, /<SidebarRail \/>/);
+  assert.match(sidebar, /group-data-\[collapsible=icon\]:hidden/);
+});
+
+test('duplicate utility actions are not pinned above every page', () => {
+  assert.doesNotMatch(shell, /Open private gallery/);
+  assert.doesNotMatch(shell, /Send me a bot DM/);
+});
+
+test('canonical workspace owns the background and glass surfaces', () => {
+  assert.match(parityCss, /var\(--workspace-background-image\)/);
+  assert.match(parityCss, /\.sw-starfield/);
+  assert.match(parityCss, /calc\(var\(--workspace-glass-opacity, 0\.65\) \* 0\.72\)/);
 });
