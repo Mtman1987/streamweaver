@@ -25,11 +25,13 @@ test('workspace theme tokens map to StreamWeaver CSS variables and can be cleare
   });
 
   assert.equal(hexToHslComponents('#000000'), '0 0% 0%');
-  assert.equal(properties.get('--radius'), '0.8rem');
+  assert.equal(properties.get('--radius'), '26px');
+  assert.equal(properties.get('--workspace-background-image'), 'url("https://spacemountain.live/assets/theme-nebula-purple-background.webp")');
   assert.equal(root.dataset.workspaceTheme, 'nebula-purple');
   assert.equal(root.dataset.workspaceMotion, 'on');
 
   clearWorkspaceThemeTokens(root);
   assert.equal(properties.has('--background'), false);
+  assert.equal(properties.has('--workspace-background-image'), false);
   assert.equal(root.dataset.workspaceTheme, undefined);
 });
