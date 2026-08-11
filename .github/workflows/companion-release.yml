@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "companion-v*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/companion-release.yml"
   workflow_dispatch:
 
 permissions:
