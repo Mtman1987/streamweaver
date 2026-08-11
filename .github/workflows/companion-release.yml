@@ -4,10 +4,13 @@ on:
   push:
     tags:
       - "companion-v*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/companion-release.yml"
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: write
 
 jobs:
@@ -30,65 +33,16 @@ jobs:
       - run: npm run dist:win
         working-directory: companion
 
-      - name: Stage unsigned installer
+      - name: Write unsigned update metadata and checksum
         id: companion-version
-        shell: pwsh
-        run: |
-          $installer = Get-Item "dist/companion/SpaceMountain-Companion-Setup.exe"
-          New-Item -ItemType Directory -Force "dist/companion/signing-input" | Out-Null
-          Copy-Item -LiteralPath $installer.FullName -Destination "dist/companion/signing-input/SpaceMountain-Companion-Setup.exe"
-          $version = node -p "require('./companion/package.json').version"
-          "package=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "windows=$version.0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Upload trusted unsigned build
-        id: upload-unsigned-installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: companion-windows-unsigned
-          if-no-files-found: error
-          path: dist/companion/signing-input/SpaceMountain-Companion-Setup.exe
-
-      - name: Submit installer to SignPath
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: dist/companion/signing-output
-          parameters: |
-            version: "${{ steps.companion-version.outputs.windows }}"
-
-      - name: Install signed artifact and verify Authenticode
-        shell: pwsh
-        run: |
-          $signed = Get-ChildItem "dist/companion/signing-output" -Recurse -File -Filter "SpaceMountain-Companion-Setup.exe" | Select-Object -First 1
-          if (-not $signed) { throw "SignPath did not return SpaceMountain-Companion-Setup.exe" }
-          Copy-Item -LiteralPath $signed.FullName -Destination "dist/companion/SpaceMountain-Companion-Setup.exe" -Force
-          $installer = Get-Item "dist/companion/SpaceMountain-Companion-Setup.exe"
-          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-          if ($signature.Status -ne "Valid") {
-            throw "$($installer.Name) is not validly Authenticode signed: $($signature.Status) $($signature.StatusMessage)"
-          }
-          if (-not $signature.SignerCertificate.Subject.Contains("SignPath Foundation")) {
-            throw "$($installer.Name) was not signed by SignPath Foundation: $($signature.SignerCertificate.Subject)"
-          }
-          if (-not $signature.TimeStamperCertificate) {
-            throw "$($installer.Name) does not have a trusted timestamp"
-          }
-
-      - name: Write signed update metadata and checksums
         shell: pwsh
         run: |
           $artifact = Get-Item "dist/companion/SpaceMountain-Companion-Setup.exe"
           $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifact.FullName).Hash.ToLowerInvariant()
           $sha512Bytes = [System.Security.Cryptography.SHA512]::HashData([System.IO.File]::ReadAllBytes($artifact.FullName))
           $sha512 = [Convert]::ToBase64String($sha512Bytes)
-          $version = "${{ steps.companion-version.outputs.package }}"
+          $version = node -p "require('./companion/package.json').version"
+          "package=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "$sha256  $($artifact.Name)" | Set-Content -LiteralPath "$($artifact.FullName).sha256"
           @"
           version: $version
@@ -100,47 +54,36 @@ jobs:
           sha512: $sha512
           releaseDate: '$(Get-Date -AsUTC -Format o)'
           "@ | Set-Content -LiteralPath "dist/companion/latest.yml"
-          $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
-          @{
-            schemaVersion = 1
-            installer = $artifact.Name
-            sha256 = $sha256
-            publisher = $signature.SignerCertificate.Subject
-            signed = $true
-            signedAt = (Get-Date).ToUniversalTime().ToString("o")
-            sourceSha = "${{ github.sha }}"
-          } | ConvertTo-Json | Set-Content -LiteralPath "dist/companion/companion-signature.json"
 
-      - name: Upload signed installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: companion-windows-signed
-          if-no-files-found: error
-          path: |
-            dist/companion/SpaceMountain-Companion-Setup.exe
-            dist/companion/SpaceMountain-Companion-Setup.exe.sha256
-            dist/companion/latest.yml
-            dist/companion/companion-signature.json
-
-      - name: Publish release assets
-        if: startsWith(github.ref, 'refs/tags/companion-v')
+      - name: Publish direct installer release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          if ("${{ github.ref }}" -like "refs/tags/companion-v*") {
+            $tag = "${{ github.ref_name }}"
+          } else {
+            $tag = "companion-v${{ steps.companion-version.outputs.package }}"
+          }
+
           $notes = @"
           SpaceMountain Companion for Windows.
 
-          Download SpaceMountain-Companion-Setup.exe, run it, and launch SpaceMountain Companion from the Start menu or desktop shortcut.
+          Download SpaceMountain-Companion-Setup.exe and run it. No ZIP extraction is required.
 
-          The installer is Authenticode signed by SignPath Foundation. Free code signing is provided by SignPath.io; certificate by SignPath Foundation.
+          This installer is currently unsigned because the SignPath Foundation application was not approved. Windows may show an Unknown publisher or Microsoft Defender SmartScreen warning.
           "@
-          gh release create $tag `
-            "dist/companion/SpaceMountain-Companion-Setup.exe" `
-            "dist/companion/SpaceMountain-Companion-Setup.exe.sha256" `
-            "dist/companion/latest.yml" `
-            "dist/companion/companion-signature.json" `
-            --title "SpaceMountain Companion $tag" `
-            --notes $notes `
-            --verify-tag
+
+          $assets = @(
+            "dist/companion/SpaceMountain-Companion-Setup.exe",
+            "dist/companion/SpaceMountain-Companion-Setup.exe.sha256",
+            "dist/companion/latest.yml"
+          )
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber
+            gh release edit $tag --title "SpaceMountain Companion $tag" --notes $notes --latest
+          } else {
+            gh release create $tag $assets --target "${{ github.sha }}" --title "SpaceMountain Companion $tag" --notes $notes --latest
+          }
