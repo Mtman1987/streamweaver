@@ -15,7 +15,6 @@ import {
   MessageSquareText,
   Mic,
   Rocket,
-  Settings,
   Sparkles,
   Users,
   Zap,
@@ -138,7 +137,7 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="bg-[linear-gradient(180deg,rgba(8,11,24,0.84),rgba(8,11,24,0.66))] px-3 py-3 backdrop-blur-xl group-data-[collapsible=icon]:px-1">
+      <SidebarContent className="bg-[linear-gradient(180deg,rgba(8,11,24,0.84),rgba(8,11,24,0.66))] px-3 py-3 backdrop-blur-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden group-data-[collapsible=icon]:px-1">
         {workspaceGroups.map((group) => (
           <SidebarGroup key={group.label} className="py-2 group-data-[collapsible=icon]:px-0">
             <SidebarGroupLabel className="px-2 text-[11px] uppercase tracking-[0.24em] text-sidebar-foreground/45">
@@ -163,23 +162,8 @@ export default function AppSidebar({ userProfile }: AppSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(8,11,24,0.74),rgba(8,11,24,0.94))] px-4 py-4 backdrop-blur-xl group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-2">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3 shadow-[0_16px_36px_rgba(3,8,24,0.2)] group-data-[collapsible=icon]:hidden">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs uppercase tracking-[0.22em] text-sidebar-foreground/45">Account</div>
-              <div className="truncate text-sm font-medium">
-                {(userProfile?.twitch?.name || userProfile?.discord?.name || "Signed in")}
-              </div>
-            </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/15 text-accent">
-              <Settings className="h-4 w-4" />
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 group-data-[collapsible=icon]:mt-0">
-          <UserNav userProfile={userProfile} />
-        </div>
+      <SidebarFooter className="border-t border-sidebar-border/40 bg-[linear-gradient(180deg,rgba(8,11,24,0.74),rgba(8,11,24,0.94))] px-3 pb-20 pt-3 backdrop-blur-xl group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:pt-2">
+        <UserNav userProfile={userProfile} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
