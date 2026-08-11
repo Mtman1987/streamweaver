@@ -85,24 +85,6 @@ export default function AppShell({
               <Header />
               <main className="app-surface flex-1 min-h-0 overflow-y-auto px-3 pb-4 pt-3 sm:px-5 lg:px-6" data-workspace-main>
                 <div className="mx-auto flex min-h-0 w-full max-w-[1900px] flex-1 flex-col gap-6">
-                  <div className="flex flex-wrap justify-end gap-2 px-4 pt-1 sm:px-6">
-                    <a
-                      href="/private-gallery"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                      title="Open your tenant-scoped private generated-image and saved-GIF library"
-                    >
-                      Open private gallery
-                    </a>
-                    <a
-                      href="/api/discord/dm-setup"
-                      className="inline-flex items-center rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                      title="Connect your Discord identity if needed, create your private bot DM, and save the DM channel automatically"
-                    >
-                      Send me a bot DM
-                    </a>
-                  </div>
                   <div className="app-shell-content flex-1">
                     <div className="flex-1 px-4 pb-5 pt-4 sm:px-6 sm:pb-6">
                       {children}
