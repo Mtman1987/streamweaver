@@ -39,6 +39,16 @@ test('global shell does not duplicate feature utilities or page actions', () => 
   assert.doesNotMatch(header, /GlobalActivityPulse/);
 });
 
+test('suite chrome stays flat and sidebar identity appears only once', () => {
+  assert.doesNotMatch(shell, /app-shell-content/);
+  assert.doesNotMatch(header, /app-shell-section/);
+  assert.doesNotMatch(header, /src="\/app-icon\.png"/);
+  assert.doesNotMatch(sidebar, />Account</);
+  assert.match(sidebar, /<UserNav userProfile=\{userProfile\} \/>/);
+  assert.match(sidebar, /\[scrollbar-width:none\]/);
+  assert.match(sidebar, /pb-20/);
+});
+
 test('canonical workspace owns the background and glass surfaces', () => {
   assert.match(parityCss, /var\(--workspace-background-image\)/);
   assert.match(parityCss, /\.sw-starfield/);
