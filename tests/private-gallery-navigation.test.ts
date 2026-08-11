@@ -38,12 +38,12 @@ test('private gallery shortcut sends unsigned browsers to production login', asy
   assert.equal(target.pathname, '/login');
 });
 
-test('app shell and private chat both expose the private gallery shortcut', () => {
+test('private gallery stays on its feature surface instead of duplicating global shell chrome', () => {
   const shell = readFileSync(new URL('../src/components/layout/app-shell.tsx', import.meta.url), 'utf8');
   const privateChat = readFileSync(new URL('../src/app/(app)/private-chat/page.tsx', import.meta.url), 'utf8');
 
-  assert.match(shell, /href="\/private-gallery"/);
-  assert.match(shell, /Open private gallery/);
+  assert.doesNotMatch(shell, /href="\/private-gallery"/);
+  assert.doesNotMatch(shell, /Open private gallery/);
   assert.match(privateChat, /href="\/private-gallery"/);
   assert.match(privateChat, /Open private gallery/);
 });
