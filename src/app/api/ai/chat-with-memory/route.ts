@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { appendPublicChatMessages, readPublicChatMessages } from '@/lib/public-chat-store';
 import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';
@@ -8,7 +8,6 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/internal-service-auth';
 import { resolveResearchMode } from '@/services/research-mode';
-import { isEdenContentPolicyRejection } from '@/services/eden-policy';
 import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
 import { NATURAL_DIALOGUE_POLICY, splitPersonalityPrompt } from '@/lib/personality-prompt';
@@ -60,22 +59,19 @@ type AIChatMessage = {
 
 function formatHistory(messages: AIChatMessage[], botName: string): string {
   if (messages.length === 0) return '';
-
   const lines = messages.map((m) => {
     const role = m.type === 'ai' ? botName : m.username || 'User';
     return `${role}: ${m.message}`;
   });
-
   return `Conversation so far:\n${lines.join('\n')}`;
 }
 
 export async function POST(request: NextRequest) {
   if (VERBOSE_LOGS) console.log('[AI Chat Memory] POST request received');
-  
+
   try {
     const parsed = chatWithMemorySchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
-      console.log('[AI Chat Memory] Missing required fields');
       return apiError('Missing required fields: username, message', { status: 400, code: 'INVALID_BODY' });
     }
 
@@ -96,7 +92,8 @@ export async function POST(request: NextRequest) {
       responseName,
       tenantId: bodyTenantId,
       context,
-    } = parsed.data;
+    } = parsed.data as RequestBody & { context: 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private' };
+
     const session = getTenantFromRequest(request);
     const hasServiceAccess = hasInternalServiceAccess(request);
     const hasMountainViewAccess = hasMountainViewBridgeAccess(request);
@@ -107,24 +104,26 @@ export async function POST(request: NextRequest) {
     if (!tenantId) {
       return apiError('Tenant context required', { status: 400, code: 'TENANT_REQUIRED' });
     }
-    if (VERBOSE_LOGS) {
-      console.log('[AI Chat Memory] Request body:', { username, messageLength: message.length, tenantId: tenantId || 'global', context, source: session?.tenantId ? 'cookie' : 'body' });
-    }
 
-    const edenaiKey = process.env.EDENAI_API_KEY;
-    if (!edenaiKey) {
-      return apiError('Server missing EdenAI API key', { status: 500, code: 'MISSING_CONFIG' });
+    if (VERBOSE_LOGS) {
+      console.log('[AI Chat Memory] Request body:', {
+        username,
+        messageLength: message.length,
+        tenantId,
+        context,
+        source: session?.tenantId ? 'cookie' : 'body',
+      });
     }
 
     const aiConfig = getAIConfig(tenantId);
-    const botResponseName = (context === 'discord-cross-bot' || context === 'twitch-cross-bot') && responseName ? responseName : aiConfig.botName;
+    const botResponseName = (context === 'discord-cross-bot' || context === 'twitch-cross-bot') && responseName
+      ? responseName
+      : aiConfig.botName;
     const { getBotPersonality } = require('@/lib/bot-settings-store');
     const storedPersonality = getBotPersonality(tenantId);
     const DEFAULTS_PERSONALITY_CHECK = 'You are a helpful AI assistant.';
     const history = await readPublicChatMessages(20, tenantId);
 
-    // Priority: stored tenant personality > StreamWeaver87 default. Cross-bot calls
-    // are internal server calls and may provide a temporary target personality.
     const defaultPersonality = `You are StreamWeaver87, the onboard AI steward of the Space Mountain. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
     const rawPersonality = ((context === 'discord-cross-bot' || context === 'twitch-cross-bot') && personality ? personality : null)
       || (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
@@ -149,23 +148,19 @@ export async function POST(request: NextRequest) {
     }
 
     const { systemIdentity, extendedGuidance } = splitPersonalityPrompt(rawPersonality);
-
     const historyText = formatHistory(history, botResponseName);
     const worldLoreText = await formatWorldLoreForPrompt();
     const botInteractionHistory = await formatBotInteractionHistoryForPrompt(8, tenantId);
 
-    // Commander override: inject global memory and special system prompt for mtman1987
     let commanderContext = '';
     const userIsCommander = isCommander(username);
     if (userIsCommander) {
       const commanderHistory = await readCommanderMemory(10);
-      commanderContext = [
-        getCommanderSystemPrompt(),
-        formatCommanderHistory(commanderHistory),
-      ].filter(Boolean).join('\n\n');
+      commanderContext = [getCommanderSystemPrompt(), formatCommanderHistory(commanderHistory)]
+        .filter(Boolean)
+        .join('\n\n');
     }
 
-    // Context flag so the AI knows where this conversation is happening
     const contextFlags: Record<string, string> = {
       twitch: '[Context: Live Twitch chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
       'twitch-cross-bot': '[Context: Twitch cross-bot follow-up. Answer as the requested bot only, then stop.]',
@@ -196,7 +191,7 @@ export async function POST(request: NextRequest) {
       channelType === 'visitor-channel' ? visitorChannelConductPolicy(channelName) : '',
     ].filter(Boolean).join(' ');
 
-    const promptParts = [
+    const prompt = [
       botConductPolicy,
       extendedGuidance,
       NATURAL_DIALOGUE_POLICY,
@@ -210,9 +205,7 @@ export async function POST(request: NextRequest) {
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : speakerDisplayName}: ${message}`,
       'Important: use the exact Discord identity context above. Do not rename the user to M.T. unless the Discord username itself belongs to the Commander.',
       `Respond as ${botResponseName}:`,
-    ].filter(Boolean);
-
-    const prompt = promptParts.join('\n\n');
+    ].filter(Boolean).join('\n\n');
 
     const userEntry = {
       type: 'user' as const,
@@ -222,47 +215,26 @@ export async function POST(request: NextRequest) {
       message,
       timestamp: new Date().toISOString(),
     };
-
-    if (VERBOSE_LOGS) console.log('[AI Chat Memory] Saving user message:', userEntry);
     await appendPublicChatMessages([userEntry], 100, tenantId);
 
-    // Use EdenAI API with proper system/user role separation
-    const response = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${edenaiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemIdentity },
-          { role: 'user', content: prompt }
-        ],
-        stream: false
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (isEdenContentPolicyRejection(response.status, errorText)) {
-        console.warn('[AI Chat Memory] EdenAI rejected content under its safety policy; asking the user to rephrase.');
-      } else {
-        console.error('[AI Chat Memory] EdenAI error:', response.status, errorText);
-      }
+    let responseText = '';
+    try {
+      responseText = (await generateAIResponse(prompt, systemIdentity, tenantId, {
+        maxTokens: context === 'voice' || context === 'twitch' ? 300 : 600,
+        temperature: 0.7,
+      })).trim();
+    } catch (error) {
+      console.error('[AI Chat Memory] Shared AI provider failed:', error);
       return apiOk({ response: 'Hmm, let me think about that differently... Could you rephrase?' });
     }
 
-    const data = await response.json();
-    let responseText = data.choices?.[0]?.message?.content?.trim() || '';
-
     if (!responseText) {
-      console.log('[AI Chat Memory] AI returned empty response');
       return apiOk({ response: 'Sorry, I had trouble processing that. Could you rephrase?' });
     }
 
-    // Remove bot name prefix if present
-    const cleanResponse = responseText.replace(new RegExp(`^(${botResponseName}|${botResponseName.toLowerCase()}):\\s*`, 'i'), '').trim();
+    const cleanResponse = responseText
+      .replace(new RegExp(`^(${botResponseName}|${botResponseName.toLowerCase()}):\\s*`, 'i'), '')
+      .trim();
 
     const aiEntry = {
       type: 'ai' as const,
@@ -270,22 +242,18 @@ export async function POST(request: NextRequest) {
       message: cleanResponse,
       timestamp: new Date().toISOString(),
     };
-
-    if (VERBOSE_LOGS) console.log('[AI Chat Memory] Saving AI response:', aiEntry);
     await appendPublicChatMessages([aiEntry], 100, tenantId);
 
-    // Save to global commander memory if this was M.T.
     if (userIsCommander) {
       await appendCommanderMemory({
         botName: botResponseName,
-        tenantId: tenantId || 'global',
+        tenantId,
         message,
         response: cleanResponse,
         timestamp: new Date().toISOString(),
       });
     }
 
-    if (VERBOSE_LOGS) console.log('[AI Chat Memory] Successfully saved messages to public chat file');
     return apiOk({
       response: cleanResponse,
       research: research.kind === 'research'
