@@ -12,6 +12,8 @@ import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
 import { NATURAL_DIALOGUE_POLICY, splitPersonalityPrompt } from '@/lib/personality-prompt';
 
+type ChatContext = 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private';
+
 type RequestBody = {
   username: string;
   message: string;
@@ -27,6 +29,8 @@ type RequestBody = {
   isDirectMessage?: boolean;
   personality?: string;
   responseName?: string;
+  tenantId?: string;
+  context: ChatContext;
 };
 
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -92,7 +96,7 @@ export async function POST(request: NextRequest) {
       responseName,
       tenantId: bodyTenantId,
       context,
-    } = parsed.data as RequestBody & { context: 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private' };
+    } = parsed.data as RequestBody;
 
     const session = getTenantFromRequest(request);
     const hasServiceAccess = hasInternalServiceAccess(request);
