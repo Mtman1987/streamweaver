@@ -7,11 +7,18 @@ import type { WorkspaceDockSlotV1, WorkspaceThemeTokensV1 } from '@spmt/sdk';
 
 const SPMT_ORIGIN = 'https://spmt.live';
 const SPACEMOUNTAIN_ORIGIN = 'https://spacemountain.live';
+const PERSONAL_VISIBILITY_KEY = 'streamweaver:personal-overlay-visible';
+const FOOTER_VISIBILITY_KEY = 'streamweaver:workspace-footer-visible';
 const MANAGEMENT_LINKS = [
   { label: 'Workspace', href: `${SPACEMOUNTAIN_ORIGIN}/?surface=workspace`, Icon: LayoutGrid },
-  { label: 'Overlay', href: `${SPACEMOUNTAIN_ORIGIN}/?surface=overlay`, Icon: PanelsTopLeft },
+  { label: 'Overlay', href: `${SPMT_ORIGIN}/embed/overlays?mode=full&app=streamweaver&output=personal`, Icon: PanelsTopLeft },
   { label: 'Settings', href: `${SPACEMOUNTAIN_ORIGIN}/settings`, Icon: Settings },
 ] as const;
+
+type TenantOutputs = {
+  public?: string;
+  personal?: string;
+};
 
 function usableSlots(tokens: WorkspaceThemeTokensV1 | null) {
   return (tokens?.dockSlots || []).filter((slot) => Boolean(slot.url?.trim()));
@@ -37,6 +44,10 @@ export function SpmtWorkspaceHost() {
   const [open, setOpen] = React.useState(false);
   const [tokens, setTokens] = React.useState<WorkspaceThemeTokensV1 | null>(null);
   const [activeSlotId, setActiveSlotId] = React.useState<number | null>(null);
+  const [tenantOutputs, setTenantOutputs] = React.useState<TenantOutputs | null>(null);
+  const [personalOverlayUrl, setPersonalOverlayUrl] = React.useState('');
+  const [personalOverlayVisible, setPersonalOverlayVisible] = React.useState(true);
+  const [footerVisible, setFooterVisible] = React.useState(true);
 
   const reconnectHref = `/auth/spmt/start?next=${encodeURIComponent(pathname || '/dashboard')}`;
 
@@ -47,6 +58,8 @@ export function SpmtWorkspaceHost() {
       if (!response.ok) {
         setConnected(false);
         setTokens(null);
+        setTenantOutputs(null);
+        setPersonalOverlayUrl('');
         setLoaded(true);
         return;
       }
@@ -54,12 +67,16 @@ export function SpmtWorkspaceHost() {
       if (!body?.tokens) {
         setConnected(false);
         setTokens(null);
+        setTenantOutputs(null);
+        setPersonalOverlayUrl('');
         setLoaded(true);
         return;
       }
       const nextTokens = body.tokens as WorkspaceThemeTokensV1;
       const slots = usableSlots(nextTokens);
       setTokens(nextTokens);
+      setTenantOutputs(body.tenantOutputs && typeof body.tenantOutputs === 'object' ? body.tenantOutputs as TenantOutputs : null);
+      setPersonalOverlayUrl(typeof body.personalOverlayUrl === 'string' ? body.personalOverlayUrl : '');
       setActiveSlotId((current) => {
         if (nextTokens.dockSlots?.some((slot) => slot.id === current)) return current;
         return slots[0]?.id ?? nextTokens.dockSlots?.[0]?.id ?? null;
@@ -69,6 +86,8 @@ export function SpmtWorkspaceHost() {
     } catch {
       setConnected(false);
       setTokens(null);
+      setTenantOutputs(null);
+      setPersonalOverlayUrl('');
       setLoaded(true);
     }
   }, [hiddenRoute]);
@@ -76,6 +95,8 @@ export function SpmtWorkspaceHost() {
   React.useEffect(() => {
     const isEmbedded = window.self !== window.top;
     setEmbedded(isEmbedded);
+    setPersonalOverlayVisible(window.localStorage.getItem(PERSONAL_VISIBILITY_KEY) !== '0');
+    setFooterVisible(window.localStorage.getItem(FOOTER_VISIBILITY_KEY) !== '0');
     if (!isEmbedded) void refresh();
   }, [refresh]);
 
@@ -102,12 +123,26 @@ export function SpmtWorkspaceHost() {
     return () => window.removeEventListener('message', onMessage);
   }, [refresh]);
 
+  React.useEffect(() => {
+    if (hiddenRoute || embedded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.altKey && event.shiftKey && event.key.toLowerCase() === 'f')) return;
+      event.preventDefault();
+      setFooterVisible((current) => {
+        const next = !current;
+        window.localStorage.setItem(FOOTER_VISIBILITY_KEY, next ? '1' : '0');
+        if (!next) setOpen(false);
+        return next;
+      });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [embedded, hiddenRoute]);
+
   if (hiddenRoute || embedded) return null;
 
   const traySlots = tokens?.dockSlots?.length ? tokens.dockSlots : fallbackSlots();
   const activeSlot = traySlots.find((slot) => slot.id === activeSlotId) || traySlots[0] || null;
-  const overlay = connected ? tokens?.overlayWorkspace : null;
-  const widgets = overlay?.enabled ? (overlay.widgets || []).filter((widget) => widget.visible && widget.url) : [];
 
   const openSlot = (slot: WorkspaceDockSlotV1) => {
     if (!connected) {
@@ -118,29 +153,30 @@ export function SpmtWorkspaceHost() {
     setOpen(true);
   };
 
-  return <>
-    {connected && <div aria-hidden={!overlay?.enabled} className="pointer-events-none fixed inset-0 z-[70] overflow-hidden">
-      {widgets.map((widget) => {
-        const rawOpacity = Number(widget.opacity ?? 1);
-        const opacity = rawOpacity > 1 ? rawOpacity / 100 : rawOpacity;
-        return <iframe
-          key={widget.id}
-          src={widget.url}
-          title={widget.title || widget.id}
-          className={widget.interactive ? 'pointer-events-auto absolute border-0 bg-transparent' : 'pointer-events-none absolute border-0 bg-transparent'}
-          style={{
-            left: `${Number(widget.x || 0)}%`,
-            top: `${Number(widget.y || 0)}%`,
-            width: Number(widget.width || 320),
-            height: Number(widget.height || 180),
-            opacity: Math.max(0, Math.min(1, opacity)),
-          }}
-          allow="autoplay; microphone; camera; fullscreen; clipboard-write"
-        />;
-      })}
-    </div>}
+  const togglePersonalOverlay = () => {
+    setPersonalOverlayVisible((current) => {
+      const next = !current;
+      window.localStorage.setItem(PERSONAL_VISIBILITY_KEY, next ? '1' : '0');
+      return next;
+    });
+  };
 
-    {open && <section className="fixed inset-x-3 bottom-[76px] z-[100] mx-auto flex h-[min(72vh,700px)] max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-black/90 shadow-2xl backdrop-blur-xl sm:inset-x-6">
+  const copyOutput = (url?: string) => {
+    if (!url) return;
+    void navigator.clipboard?.writeText(url).catch(() => undefined);
+  };
+
+  return <>
+    {connected && personalOverlayVisible && personalOverlayUrl ? <div aria-label="Canonical SPMT Personal overlay" className="pointer-events-none fixed inset-0 z-[70] overflow-hidden" data-canonical-personal-overlay="true">
+      <iframe
+        src={personalOverlayUrl}
+        title="SPMT Personal overlay"
+        className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-transparent"
+        allow="autoplay; microphone; camera; fullscreen; clipboard-write"
+      />
+    </div> : null}
+
+    {footerVisible && open && <section className="fixed inset-x-3 bottom-[76px] z-[100] mx-auto flex h-[min(72vh,700px)] max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-black/90 shadow-2xl backdrop-blur-xl sm:inset-x-6">
       <header className="flex flex-wrap items-center gap-2 border-b border-white/10 p-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
           {connected ? traySlots.map((slot) => (
@@ -154,19 +190,22 @@ export function SpmtWorkspaceHost() {
             </button>
           )) : <span className="px-2 text-xs font-semibold text-amber-200">SPMT workspace disconnected</span>}
         </div>
-        <div className="flex items-center gap-1 border-l border-white/10 pl-2">
-          {MANAGEMENT_LINKS.map(({ label, href, Icon }) => <a key={label} href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-white/65 hover:bg-white/10 hover:text-white" title={`Manage ${label} in SpaceMountainLive`}><Icon className="h-4 w-4" aria-hidden /><span className="hidden md:inline">{label}</span><ExternalLink className="h-3 w-3 opacity-60" aria-hidden /></a>)}
+        <div className="flex flex-wrap items-center gap-1 border-l border-white/10 pl-2">
+          {connected ? <button type="button" onClick={togglePersonalOverlay} className={`rounded-lg px-2.5 py-2 text-xs font-bold ${personalOverlayVisible ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-white/55'}`} aria-pressed={personalOverlayVisible}>Personal overlay {personalOverlayVisible ? 'On' : 'Off'}</button> : null}
+          {tenantOutputs?.public ? <button type="button" onClick={() => copyOutput(tenantOutputs.public)} className="rounded-lg px-2.5 py-2 text-xs font-medium text-white/65 hover:bg-white/10 hover:text-white">Copy Public URL</button> : null}
+          {tenantOutputs?.personal ? <button type="button" onClick={() => copyOutput(tenantOutputs.personal)} className="rounded-lg px-2.5 py-2 text-xs font-medium text-white/65 hover:bg-white/10 hover:text-white">Copy Personal URL</button> : null}
+          {MANAGEMENT_LINKS.map(({ label, href, Icon }) => <a key={label} href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-white/65 hover:bg-white/10 hover:text-white" title={`Manage ${label}`}><Icon className="h-4 w-4" aria-hidden /><span className="hidden md:inline">{label}</span><ExternalLink className="h-3 w-3 opacity-60" aria-hidden /></a>)}
           <button type="button" onClick={() => setOpen(false)} className="inline-flex items-center rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Close workspace"><X className="h-4 w-4" aria-hidden /></button>
         </div>
       </header>
 
       {!loaded ? <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/70"><RefreshCw className="h-7 w-7 animate-spin" aria-hidden /><p className="text-sm">Connecting to your SPMT workspace…</p></div>
-        : !connected ? <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center text-white/75"><LayoutGrid className="h-9 w-9 text-amber-300" aria-hidden /><div><p className="font-semibold text-white">StreamWeaver is signed in, but the shared SPMT workspace is not connected.</p><p className="mt-1 max-w-lg text-sm text-white/55">This can happen after a legacy Twitch login. Reconnect SPMT once to restore your Worktray, workspace URLs, theme, and saved overlays.</p></div><a href={reconnectHref} className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-200">Reconnect SPMT workspace</a></div>
+        : !connected ? <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center text-white/75"><LayoutGrid className="h-9 w-9 text-amber-300" aria-hidden /><div><p className="font-semibold text-white">StreamWeaver is signed in, but the shared SPMT workspace is not connected.</p><p className="mt-1 max-w-lg text-sm text-white/55">Reconnect SPMT once to restore your Worktray, workspace URLs, theme, and Personal overlay.</p></div><a href={reconnectHref} className="rounded-lg bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-200">Reconnect SPMT workspace</a></div>
           : activeSlot?.url?.trim() ? <iframe key={`${activeSlot.id}:${activeSlot.url}`} src={activeSlot.url} title={activeSlot.title || `Workspace slot ${activeSlot.id}`} className="min-h-0 flex-1 border-0 bg-transparent" allow="autoplay; microphone; camera; fullscreen; clipboard-write" />
             : <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/70"><LayoutGrid className="h-8 w-8" aria-hidden /><p className="text-sm">This workspace slot has no URL assigned yet.</p><a href={MANAGEMENT_LINKS[0].href} target="_blank" rel="noreferrer" className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15">Manage Workspace in SpaceMountainLive</a></div>}
     </section>}
 
-    <aside className="fixed inset-x-3 bottom-3 z-[110] mx-auto max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-black/80 shadow-[0_-14px_42px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:inset-x-6" aria-label="SPMT workspace tray">
+    {footerVisible ? <aside className="fixed inset-x-3 bottom-3 z-[110] mx-auto max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-black/80 shadow-[0_-14px_42px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:inset-x-6" aria-label="SPMT workspace tray" data-workspace-footer="true">
       <div className="flex min-h-14 items-center gap-2 p-2">
         <button type="button" onClick={() => setOpen((value) => !value)} className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold text-white ${open ? 'border-cyan-300/40 bg-cyan-300/10' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.08]'}`} aria-expanded={open}>
           <LayoutGrid className="h-4 w-4 text-cyan-300" aria-hidden />
@@ -190,6 +229,6 @@ export function SpmtWorkspaceHost() {
 
         {!connected && loaded ? <a href={reconnectHref} className="hidden shrink-0 items-center gap-1.5 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[10px] font-bold text-amber-100 hover:bg-amber-300/15 md:inline-flex"><RefreshCw className="h-3.5 w-3.5" aria-hidden />Reconnect</a> : null}
       </div>
-    </aside>
+    </aside> : null}
   </>;
 }
