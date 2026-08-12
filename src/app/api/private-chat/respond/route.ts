@@ -4,6 +4,7 @@ import {
   readPrivateChatMessages,
   type PrivateChatMessage,
 } from '@/lib/private-chat-store';
+import { readPublicChatMessages } from '@/lib/public-chat-store';
 import {
   getPrivateLTMTitles,
   incrementPrivateMessageCount,
@@ -19,15 +20,19 @@ import {
   hasMountainViewBridgeAccess,
   internalServiceHeaders,
 } from '@/lib/internal-service-auth';
-import { requestQwenPrivateChatCompletion } from '@/services/qwen-private-chat';
+import {
+  QWEN_ADULT_ROLEPLAY_POLICY,
+  QWEN_PRIVATE_CHAT_POLICY,
+  requestQwenPrivateChatCompletion,
+  sanitizeQwenReply,
+} from '@/services/qwen-private-chat';
+import { generateEdenAIFallbackResponse } from '@/services/ai-provider';
 import {
   extractPrivateLtmDirective,
   isPrivateReplyRepetitive,
   prunePrivateChatHistoryLoops,
   shouldOfferPrivateLtm,
 } from '@/services/private-chat-response-guard';
-import { attachPrivateDmControls, resolvePrivateDmMediaUrl, splitPrivateTtsText } from '@/services/private-dm-controls';
-import { generateTTS } from '@/services/tts-provider';
 import {
   applyAdultModeAction,
   getEffectiveQwenBaseUrl,
@@ -53,6 +58,12 @@ type RequestBody = {
   tenantId?: string;
 };
 
+type PrivateCompletionResult = {
+  text: string;
+  provider: 'self-hosted-qwen' | 'edenai-fallback';
+  error?: string;
+};
+
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 const privateRespondSchema = z.object({
@@ -72,9 +83,9 @@ const privateRespondSchema = z.object({
   message: 'message or media is required',
 });
 
-function safeQwenError(value: string | undefined): string {
+function safeModelError(value: string | undefined): string {
   return String(value || 'The endpoint did not respond.')
-    .replace(/https?:\/\/\S+/gi, '[Qwen endpoint]')
+    .replace(/https?:\/\/\S+/gi, '[model endpoint]')
     .replace(/bearer\s+\S+/gi, 'Bearer [redacted]')
     .replace(/sk-[a-z0-9_-]+/gi, '[redacted]')
     .replace(/\s+/g, ' ')
@@ -82,18 +93,110 @@ function safeQwenError(value: string | undefined): string {
     .slice(0, 220);
 }
 
+function formatPrivateHistoryForFallback(history: PrivateChatMessage[], botName: string): string {
+  const lines = history.slice(-20).map((entry) => {
+    const role = entry.type === 'ai' ? botName : (entry.username || 'User');
+    return `${role}: ${String(entry.message || '').trim()}`;
+  }).filter((line) => !line.endsWith(': '));
+  return lines.length ? `Recent private conversation:\n${lines.join('\n')}` : '';
+}
+
+function formatRecentPublicContext(messages: Array<{ type: 'user' | 'ai'; username: string; message: string }>, botName: string): string {
+  if (!messages.length) return '';
+  const lines = messages.slice(-12).map((entry) => {
+    const role = entry.type === 'ai' ? botName : (entry.username || 'User');
+    return `${role}: ${String(entry.message || '').trim()}`;
+  }).filter((line) => !line.endsWith(': '));
+  if (!lines.length) return '';
+  return [
+    'Recent public/shared context available to this private conversation:',
+    lines.join('\n'),
+    'This public context may inform the private reply. Never expose private history back into public chat.',
+  ].join('\n');
+}
+
+async function completePrivateTurn(input: {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  systemPrompt: string;
+  username: string;
+  botName: string;
+  message: string;
+  history: PrivateChatMessage[];
+  memoryIndex?: string[];
+  memoryContext?: string;
+  adultMode: boolean;
+  tenantId: string;
+}): Promise<PrivateCompletionResult> {
+  const qwen = await requestQwenPrivateChatCompletion({
+    baseUrl: input.baseUrl,
+    model: input.model,
+    apiKey: input.apiKey,
+    systemPrompt: input.systemPrompt,
+    username: input.username,
+    botName: input.botName,
+    message: input.message,
+    history: input.history,
+    memoryIndex: input.memoryIndex,
+    memoryContext: input.memoryContext,
+    adultMode: input.adultMode,
+  });
+
+  if (!qwen.upstreamStatus && !qwen.upstreamError && qwen.text.trim()) {
+    return { text: qwen.text.trim(), provider: 'self-hosted-qwen' };
+  }
+
+  const qwenError = safeModelError(qwen.upstreamError || (qwen.upstreamStatus ? `HTTP ${qwen.upstreamStatus}` : 'empty response'));
+  console.warn('[Private Chat API] Local Qwen unavailable; trying EdenAI fallback:', qwenError);
+
+  const fallbackSystem = [
+    input.systemPrompt,
+    QWEN_PRIVATE_CHAT_POLICY,
+    input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
+    input.memoryContext ? `Private memory context:\n${input.memoryContext}` : '',
+  ].filter(Boolean).join('\n\n');
+  const fallbackPrompt = [
+    formatPrivateHistoryForFallback(input.history, input.botName),
+    `Newest private message from ${input.username}: ${input.message}`,
+    `Respond as ${input.botName}. Return only the assistant reply.`,
+  ].filter(Boolean).join('\n\n');
+
+  try {
+    const rawFallback = await generateEdenAIFallbackResponse(
+      fallbackPrompt,
+      fallbackSystem,
+      input.tenantId,
+      { maxTokens: 900, temperature: 0.7 },
+    );
+    const text = sanitizeQwenReply({
+      text: rawFallback,
+      username: input.username,
+      botName: input.botName,
+      latestUserMessage: input.message,
+    }).trim();
+    if (!text) throw new Error('EdenAI fallback returned an empty private reply.');
+    return { text, provider: 'edenai-fallback', error: qwenError };
+  } catch (error) {
+    const fallbackError = safeModelError(error instanceof Error ? error.message : String(error));
+    return {
+      text: '',
+      provider: 'edenai-fallback',
+      error: `Local LLM: ${qwenError} EdenAI fallback: ${fallbackError}`,
+    };
+  }
+}
+
 async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
   try {
     const messageCount = await getPrivateMessageCount(tenantId);
     if (messageCount > 0 && messageCount % 50 === 0) {
       console.log(`[Private LTM] Message count reached ${messageCount}, condensing history...`);
-
       const response = await fetch(`${getInternalAppUrl()}/api/private-ltm/condense`, {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ tenantId }),
       });
-
       if (response.ok) {
         const data = await response.json();
         console.log('[Private LTM] Successfully condensed memory:', data.title);
@@ -106,11 +209,7 @@ async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
   }
 }
 
-async function savePrivateReply(
-  tenantId: string,
-  botName: string,
-  responseText: string,
-): Promise<void> {
+async function savePrivateReply(tenantId: string, botName: string, responseText: string): Promise<void> {
   await appendPrivateChatMessages([{
     type: 'ai',
     username: botName,
@@ -159,6 +258,7 @@ export async function POST(request: NextRequest) {
     await incrementPrivateMessageCount(tenantId);
     await checkAndCondensePrivateMemory(tenantId);
     const history = await readPrivateChatMessages(historyLimit, tenantId);
+    const publicHistory = await readPublicChatMessages(12, tenantId).catch(() => []);
 
     const userEntry: PrivateChatMessage = {
       type: 'user',
@@ -179,24 +279,17 @@ export async function POST(request: NextRequest) {
       const responseText = effectiveMode
         ? [
             'Adult Mode is ON for private DMs.',
-            'Athena will keep using the built-in SPMT Qwen model with the adult private-chat policy.',
+            `${botName} will use the owner-hosted SPMT model first with the adult private-chat policy.`,
             'This mode is only for fictional, consenting adults age 18 or older.',
           ].join(' ')
-        : 'Adult Mode is OFF. Athena will keep using the built-in SPMT Qwen model with the normal private-chat policy.';
+        : `Adult Mode is OFF. ${botName} will use the owner-hosted SPMT model first with the normal private-chat policy.`;
 
       await savePrivateReply(tenantId, botName, responseText);
-      return apiOk({
-        response: responseText,
-        provider: 'private-chat-control',
-        adultMode: effectiveMode,
-      });
+      return apiOk({ response: responseText, provider: 'private-chat-control', adultMode: effectiveMode });
     }
 
     const ltmTitles = await getPrivateLTMTitles(tenantId);
-    const { systemIdentity, extendedGuidance } = buildPersonalityPrompt(
-      botPersonality,
-      privateSettings.adultMode,
-    );
+    const { systemIdentity, extendedGuidance } = buildPersonalityPrompt(botPersonality, privateSettings.adultMode);
     const governedSystemIdentity = [systemIdentity, privateSettings.adultMode ? '' : BOT_NO_SELF_PROMOTION_POLICY]
       .filter(Boolean)
       .join('\n\n');
@@ -208,13 +301,15 @@ export async function POST(request: NextRequest) {
     const qwenBaseUrl = getEffectiveQwenBaseUrl(privateSettings);
     const qwenModel = getEffectiveQwenModel(privateSettings);
     const qwenApiKey = process.env.PRIVATE_QWEN_API_KEY || '';
+    const publicContext = formatRecentPublicContext(publicHistory as any, botName);
     const qwenSystemPrompt = [
       governedSystemIdentity,
       extendedGuidance,
       NATURAL_DIALOGUE_POLICY,
+      publicContext,
     ].filter(Boolean).join('\n\n');
 
-    let completion = await requestQwenPrivateChatCompletion({
+    let completion = await completePrivateTurn({
       baseUrl: qwenBaseUrl,
       model: qwenModel,
       apiKey: qwenApiKey,
@@ -225,20 +320,16 @@ export async function POST(request: NextRequest) {
       history: qwenHistory,
       memoryIndex: memoryIndexForTurn.length ? memoryIndexForTurn : undefined,
       adultMode: privateSettings.adultMode,
+      tenantId,
     });
 
-    if (completion.upstreamStatus || completion.upstreamError) {
-      console.error('[Private Chat API] Built-in Qwen error:', completion.upstreamStatus || null, completion.upstreamError);
+    if (!completion.text) {
       const responseText = [
-        'The built-in SPMT Qwen model is unavailable right now.',
-        safeQwenError(completion.upstreamError),
+        `The owner-hosted SPMT model and EdenAI fallback are unavailable for ${botName} right now.`,
+        safeModelError(completion.error),
       ].join(' ');
       await savePrivateReply(tenantId, botName, responseText);
-      return apiOk({
-        response: responseText,
-        provider: 'self-hosted-qwen-unavailable',
-        adultMode: privateSettings.adultMode,
-      });
+      return apiOk({ response: responseText, provider: 'ai-unavailable', adultMode: privateSettings.adultMode });
     }
 
     let responseText = completion.text;
@@ -255,7 +346,7 @@ export async function POST(request: NextRequest) {
         try {
           const ltmContent = await retrieveLTMByTitle(canonicalTitle, tenantId);
           if (ltmContent) {
-            completion = await requestQwenPrivateChatCompletion({
+            completion = await completePrivateTurn({
               baseUrl: qwenBaseUrl,
               model: qwenModel,
               apiKey: qwenApiKey,
@@ -266,16 +357,14 @@ export async function POST(request: NextRequest) {
               history: qwenHistory,
               memoryContext: ltmContent,
               adultMode: privateSettings.adultMode,
+              tenantId,
             });
-            responseText = completion.text || [
-              'I found the memory, but Qwen could not complete the reply.',
-              safeQwenError(completion.upstreamError),
-            ].join(' ');
+            responseText = completion.text || `I found the memory, but both AI providers failed to complete the reply.`;
           } else {
             responseText = `I tried to recall "${canonicalTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
           }
         } catch (error) {
-          console.error('[Private Chat] Failed to retrieve LTM for Qwen:', error);
+          console.error('[Private Chat] Failed to retrieve LTM:', error);
           responseText = 'I had trouble accessing that memory. Could you remind me what you were referring to?';
         }
       }
@@ -294,7 +383,7 @@ export async function POST(request: NextRequest) {
         'REPETITION RECOVERY: The previous candidate was blocked because it repeated a recent assistant turn or an old memory. Answer only the newest user message. Use a genuinely different opening, actions, imagery, sentence structure, and closing. Do not mention old memory titles or reuse an earlier scene unless the user explicitly asked to recall it.',
       ].join('\n\n');
 
-      const recovery = await requestQwenPrivateChatCompletion({
+      const recovery = await completePrivateTurn({
         baseUrl: qwenBaseUrl,
         model: qwenModel,
         apiKey: qwenApiKey,
@@ -304,30 +393,25 @@ export async function POST(request: NextRequest) {
         message,
         history: qwenHistory,
         adultMode: privateSettings.adultMode,
+        tenantId,
       });
       const recoveryDirective = extractPrivateLtmDirective(recovery.text);
       const recoveryText = (recoveryDirective?.visibleText || recovery.text || '').trim();
 
-      if (
-        recoveryText &&
-        !recovery.upstreamStatus &&
-        !recovery.upstreamError &&
-        !isPrivateReplyRepetitive(recoveryText, qwenHistory)
-      ) {
+      if (recoveryText && !isPrivateReplyRepetitive(recoveryText, qwenHistory)) {
         responseText = recoveryText;
+        completion = recovery;
       } else {
         responseText = `${botName} caught a repetition loop and blocked the duplicate instead of sending it again. Send your last line once more and I will answer from that point.`;
       }
     }
 
-    if (!responseText) {
-      responseText = 'Qwen returned an empty private reply.';
-    }
+    if (!responseText) responseText = `${botName} returned an empty private reply.`;
 
     await savePrivateReply(tenantId, botName, responseText);
     return apiOk({
       response: responseText,
-      provider: 'self-hosted-qwen',
+      provider: completion.provider,
       adultMode: privateSettings.adultMode,
       ttsEnabled: privateSettings.ttsEnabled,
       gifEnabled: privateSettings.gifEnabled,
