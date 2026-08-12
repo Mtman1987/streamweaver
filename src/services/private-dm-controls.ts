@@ -9,6 +9,10 @@ export const PRIVATE_DM_CONTROL_FIELD_NAME = '\u200B';
 export const PRIVATE_DM_CONTROL_PATH = '/private-chat/control';
 export const PRIVATE_DM_CONTROL_TTL_SECONDS = 90 * 24 * 60 * 60;
 
+export const DISCORD_MESSAGE_CONTROL_FIELD_NAME = PRIVATE_DM_CONTROL_FIELD_NAME;
+export const DISCORD_MESSAGE_CONTROL_PATH = '/discord/control';
+export const DISCORD_MESSAGE_CONTROL_TTL_SECONDS = PRIVATE_DM_CONTROL_TTL_SECONDS;
+
 export const PRIVATE_DM_CONTROL_ACTIONS = {
   gif: 'g',
   tts: 't',
@@ -19,6 +23,8 @@ export const PRIVATE_DM_CONTROL_ACTIONS = {
 
 export type PrivateDmControlAction = keyof typeof PRIVATE_DM_CONTROL_ACTIONS;
 export type PrivateDmControlActionCode = typeof PRIVATE_DM_CONTROL_ACTIONS[PrivateDmControlAction];
+export type DiscordMessageControlAction = PrivateDmControlAction;
+export type DiscordMessageControlScope = 'private' | 'public';
 
 type PrivateDmControlTokenPayload = {
   v: 1;
@@ -27,10 +33,24 @@ type PrivateDmControlTokenPayload = {
   e: number;
 };
 
+type DiscordMessageControlTokenPayload = {
+  v: 2;
+  c: string;
+  m: string;
+  e: number;
+  s: 'p' | 'u';
+  t: string;
+};
+
 export type VerifiedPrivateDmControl = {
   channelId: string;
   messageId: string;
   expiresAt: number;
+};
+
+export type VerifiedDiscordMessageControl = VerifiedPrivateDmControl & {
+  scope: DiscordMessageControlScope;
+  tenantId: string;
 };
 
 type DiscordEmbed = Record<string, any>;
@@ -47,7 +67,7 @@ function controlSecret(): string {
     '',
   ).trim();
   if (!secret) {
-    throw new Error('Private DM controls require PRIVATE_DM_CONTROL_SECRET or an existing bot service secret.');
+    throw new Error('Discord reply controls require an existing server-side signing credential.');
   }
   return secret;
 }
@@ -74,6 +94,10 @@ function isSnowflake(value: unknown): value is string {
   return typeof value === 'string' && /^\d{15,22}$/.test(value);
 }
 
+function isTenantId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 128;
+}
+
 export function createPrivateDmControlToken(input: {
   channelId: string;
   messageId: string;
@@ -95,27 +119,85 @@ export function createPrivateDmControlToken(input: {
   return `${encoded}.${sign(encoded)}`;
 }
 
+export function createDiscordMessageControlToken(input: {
+  channelId: string;
+  messageId: string;
+  tenantId: string;
+  scope: DiscordMessageControlScope;
+  nowSeconds?: number;
+  ttlSeconds?: number;
+}): string {
+  if (!isSnowflake(input.channelId) || !isSnowflake(input.messageId)) {
+    throw new Error('Discord controls require valid channel and message IDs.');
+  }
+  if (!isTenantId(input.tenantId)) {
+    throw new Error('Discord controls require a tenant ID.');
+  }
+  const nowSeconds = Math.floor(input.nowSeconds ?? Date.now() / 1000);
+  const ttlSeconds = Math.max(60, Math.floor(input.ttlSeconds ?? DISCORD_MESSAGE_CONTROL_TTL_SECONDS));
+  const payload: DiscordMessageControlTokenPayload = {
+    v: 2,
+    c: input.channelId,
+    m: input.messageId,
+    e: nowSeconds + ttlSeconds,
+    s: input.scope === 'private' ? 'p' : 'u',
+    t: input.tenantId.trim(),
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${encoded}.${sign(encoded)}`;
+}
+
+function decodeSignedPayload(token: string): Record<string, unknown> | null {
+  const [encoded, signature, ...extra] = String(token || '').split('.');
+  if (!encoded || !signature || extra.length || !safeEqual(signature, sign(encoded))) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function validExpiry(value: unknown, nowSeconds: number): number | null {
+  const expiresAt = Number(value);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < nowSeconds) return null;
+  if (expiresAt > nowSeconds + DISCORD_MESSAGE_CONTROL_TTL_SECONDS + 300) return null;
+  return expiresAt;
+}
+
 export function verifyPrivateDmControlToken(
   token: string,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): VerifiedPrivateDmControl | null {
-  const [encoded, signature, ...extra] = String(token || '').split('.');
-  if (!encoded || !signature || extra.length || !safeEqual(signature, sign(encoded))) return null;
+  const payload = decodeSignedPayload(token) as Partial<PrivateDmControlTokenPayload> | null;
+  if (!payload || payload.v !== 1 || !isSnowflake(payload.c) || !isSnowflake(payload.m)) return null;
+  const expiresAt = validExpiry(payload.e, nowSeconds);
+  if (!expiresAt) return null;
+  return { channelId: payload.c, messageId: payload.m, expiresAt };
+}
 
-  try {
-    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<PrivateDmControlTokenPayload>;
-    if (payload.v !== 1 || !isSnowflake(payload.c) || !isSnowflake(payload.m)) return null;
-    const expiresAt = Number(payload.e);
-    if (!Number.isSafeInteger(expiresAt) || expiresAt < nowSeconds) return null;
-    if (expiresAt > nowSeconds + PRIVATE_DM_CONTROL_TTL_SECONDS + 300) return null;
-    return {
-      channelId: payload.c,
-      messageId: payload.m,
-      expiresAt,
-    };
-  } catch {
-    return null;
-  }
+export function verifyDiscordMessageControlToken(
+  token: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): VerifiedDiscordMessageControl | null {
+  const payload = decodeSignedPayload(token) as Partial<DiscordMessageControlTokenPayload> | null;
+  if (
+    !payload ||
+    payload.v !== 2 ||
+    !isSnowflake(payload.c) ||
+    !isSnowflake(payload.m) ||
+    !isTenantId(payload.t) ||
+    !['p', 'u'].includes(String(payload.s || ''))
+  ) return null;
+  const expiresAt = validExpiry(payload.e, nowSeconds);
+  if (!expiresAt) return null;
+  return {
+    channelId: payload.c,
+    messageId: payload.m,
+    expiresAt,
+    scope: payload.s === 'p' ? 'private' : 'public',
+    tenantId: payload.t.trim(),
+  };
 }
 
 export function parsePrivateDmControlAction(value: unknown): PrivateDmControlAction | null {
@@ -126,8 +208,17 @@ export function parsePrivateDmControlAction(value: unknown): PrivateDmControlAct
   return null;
 }
 
+export const parseDiscordMessageControlAction = parsePrivateDmControlAction;
+
 function privateDmControlUrl(token: string, action: PrivateDmControlAction): string {
   const url = new URL(PRIVATE_DM_CONTROL_PATH, getConfiguredAppUrl());
+  url.searchParams.set('k', token);
+  url.searchParams.set('a', PRIVATE_DM_CONTROL_ACTIONS[action]);
+  return url.toString();
+}
+
+function discordMessageControlUrl(token: string, action: DiscordMessageControlAction): string {
+  const url = new URL(DISCORD_MESSAGE_CONTROL_PATH, getConfiguredAppUrl());
   url.searchParams.set('k', token);
   url.searchParams.set('a', PRIVATE_DM_CONTROL_ACTIONS[action]);
   return url.toString();
@@ -161,10 +252,45 @@ export function buildPrivateDmControlField(input: {
   return { name: PRIVATE_DM_CONTROL_FIELD_NAME, value, inline: false };
 }
 
+export function buildPublicDiscordControlField(input: {
+  channelId: string;
+  messageId: string;
+  tenantId: string;
+  nowSeconds?: number;
+  gifVisible?: boolean;
+}): { name: string; value: string; inline: false } {
+  const token = createDiscordMessageControlToken({
+    channelId: input.channelId,
+    messageId: input.messageId,
+    tenantId: input.tenantId,
+    scope: 'public',
+    nowSeconds: input.nowSeconds,
+  });
+  const links: Array<[string, DiscordMessageControlAction]> = [
+    [input.gifVisible ? '🙈' : '🖼️', 'gif'],
+    ['🔊', 'tts'],
+    ['⚙️', 'settings'],
+    ['🗑️', 'delete'],
+  ];
+  const value = links
+    .map(([emoji, action]) => `[${emoji}](${discordMessageControlUrl(token, action)})`)
+    .join(' \u2003 ');
+  if (value.length > 1024) {
+    throw new Error(`Public Discord control links exceed Discord's field limit (${value.length}/1024).`);
+  }
+  return { name: DISCORD_MESSAGE_CONTROL_FIELD_NAME, value, inline: false };
+}
+
 export function isPrivateDmControlField(field: unknown): boolean {
   if (!field || typeof field !== 'object') return false;
   const value = String((field as Record<string, unknown>).value || '');
   return value.includes(PRIVATE_DM_CONTROL_PATH) && value.includes('[⚙️]');
+}
+
+export function isPublicDiscordControlField(field: unknown): boolean {
+  if (!field || typeof field !== 'object') return false;
+  const value = String((field as Record<string, unknown>).value || '');
+  return value.includes(DISCORD_MESSAGE_CONTROL_PATH) && value.includes('[⚙️]') && !value.includes('[🔞]');
 }
 
 export function attachPrivateDmControls(
@@ -190,6 +316,27 @@ export function attachPrivateDmControls(
   return next;
 }
 
+export function attachPublicDiscordControls(
+  embeds: Record<string, unknown>[],
+  input: {
+    channelId: string;
+    messageId: string;
+    tenantId: string;
+    nowSeconds?: number;
+    gifVisible?: boolean;
+  },
+): Record<string, unknown>[] {
+  if (!embeds.length) return embeds;
+  const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
+  const first = next[0];
+  const fields = Array.isArray(first.fields)
+    ? first.fields.filter((field: unknown) => !isPublicDiscordControlField(field))
+    : [];
+  if (fields.length >= 25) fields.splice(24);
+  first.fields = [...fields, buildPublicDiscordControlField(input)];
+  return next;
+}
+
 function firstUrl(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value !== 'string') continue;
@@ -205,7 +352,7 @@ function firstUrl(...values: unknown[]): string {
   return '';
 }
 
-function rewriteLegacyPrivateMediaUrl(value: string, tenantId: string): string {
+function rewriteLegacyMediaUrl(value: string, tenantId: string): string {
   try {
     const url = new URL(value);
     if (url.pathname.toLowerCase() === '/avatars/private-dm.gif') {
@@ -230,7 +377,30 @@ export function resolvePrivateDmMediaUrl(tenantId: string): string {
     config.TWITCH_BOT_AVATAR_URL,
     config.BOT_AVATAR_URL,
   );
-  return configured ? rewriteLegacyPrivateMediaUrl(configured, tenantId) : '';
+  return configured ? rewriteLegacyMediaUrl(configured, tenantId) : '';
+}
+
+export function resolvePublicDiscordMediaUrl(tenantId: string): string {
+  const config = readUserConfigSync(tenantId);
+  const configured = firstUrl(config.PUBLIC_DISCORD_GIF_URL);
+  return configured ? rewriteLegacyMediaUrl(configured, tenantId) : '';
+}
+
+export function applyConfiguredDiscordGif(
+  embeds: Record<string, unknown>[],
+  configuredMediaUrl: string,
+  visible: boolean,
+): Record<string, unknown>[] {
+  if (!embeds.length) return embeds;
+  const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
+  const first = next[0];
+  const currentImage = String(first.image?.url || '').trim();
+  if (visible && configuredMediaUrl && !currentImage) {
+    first.image = { url: configuredMediaUrl };
+  } else if (!visible && configuredMediaUrl && currentImage === configuredMediaUrl) {
+    delete first.image;
+  }
+  return next;
 }
 
 export function applyPrivateDmGif(
@@ -238,28 +408,26 @@ export function applyPrivateDmGif(
   configuredMediaUrl: string,
   gifEnabled: boolean,
 ): Record<string, unknown>[] {
-  if (!embeds.length) return embeds;
-  const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
-  const first = next[0];
-  const currentImage = String(first.image?.url || '').trim();
-  if (gifEnabled && configuredMediaUrl && !currentImage) {
-    first.image = { url: configuredMediaUrl };
-  } else if (!gifEnabled && configuredMediaUrl && currentImage === configuredMediaUrl) {
-    delete first.image;
-  }
-  return next;
+  return applyConfiguredDiscordGif(embeds, configuredMediaUrl, gifEnabled);
 }
 
-export function togglePrivateDmGif(
+export function toggleConfiguredDiscordGif(
   embeds: Record<string, unknown>[],
   configuredMediaUrl: string,
 ): { embeds: Record<string, unknown>[]; visible: boolean } {
   const currentImage = String((embeds[0] as DiscordEmbed | undefined)?.image?.url || '').trim();
   const visible = !(configuredMediaUrl && currentImage === configuredMediaUrl);
   return {
-    embeds: applyPrivateDmGif(embeds, configuredMediaUrl, visible),
+    embeds: applyConfiguredDiscordGif(embeds, configuredMediaUrl, visible),
     visible,
   };
+}
+
+export function togglePrivateDmGif(
+  embeds: Record<string, unknown>[],
+  configuredMediaUrl: string,
+): { embeds: Record<string, unknown>[]; visible: boolean } {
+  return toggleConfiguredDiscordGif(embeds, configuredMediaUrl);
 }
 
 export function privateDmMessageText(message: unknown): string {
@@ -269,6 +437,8 @@ export function privateDmMessageText(message: unknown): string {
   const content = String(record.content || '').trim();
   return description || content;
 }
+
+export const discordMessageText = privateDmMessageText;
 
 export function splitPrivateTtsText(text: string, maxCharacters = 1800): string[] {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim();
@@ -293,6 +463,8 @@ export function splitPrivateTtsText(text: string, maxCharacters = 1800): string[
   if (remaining) chunks.push(remaining);
   return chunks.slice(0, 4);
 }
+
+export const splitDiscordTtsText = splitPrivateTtsText;
 
 export async function resolvePrivateDmTenantId(channelId: string): Promise<string | null> {
   const cached = tenantByDmChannelCache.get(channelId);
