@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
       code: 'PRIVATE_CHANNEL_NOT_FOUND',
     });
   }
+  const botName = getBotName(tenantId) || 'Your bot';
 
   try {
     if (action === 'settings') {
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
         deleted: true,
         historyDeleted,
         message: historyDeleted
-          ? 'Private DM deleted from Discord and Athena history.'
+          ? `Private DM deleted from Discord and ${botName}'s private history.`
           : 'Private DM deleted from Discord.',
       });
     }
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
         ttsEnabled: false,
         adultMode: next.adultMode,
       });
-      return apiOk({ action, ttsEnabled: false, message: 'Private Athena TTS is OFF.' });
+      return apiOk({ action, ttsEnabled: false, message: `Private ${botName} TTS is OFF.` });
     }
 
     if (mode === 'poll') {
@@ -205,7 +206,7 @@ export async function POST(request: NextRequest) {
           ttsEnabled: false,
           cursor: Math.max(0, Number(body?.after) || 0),
           items: [],
-          message: 'Private Athena TTS is OFF.',
+          message: `Private ${botName} TTS is OFF.`,
         });
       }
 
@@ -230,15 +231,15 @@ export async function POST(request: NextRequest) {
       return apiOk({
         action,
         ttsEnabled: true,
-        botName: getBotName(tenantId),
+        botName,
         mediaUrl: current.gifEnabled ? resolvePrivateDmMediaUrl(tenantId) : '',
         cursor: items.at(-1)?.cursor || after,
         items,
-        message: items.length ? 'New Athena reply ready.' : 'Listening for Athena replies…',
+        message: items.length ? `New ${botName} reply ready.` : `Listening for ${botName} replies…`,
       });
     }
 
-    // Opening the signed speaker link toggles the private Athena-only listening session.
+    // Opening the signed speaker link toggles this tenant bot's private listening session.
     const next = await writePrivateChatSettings({ ttsEnabled: !current.ttsEnabled }, tenantId);
     await updateControlIcons({
       channelId: control.channelId,
@@ -252,7 +253,7 @@ export async function POST(request: NextRequest) {
       return apiOk({
         action,
         ttsEnabled: false,
-        message: 'Private Athena TTS is now OFF.',
+        message: `Private ${botName} TTS is now OFF.`,
       });
     }
 
@@ -269,14 +270,14 @@ export async function POST(request: NextRequest) {
       action,
       ttsEnabled: true,
       tenantId,
-      botName: getBotName(tenantId),
+      botName,
       cursor,
       currentText: text,
       currentEmbed: Array.isArray(discordMessage?.embeds) ? (discordMessage.embeds[0] || null) : null,
       mediaUrl: next.gifEnabled ? resolvePrivateDmMediaUrl(tenantId) : '',
       audioDataUris,
       chunkCount: audioDataUris.length,
-      message: 'Private Athena TTS is ON. This page will read Athena replies until you stop it or close the page.',
+      message: `Private ${botName} TTS is ON. This page will read ${botName} replies until you stop it or close the page.`,
     });
   } catch (error) {
     console.error('[Private DM Control] Action failed:', action, error);
