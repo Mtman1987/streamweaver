@@ -80,24 +80,22 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // The strip is intentionally visible on public bot replies, but actions are
+  // owner controls. Without this gate any viewer could mutate the shared GIF,
+  // delete a reply, or repeatedly trigger paid TTS synthesis from a public link.
+  if (!requireOwningTenant(request, control.tenantId)) {
+    return apiError('Sign in to the StreamWeaver account that owns this bot to use its public reply controls.', {
+      status: 401,
+      code: 'TENANT_AUTH_REQUIRED',
+    });
+  }
+
   try {
     if (action === 'settings') {
-      if (!requireOwningTenant(request, control.tenantId)) {
-        return apiError('Sign in to the StreamWeaver account that owns this bot to change its settings.', {
-          status: 401,
-          code: 'TENANT_AUTH_REQUIRED',
-        });
-      }
       return apiOk({ action, redirectUrl: '/bot-functions' });
     }
 
     if (action === 'delete') {
-      if (!requireOwningTenant(request, control.tenantId)) {
-        return apiError('Only the signed-in tenant that owns this bot can delete its public reply.', {
-          status: 401,
-          code: 'TENANT_AUTH_REQUIRED',
-        });
-      }
       await deleteMessage(control.channelId, control.messageId);
       return apiOk({
         action,
