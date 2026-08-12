@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { WorkspaceThemeProvider } from '@/components/workspace-theme-provider';
 import { SpmtWorkspaceHost } from '@/components/spmt-workspace-host';
+import { PersonalOverlayHost } from '@/components/personal-overlay-host';
 
 export default async function AppLayout({
   children,
@@ -22,6 +23,7 @@ export default async function AppLayout({
         <OBSBridge />
         {children}
       </AppShell>
+      <PersonalOverlayHost />
       <SpmtWorkspaceHost />
     </WorkspaceThemeProvider>
   );
