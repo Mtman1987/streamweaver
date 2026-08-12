@@ -27,24 +27,26 @@ type FleetTenant = {
   };
 };
 
-type FleetResponse = {
-  data?: {
-    summary?: {
-      totalTenants: number;
-      dedicatedBots: number;
-      communityFallbackBots: number;
-      broadcasterAuthConfigured: number;
-      twitchReauthNeeded: number;
-      runtimePersonalityVersion: string;
-    };
-    tenants?: FleetTenant[];
-  };
-  summary?: FleetResponse['data'] extends infer D ? D extends { summary?: infer S } ? S : never : never;
+type FleetSummary = {
+  totalTenants: number;
+  dedicatedBots: number;
+  communityFallbackBots: number;
+  broadcasterAuthConfigured: number;
+  twitchReauthNeeded: number;
+  runtimePersonalityVersion: string;
+};
+
+type FleetData = {
+  summary?: FleetSummary;
   tenants?: FleetTenant[];
+};
+
+type FleetResponse = FleetData & {
+  data?: FleetData;
   error?: string | { message?: string };
 };
 
-function responseData(payload: FleetResponse) {
+function responseData(payload: FleetResponse): FleetData {
   return payload.data || payload;
 }
 
