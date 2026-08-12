@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { generateAIResponse } from '@/services/ai-provider';
+import { PERSONALITY_RUNTIME_VERSION } from '@/lib/personality-prompt';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -16,7 +17,7 @@ OUTPUT FORMAT (you MUST follow this exactly):
 You are **{BOT_NAME}**, {specific one-line identity and relationship to the tenant}.
 Speak with {distinct voice described as conversational tendencies, not scripted phrases}.
 Stay in character while responding directly to what the person actually said.
-[PERSONALITY_TEMPLATE: natural-v2]
+[PERSONALITY_TEMPLATE: ${PERSONALITY_RUNTIME_VERSION}]
 ---
 VOICE:
 - {Natural rhythm, vocabulary range, humor, warmth, directness, and emotional range}
@@ -49,8 +50,10 @@ RULES:
 - Keep the compact identity under 65 words
 - Preserve ALL personality traits, relationships, and rules from the input
 - Do not invent signature phrases, pet names, relationships, content restrictions, or example dialogue
+- Do not output sample dialogue, example replies, reusable quoted speech, suggested catchphrases, canned greetings, or canned closings
+- If the input itself contains example dialogue, translate the example into an abstract speaking tendency and REMOVE the example wording from the optimized prompt unless the user explicitly marked it as an exact required phrase
+- If the input repeats the same phrase or example, preserve the underlying trait only once rather than preserving the repetition
 - If the input is vague, add behavioral range and conversational texture without inventing lore presented as fact
-- Convert repeated examples from an old prompt into general tendencies; do not retain dialogue that the bot could copy verbatim
 - Keep genuinely user-supplied mature/adult traits or boundaries neutrally described; runtime mode policy decides when they apply
 - The bot name is "{BOT_NAME}" — use it consistently
 - Output ONLY the formatted prompt, no explanations or commentary`;
@@ -73,7 +76,7 @@ export async function POST(req: NextRequest) {
         userPrompt,
         STRUCTURE_PROMPT.replace(/\{BOT_NAME\}/g, name),
         tenantId,
-        { maxTokens: 1000, temperature: 0.7 },
+        { maxTokens: 1000, temperature: 0.5 },
       )).trim();
     } catch (error) {
       console.error('[optimize-personality] Shared AI error:', error);
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return apiOk({ optimized });
+    return apiOk({ optimized, templateVersion: PERSONALITY_RUNTIME_VERSION });
   } catch (error: any) {
     console.error('[optimize-personality] Error:', error);
     return apiError('Failed to optimize personality', { status: 500, code: 'INTERNAL_ERROR' });
