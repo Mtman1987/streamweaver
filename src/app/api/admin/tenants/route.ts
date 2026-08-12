@@ -3,12 +3,20 @@ import { promises as fs } from 'fs';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { listTenants, tenantPath, isAdmin } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
+import { COMMUNITY_BOT_NAME } from '@/lib/bot-personality-defaults';
+import { PERSONALITY_RUNTIME_VERSION } from '@/lib/personality-prompt';
 import { z } from 'zod';
+
+function storedTemplateVersion(personality: string): string | null {
+  const match = String(personality || '').match(/\[PERSONALITY_TEMPLATE:\s*([^\]]+)\]/i);
+  return match?.[1]?.trim() || null;
+}
 
 /**
  * GET /api/admin/tenants
- * Returns all tenants with their bot name, personality, broadcaster username,
- * and whether they have a bot account connected.
+ * Returns the bot fleet inventory for all tenants without exposing OAuth token
+ * values. Capability flags mean the required credential pair is configured;
+ * Twitch still validates/refreshes the token at command execution time.
  */
 export async function GET(request: NextRequest) {
   const session = getTenantFromRequest(request);
@@ -21,20 +29,20 @@ export async function GET(request: NextRequest) {
   for (const id of tenantIds) {
     let broadcasterUsername = '';
     let botUsername = '';
+    let hasBroadcasterToken = false;
     let hasBotToken = false;
     let botName = '';
     let botPersonality = '';
 
-    // Read tokens
     try {
       const raw = await fs.readFile(tenantPath(id, 'tokens/twitch-tokens.json'), 'utf-8');
       const tokens = JSON.parse(raw);
       broadcasterUsername = tokens.broadcasterUsername || tokens.loginUsername || '';
       botUsername = tokens.botUsername || '';
-      hasBotToken = Boolean(tokens.botToken && tokens.botRefreshToken);
+      hasBroadcasterToken = Boolean(tokens.broadcasterToken && tokens.broadcasterRefreshToken);
+      hasBotToken = Boolean(tokens.botToken && tokens.botRefreshToken && tokens.botUsername);
     } catch {}
 
-    // Read user-config
     try {
       const raw = await fs.readFile(tenantPath(id, 'tokens/user-config.json'), 'utf-8');
       const config = JSON.parse(raw);
@@ -42,18 +50,49 @@ export async function GET(request: NextRequest) {
       botPersonality = config.AI_BOT_PERSONALITY || '';
     } catch {}
 
+    const botMode = hasBotToken ? 'dedicated' : 'community-fallback';
+    const effectiveBotName = hasBotToken
+      ? (botName || botUsername || COMMUNITY_BOT_NAME)
+      : COMMUNITY_BOT_NAME;
+    const savedTemplateVersion = storedTemplateVersion(botPersonality);
+
     tenants.push({
       tenantId: id,
       broadcasterUsername,
       botUsername,
+      hasBroadcasterToken,
       hasBotToken,
-      botName,
+      botMode,
+      effectiveBotName,
+      configuredBotName: botName || null,
+      fallbackBotName: hasBotToken ? null : COMMUNITY_BOT_NAME,
       botPersonality,
+      personalitySource: botPersonality ? 'tenant' : 'community-default',
+      savedPersonalityTemplateVersion: savedTemplateVersion,
+      runtimePersonalityVersion: PERSONALITY_RUNTIME_VERSION,
+      automaticallyUsesLatestRuntimePersonalityPolicy: true,
       hasStructuredPrompt: botPersonality.includes('\n---'),
+      commandCapabilities: {
+        commandsConfigured: hasBroadcasterToken,
+        chatIdentity: hasBotToken ? 'dedicated-bot' : 'community-bot',
+        clip: hasBroadcasterToken ? 'broadcaster-oauth' : 'twitch-reauth-required',
+        channelManagement: hasBroadcasterToken ? 'broadcaster-oauth' : 'twitch-reauth-required',
+        customBotIdentity: hasBotToken,
+      },
     });
   }
 
-  return apiOk({ tenants });
+  return apiOk({
+    summary: {
+      totalTenants: tenants.length,
+      dedicatedBots: tenants.filter((tenant) => tenant.hasBotToken).length,
+      communityFallbackBots: tenants.filter((tenant) => !tenant.hasBotToken).length,
+      broadcasterAuthConfigured: tenants.filter((tenant) => tenant.hasBroadcasterToken).length,
+      twitchReauthNeeded: tenants.filter((tenant) => !tenant.hasBroadcasterToken).length,
+      runtimePersonalityVersion: PERSONALITY_RUNTIME_VERSION,
+    },
+    tenants,
+  });
 }
 
 const patchSchema = z.object({
