@@ -1,4 +1,4 @@
-name: Athena DM Validation
+name: Shared Bot Runtime Validation
 
 on:
   pull_request:
@@ -10,19 +10,19 @@ permissions:
   contents: read
 
 jobs:
-  test-athena-dm-commands:
-    name: Test Athena private Qwen routing
+  test-shared-bot-runtime:
+    name: Test shared bot runtime and private Qwen routing
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run open-command tests
-        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts
+      - name: Run shared command tests
+        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/shared-bot-runtime-local-llm.test.ts
       - name: Run shared workspace shell regression
         run: node --import tsx --test tests/spmt-workspace-shell.test.ts
       - name: Run private Qwen, personality, media, emoji-control, TTS, gallery, and model tests
