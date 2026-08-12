@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
 import { writeGenerationSettings } from '@/lib/gen-settings-store';
 
-export type GenMode = 'eden' | 'seaart' | 'perchance' | 'pollinations';
+export type GenMode = 'cloudflare' | 'eden' | 'seaart' | 'perchance' | 'pollinations';
 
 function filePath(tenantId?: string): string {
   if (tenantId) return tenantPath(tenantId, 'data/gen-mode.json');
@@ -14,12 +14,14 @@ export async function getGenMode(tenantId?: string): Promise<GenMode> {
   try {
     const raw = await fs.readFile(filePath(tenantId), 'utf-8');
     const parsed = JSON.parse(raw);
+    if (parsed?.mode === 'cloudflare') return 'cloudflare';
     if (parsed?.mode === 'seaart') return 'seaart';
     if (parsed?.mode === 'perchance') return 'perchance';
     if (parsed?.mode === 'pollinations') return 'pollinations';
-    return 'eden';
+    if (parsed?.mode === 'eden') return 'eden';
+    return 'cloudflare';
   } catch {
-    return 'eden';
+    return 'cloudflare';
   }
 }
 
@@ -33,8 +35,9 @@ export async function setGenMode(mode: GenMode, tenantId?: string): Promise<GenM
 
 export async function toggleGenMode(tenantId?: string): Promise<GenMode> {
   const current = await getGenMode(tenantId);
+  if (current === 'cloudflare') return setGenMode('eden', tenantId);
   if (current === 'eden') return setGenMode('seaart', tenantId);
   if (current === 'seaart') return setGenMode('pollinations', tenantId);
   if (current === 'pollinations') return setGenMode('perchance', tenantId);
-  return setGenMode('eden', tenantId);
+  return setGenMode('cloudflare', tenantId);
 }
