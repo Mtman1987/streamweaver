@@ -31,20 +31,20 @@ export async function GET(request: NextRequest) {
       : undefined;
     return Promise.all([
       fetch(`${SPMT_BASE_URL}/api/workspace-profile`, { headers, cache: 'no-store', signal }),
-      fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store', signal }),
+      fetch(`${SPMT_BASE_URL}/api/personal-overlay-launch`, { headers, cache: 'no-store', signal }),
     ]);
   };
-  let [profileResponse, overlayResponse] = await loadWorkspace(token);
+  let [profileResponse, personalResponse] = await loadWorkspace(token);
   if (profileResponse.status === 401 || profileResponse.status === 403) {
     refreshed = await refreshSpmtConnection(request);
     if (refreshed) {
       token = refreshed.accessToken;
-      [profileResponse, overlayResponse] = await loadWorkspace(token);
+      [profileResponse, personalResponse] = await loadWorkspace(token);
     }
   }
-  const [payload, overlayPayload] = await Promise.all([
+  const [payload, personalPayload] = await Promise.all([
     profileResponse.json().catch(() => null),
-    overlayResponse.json().catch(() => null),
+    personalResponse.json().catch(() => null),
   ]);
   if (!profileResponse.ok || !payload?.profile) {
     const expired = profileResponse.status === 401 || profileResponse.status === 403;
@@ -57,7 +57,10 @@ export async function GET(request: NextRequest) {
   }
 
   const response = NextResponse.json({
-    tokens: workspaceThemeTokens(payload.profile, 'streamweaver', overlayResponse.ok ? overlayPayload?.layout || null : null),
+    // Public Overlay Bay is no longer locally re-rendered by app shells. The
+    // canonical Personal renderer below is the only app-level overlay surface.
+    tokens: workspaceThemeTokens(payload.profile, 'streamweaver', null),
+    personalOverlayUrl: personalResponse.ok && typeof personalPayload?.url === 'string' ? personalPayload.url : null,
     revision: payload.profile.revision,
     updatedAt: payload.profile.updatedAt,
     connection: {
