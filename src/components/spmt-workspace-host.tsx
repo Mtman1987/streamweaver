@@ -128,10 +128,10 @@ export function SpmtWorkspaceHost() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.altKey && event.shiftKey && event.key.toLowerCase() === 'f')) return;
       event.preventDefault();
+      setOpen(false);
       setFooterVisible((current) => {
         const next = !current;
         window.localStorage.setItem(FOOTER_VISIBILITY_KEY, next ? '1' : '0');
-        if (!next) setOpen(false);
         return next;
       });
     };
@@ -163,7 +163,8 @@ export function SpmtWorkspaceHost() {
 
   const copyOutput = (url?: string) => {
     if (!url) return;
-    void navigator.clipboard?.writeText(url).catch(() => undefined);
+    const pending = navigator.clipboard?.writeText(url);
+    if (pending) void pending.catch(() => undefined);
   };
 
   return <>
