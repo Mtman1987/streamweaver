@@ -9,13 +9,15 @@ import { tenantPath } from './tenant';
 import { DEFAULT_TTS_VOICE, normalizeTtsProvider, normalizeTtsVoice } from './tts-voices';
 import { COMMUNITY_BOT_NAME, COMMUNITY_BOT_PERSONALITY } from './bot-personality-defaults';
 
-const tenantBotSettings = new Map<string, {
+export type BotSettings = {
   personality: string;
   name: string;
   voice: string;
   interests: string;
   aliases: string;
-}>();
+};
+
+const tenantBotSettings = new Map<string, BotSettings>();
 
 // Track when each tenant's settings were last loaded from disk
 const lastLoadedAt = new Map<string, number>();
@@ -24,7 +26,7 @@ const CACHE_TTL_MS = 60_000; // Re-read from disk every 60 seconds
 // Track which tenants have had settings explicitly set via API/WebSocket
 const explicitlySet = new Set<string>();
 
-const DEFAULTS = {
+const DEFAULTS: BotSettings = {
   personality: COMMUNITY_BOT_PERSONALITY,
   name: COMMUNITY_BOT_NAME,
   voice: DEFAULT_TTS_VOICE,
@@ -73,53 +75,42 @@ export function reloadBotSettings(tenantId?: string) {
   console.log(`[BotSettings] Reloaded settings for ${key}: name=${tenantBotSettings.get(key)?.name}`);
 }
 
-/**
- * Check if a tenant has a bot account connected (botToken in their tokens file).
- * If not, they get StreamWeaver87 defaults regardless of saved settings.
- */
+/** Check if a tenant has a dedicated Twitch bot account connected. */
 function hasBotAccount(tenantId?: string): boolean {
   if (!tenantId) return false;
   try {
     const tokensFile = tenantPath(tenantId, 'tokens/twitch-tokens.json');
     if (!fs.existsSync(tokensFile)) return false;
     const tokens = JSON.parse(fs.readFileSync(tokensFile, 'utf-8'));
-    return Boolean(tokens.botToken && tokens.botRefreshToken);
+    return Boolean(tokens.botToken && tokens.botRefreshToken && tokens.botUsername);
   } catch {
     return false;
   }
 }
 
 /**
- * Returns effective settings: custom if bot account connected OR settings were
- * explicitly saved via dashboard, StreamWeaver87 defaults otherwise.
+ * The shared community account is the actual Twitch identity when a tenant has
+ * no dedicated bot token. Keep all tenant-owned personality/voice/interests,
+ * but do not impersonate a custom bot name that is not connected.
  */
-function getEffectiveSettings(tenantId?: string) {
-  const key = tenantId || '__global';
-
-  // If settings were explicitly set via API/WebSocket, always trust the cache
-  if (explicitlySet.has(key)) {
-    return getBotSettings(tenantId);
-  }
-
-  // Check if tenant has a bot account OR has a custom bot name in their config
-  if (!tenantId) {
-    return { ...DEFAULTS };
-  }
-
-  // Use saved settings if the config file has any name set at all
-  const settings = getBotSettings(tenantId);
-  if (settings.name) {
-    return settings;
-  }
-
-  if (!hasBotAccount(tenantId)) {
-    return { ...DEFAULTS };
-  }
-
-  return settings;
+export function applyBotTransportIdentity(settings: BotSettings, hasDedicatedBot: boolean): BotSettings {
+  return hasDedicatedBot
+    ? { ...settings }
+    : { ...settings, name: COMMUNITY_BOT_NAME };
 }
 
-export function setBotSettings(tenantId: string | undefined, updates: Partial<typeof DEFAULTS>) {
+/**
+ * Returns effective settings for the active Twitch bot transport.
+ * - dedicated bot account: tenant name + tenant personality
+ * - shared fallback account: StreamWeaver87 name + tenant personality
+ */
+function getEffectiveSettings(tenantId?: string) {
+  if (!tenantId) return { ...DEFAULTS };
+  const settings = getBotSettings(tenantId);
+  return applyBotTransportIdentity(settings, hasBotAccount(tenantId));
+}
+
+export function setBotSettings(tenantId: string | undefined, updates: Partial<BotSettings>) {
   const current = getBotSettings(tenantId);
   const key = tenantId || '__global';
   const normalizedUpdates = updates.voice
