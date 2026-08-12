@@ -3,6 +3,7 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { readPrivateChatMessages } from '@/lib/private-chat-store';
 import { addLTMEntry } from '@/lib/private-ltm-store';
+import { generateAIResponse } from '@/services/ai-provider';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -21,32 +22,26 @@ export async function POST(request: NextRequest) {
     }
 
     const chatText = messages.map((m) => `${m.username}: ${m.message}`).join('\n');
+    const systemPrompt = [
+      'You condense private conversations into titled memory entries.',
+      'Output valid JSON only with "title" (a short descriptive title) and "content" (a detailed paragraph summarizing key events, emotions, preferences, and important details).',
+      'Preserve relevant intimate details and personal context because this output remains in the tenant private-memory store.',
+      'Do not include markdown fences or commentary outside the JSON object.',
+    ].join(' ');
+    const prompt = `Condense this private conversation into one memory entry:\n\n${chatText}\n\nReturn JSON: {"title": "...", "content": "..."}`;
 
-    const edenaiKey = process.env.EDENAI_API_KEY;
-    if (!edenaiKey) {
-      return apiError('Missing AI key', { status: 500, code: 'MISSING_CONFIG' });
+    let raw = '';
+    try {
+      raw = (await generateAIResponse(
+        prompt,
+        systemPrompt,
+        tenantId,
+        { maxTokens: 900, temperature: 0.3 },
+      )).trim();
+    } catch (error) {
+      console.error('[Private LTM] Shared AI condensation failed:', error);
+      return apiError('AI condensation failed', { status: 502, code: 'AI_ERROR' });
     }
-
-    const res = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${edenaiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: 'You condense conversations into titled memory entries. Output JSON with "title" (short descriptive title) and "content" (detailed paragraph summarizing key events, emotions, preferences, and important details). Preserve intimate details and personal context.' },
-          { role: 'user', content: `Condense this private conversation into a memory entry:\n\n${chatText}\n\nRespond with JSON: {"title": "...", "content": "..."}` },
-        ],
-        stream: false,
-      }),
-    });
-
-    if (!res.ok) {
-      console.error('[Private LTM] Condense AI failed:', res.status);
-      return apiError('AI condensation failed', { status: 502 });
-    }
-
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content?.trim() || '';
 
     let memoryEntry: { title: string; content: string };
     try {
