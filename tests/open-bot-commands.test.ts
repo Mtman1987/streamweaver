@@ -11,9 +11,8 @@ import {
 test('detects safe natural-language commands after any tenant bot wake name', () => {
   assert.equal(detectOpenBotCommand("NovaBot, who's live?"), 'live-members');
   assert.equal(detectOpenBotCommand('athena whos live right now?'), 'live-members');
-  assert.equal(detectOpenBotCommand('Athena, how many users are reporting live in Chat-Tag?'), 'live-members');
-  assert.equal(detectOpenBotCommand('how many live streamers does chat tag have, Athena?'), 'live-members');
-  assert.equal(detectOpenBotCommand('Athena who has the tag?'), 'chat-tag-current');
+  assert.equal(detectOpenBotCommand('how many users are reporting live in Chat-Tag?'), 'live-members');
+  assert.equal(detectOpenBotCommand('MayaBot who has the tag?'), 'chat-tag-current');
   assert.equal(detectOpenBotCommand('MayaBot, show me the ChatTag leaderboard'), 'chat-tag-leaderboard');
   assert.equal(detectOpenBotCommand("what's playing in HearMeOut?"), 'hearmeout');
   assert.equal(detectOpenBotCommand('tell me a joke'), null);
@@ -35,28 +34,32 @@ test('routes explicit SPMT command namespace before conversational chat', () => 
 test('rewrites documented SPMT namespace commands for the native DM dispatcher', () => {
   assert.equal(rewriteSpmtNamespaceCommand('spmt points'), '!points');
   assert.equal(rewriteSpmtNamespaceCommand('@spmt !pack'), '!pack');
-  assert.equal(rewriteSpmtNamespaceCommand('Athena, how are you?'), null);
+  assert.equal(rewriteSpmtNamespaceCommand('NovaBot, how are you?'), null);
 });
 
-test('formats shared live-member data without tenant credentials', async () => {
-  const reply = await runOpenBotCommand('live-members', async () => new Response(JSON.stringify({
-    liveMembers: [
-      { twitchDisplayName: 'StreamerOne' },
-      { twitchUsername: 'streamer_two' },
-    ],
-  }), { status: 200, headers: { 'content-type': 'application/json' } }));
+test('formats canonical SPMT live-member data without service secrets', async () => {
+  const reply = await runOpenBotCommand('live-members', async (input) => {
+    assert.match(String(input), /spmt\.live\/api\/community\/shoutouts/);
+    return new Response(JSON.stringify({
+      shoutouts: [
+        { twitchDisplayName: 'StreamerOne', isLive: true },
+        { twitchUsername: 'streamer_two', isLive: true },
+        { twitchUsername: 'offline_user', isLive: false },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
 
   assert.equal(reply, '🟢 2 live: StreamerOne, streamer_two.');
 });
 
-test('falls back to the public Chat Tag roster and Twitch lookup when the protected aggregate is unavailable', async () => {
+test('falls back to public ChatTag roster and Twitch lookup when SPMT live feed is unavailable', async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
 
-    if (url.endsWith('/api/discord/live-members')) {
-      return new Response(JSON.stringify({ error: 'authentication required' }), { status: 401 });
+    if (url.includes('/api/community/shoutouts')) {
+      return new Response(JSON.stringify({ error: 'temporarily unavailable' }), { status: 503 });
     }
     if (url.endsWith('/api/tag')) {
       return new Response(JSON.stringify({
@@ -82,44 +85,36 @@ test('falls back to the public Chat Tag roster and Twitch lookup when the protec
   const reply = await runOpenBotCommand('live-members', fetcher as typeof fetch);
   assert.equal(reply, '🟢 1 live: Streamer One.');
   assert.equal(calls.some((call) => call.url.endsWith('/api/twitch/live')), true);
+  assert.equal(calls.some((call) => new Headers(call.init?.headers).has('x-bot-secret')), false);
 });
 
-test('uses a configured Chat Tag shared secret for the protected live aggregate', async () => {
-  const previous = process.env.CHAT_TAG_BOT_SECRET;
-  process.env.CHAT_TAG_BOT_SECRET = 'test-chat-tag-secret';
-  try {
-    const reply = await runOpenBotCommand('live-members', async (_input, init) => {
-      const headers = new Headers(init?.headers);
-      assert.equal(headers.get('x-bot-secret'), 'test-chat-tag-secret');
-      return new Response(JSON.stringify({ liveMembers: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-    assert.equal(reply, 'Nobody in the SpaceMountain community is live right now.');
-  } finally {
-    if (previous === undefined) delete process.env.CHAT_TAG_BOT_SECRET;
-    else process.env.CHAT_TAG_BOT_SECRET = previous;
-  }
+test('uses SPMT integration state for current IT without service-secret headers', async () => {
+  const reply = await runOpenBotCommand('chat-tag-current', async (input, init) => {
+    assert.match(String(input), /spmt\.live\/api\/integrations\/chat-tag\/state/);
+    assert.equal(new Headers(init?.headers).has('x-bot-secret'), false);
+    return new Response(JSON.stringify({
+      currentIt: 'captain',
+      players: [{ twitchUsername: 'captain', isIt: true, isActive: true, score: 50 }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  assert.equal(reply, '🏷️ captain is currently IT in ChatTag.');
 });
 
-test('uses MountainView-style AI inference when wording is not an exact match', async () => {
+test('uses shared local-first AI inference when wording is not an exact match', async () => {
   const command = await detectOpenBotCommandWithAi(
-    'Athena, can you see which of our people are broadcasting tonight?',
+    'NovaBot, can you see which of our people are broadcasting tonight?',
     'tenant-a',
     async () => 'live-members',
   );
-
   assert.equal(command, 'live-members');
 });
 
 test('keeps ordinary conversation out of the action layer', async () => {
   const command = await detectOpenBotCommandWithAi(
-    'Athena, how has your evening been?',
+    'NovaBot, how has your evening been?',
     'tenant-a',
     async () => 'none',
   );
-
   assert.equal(command, null);
 });
 
@@ -129,7 +124,6 @@ test('accepts an unambiguous action id prefix when the provider truncates output
     'tenant-a',
     async () => 'live-',
   );
-
   assert.equal(command, 'live-members');
 });
 
