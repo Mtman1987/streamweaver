@@ -82,6 +82,16 @@ function extractImageBase64(payload: any): string {
   return String(payload?.result?.image || payload?.image || payload?.result?.data?.image || '').trim();
 }
 
+function imageDataUri(base64: string): string {
+  const bytes = Buffer.from(base64, 'base64');
+  const mime = bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    ? 'image/png'
+    : bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      ? 'image/jpeg'
+      : 'image/png';
+  return `data:${mime};base64,${base64}`;
+}
+
 async function callCloudflare(
   accountId: string,
   token: string,
@@ -104,7 +114,8 @@ async function callCloudflare(
     const guidance = Number(options.providerParams?.cfg || options.providerParams?.guidance || 0);
     if (Number.isFinite(guidance) && guidance > 0) form.set('guidance', String(guidance));
     references.slice(0, 4).forEach((bytes, index) => {
-      form.set(`input_image_${index}`, new Blob([bytes], { type: 'image/png' }), `reference-${index}.png`);
+      const view = Uint8Array.from(bytes);
+      form.set(`input_image_${index}`, new Blob([view], { type: 'image/png' }), `reference-${index}.png`);
     });
     response = await fetch(url, {
       method: 'POST',
@@ -113,11 +124,7 @@ async function callCloudflare(
       signal: AbortSignal.timeout(180000),
     });
   } else {
-    const payload: Record<string, unknown> = {
-      prompt: options.prompt,
-      width,
-      height,
-    };
+    const payload: Record<string, unknown> = { prompt: options.prompt, width, height };
     if (seed > 0) payload.seed = seed;
     const steps = Math.floor(Number(options.providerParams?.steps || 0));
     if (model.includes('flux-1-schnell')) {
@@ -144,7 +151,7 @@ async function callCloudflare(
   }
   const image = extractImageBase64(data);
   if (!image) throw new Error('Cloudflare Workers AI returned no image');
-  return `data:image/png;base64,${image}`;
+  return imageDataUri(image);
 }
 
 export async function generateImageWithCloudflare(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
@@ -173,12 +180,6 @@ export async function generateImageWithCloudflare(options: ImageGenerationOption
     image: images[0],
     images,
     imageResourceUrls: images,
-    raw: {
-      provider: 'cloudflare',
-      model,
-      count: images.length,
-      referenceCount: references.length,
-      scope,
-    },
+    raw: { provider: 'cloudflare', model, count: images.length, referenceCount: references.length, scope },
   };
 }
