@@ -23,7 +23,7 @@ export function buildRuntimeSystemIdentity(systemIdentity: string, additionalPol
 
 const ADULT_MODE_CONFLICT = /\b(?:family[- ]friendly|family[- ]safe|safe[- ]for[- ]work|sfw|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly|not explicit|not mature|avoid explicit|avoid adult|avoid mature|pg[- ]?1?3?[- ]?rated?|keep.*appropriate|appropriate.*all)\b|\b(?:no|never|avoid|without)\b[^\n]{0,120}\b(?:adult|explicit|mature)\b/i;
 
-export function splitPersonalityPrompt(rawPersonality: string): {
+function splitRawPersonalityPrompt(rawPersonality: string): {
   systemIdentity: string;
   extendedGuidance: string;
 } {
@@ -36,6 +36,22 @@ export function splitPersonalityPrompt(rawPersonality: string): {
   return {
     systemIdentity: raw.slice(0, splitIndex).trim(),
     extendedGuidance: raw.slice(splitIndex).replace(/^\n---\n?/, '').trim(),
+  };
+}
+
+/**
+ * Compile a stored tenant personality for runtime use. The stored text remains
+ * untouched, while the latest global behavior policy is appended at system
+ * priority so existing tenants benefit from prompt-quality improvements.
+ */
+export function splitPersonalityPrompt(rawPersonality: string): {
+  systemIdentity: string;
+  extendedGuidance: string;
+} {
+  const parts = splitRawPersonalityPrompt(rawPersonality);
+  return {
+    systemIdentity: buildRuntimeSystemIdentity(parts.systemIdentity),
+    extendedGuidance: parts.extendedGuidance,
   };
 }
 
@@ -67,10 +83,15 @@ export function buildPersonalityPrompt(rawPersonality: string, adultMode = false
   systemIdentity: string;
   extendedGuidance: string;
 } {
-  const parts = splitPersonalityPrompt(rawPersonality);
-  if (!adultMode) return parts;
+  const parts = splitRawPersonalityPrompt(rawPersonality);
+  const systemIdentity = adultMode
+    ? filterAdultModePersonalitySection(parts.systemIdentity)
+    : parts.systemIdentity;
+  const extendedGuidance = adultMode
+    ? filterAdultModePersonalitySection(parts.extendedGuidance)
+    : parts.extendedGuidance;
   return {
-    systemIdentity: filterAdultModePersonalitySection(parts.systemIdentity),
-    extendedGuidance: filterAdultModePersonalitySection(parts.extendedGuidance),
+    systemIdentity: buildRuntimeSystemIdentity(systemIdentity),
+    extendedGuidance,
   };
 }
