@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { tenantPath } from '@/lib/tenant';
 
 export type GenerationSettings = {
-  mode: 'eden' | 'seaart' | 'perchance' | 'pollinations';
+  mode: 'cloudflare' | 'eden' | 'seaart' | 'perchance' | 'pollinations';
   publicImageAccess: 'everyone' | 'mods' | 'off';
   publicContentModeration: boolean;
   privateContentModeration: boolean;
@@ -51,7 +51,7 @@ export const IMAGE_PROMPT_TEMPLATES: Record<string, string> = {
 export const DEFAULT_IMAGE_PROMPT_TEMPLATE = IMAGE_PROMPT_TEMPLATES.general;
 
 const defaults: GenerationSettings = {
-  mode: 'eden',
+  mode: 'cloudflare',
   publicImageAccess: 'everyone',
   publicContentModeration: true,
   privateContentModeration: false,
@@ -79,7 +79,11 @@ export function getDefaultGenerationSettings(): GenerationSettings {
 }
 
 function sanitize(input: Partial<GenerationSettings>): GenerationSettings {
-  const mode = input.mode === 'seaart' || input.mode === 'perchance' || input.mode === 'pollinations' ? input.mode : 'eden';
+  const mode = input.mode === 'cloudflare' || input.mode === 'seaart' || input.mode === 'perchance' || input.mode === 'pollinations'
+    ? input.mode
+    : input.mode === 'eden'
+      ? 'eden'
+      : defaults.mode;
   const publicImageAccess = input.publicImageAccess === 'mods' || input.publicImageAccess === 'off'
     ? input.publicImageAccess
     : 'everyone';

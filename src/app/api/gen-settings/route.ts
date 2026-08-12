@@ -6,7 +6,7 @@ import { setGenMode } from '@/lib/gen-mode-store';
 import { z } from 'zod';
 
 const schema = z.object({
-  mode: z.enum(['eden', 'seaart', 'perchance', 'pollinations']).optional(),
+  mode: z.enum(['cloudflare', 'eden', 'seaart', 'perchance', 'pollinations']).optional(),
   publicImageAccess: z.enum(['everyone', 'mods', 'off']).optional(),
   publicContentModeration: z.coerce.boolean().optional(),
   privateContentModeration: z.coerce.boolean().optional(),

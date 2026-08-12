@@ -2,13 +2,51 @@ export type GenerationCatalogItem = {
   id: string;
   name: string;
   description: string;
-  provider?: 'eden' | 'seaart' | 'perchance' | 'pollinations';
+  provider?: 'cloudflare' | 'eden' | 'seaart' | 'perchance' | 'pollinations';
   model?: string;
   previewImages?: string[];
   recommended?: string;
 };
 
 export const generationModels: GenerationCatalogItem[] = [
+  {
+    id: 'cloudflare-flux2-klein-4b',
+    name: 'Cloudflare FLUX.2 Klein 4B',
+    description: 'Fast low-cost default with up to four visual reference images; ideal for Quackverse family/style matching.',
+    provider: 'cloudflare',
+    model: '@cf/black-forest-labs/flux-2-klein-4b',
+    recommended: 'Default / free-tier friendly',
+  },
+  {
+    id: 'cloudflare-flux1-schnell',
+    name: 'Cloudflare FLUX.1 Schnell',
+    description: 'Very fast general text-to-image option for drafts and inexpensive public generations.',
+    provider: 'cloudflare',
+    model: '@cf/black-forest-labs/flux-1-schnell',
+    recommended: 'Fast drafts',
+  },
+  {
+    id: 'cloudflare-lucid-origin',
+    name: 'Cloudflare Lucid Origin',
+    description: 'Leonardo model for polished illustration and stronger prompt following when a premium Cloudflare model is desired.',
+    provider: 'cloudflare',
+    model: '@cf/leonardo/lucid-origin',
+  },
+  {
+    id: 'cloudflare-phoenix',
+    name: 'Cloudflare Phoenix 1.0',
+    description: 'Leonardo model aimed at high prompt adherence and visual quality.',
+    provider: 'cloudflare',
+    model: '@cf/leonardo/phoenix-1.0',
+  },
+  {
+    id: 'cloudflare-flux2-klein-9b-private',
+    name: 'Cloudflare FLUX.2 Klein 9B (private)',
+    description: 'Larger Klein profile available only to private-scope generation in StreamWeaver. Check its model license before commercial use.',
+    provider: 'cloudflare',
+    model: '@cf/black-forest-labs/flux-2-klein-9b',
+    recommended: 'Private/high-quality experiments',
+  },
   {
     id: 'eden-leonardo-sdxl',
     name: 'Leonardo SDXL 0.9',
@@ -67,19 +105,19 @@ export const generationLoras: GenerationCatalogItem[] = [
   {
     id: 'cinematic-lighting',
     name: 'Cinematic Lighting',
-    description: 'Adds stronger contrast and dramatic light shaping.',
-    recommended: 'Strength 0.5 - 0.9',
+    description: 'Style preset for providers/backends that support image LoRAs. Cloudflare Workers AI image endpoints do not currently consume these LoRA slots.',
+    recommended: 'Future ComfyUI / supported provider',
   },
   {
     id: 'soft-anime-v2',
     name: 'Soft Anime V2',
-    description: 'Softens linework and increases pastel rendering in anime outputs.',
-    recommended: 'Strength 0.6 - 0.8',
+    description: 'Anime-style LoRA slot kept for SeaArt or the future local ComfyUI backend, not Cloudflare image generation.',
+    recommended: 'Future ComfyUI / SeaArt',
   },
   {
     id: 'portrait-detail-boost',
     name: 'Portrait Detail Boost',
-    description: 'Improves face/eye detail for close portrait prompts.',
-    recommended: 'Strength 0.4 - 0.7',
+    description: 'Portrait-detail LoRA slot for image backends that explicitly support LoRA loading.',
+    recommended: 'Future ComfyUI / supported provider',
   },
 ];
