@@ -17,13 +17,19 @@ export async function GET(request: NextRequest) {
 
   const [settings, legacyMode] = await Promise.all([
     readGenerationSettings(tenantId).catch(() => null),
-    getGenMode(tenantId).catch(() => 'eden' as const),
+    getGenMode(tenantId).catch(() => 'cloudflare' as const),
   ]);
   const activeMode = settings?.mode || legacyMode;
 
   const config = readUserConfigSync(tenantId);
+  const cloudflareReady = Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN);
 
   const providers: ProviderStatus[] = [
+    {
+      name: 'cloudflare',
+      configured: cloudflareReady,
+      ...(!cloudflareReady ? { reason: 'CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN not set; requests fall back to Pollinations' } : {}),
+    },
     {
       name: 'eden',
       configured: !!(config.EDENAI_API_KEY || process.env.EDENAI_API_KEY),
