@@ -112,7 +112,7 @@ test('every public control action requires the owning signed-in tenant before GI
   assert.match(source, /session\?\.tenantId === tenantId/);
   const authGateIndex = source.indexOf('if (!requireOwningTenant(request, control.tenantId))');
   const gifIndex = source.indexOf("if (action === 'gif')");
-  const ttsIndex = source.indexOf('generatePublicAudio');
+  const ttsIndex = source.indexOf('const audioDataUris = await generatePublicAudio');
   assert.ok(authGateIndex >= 0);
   assert.ok(gifIndex > authGateIndex);
   assert.ok(ttsIndex > authGateIndex);
