@@ -34,21 +34,26 @@ export async function GET(request: NextRequest) {
       // Keep this legacy Public read only for existing SDK/theme compatibility.
       // StreamWeaver no longer renders these widgets itself.
       fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store', signal }),
-      fetch(`${SPMT_BASE_URL}/api/tenant-scene?output=personal`, { headers, cache: 'no-store', signal }),
+      // Public tenant metadata supplies the clean copy/paste output URL pair.
+      fetch(`${SPMT_BASE_URL}/api/tenant-scene?output=public`, { headers, cache: 'no-store', signal }),
+      // The Personal launch route supplies the scoped renderer URL that does not
+      // depend on a third-party SPMT cookie once it is inside the app shell.
+      fetch(`${SPMT_BASE_URL}/api/personal-overlay-launch`, { headers, cache: 'no-store', signal }),
     ]);
   };
-  let [profileResponse, overlayResponse, tenantResponse] = await loadWorkspace(token);
+  let [profileResponse, overlayResponse, tenantResponse, personalLaunchResponse] = await loadWorkspace(token);
   if (profileResponse.status === 401 || profileResponse.status === 403) {
     refreshed = await refreshSpmtConnection(request);
     if (refreshed) {
       token = refreshed.accessToken;
-      [profileResponse, overlayResponse, tenantResponse] = await loadWorkspace(token);
+      [profileResponse, overlayResponse, tenantResponse, personalLaunchResponse] = await loadWorkspace(token);
     }
   }
-  const [payload, overlayPayload, tenantPayload] = await Promise.all([
+  const [payload, overlayPayload, tenantPayload, personalLaunchPayload] = await Promise.all([
     profileResponse.json().catch(() => null),
     overlayResponse.json().catch(() => null),
     tenantResponse.json().catch(() => null),
+    personalLaunchResponse.json().catch(() => null),
   ]);
   if (!profileResponse.ok || !payload?.profile) {
     const expired = profileResponse.status === 401 || profileResponse.status === 403;
@@ -60,15 +65,20 @@ export async function GET(request: NextRequest) {
     return errorResponse;
   }
 
-  const tenant = tenantResponse.ok ? String(tenantPayload?.tenant || '') : '';
+  const tenant = tenantResponse.ok
+    ? String(tenantPayload?.tenant || '')
+    : (personalLaunchResponse.ok ? String(personalLaunchPayload?.tenant || '') : '');
   const tenantOutputs = tenantResponse.ok && tenantPayload?.urls ? tenantPayload.urls : null;
+  const personalOverlayUrl = personalLaunchResponse.ok && typeof personalLaunchPayload?.url === 'string'
+    ? personalLaunchPayload.url
+    : '';
   const response = NextResponse.json({
     tokens: workspaceThemeTokens(payload.profile, 'streamweaver', overlayResponse.ok ? overlayPayload?.layout || null : null),
     revision: payload.profile.revision,
     updatedAt: payload.profile.updatedAt,
     tenant: tenant || null,
     tenantOutputs,
-    personalOverlayUrl: tenant ? `/tenant/${encodeURIComponent(tenant)}/personal` : null,
+    personalOverlayUrl: personalOverlayUrl || null,
     connection: {
       status: 'connected',
       renewable: Boolean(request.cookies.get('streamweaver-spmt-refresh')?.value || refreshed),
