@@ -18,9 +18,21 @@ test('shared workspace footer survives a disconnected SPMT bridge', () => {
   assert.match(host, /\/auth\/spmt\/start\?next=/);
 });
 
-test('saved overlay positions use canonical percentage coordinates', () => {
-  assert.match(host, /left:\s*`\$\{Number\(widget\.x \|\| 0\)\}%`/);
-  assert.match(host, /top:\s*`\$\{Number\(widget\.y \|\| 0\)\}%`/);
+test('shared shell consumes one canonical Personal overlay instead of positioning widgets itself', () => {
+  assert.match(host, /data-canonical-personal-overlay="true"/);
+  assert.match(host, /src=\{personalOverlayUrl\}/);
+  assert.doesNotMatch(host, /widgets\.map\(/);
+  assert.doesNotMatch(host, /overlay\.widgets/);
+  assert.match(host, /Personal overlay \{personalOverlayVisible \? 'On' : 'Off'\}/);
+  assert.match(host, /Copy Public URL/);
+  assert.match(host, /Copy Personal URL/);
+});
+
+test('workspace footer has an out-of-band restore path independent of Personal overlay state', () => {
+  assert.match(host, /event\.altKey && event\.shiftKey && event\.key\.toLowerCase\(\) === 'f'/);
+  assert.match(host, /footerVisible \? <aside/);
+  assert.match(host, /personalOverlayVisible && personalOverlayUrl/);
+  assert.doesNotMatch(host, /onClick=\{[^}]*setFooterVisible\(false\)/);
 });
 
 test('desktop sidebar has a working collapse trigger and rail', () => {

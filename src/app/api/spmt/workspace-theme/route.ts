@@ -31,20 +31,24 @@ export async function GET(request: NextRequest) {
       : undefined;
     return Promise.all([
       fetch(`${SPMT_BASE_URL}/api/workspace-profile`, { headers, cache: 'no-store', signal }),
+      // Keep this legacy Public read only for existing SDK/theme compatibility.
+      // StreamWeaver no longer renders these widgets itself.
       fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store', signal }),
+      fetch(`${SPMT_BASE_URL}/api/tenant-scene?output=personal`, { headers, cache: 'no-store', signal }),
     ]);
   };
-  let [profileResponse, overlayResponse] = await loadWorkspace(token);
+  let [profileResponse, overlayResponse, tenantResponse] = await loadWorkspace(token);
   if (profileResponse.status === 401 || profileResponse.status === 403) {
     refreshed = await refreshSpmtConnection(request);
     if (refreshed) {
       token = refreshed.accessToken;
-      [profileResponse, overlayResponse] = await loadWorkspace(token);
+      [profileResponse, overlayResponse, tenantResponse] = await loadWorkspace(token);
     }
   }
-  const [payload, overlayPayload] = await Promise.all([
+  const [payload, overlayPayload, tenantPayload] = await Promise.all([
     profileResponse.json().catch(() => null),
     overlayResponse.json().catch(() => null),
+    tenantResponse.json().catch(() => null),
   ]);
   if (!profileResponse.ok || !payload?.profile) {
     const expired = profileResponse.status === 401 || profileResponse.status === 403;
@@ -56,10 +60,15 @@ export async function GET(request: NextRequest) {
     return errorResponse;
   }
 
+  const tenant = tenantResponse.ok ? String(tenantPayload?.tenant || '') : '';
+  const tenantOutputs = tenantResponse.ok && tenantPayload?.urls ? tenantPayload.urls : null;
   const response = NextResponse.json({
     tokens: workspaceThemeTokens(payload.profile, 'streamweaver', overlayResponse.ok ? overlayPayload?.layout || null : null),
     revision: payload.profile.revision,
     updatedAt: payload.profile.updatedAt,
+    tenant: tenant || null,
+    tenantOutputs,
+    personalOverlayUrl: tenant ? `/tenant/${encodeURIComponent(tenant)}/personal` : null,
     connection: {
       status: 'connected',
       renewable: Boolean(request.cookies.get('streamweaver-spmt-refresh')?.value || refreshed),
