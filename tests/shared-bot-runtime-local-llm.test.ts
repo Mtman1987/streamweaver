@@ -103,12 +103,18 @@ test('private chat can see recent public context while public chat remains blind
   assert.doesNotMatch(publicSource, /readPrivateChatMessages/);
 });
 
-test('public destructive controls require the owning signed-in tenant', () => {
+test('every public control action requires the owning signed-in tenant before GIF mutation or paid TTS', () => {
   const source = readFileSync(
     new URL('../src/app/api/discord/control/route.ts', import.meta.url),
     'utf8',
   );
   assert.match(source, /getTenantFromRequest/);
   assert.match(source, /session\?\.tenantId === tenantId/);
-  assert.match(source, /Only the signed-in tenant that owns this bot can delete/);
+  const authGateIndex = source.indexOf('if (!requireOwningTenant(request, control.tenantId))');
+  const gifIndex = source.indexOf("if (action === 'gif')");
+  const ttsIndex = source.indexOf('generatePublicAudio');
+  assert.ok(authGateIndex >= 0);
+  assert.ok(gifIndex > authGateIndex);
+  assert.ok(ttsIndex > authGateIndex);
+  assert.match(source, /repeatedly trigger paid TTS synthesis/);
 });
