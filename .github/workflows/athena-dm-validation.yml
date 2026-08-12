@@ -21,8 +21,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run shared command tests
-        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/shared-bot-runtime-local-llm.test.ts
+      - name: Run shared command and AI-provider tests
+        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/shared-bot-runtime-local-llm.test.ts tests/shared-ai-provider-routing.test.ts
       - name: Run shared workspace shell regression
         run: node --import tsx --test tests/spmt-workspace-shell.test.ts
       - name: Run private Qwen, personality, media, emoji-control, TTS, gallery, and model tests
