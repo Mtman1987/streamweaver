@@ -9,9 +9,9 @@ import {
 } from './discord-branding';
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
 import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from './discord-message-cleanup';
-import { sendWebhookMessage } from './discord-webhooks';
+import { editWebhookMessage, sendWebhookMessage } from './discord-webhooks';
 import { getTwitchUser } from './twitch';
-import { attachPrivateDmControls } from './private-dm-controls';
+import { attachPrivateDmControls, attachPublicDiscordControls } from './private-dm-controls';
 import { listPrivateGeneratedImageUrls } from './private-image-library';
 import { registerPrivateImageCarousel } from './private-image-carousel';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
@@ -145,9 +145,7 @@ export async function resolveStructuredDiscordReplySpeaker(input: {
 async function resolveTenantOwnerBranding(
   tenantId: string | undefined,
 ): Promise<{ name: string; logo: string }> {
-  if (!tenantId) {
-    return { name: 'SpaceMountain.live', logo: SPACEMOUNTAIN_FALLBACK_LOGO };
-  }
+  if (!tenantId) return { name: 'SpaceMountain.live', logo: SPACEMOUNTAIN_FALLBACK_LOGO };
 
   const tokens = await getStoredTokens(tenantId).catch(() => null) as Record<string, unknown> | null;
   const ownerName = String(
@@ -238,10 +236,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     icon_url: firstUrl(owner.logo, SPACEMOUNTAIN_FALLBACK_LOGO),
   };
   embed.thumbnail = { url: firstUrl(effectiveInput.thumbnailUrl, botAvatar, SPACEMOUNTAIN_FALLBACK_LOGO) };
-  embed.footer = {
-    ...embed.footer,
-    icon_url: requesterLogo,
-  };
+  embed.footer = { ...embed.footer, icon_url: requesterLogo };
 
   return {
     content: '',
@@ -253,6 +248,31 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     deleteAt,
     speaker,
   };
+}
+
+async function finalizePublicControls(input: {
+  channelId: string;
+  messageId: string;
+  tenantId: string;
+  embeds: Record<string, unknown>[];
+}): Promise<void> {
+  const controlledEmbeds = attachPublicDiscordControls(input.embeds, {
+    channelId: input.channelId,
+    messageId: input.messageId,
+    tenantId: input.tenantId,
+    gifVisible: false,
+  });
+
+  try {
+    await editDiscordMessage(input.channelId, input.messageId, { embeds: controlledEmbeds });
+    return;
+  } catch {
+    // Tenant-branded public replies normally use Discord webhooks.
+  }
+
+  if (!await editWebhookMessage(input.channelId, input.messageId, { embeds: controlledEmbeds })) {
+    throw new Error('Could not attach public Discord controls to the reply.');
+  }
 }
 
 export async function sendStructuredDiscordReply(input: StructuredDiscordReplyInput): Promise<{ messageId?: string; deleteAt: string; speaker: DiscordReplySpeaker }> {
@@ -317,9 +337,19 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
         ...(replyInput.components?.length ? { components: replyInput.components } : {}),
       });
     } catch (error) {
-      // Never suppress the actual DM response because the optional icon strip
-      // could not be attached. The reply itself remains usable.
       console.warn('[Discord Reply] Failed to attach private emoji controls:', error);
+    }
+  } else if (sentId) {
+    const controlTenantId = speaker.tenantId || replyInput.tenantId;
+    if (controlTenantId) {
+      await finalizePublicControls({
+        channelId: replyInput.channelId,
+        messageId: sentId,
+        tenantId: controlTenantId,
+        embeds: payload.embeds,
+      }).catch((error) => {
+        console.warn('[Discord Reply] Failed to attach public emoji controls:', error);
+      });
     }
   }
 

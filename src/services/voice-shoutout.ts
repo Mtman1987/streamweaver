@@ -18,7 +18,7 @@ export async function handleVoiceShoutout(spokenName: string, tenantId?: string)
         return;
     }
     
-    const matchedUsername = await matchShoutoutTarget(spokenName, chatters);
+    const matchedUsername = await matchShoutoutTarget(spokenName, chatters, tenantId);
     
     if (!matchedUsername) {
         console.log(`[VoiceShoutout] Matching failed for "${spokenName}"`);

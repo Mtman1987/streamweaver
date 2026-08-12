@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  parsePrivateDmControlAction,
-  verifyPrivateDmControlToken,
+  parseDiscordMessageControlAction,
+  verifyDiscordMessageControlToken,
 } from '@/services/private-dm-controls';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 
@@ -15,7 +15,7 @@ function htmlResponse(body: string, status = 200): NextResponse {
       'Cache-Control': 'no-store, max-age=0',
       'Referrer-Policy': 'no-referrer',
       'X-Frame-Options': 'DENY',
-      'Content-Security-Policy': "default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      'Content-Security-Policy': "default-src 'none'; connect-src 'self'; media-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     },
   });
 }
@@ -23,23 +23,25 @@ function htmlResponse(body: string, status = 200): NextResponse {
 function renderError(message: string): string {
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Private control unavailable</title></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Discord control unavailable</title></head>
 <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#090b12;color:#f4f6ff;font-family:system-ui,sans-serif">
   <main style="max-width:34rem;padding:2rem;text-align:center">
     <div style="font-size:3rem">🔒</div>
-    <h1 style="font-size:1.2rem">Private control unavailable</h1>
+    <h1 style="font-size:1.2rem">Discord control unavailable</h1>
     <p style="color:#b7bdd1;line-height:1.5">${message}</p>
   </main>
 </body>
 </html>`;
 }
 
-function renderControlPage(token: string, action: 'gif' | 'adult' | 'delete'): string {
-  const icon = action === 'gif' ? '🖼️' : action === 'adult' ? '🔞' : '🗑️';
-  const title = action === 'gif' ? 'Private GIF' : action === 'adult' ? 'Adult Mode' : 'Delete private message';
+function renderControlPage(token: string, action: 'gif' | 'tts' | 'delete'): string {
+  const icon = action === 'gif' ? '🖼️' : action === 'tts' ? '🔊' : '🗑️';
+  const title = action === 'gif' ? 'Public GIF' : action === 'tts' ? 'Public TTS' : 'Delete public reply';
   const initialStatus = action === 'delete'
-    ? 'Tap the trash can again to delete this exact Discord message.'
-    : 'Working…';
+    ? 'Only the signed-in owner of this bot can delete this public reply. Tap the trash can again to continue.'
+    : action === 'tts'
+      ? 'Generating audio…'
+      : 'Updating Discord…';
   const tokenLiteral = JSON.stringify(token);
   const actionLiteral = JSON.stringify(action);
 
@@ -66,18 +68,33 @@ function renderControlPage(token: string, action: 'gif' | 'adult' | 'delete'): s
       status.textContent = String(message || 'Done. Return to Discord.');
     }
 
+    async function playAll(items) {
+      for (const item of Array.isArray(items) ? items : []) {
+        await new Promise((resolve, reject) => {
+          const audio = new Audio(item);
+          audio.addEventListener('ended', resolve, { once: true });
+          audio.addEventListener('error', reject, { once: true });
+          audio.play().catch(reject);
+        });
+      }
+    }
+
     async function run() {
       try {
-        const response = await fetch('/api/private-chat/control', {
+        const response = await fetch('/api/discord/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           cache: 'no-store',
           body: JSON.stringify({ token, action }),
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok || data.ok === false) throw new Error(data.error || 'The private action failed.');
-        setStatus(data.message || 'Done. Return to Discord.');
-        window.setTimeout(() => { try { window.close(); } catch {} }, 900);
+        const payload = data.data || data;
+        if (!response.ok || data.ok === false) throw new Error(data.error || payload.error || 'The Discord action failed.');
+        setStatus(payload.message || 'Done. Return to Discord.');
+        if (action === 'tts' && Array.isArray(payload.audioDataUris) && payload.audioDataUris.length) {
+          await playAll(payload.audioDataUris);
+        }
+        if (action !== 'tts') window.setTimeout(() => { try { window.close(); } catch {} }, 900);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : String(error));
       }
@@ -101,21 +118,14 @@ function renderControlPage(token: string, action: 'gif' | 'adult' | 'delete'): s
 
 export async function GET(request: NextRequest) {
   const token = String(request.nextUrl.searchParams.get('k') || '').trim();
-  const action = parsePrivateDmControlAction(request.nextUrl.searchParams.get('a'));
-  const control = verifyPrivateDmControlToken(token);
-  if (!control || !action) {
-    return htmlResponse(renderError('This link is invalid or expired. Open a newer private bot reply and use its icon strip.'), 401);
+  const action = parseDiscordMessageControlAction(request.nextUrl.searchParams.get('a'));
+  const control = verifyDiscordMessageControlToken(token);
+  if (!control || control.scope !== 'public' || !action || action === 'adult') {
+    return htmlResponse(renderError('This link is invalid or expired. Open a newer public bot reply and use its control strip.'), 401);
   }
 
   if (action === 'settings') {
-    const settingsUrl = new URL('/private-chat', getConfiguredAppUrl());
-    return NextResponse.redirect(settingsUrl);
-  }
-
-  if (action === 'tts') {
-    const playerUrl = new URL('/private-chat/tts', getConfiguredAppUrl());
-    playerUrl.searchParams.set('k', token);
-    return NextResponse.redirect(playerUrl);
+    return NextResponse.redirect(new URL('/bot-functions', getConfiguredAppUrl()));
   }
 
   return htmlResponse(renderControlPage(token, action));

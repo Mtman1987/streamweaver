@@ -1,4 +1,4 @@
-const EDEN_MODEL = 'google/gemini-2.5-flash';
+import { generateAIResponse } from '@/services/ai-provider';
 
 export function extractShoutoutRequestTarget(message: string): string | null {
   const input = String(message || '').trim();
@@ -36,15 +36,12 @@ function scoreLocalMatch(spokenName: string, candidate: string): number {
   if (normalizedCandidate.includes(spoken) || spoken.includes(normalizedCandidate)) return 750;
 
   const sharedPrefix = [...spoken].findIndex((char, index) => normalizedCandidate[index] !== char);
-  if (sharedPrefix > 0) {
-    return 300 + sharedPrefix;
-  }
+  if (sharedPrefix > 0) return 300 + sharedPrefix;
 
   let overlap = 0;
   for (const char of new Set(spoken)) {
     if (normalizedCandidate.includes(char)) overlap++;
   }
-
   return overlap * 10;
 }
 
@@ -59,9 +56,8 @@ function pickLocalMatch(spokenName: string, chatters: string[]): string | null {
   return scored[0].candidate;
 }
 
-async function pickEdenMatch(spokenName: string, chatters: string[]): Promise<string | null> {
-  const apiKey = process.env.EDENAI_API_KEY;
-  if (!apiKey || chatters.length === 0) return null;
+async function pickAiMatch(spokenName: string, chatters: string[], tenantId?: string): Promise<string | null> {
+  if (chatters.length === 0) return null;
 
   const prompt = [
     `Someone said "${spokenName}" in chat.`,
@@ -71,43 +67,26 @@ async function pickEdenMatch(spokenName: string, chatters: string[]): Promise<st
   ].join('\n');
 
   try {
-    const response = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: EDEN_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: 'You match spoken usernames to a known list. Return only the exact username or none.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      console.warn('[ShoutoutMatcher] EdenAI match failed:', response.status, await response.text().catch(() => ''));
-      return null;
-    }
-
-    const data = await response.json().catch(() => null);
-    const rawMatch = String(data?.choices?.[0]?.message?.content || '').trim().toLowerCase();
-    const match = normalizeName(rawMatch);
+    const raw = await generateAIResponse(
+      prompt,
+      'You match spoken usernames to a known list. Return only the exact username or none.',
+      tenantId,
+      { maxTokens: 48, temperature: 0 },
+    );
+    const match = normalizeName(raw);
     if (!match || match === 'none') return null;
-
     return chatters.find((candidate) => normalizeName(candidate) === match) || null;
   } catch (error) {
-    console.warn('[ShoutoutMatcher] EdenAI match error:', error);
+    console.warn('[ShoutoutMatcher] Shared AI match error:', error);
     return null;
   }
 }
 
-export async function matchShoutoutTarget(spokenName: string, chatters: string[]): Promise<string | null> {
+export async function matchShoutoutTarget(
+  spokenName: string,
+  chatters: string[],
+  tenantId?: string,
+): Promise<string | null> {
   const normalizedChatters = chatters
     .map((candidate) => candidate.trim())
     .filter(Boolean);
@@ -117,8 +96,8 @@ export async function matchShoutoutTarget(spokenName: string, chatters: string[]
   const localMatch = pickLocalMatch(spokenName, normalizedChatters);
   if (localMatch) return localMatch;
 
-  const edenMatch = await pickEdenMatch(spokenName, normalizedChatters);
-  if (edenMatch) return edenMatch;
+  const aiMatch = await pickAiMatch(spokenName, normalizedChatters, tenantId);
+  if (aiMatch) return aiMatch;
 
   return pickLocalMatch(spokenName, normalizedChatters);
 }

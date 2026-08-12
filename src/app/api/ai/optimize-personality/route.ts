@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
+import { getTenantFromRequest } from '@/lib/tenant-context';
+import { generateAIResponse } from '@/services/ai-provider';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -62,48 +64,27 @@ export async function POST(req: NextRequest) {
 
     const { personality, botName } = parsed.data;
     const name = botName || 'AI Bot';
-
-    const edenaiKey = process.env.EDENAI_API_KEY;
-    if (!edenaiKey) {
-      return apiError('Server missing AI API key', { status: 500, code: 'MISSING_CONFIG' });
-    }
-
+    const tenantId = getTenantFromRequest(req)?.tenantId;
     const userPrompt = `Bot name: ${name}\n\nUser's personality input:\n${personality}\n\nReformat this into the required structure:`;
 
-    const response = await fetch('https://api.edenai.run/v3/llm/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${edenaiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-4o-mini',
-        messages: [
-          { role: 'system', content: STRUCTURE_PROMPT.replace(/\{BOT_NAME\}/g, name) },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 800,
-        temperature: 0.7,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('[optimize-personality] AI error:', response.status, err);
+    let optimized = '';
+    try {
+      optimized = (await generateAIResponse(
+        userPrompt,
+        STRUCTURE_PROMPT.replace(/\{BOT_NAME\}/g, name),
+        tenantId,
+        { maxTokens: 1000, temperature: 0.7 },
+      )).trim();
+    } catch (error) {
+      console.error('[optimize-personality] Shared AI error:', error);
       return apiError('AI optimization failed', { status: 502, code: 'AI_ERROR' });
     }
-
-    const data = await response.json();
-    let optimized = data.choices?.[0]?.message?.content?.trim();
 
     if (!optimized) {
       return apiError('AI returned empty response', { status: 502, code: 'AI_ERROR' });
     }
 
-    // Validate the output has our delimiter — if AI somehow missed it, force it
     if (!optimized.includes('\n---\n') && !optimized.includes('\n---')) {
-      // Try to find the end of MANDATORY lines and insert delimiter
       const lines = optimized.split('\n');
       const mandatoryEnd = lines.findIndex((l: string, i: number) => i > 0 && !l.includes('(MANDATORY)') && lines[i - 1]?.includes('(MANDATORY)'));
       if (mandatoryEnd > 0) {
