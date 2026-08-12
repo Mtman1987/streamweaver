@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
   const action = parsePrivateDmControlAction(request.nextUrl.searchParams.get('a'));
   const control = verifyPrivateDmControlToken(token);
   if (!control || !action) {
-    return htmlResponse(renderError('This link is invalid or expired. Open a newer Athena DM reply and use its icon strip.'), 401);
+    return htmlResponse(renderError('This link is invalid or expired. Open a newer private bot reply and use its icon strip.'), 401);
   }
 
   if (action === 'settings') {
