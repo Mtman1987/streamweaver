@@ -11,7 +11,8 @@ const FOOTER_VISIBILITY_KEY = 'streamweaver:workspace-footer-visible';
 
 type TenantOutputs = { public?: string; personal?: string };
 type SharedSurface = { id?: string; name?: string; path?: string; url?: string };
-type PanelTarget = { kind: 'slot'; id: number } | { kind: 'surface'; id: 'worktray' | 'overlays' | 'settings' };
+type SurfaceId = 'worktray' | 'overlays' | 'settings';
+type PanelTarget = { kind: 'slot'; id: number } | { kind: 'surface'; id: SurfaceId };
 
 const SURFACE_CONTROLS = [
   { id: 'worktray' as const, label: 'Workspace', Icon: LayoutGrid },
@@ -27,7 +28,7 @@ function fallbackSlots(): WorkspaceDockSlotV1[] {
   return ([1, 2, 3] as const).map((id) => ({ id, title: `Slot ${id}`, url: '', collapsed: true, volume: 1, muted: false }));
 }
 
-function canonicalSurfaceUrl(surfaces: SharedSurface[], id: PanelTarget extends { kind: 'surface'; id: infer T } ? T : never, app: string, origin: string) {
+function canonicalSurfaceUrl(surfaces: SharedSurface[], id: SurfaceId, app: string, origin: string) {
   const surface = surfaces.find((item) => item?.id === id);
   const raw = String(surface?.url || surface?.path || '').trim();
   if (!raw) return '';
@@ -136,7 +137,7 @@ export function SpmtWorkspaceHost() {
     if (!connected) { setOpen(true); return; }
     setTarget({ kind: 'slot', id: slot.id }); setOpen(true);
   };
-  const openSurface = (id: 'worktray' | 'overlays' | 'settings') => {
+  const openSurface = (id: SurfaceId) => {
     if (!connected) { setOpen(true); return; }
     setTarget({ kind: 'surface', id }); setOpen(true);
   };
