@@ -31,7 +31,7 @@ patch('main.cjs', (source) => {
 
   if (!source.includes('const trustedWorkspaceOrigins = new Set([')) {
     const newTrust = `const trustedWorkspaceOrigins = new Set([\n  'https://spacemountain.live',\n  'https://spacemountain-live.fly.dev',\n  'https://spmt.live',\n  'https://streamweaver-new.fly.dev'\n]);\n\nfunction trustManagedUrl(value) {\n  try {\n    const parsed = new URL(value);\n    if (parsed.protocol === 'https:') trustedWorkspaceOrigins.add(parsed.origin);\n  } catch {}\n}\n\nfunction isTrustedWorkspaceUrl(value) {\n  try {\n    const parsed = new URL(value);\n    return parsed.protocol === 'https:' && trustedWorkspaceOrigins.has(parsed.origin);\n  } catch {\n    return false;\n  }\n}\n\n`;
-    source = replaceBlock(source, 'function isTrustedWorkspaceUrl(value) {', 'function loadManagedUrl(window, value) {', `${newTrust}function loadManagedUrl(window, value) {`, 'trusted workspace origins');
+    source = replaceBlock(source, 'function isTrustedWorkspaceUrl(value) {', 'function loadManagedUrl(window, value) {', newTrust, 'trusted workspace origins');
   }
 
   const oldShowWorkspace = `function showWorkspace() {\n  const window = ensureWorkspaceWindow();\n  window.show();\n  window.focus();\n  return { visible: true };\n}`;
