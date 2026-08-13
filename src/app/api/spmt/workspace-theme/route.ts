@@ -10,6 +10,14 @@ const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').r
 
 export const dynamic = 'force-dynamic';
 
+function surfaceList(payload: unknown) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { surfaces?: unknown[] }).surfaces)) {
+    return (payload as { surfaces: unknown[] }).surfaces;
+  }
+  return [];
+}
+
 export async function GET(request: NextRequest) {
   let token = request.cookies.get('streamweaver-spmt-token')?.value || '';
   let refreshed: RefreshedSpmtConnection | null = null;
@@ -31,29 +39,24 @@ export async function GET(request: NextRequest) {
       : undefined;
     return Promise.all([
       fetch(`${SPMT_BASE_URL}/api/workspace-profile`, { headers, cache: 'no-store', signal }),
-      // Keep this legacy Public read only for existing SDK/theme compatibility.
-      // StreamWeaver no longer renders these widgets itself.
-      fetch(`${SPMT_BASE_URL}/api/overlay-workspace`, { headers, cache: 'no-store', signal }),
-      // Public tenant metadata supplies the clean copy/paste output URL pair.
       fetch(`${SPMT_BASE_URL}/api/tenant-scene?output=public`, { headers, cache: 'no-store', signal }),
-      // The Personal launch route supplies the scoped renderer URL that does not
-      // depend on a third-party SPMT cookie once it is inside the app shell.
       fetch(`${SPMT_BASE_URL}/api/personal-overlay-launch`, { headers, cache: 'no-store', signal }),
+      fetch(`${SPMT_BASE_URL}/api/platform/surfaces`, { headers, cache: 'no-store', signal }),
     ]);
   };
-  let [profileResponse, overlayResponse, tenantResponse, personalLaunchResponse] = await loadWorkspace(token);
+  let [profileResponse, tenantResponse, personalLaunchResponse, surfacesResponse] = await loadWorkspace(token);
   if (profileResponse.status === 401 || profileResponse.status === 403) {
     refreshed = await refreshSpmtConnection(request);
     if (refreshed) {
       token = refreshed.accessToken;
-      [profileResponse, overlayResponse, tenantResponse, personalLaunchResponse] = await loadWorkspace(token);
+      [profileResponse, tenantResponse, personalLaunchResponse, surfacesResponse] = await loadWorkspace(token);
     }
   }
-  const [payload, overlayPayload, tenantPayload, personalLaunchPayload] = await Promise.all([
+  const [payload, tenantPayload, personalLaunchPayload, surfacesPayload] = await Promise.all([
     profileResponse.json().catch(() => null),
-    overlayResponse.json().catch(() => null),
     tenantResponse.json().catch(() => null),
     personalLaunchResponse.json().catch(() => null),
+    surfacesResponse.json().catch(() => null),
   ]);
   if (!profileResponse.ok || !payload?.profile) {
     const expired = profileResponse.status === 401 || profileResponse.status === 403;
@@ -73,12 +76,14 @@ export async function GET(request: NextRequest) {
     ? personalLaunchPayload.url
     : '';
   const response = NextResponse.json({
-    tokens: workspaceThemeTokens(payload.profile, 'streamweaver', overlayResponse.ok ? overlayPayload?.layout || null : null),
+    tokens: workspaceThemeTokens(payload.profile, 'streamweaver', null),
     revision: payload.profile.revision,
     updatedAt: payload.profile.updatedAt,
     tenant: tenant || null,
     tenantOutputs,
     personalOverlayUrl: personalOverlayUrl || null,
+    surfaces: surfacesResponse.ok ? surfaceList(surfacesPayload) : [],
+    canonicalOrigin: SPMT_BASE_URL,
     connection: {
       status: 'connected',
       renewable: Boolean(request.cookies.get('streamweaver-spmt-refresh')?.value || refreshed),
