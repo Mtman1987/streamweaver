@@ -3,7 +3,7 @@ const path = require('node:path');
 const { safeStorage } = require('electron');
 
 const DEFAULT_CONFIG = {
-  schemaVersion: 2,
+  schemaVersion: 4,
   server: { host: '127.0.0.1', port: 3100, wsPort: 8090 },
   startup: { openAtLogin: false, startMinimized: true },
   relay: { url: 'wss://spmt.live/api/companion/relay', deviceId: '', enabled: false },
@@ -14,10 +14,11 @@ const DEFAULT_CONFIG = {
       url: 'https://spacemountain.live/crew'
     },
     workspace: {
-      url: 'https://spacemountain.live/?companionWorkspace=streamweaver'
+      url: 'https://spmt.live'
     },
     overlay: {
-      url: 'https://spacemountain.live/?desktopOverlay=1',
+      // This is a last-known canonical Personal launch URL cache, not a user setting.
+      url: '',
       socialUrl: 'https://streamweaver-new.fly.dev/overlay/social',
       socialEnabled: true,
       visible: false,
@@ -53,9 +54,17 @@ class ConfigStore {
     try {
       stored = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
     } catch {}
-    if (Number(stored.schemaVersion || 1) < 2
+    const storedVersion = Number(stored.schemaVersion || 1);
+    if (storedVersion < 2
       && stored.windows?.overlay?.url === 'http://127.0.0.1:3100/tts-mixer') {
-      stored.windows.overlay.url = DEFAULT_CONFIG.windows.overlay.url;
+      stored.windows.overlay.url = '';
+    }
+    if (storedVersion < 4) {
+      if (stored.windows?.workspace) stored.windows.workspace.url = DEFAULT_CONFIG.windows.workspace.url;
+      if (stored.windows?.overlay
+        && String(stored.windows.overlay.url || '').includes('desktopOverlay=1')) {
+        stored.windows.overlay.url = '';
+      }
     }
     return {
       ...clone(DEFAULT_CONFIG),
