@@ -81,7 +81,8 @@ test('patched Companion has one canonical source path and no editable Personal U
   assert.match(ui, /overlay-source-status/);
   assert.doesNotMatch(renderer, /byId\('overlay-url'\)/);
   assert.match(config, /schemaVersion: 4/);
-  assert.match(config, /url: ''/);
-  assert.doesNotMatch(config, /desktopOverlay=1/);
+  assert.match(config, /overlay:\s*\{[\s\S]*?url: ''/);
+  assert.match(config, /includes\('desktopOverlay=1'\)[\s\S]*?stored\.windows\.overlay\.url = ''/);
+  assert.doesNotMatch(config, /url:\s*'https:\/\/spacemountain\.live\/\?desktopOverlay=1'/);
   assert.doesNotMatch(config, /companionWorkspace=streamweaver/);
 });
