@@ -17,15 +17,21 @@ function replaceRequired(source, from, to, label) {
   return source.replace(from, to);
 }
 
+function replaceBlock(source, startMarker, endMarker, replacement, label) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (start < 0 || end < 0) throw new Error(`Companion canonical workspace marker missing: ${label}`);
+  return source.slice(0, start) + replacement + source.slice(end);
+}
+
 patch('main.cjs', (source) => {
   const surfaceImport = "const { DEFAULT_ORIGIN: SPMT_ORIGIN, resolveSurfaceUrl, resolvePersonalOverlayUrl } = require('./lib/spmt-surfaces.cjs');";
   const importMarker = "const { WorkflowJobs } = require('./lib/workflow-jobs.cjs');";
   if (!source.includes(surfaceImport)) source = replaceRequired(source, importMarker, `${importMarker}\n${surfaceImport}`, 'SPMT surface resolver import');
 
   if (!source.includes('const trustedWorkspaceOrigins = new Set([')) {
-    const oldTrust = `function isTrustedWorkspaceUrl(value) {\n  try {\n    const parsed = new URL(value);\n    return parsed.protocol === 'https:' && new Set([\n      'spacemountain.live',\n      'spacemountain-live.fly.dev',\n      'spmt.live',\n      'streamweaver-new.fly.dev'\n    ]).has(parsed.hostname);\n  } catch {\n    return false;\n  }\n}`;
-    const newTrust = `const trustedWorkspaceOrigins = new Set([\n  'https://spacemountain.live',\n  'https://spacemountain-live.fly.dev',\n  'https://spmt.live',\n  'https://streamweaver-new.fly.dev'\n]);\n\nfunction trustManagedUrl(value) {\n  try {\n    const parsed = new URL(value);\n    if (parsed.protocol === 'https:') trustedWorkspaceOrigins.add(parsed.origin);\n  } catch {}\n}\n\nfunction isTrustedWorkspaceUrl(value) {\n  try {\n    const parsed = new URL(value);\n    return parsed.protocol === 'https:' && trustedWorkspaceOrigins.has(parsed.origin);\n  } catch {\n    return false;\n  }\n}`;
-    source = replaceRequired(source, oldTrust, newTrust, 'trusted workspace origins');
+    const newTrust = `const trustedWorkspaceOrigins = new Set([\n  'https://spacemountain.live',\n  'https://spacemountain-live.fly.dev',\n  'https://spmt.live',\n  'https://streamweaver-new.fly.dev'\n]);\n\nfunction trustManagedUrl(value) {\n  try {\n    const parsed = new URL(value);\n    if (parsed.protocol === 'https:') trustedWorkspaceOrigins.add(parsed.origin);\n  } catch {}\n}\n\nfunction isTrustedWorkspaceUrl(value) {\n  try {\n    const parsed = new URL(value);\n    return parsed.protocol === 'https:' && trustedWorkspaceOrigins.has(parsed.origin);\n  } catch {\n    return false;\n  }\n}\n\n`;
+    source = replaceBlock(source, 'function isTrustedWorkspaceUrl(value) {', 'function loadManagedUrl(window, value) {', `${newTrust}function loadManagedUrl(window, value) {`, 'trusted workspace origins');
   }
 
   const oldShowWorkspace = `function showWorkspace() {\n  const window = ensureWorkspaceWindow();\n  window.show();\n  window.focus();\n  return { visible: true };\n}`;
@@ -78,8 +84,8 @@ patch('ui/renderer.js', (source) => {
   return source;
 });
 
-// The canonical implementation now lives in the real source files/modules. This
-// script remains idempotent so older check/package flows can safely apply it.
+// The canonical implementation now lives in the real resolver/config source.
+// This script remains idempotent because start/check/package already invoke it.
 const configSource = fs.readFileSync(path.join(root, 'lib/config-store.cjs'), 'utf8');
 if (!configSource.includes('schemaVersion: 4')) throw new Error('Companion config must use canonical schemaVersion 4');
 if (!fs.existsSync(path.join(root, 'lib/spmt-surfaces.cjs'))) throw new Error('Canonical SPMT surface resolver is missing');
