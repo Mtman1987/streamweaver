@@ -4,9 +4,10 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 function patch(rel, transform) {
   const file = path.join(root, rel);
-  const before = fs.readFileSync(file, 'utf8');
+  const raw = fs.readFileSync(file, 'utf8');
+  const before = raw.replace(/\r\n/g, '\n');
   const after = transform(before);
-  if (after !== before) {
+  if (after !== raw) {
     fs.writeFileSync(file, after, 'utf8');
     console.log(`patched ${rel}`);
   }
