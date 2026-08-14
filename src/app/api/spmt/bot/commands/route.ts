@@ -4,6 +4,7 @@ import { bootstrapTenant } from '@/lib/tenant';
 import { serializeSessionCookie } from '@/lib/session-cookie';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { getBotName } from '@/lib/bot-settings-store';
+import { getBotShareMode } from '@/lib/bot-interactions-store';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -46,8 +47,9 @@ async function resolveSpmtUser(token: string): Promise<SpmtUser | null> {
   return user as SpmtUser;
 }
 
-function internalSessionCookie(user: SpmtUser) {
-  const tenantId = firstString(user.twitchId, user.twitch_id, user.id);
+function internalSessionCookie(user: SpmtUser, tenantOverride?: string) {
+  const ownerTenantId = firstString(user.twitchId, user.twitch_id, user.id);
+  const tenantId = firstString(tenantOverride, ownerTenantId);
   const username = firstString(user.twitchUsername, user.twitch_username, user.username);
   const displayName = firstString(user.displayName, user.display_name, username);
   const avatar = firstString(user.avatarUrl, user.avatar_url);
@@ -62,6 +64,7 @@ function internalSessionCookie(user: SpmtUser) {
   });
   return {
     tenantId,
+    ownerTenantId,
     username,
     displayName,
     header: `streamweaver-session=${encodeURIComponent(value)}`,
@@ -125,15 +128,31 @@ export async function POST(request: NextRequest) {
     return apiError('command is required', { status: 400, code: 'COMMAND_REQUIRED' });
   }
 
-  const session = internalSessionCookie(user);
-  await bootstrapTenant(session.tenantId, session.username);
-  const botName = getBotName(session.tenantId);
+  const caller = internalSessionCookie(user);
+  await bootstrapTenant(caller.tenantId, caller.username);
 
-  const openCommand = await detectOpenBotCommandWithAi(command, session.tenantId);
+  const requestedTargetTenantId = firstString(body?.targetTenantId).slice(0, 128);
+  const targetTenantId = requestedTargetTenantId || caller.tenantId;
+  const isGuestBot = targetTenantId !== caller.tenantId;
+
+  if (isGuestBot && await getBotShareMode(targetTenantId) !== 'on') {
+    return apiError('That bot is not shared for public room use', {
+      status: 403,
+      code: 'BOT_NOT_SHARED',
+    });
+  }
+
+  const session = internalSessionCookie(user, targetTenantId);
+  const botName = getBotName(targetTenantId);
+
+  // Owner/open commands are intentionally disabled when speaking through
+  // another tenant's shared bot. Guest bots expose conversation only here;
+  // private configuration and owner actions stay in their owner's tenant.
+  const openCommand = isGuestBot ? null : await detectOpenBotCommandWithAi(command, targetTenantId);
   if (openCommand) {
     try {
       const responseText = await runOpenBotCommand(openCommand);
-      const tts = await maybeGenerateTts(request, session.header, session.tenantId, responseText, body);
+      const tts = await maybeGenerateTts(request, session.header, targetTenantId, responseText, body);
       return apiOk({
         accepted: true,
         routed: true,
@@ -142,29 +161,32 @@ export async function POST(request: NextRequest) {
         command,
         commandType: openCommand,
         response: responseText,
-        bot: { name: botName, tenantId: session.tenantId },
+        bot: { name: botName, tenantId: targetTenantId },
         tts,
         identity: {
           spmtUserId: user.id,
-          tenantId: session.tenantId,
-          username: session.username,
-          displayName: session.displayName,
+          tenantId: caller.tenantId,
+          username: caller.username,
+          displayName: caller.displayName,
         },
         source: firstString(body?.source, body?.sourceApp) || 'spmt-bot',
         roomId: firstString(body?.roomId) || undefined,
       });
     } catch (error) {
-      console.warn(`[SPMT Bot:${session.tenantId}] Shared command ${openCommand} failed; falling through to conversational AI:`, error);
+      console.warn(`[SPMT Bot:${targetTenantId}] Shared command ${openCommand} failed; falling through to conversational AI:`, error);
     }
   }
 
+  // Prefix cross-tenant usernames so private Commander recognition cannot be
+  // inherited merely because a public-room caller happens to share that name.
+  const aiUsername = isGuestBot ? `hmo:${caller.username}` : caller.username;
   const ai = await postInternal(request, '/api/ai/chat-with-memory', session.header, {
-    username: session.username,
+    username: aiUsername,
     userId: user.id,
-    displayName: session.displayName,
+    displayName: caller.displayName,
     message: command,
-    tenantId: session.tenantId,
-    context: 'voice',
+    tenantId: targetTenantId,
+    context: isGuestBot ? 'discord-cross-bot' : 'voice',
   });
 
   if (!ai.ok) {
@@ -175,7 +197,7 @@ export async function POST(request: NextRequest) {
   }
 
   const responseText = firstString(ai.data?.response, ai.data?.data?.response);
-  const tts = await maybeGenerateTts(request, session.header, session.tenantId, responseText, body);
+  const tts = await maybeGenerateTts(request, session.header, targetTenantId, responseText, body);
 
   return apiOk({
     accepted: true,
@@ -185,13 +207,13 @@ export async function POST(request: NextRequest) {
     command,
     response: responseText,
     research: ai.data?.research || ai.data?.data?.research || undefined,
-    bot: { name: botName, tenantId: session.tenantId },
+    bot: { name: botName, tenantId: targetTenantId },
     tts,
     identity: {
       spmtUserId: user.id,
-      tenantId: session.tenantId,
-      username: session.username,
-      displayName: session.displayName,
+      tenantId: caller.tenantId,
+      username: caller.username,
+      displayName: caller.displayName,
     },
     source: firstString(body?.source, body?.sourceApp) || 'spmt-bot',
     roomId: firstString(body?.roomId) || undefined,
