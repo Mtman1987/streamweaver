@@ -65,14 +65,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${appOrigin}/login?error=spmt_exchange_failed`);
   }
 
-  const userResponse = await fetch(`${SPMT_BASE_URL}/api/oauth/userinfo`, {
-    headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
-    cache: 'no-store',
-  });
-  const userPayload = await userResponse.json().catch(() => null);
-  const user = userPayload?.user || userPayload?.profile || userPayload;
-  if (!userResponse.ok || !user?.id || !user?.username) {
-    console.error('[SPMT OAuth] User profile lookup failed', { status: userResponse.status });
+  // SPMT's authorization-code exchange already returns the canonical user. Use
+  // that identity directly instead of adding a second cross-service userinfo
+  // request to every login. The stored access token remains available for later
+  // permissioned SPMT calls and can still be validated by those endpoints.
+  const user = tokenPayload?.user;
+  if (!user?.id || !user?.username) {
+    console.error('[SPMT OAuth] Token exchange did not include the canonical user');
     return NextResponse.redirect(`${appOrigin}/login?error=spmt_profile_failed`);
   }
 
@@ -91,7 +90,7 @@ export async function GET(request: NextRequest) {
     avatar: String(user.avatarUrl || user.avatar_url || ''),
     loginTime: Date.now(),
   }), appCookieOptions(appOrigin, STREAMWEAVER_SESSION_MAX_AGE));
-  response.cookies.set('streamweaver-spmt-token', String(tokenPayload.access_token), appCookieOptions(appOrigin, 7 * 24 * 60 * 60));
+  response.cookies.set('streamweaver-spmt-token', String(tokenPayload.access_token), appCookieOptions(appOrigin, Number(tokenPayload.expires_in || 7 * 24 * 60 * 60)));
   if (tokenPayload.refresh_token) {
     response.cookies.set('streamweaver-spmt-refresh', String(tokenPayload.refresh_token), appCookieOptions(appOrigin, Number(tokenPayload.refresh_expires_in || 30 * 24 * 60 * 60)));
   }
