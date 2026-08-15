@@ -6,13 +6,17 @@ export type AIProvider = 'gemini' | 'edenai' | 'openai';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const DEFAULT_EDENAI_MODEL = 'google/gemini-2.5-flash';
+const LOCAL_LLM_CIRCUIT_OPEN_MS = 5 * 60 * 1000;
+
+let localLlmCircuitOpenUntil = 0;
+let localLlmCircuitReason = '';
 
 export interface AIConfig {
   provider: AIProvider;
   model: string;
   apiKey: string;
-  personalityName: string; // e.g., "Commander", "Boss", "Captain"
-  botName: string; // e.g., "Athena", "StreamBot", "Assistant"
+  personalityName: string;
+  botName: string;
 }
 
 export interface AIResponseOptions {
@@ -23,9 +27,6 @@ export interface AIResponseOptions {
 export function getAIConfig(tenantId?: string): AIConfig {
   const config = readUserConfigSync(tenantId);
 
-  // Keep the tenant's legacy provider configuration available for settings and
-  // compatibility. Normal runtime generation now uses the owner-hosted SPMT
-  // LLM first and EdenAI only as the fallback provider.
   const provider = (config.AI_PROVIDER as AIProvider) || 'edenai';
   const personalityName = config.AI_PERSONALITY_NAME || 'Captain';
   const botName = config.AI_BOT_NAME || 'StreamWeaver87';
@@ -84,6 +85,29 @@ function governedPrompt(systemPrompt?: string): string {
   return [systemPrompt, BOT_NO_SELF_PROMOTION_POLICY].filter(Boolean).join('\n\n');
 }
 
+function isTransientLocalLlmFailure(message: string): boolean {
+  return /aborted|aborterror|timeout|timed out|fetch failed|econnrefused|econnreset|socket|502|503|504/i.test(message);
+}
+
+function localLlmCircuitIsOpen(): boolean {
+  if (Date.now() >= localLlmCircuitOpenUntil) {
+    localLlmCircuitOpenUntil = 0;
+    localLlmCircuitReason = '';
+    return false;
+  }
+  return true;
+}
+
+function openLocalLlmCircuit(reason: string): void {
+  localLlmCircuitOpenUntil = Date.now() + LOCAL_LLM_CIRCUIT_OPEN_MS;
+  localLlmCircuitReason = reason;
+}
+
+function closeLocalLlmCircuit(): void {
+  localLlmCircuitOpenUntil = 0;
+  localLlmCircuitReason = '';
+}
+
 /**
  * Shared bot AI entry point.
  *
@@ -91,8 +115,8 @@ function governedPrompt(systemPrompt?: string): string {
  *   1. owner-hosted SPMT Qwen worker over Fly private networking;
  *   2. EdenAI only when the local worker fails or is deliberately disabled.
  *
- * This keeps every StreamWeaver tenant on the same bot runtime without making
- * Athena, MountainView, Discord, or any other surface its own AI provider.
+ * Transient local-worker failures open a short circuit so one saturated worker
+ * does not force every tenant to wait for the same timeout repeatedly.
  */
 export async function generateAIResponse(
   prompt: string,
@@ -103,15 +127,23 @@ export async function generateAIResponse(
   const system = governedPrompt(systemPrompt);
   let localFailure = '';
 
-  if (isSpmtLocalLlmEnabled()) {
+  if (isSpmtLocalLlmEnabled() && !localLlmCircuitIsOpen()) {
     try {
       const local = await requestSpmtLocalLlm(prompt, system, options);
+      closeLocalLlmCircuit();
       console.log(`[AI Provider] SPMT local LLM served tenant ${tenantId || 'global'} with ${local.model}`);
       return local.text;
     } catch (error) {
       localFailure = error instanceof Error ? error.message : String(error);
-      console.warn(`[AI Provider] SPMT local LLM failed for tenant ${tenantId || 'global'}; falling back to EdenAI:`, localFailure);
+      if (isTransientLocalLlmFailure(localFailure)) {
+        openLocalLlmCircuit(localFailure);
+        console.warn(`[AI Provider] SPMT local LLM temporarily unavailable; opening fallback circuit for 5 minutes: ${localFailure}`);
+      } else {
+        console.warn(`[AI Provider] SPMT local LLM failed for tenant ${tenantId || 'global'}; falling back to EdenAI:`, localFailure);
+      }
     }
+  } else if (isSpmtLocalLlmEnabled() && localLlmCircuitIsOpen()) {
+    localFailure = `Local LLM fallback circuit is open${localLlmCircuitReason ? ` after: ${localLlmCircuitReason}` : ''}`;
   }
 
   try {
@@ -126,7 +158,6 @@ export async function generateAIResponse(
   }
 }
 
-/** EdenAI-only recovery path for callers that already attempted the local LLM. */
 export async function generateEdenAIFallbackResponse(
   prompt: string,
   systemPrompt?: string,
