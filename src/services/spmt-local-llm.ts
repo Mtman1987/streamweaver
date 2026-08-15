@@ -8,7 +8,9 @@ import {
 const DEFAULT_SPMT_LLM_BASE_URL = 'http://spmt-llm-worker.internal:8080/v1';
 const DEFAULT_MAX_TOKENS = 400;
 const MAX_MAX_TOKENS = 6000;
-const REQUEST_TIMEOUT_MS = 90_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const MIN_REQUEST_TIMEOUT_MS = 5_000;
+const MAX_REQUEST_TIMEOUT_MS = 120_000;
 
 export type SpmtLocalLlmOptions = {
   maxTokens?: number;
@@ -42,6 +44,12 @@ function configuredApiKey(): string {
   // second model credential. This remains only for an already-supported custom
   // Qwen endpoint that uses PRIVATE_QWEN_API_KEY.
   return String(process.env.PRIVATE_QWEN_API_KEY || '').trim();
+}
+
+function requestTimeoutMs(): number {
+  const configured = Number(process.env.SPMT_LLM_REQUEST_TIMEOUT_MS || DEFAULT_REQUEST_TIMEOUT_MS);
+  if (!Number.isFinite(configured)) return DEFAULT_REQUEST_TIMEOUT_MS;
+  return Math.max(MIN_REQUEST_TIMEOUT_MS, Math.min(MAX_REQUEST_TIMEOUT_MS, Math.floor(configured)));
 }
 
 function maxTokens(value: number | undefined): number {
@@ -120,7 +128,7 @@ export async function requestSpmtLocalLlm(
       frequency_penalty: sampling.frequency_penalty,
     }),
     signal: typeof AbortSignal.timeout === 'function'
-      ? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      ? AbortSignal.timeout(requestTimeoutMs())
       : undefined,
   });
 
