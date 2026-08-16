@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getOverlayData } from '@/services/overlay-manager';
 import { apiError, apiOk } from '@/lib/api-response';
+import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
 
 export async function GET(
   req: NextRequest,
@@ -8,14 +9,13 @@ export async function GET(
 ) {
   try {
     const { type } = await params;
-    // Overlays pass tenant via query param
-    const tenantId = req.nextUrl.searchParams.get('tenant') || undefined;
+    const tenantId = await resolveOverlayTenantId(req.nextUrl.searchParams.get('tenant'));
     const data = await getOverlayData(type, tenantId);
-    
+
     if (!data) {
       return apiError('No data', { status: 404, code: 'NOT_FOUND' });
     }
-    
+
     return apiOk(data as Record<string, unknown>);
   } catch (error: any) {
     console.error('[Overlay API] Error:', error);
