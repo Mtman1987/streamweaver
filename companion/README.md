@@ -1,6 +1,6 @@
 # SpaceMountain Companion
 
-Current source version: `0.3.1`.
+Current source version: `0.3.2`.
 
 The Companion is an optional local helper for the cloud-hosted StreamWeaver
 service. It lives in the system tray and manages hosted-app windows, OBS, local
@@ -45,16 +45,21 @@ release workflow does not claim or require an Authenticode signature.
 The application uses a single-instance lock. Closing its settings window hides
 it; it continues running in the tray and does not remain in the taskbar.
 
-## Pair with SPMT
+## Tenant-linked setup
 
-1. Sign in to SPMT and create a Companion device with only the capabilities you
-   want to grant.
-2. Copy the returned device ID and one-time pairing token.
-3. Open **Companion Control Center > Secure relay and startup**.
-4. Enter the device ID and pairing token. Leave the relay URL set to
-   `wss://spmt.live/api/companion/relay`, enable the relay, and save.
-5. Revoke the device from SPMT to immediately prevent new connections and
-   commands.
+1. Sign in to SPMT or SpaceMountain and choose **Download installer** on the
+   SpaceMountain Companion card. The signed-in page creates an expiring,
+   single-use tenant link while downloading the normal installer.
+2. Install and launch Companion, return to the same page, and choose
+   **Connect installed Companion**. Windows opens the registered
+   `spmt-companion://` link in the app.
+3. Companion consumes the link once, stores the relay credential with Electron
+   `safeStorage`, and establishes the SPMT, SpaceMountain, and StreamWeaver
+   sessions in its private browser partition. No separate StreamWeaver login is
+   required.
+4. Revoke the device from SPMT to immediately prevent new relay connections and
+   commands. The manual device ID/token fields remain available only as a
+   recovery path.
 
 The token is encrypted with Electron `safeStorage`. URLs, window layout,
 startup choices, and other non-secret settings are stored in
@@ -64,9 +69,10 @@ startup choices, and other non-secret settings are stored in
 
 - Retain source-only local runtime supervision for developer testing; normal
   users open the hosted StreamWeaver workspace.
-- Open a persistent Companion-owned StreamWeaver workspace. SpaceMountain signs
-  the user in once inside Electron, then passes StreamWeaver a short-lived,
-  single-use embed code without exposing session tokens to the renderer.
+- Open a persistent Companion-owned StreamWeaver workspace. The tenant-linked
+  installer flow establishes the private Electron sessions, then SpaceMountain
+  passes StreamWeaver a short-lived, single-use embed code without exposing
+  session tokens to the renderer.
 - Open SpaceMountain itself as a separate Companion-owned app window at the
   Crew Desk, where the user can edit personal widgets, Commlink choices, dock
   slots, visibility, opacity, and shared appearance without leaving Companion.
@@ -97,6 +103,10 @@ startup choices, and other non-secret settings are stored in
 - Persist engine-neutral song briefs, write approved renderer manifests inside
   the media library, and detect the named rendered output without exposing a shell.
 - Maintain an outbound-only authenticated WSS connection to SPMT.
+- Keep redacted daily Companion logs and the latest 30 sanitized production Fly
+  snapshots together in the local `diagnostics` folder. The settings screen and
+  tray menu can open that folder directly; snapshots use the tenant-scoped SPMT
+  relay and queue while Companion is offline.
 - Restart the managed local service after an unexpected exit.
 
 Global hold-to-talk capture, friendly audio-device enumeration, resumable

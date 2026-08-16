@@ -42,6 +42,7 @@ hardware selection, encrypted pairing credentials, and resumable local jobs.
 | `rooms.control` | room/session state | join, queue, play, pause, skip |
 | `tts.control` | voices and listener state | speak, stop, select voice |
 | `workflow.run` | workflow metadata | run an explicitly allowed workflow |
+| `diagnostics.write` | latest sanitized snapshot metadata | write a bounded rotator snapshot inside the fixed local diagnostics folder |
 
 Capabilities are deny-by-default. `*.read` never implies a corresponding
 control scope.
@@ -101,8 +102,10 @@ expiry are returned to SPMT as failed command results.
 - Local media: user-selected library directory.
 - Reviewed creative jobs: bounded `workflow-jobs.json` in Electron user data.
 - Portable workspace/app state: SPMT APIs, never local JSON as the authority.
-- Logs: rotating local files with credentials, query tokens, and filesystem
-  home paths redacted.
+- Logs: 30 daily Companion files plus 30 dated Fly snapshots in the fixed
+  Companion `diagnostics` directory. Rotator, SPMT, and Companion each enforce
+  bounded payloads and credential redaction; the relay keeps only the newest
+  queued offline snapshot.
 
 ## Network policy
 
@@ -139,3 +142,9 @@ new mutating actions require a capability-contract revision and tests.
 | `media.transcode` | `media.write` | No |
 | `workflow.run` / `test.echo` | `workflow.run` | No |
 | `workflow.run` / reviewed creative workflows | `workflow.run` | Yes |
+| `diagnostics.snapshot.write` | `diagnostics.write` | No |
+
+`diagnostics.snapshot.write` is the only cloud-triggered diagnostics write. It
+cannot select a path, append an arbitrary filename, execute content, or expose
+an inbound listener. SPMT derives the target tenant from the platform key,
+queues the newest snapshot for at most seven days, and rate-limits delivery.

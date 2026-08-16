@@ -7,6 +7,11 @@ on:
     branches:
       - main
     paths:
+      - "companion/**"
+      - "scripts/package-companion-runtime.mjs"
+      - "scripts/smoke-companion-runtime.mjs"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/companion-release.yml"
   workflow_dispatch:
 
@@ -28,6 +33,7 @@ jobs:
       - run: npm ci
         working-directory: companion
       - run: npm run companion:check
+      - run: node --test tests/companion-tenant-bootstrap-contract.test.mjs
       - run: npm run package:companion-runtime
       - run: npm run smoke:companion-runtime
       - run: npm run dist:win
@@ -54,6 +60,25 @@ jobs:
           sha512: $sha512
           releaseDate: '$(Get-Date -AsUTC -Format o)'
           "@ | Set-Content -LiteralPath "dist/companion/latest.yml"
+
+      - name: Wait for matching StreamWeaver tenant-bootstrap deployment
+        shell: pwsh
+        run: |
+          $expected = "${{ github.sha }}"
+          for ($attempt = 1; $attempt -le 30; $attempt++) {
+            try {
+              $health = Invoke-RestMethod -Uri "https://streamweaver-new.fly.dev/api/health" -TimeoutSec 10
+              if ($health.status -eq "ok" -and $health.buildSha -eq $expected) {
+                Write-Host "StreamWeaver tenant-bootstrap route is live at $expected"
+                exit 0
+              }
+              Write-Host "Attempt $attempt/30: live build is $($health.buildSha), waiting for $expected"
+            } catch {
+              Write-Host "Attempt $attempt/30: StreamWeaver health is not ready yet"
+            }
+            Start-Sleep -Seconds 10
+          }
+          throw "StreamWeaver $expected was not live before Companion release publication"
 
       - name: Publish direct installer release
         env:

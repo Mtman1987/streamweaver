@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('companion', {
   setObsScene: (sceneName) => ipcRenderer.invoke('companion:obs-set-scene', sceneName),
   setAudio: (payload) => ipcRenderer.invoke('companion:audio', payload),
   checkForUpdates: () => ipcRenderer.invoke('companion:update-check'),
+  openDiagnostics: () => ipcRenderer.invoke('companion:open-diagnostics'),
   openExternal: (url) => ipcRenderer.invoke('companion:open-external', url),
   onStatus: (handler) => ipcRenderer.on('companion:status', (_event, status) => handler(status)),
   onMediaJob: (handler) => ipcRenderer.on('companion:media-job', (_event, job) => handler(job))

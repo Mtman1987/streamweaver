@@ -10,22 +10,31 @@ const {
   Menu,
   nativeImage,
   screen,
+  session: electronSession,
   shell,
   Tray
 } = require('electron');
 const OBSWebSocket = require('obs-websocket-js').default;
 const { autoUpdater } = require('electron-updater');
 const { ConfigStore } = require('./lib/config-store.cjs');
+const { DiagnosticsStore, redactText } = require('./lib/diagnostics-store.cjs');
 const { MediaJobs } = require('./lib/media-jobs.cjs');
 const { RelayClient } = require('./lib/relay-client.cjs');
 const { createUpdateManager } = require('./lib/update-manager.cjs');
 const { WorkflowJobs } = require('./lib/workflow-jobs.cjs');
+const { DEFAULT_ORIGIN: SPMT_ORIGIN, resolveSurfaceUrl, resolvePersonalOverlayUrl } = require('./lib/spmt-surfaces.cjs');
+const { exchangeTenantBootstrap, findTenantBootstrapUrl, parseTenantBootstrapUrl } = require('./lib/tenant-bootstrap.cjs');
+
+const COMPANION_PROTOCOL = 'spmt-companion';
+const COMPANION_WORKSPACE_URL = 'https://spacemountain.live/?companionWorkspace=streamweaver';
+const STREAMWEAVER_ORIGIN = 'https://streamweaver-new.fly.dev';
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) app.quit();
 
 let configStore;
+let diagnosticsStore;
 let config;
 let settingsWindow;
 let spaceMountainWindow;
@@ -49,12 +58,18 @@ let quitting = false;
 let overlayInteractionActive = false;
 let overlayHotkeyRegistered = false;
 let overlayHotkeyAccelerator = '';
+let bootstrapInFlight = false;
+let pendingBootstrapUrl = findTenantBootstrapUrl(process.argv);
 
 function logCompanion(message, error) {
   const detail = error instanceof Error ? `${error.stack || error.message}` : error ? String(error) : '';
-  const line = `[${new Date().toISOString()}] ${message}${detail ? `: ${detail}` : ''}\n`;
   try {
-    fs.appendFileSync(path.join(app.getPath('userData'), 'companion.log'), line, 'utf8');
+    if (diagnosticsStore) return diagnosticsStore.log(message, error);
+    const now = new Date();
+    const directory = path.join(app.getPath('userData'), 'diagnostics');
+    fs.mkdirSync(directory, { recursive: true });
+    const line = `[${now.toISOString()}] ${redactText(message)}${detail ? `: ${redactText(detail)}` : ''}\n`;
+    fs.appendFileSync(path.join(directory, `companion-${now.toISOString().slice(0, 10)}.log`), line, 'utf8');
   } catch {
     // Logging must never prevent the tray app from starting.
   }
@@ -130,15 +145,24 @@ function managedWindowOptions(kind, id = '') {
   };
 }
 
+const trustedWorkspaceOrigins = new Set([
+  'https://spacemountain.live',
+  'https://spacemountain-live.fly.dev',
+  'https://spmt.live',
+  STREAMWEAVER_ORIGIN
+]);
+
+function trustManagedUrl(value) {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === 'https:') trustedWorkspaceOrigins.add(parsed.origin);
+  } catch {}
+}
+
 function isTrustedWorkspaceUrl(value) {
   try {
     const parsed = new URL(value);
-    return parsed.protocol === 'https:' && new Set([
-      'spacemountain.live',
-      'spacemountain-live.fly.dev',
-      'spmt.live',
-      'streamweaver-new.fly.dev'
-    ]).has(parsed.hostname);
+    return parsed.protocol === 'https:' && trustedWorkspaceOrigins.has(parsed.origin);
   } catch {
     return false;
   }
@@ -169,8 +193,8 @@ function ensureWorkspaceWindow() {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
   });
   workspaceWindow.webContents.on('did-navigate', (_event, url) => {
-    if (url.startsWith('https://spacemountain.live/')) {
-      overlayWindow?.webContents.reload();
+    if (url.startsWith('https://spacemountain.live/') && overlayWindow && !overlayWindow.isDestroyed()) {
+      void refreshCanonicalPersonalOverlay(overlayWindow);
     }
   });
   workspaceWindow.on('close', (event) => {
@@ -184,9 +208,55 @@ function ensureWorkspaceWindow() {
 
 function showWorkspace() {
   const window = ensureWorkspaceWindow();
+  const target = String(config.windows.workspace.url || COMPANION_WORKSPACE_URL).trim() || COMPANION_WORKSPACE_URL;
+  trustManagedUrl(target);
+  if (window.webContents.getURL() !== target) void loadManagedUrl(window, target);
+  window.setTitle('StreamWeaver · SpaceMountain Companion');
   window.show();
   window.focus();
   return { visible: true };
+}
+
+async function showSpmtSurface(surface = 'worktray') {
+  const allowed = new Set(['worktray', 'settings', 'overlays']);
+  const selected = allowed.has(surface) ? surface : 'worktray';
+  const window = ensureWorkspaceWindow();
+  let target = '';
+  try {
+    target = await resolveSurfaceUrl(window.webContents.session, selected, 'companion', SPMT_ORIGIN);
+  } catch (error) {
+    logCompanion(`Canonical SPMT surface could not be resolved (${selected})`, error);
+  }
+  if (!target) target = SPMT_ORIGIN;
+  trustManagedUrl(target);
+  await loadManagedUrl(window, target);
+  window.setTitle(`SPMT ${selected === 'worktray' ? 'Workspace' : selected === 'settings' ? 'Settings' : 'Overlay Bay'} · Companion`);
+  window.show();
+  window.focus();
+  return { visible: true, surface: selected, canonical: target !== SPMT_ORIGIN };
+}
+
+async function refreshCanonicalPersonalOverlay(targetWindow = overlayWindow) {
+  if (!targetWindow || targetWindow.isDestroyed()) return '';
+  const browserSession = workspaceWindow && !workspaceWindow.isDestroyed()
+    ? workspaceWindow.webContents.session
+    : targetWindow.webContents.session;
+  let resolved = '';
+  try {
+    resolved = await resolvePersonalOverlayUrl(browserSession, SPMT_ORIGIN);
+  } catch (error) {
+    logCompanion('Canonical Personal overlay URL could not be resolved', error);
+  }
+  const cached = String(config.windows.overlay.url || '').trim();
+  const next = resolved || cached;
+  if (!next) return '';
+  trustManagedUrl(next);
+  if (resolved && resolved !== cached) {
+    config.windows.overlay.url = resolved;
+    saveConfig();
+  }
+  if (targetWindow.webContents.getURL() !== next) await loadManagedUrl(targetWindow, next);
+  return next;
 }
 
 function ensureSpaceMountainWindow() {
@@ -284,7 +354,7 @@ function registerOverlayHotkey() {
 function ensureOverlayWindow() {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
   overlayWindow = new BrowserWindow(managedWindowOptions('overlay'));
-  overlayWindow.setTitle('SpaceMountain Personal Overlay');
+  overlayWindow.setTitle('SPMT Personal Overlay');
   overlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'floating');
   overlayWindow.setVisibleOnAllWorkspaces(config.windows.overlay.alwaysOnTop !== false);
   overlayWindow.setFullScreenable(false);
@@ -303,7 +373,14 @@ function ensureOverlayWindow() {
     config.windows.overlay.visible = false;
     saveConfig();
   });
-  void loadManagedUrl(overlayWindow, config.windows.overlay.url);
+  const cachedPersonalUrl = String(config.windows.overlay.url || '').trim();
+  if (cachedPersonalUrl) {
+    trustManagedUrl(cachedPersonalUrl);
+    void loadManagedUrl(overlayWindow, cachedPersonalUrl);
+  } else {
+    void overlayWindow.loadURL('about:blank');
+  }
+  void refreshCanonicalPersonalOverlay(overlayWindow);
   return overlayWindow;
 }
 
@@ -578,8 +655,12 @@ function rebuildTrayMenu() {
       click: () => entry.visible ? hidePopout(entry.id) : showPopout(entry.id)
     })),
     { type: 'separator' },
-    { label: 'Open SpaceMountain Crew Desk', click: showSpaceMountain },
     { label: 'Open StreamWeaver', click: showWorkspace },
+    { label: 'Open SPMT Workspace', click: () => void showSpmtSurface('worktray') },
+    { label: 'Open Universal Settings', click: () => void showSpmtSurface('settings') },
+    { label: 'Open Overlay Bay', click: () => void showSpmtSurface('overlays') },
+    { label: 'Open SpaceMountain', click: showSpaceMountain },
+    { label: 'Open Diagnostics Folder', click: () => void shell.openPath(diagnosticsStore.directory) },
     { label: 'Restart Local Service', click: () => { stopManagedServer(); setTimeout(startManagedServer, 800); } },
     { label: 'Check for Updates', click: () => void updateManager?.check({ manual: true }) },
     { type: 'separator' },
@@ -604,6 +685,7 @@ function setupIpc() {
     workflowCatalog: workflowJobs.catalog(),
     workflowJobs: workflowJobs.snapshot(),
     confirmations: relay.confirmations(),
+    diagnostics: diagnosticsStore.snapshot(),
     obs: await getObsScenes(),
     update: updateManager?.snapshot() || { state: 'unavailable', currentVersion: app.getVersion() }
   }));
@@ -662,6 +744,9 @@ function setupIpc() {
   ipcMain.handle('companion:window', (_event, action, id) => {
     if (action === 'spacemountain.show') return showSpaceMountain();
     if (action === 'workspace.show') return showWorkspace();
+    if (action === 'spmt.worktray') return showSpmtSurface('worktray');
+    if (action === 'spmt.settings') return showSpmtSurface('settings');
+    if (action === 'spmt.overlays') return showSpmtSurface('overlays');
     if (action === 'overlay.show') return showOverlay();
     if (action === 'overlay.hide') return hideOverlay();
     if (action === 'overlay.interact') return setOverlayInteraction(true);
@@ -702,6 +787,7 @@ function setupIpc() {
   ipcMain.handle('companion:obs-set-scene', (_event, sceneName) => setObsScene({ sceneName }));
   ipcMain.handle('companion:audio', (_event, payload) => applyAudio(payload));
   ipcMain.handle('companion:update-check', () => updateManager?.check({ manual: true }));
+  ipcMain.handle('companion:open-diagnostics', () => shell.openPath(diagnosticsStore.directory));
   ipcMain.handle('companion:open-external', (_event, url) => {
     if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Only HTTP(S) URLs are allowed');
     return shell.openExternal(url);
@@ -739,6 +825,17 @@ function createRelay() {
     },
     handlers: {
       'companion.status': async () => ({ server: serverStatus, relay: relayStatus, obs: obsStatus }),
+      'diagnostics.snapshot.write': async (payload) => {
+        const saved = diagnosticsStore.writeSnapshot(payload);
+        logCompanion(`Saved production Fly diagnostics snapshot ${saved.filename} (${saved.logCount} entries)`);
+        settingsWindow?.webContents.send('companion:status', {
+          server: serverStatus,
+          relay: relayStatus,
+          obs: obsStatus,
+          diagnostics: { state: 'updated', detail: saved.capturedAt },
+        });
+        return { filename: saved.filename, bytes: saved.bytes, logCount: saved.logCount, capturedAt: saved.capturedAt };
+      },
       'overlay.show': async () => showOverlay(),
       'overlay.hide': async () => hideOverlay(),
       'popout.show': async (payload) => showPopout(payload.id),
@@ -757,11 +854,115 @@ function createRelay() {
   });
 }
 
+async function setTenantCookie(url, name, value, expirationDate, sameSite = 'lax') {
+  await electronSession.defaultSession.cookies.set({
+    url,
+    name,
+    value: String(value),
+    httpOnly: true,
+    secure: true,
+    sameSite,
+    path: '/',
+    expirationDate,
+  });
+}
+
+async function seedTenantSessions(sessionToken, expiresIn = 30 * 24 * 60 * 60) {
+  const token = String(sessionToken || '').trim();
+  if (!token) throw new Error('Tenant link did not provide an SPMT session');
+  const lifetime = Math.max(300, Number(expiresIn) || 30 * 24 * 60 * 60);
+  const expirationDate = Math.floor(Date.now() / 1000) + lifetime;
+
+  await setTenantCookie(SPMT_ORIGIN, 'spmt_token', token, expirationDate, 'no_restriction');
+  await setTenantCookie('https://spacemountain.live', 'spacemountain_spmt_session', token, expirationDate);
+
+  const response = await electronSession.defaultSession.fetch(`${STREAMWEAVER_ORIGIN}/api/auth/companion/bootstrap`, {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error || `StreamWeaver tenant link failed (${response.status})`);
+  const cookies = await electronSession.defaultSession.cookies.get({
+    url: STREAMWEAVER_ORIGIN,
+    name: 'streamweaver-session',
+  });
+  if (!cookies.length) throw new Error('StreamWeaver did not persist the linked tenant session');
+}
+
+async function refreshLinkedTenantSessions() {
+  const response = await electronSession.defaultSession.fetch(`${SPMT_ORIGIN}/api/auth/refresh`, {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) return false;
+  const payload = await response.json().catch(() => null);
+  if (!payload?.token) return false;
+  await seedTenantSessions(payload.token, 30 * 24 * 60 * 60);
+  return true;
+}
+
+async function handleTenantBootstrap(value) {
+  const parsed = parseTenantBootstrapUrl(value);
+  if (!parsed || bootstrapInFlight) return false;
+  bootstrapInFlight = true;
+  try {
+    const payload = await exchangeTenantBootstrap(fetch, parsed.code);
+    await seedTenantSessions(payload.sessionToken, payload.expiresIn);
+
+    config.relay = {
+      ...config.relay,
+      url: String(payload.relayUrl || 'wss://spmt.live/api/companion/relay'),
+      deviceId: String(payload.device.id),
+      enabled: true,
+    };
+    const currentSecrets = configStore.readSecrets();
+    configStore.writeSecrets({ ...currentSecrets, relayToken: String(payload.pairingToken) });
+    saveConfig();
+    relay.stop();
+    relay.start();
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.reload();
+    showWorkspace();
+    void refreshCanonicalPersonalOverlay(overlayWindow);
+    await dialog.showMessageBox({
+      type: 'info',
+      title: 'Companion connected',
+      message: `Connected to ${payload.user.displayName || payload.user.username || 'your SPMT tenant'}`,
+      detail: 'StreamWeaver, SpaceMountain, your Personal overlay, and the secure Companion relay are now tenant linked.',
+    });
+    logCompanion('Companion tenant bootstrap completed');
+    return true;
+  } catch (error) {
+    logCompanion('Companion tenant bootstrap failed', error);
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Companion link failed',
+      message: 'This tenant link could not be completed.',
+      detail: `${error instanceof Error ? error.message : String(error)}\n\nReturn to SPMT and choose Connect installed Companion to create a fresh one-time link.`,
+    });
+    return false;
+  } finally {
+    bootstrapInFlight = false;
+  }
+}
+
 app.on('second-instance', (_event, argv) => {
-  if (argv.includes('--spacemountain')) showSpaceMountain();
+  const bootstrapUrl = findTenantBootstrapUrl(argv);
+  if (bootstrapUrl) void handleTenantBootstrap(bootstrapUrl);
+  else if (argv.includes('--spacemountain')) showSpaceMountain();
   else if (argv.includes('--workspace')) showWorkspace();
   else if (argv.includes('--overlay-interact')) setOverlayInteraction(true);
   else showSettings();
+});
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (!parseTenantBootstrapUrl(url)) return;
+  if (app.isReady() && configStore) void handleTenantBootstrap(url);
+  else pendingBootstrapUrl = url;
 });
 app.on('before-quit', () => {
   quitting = true;
@@ -775,7 +976,9 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => {});
 
 app.whenReady().then(async () => {
+  diagnosticsStore = new DiagnosticsStore({ rootPath: app.getPath('userData') });
   logCompanion('Companion starting');
+  app.setAsDefaultProtocolClient(COMPANION_PROTOCOL);
   configStore = new ConfigStore(app.getPath('userData'));
   config = configStore.read();
   saveConfig();
@@ -818,8 +1021,16 @@ app.whenReady().then(async () => {
   relay.start();
   updateManager.start();
   await connectObs();
+  await refreshLinkedTenantSessions().catch((error) => logCompanion('Existing Companion tenant session could not be refreshed', error));
+  if (pendingBootstrapUrl) {
+    const bootstrapUrl = pendingBootstrapUrl;
+    pendingBootstrapUrl = '';
+    await handleTenantBootstrap(bootstrapUrl);
+  }
   if (config.windows.overlay.visible) showOverlay();
-  if (process.argv.includes('--spacemountain')) showSpaceMountain();
+  if (parseTenantBootstrapUrl(findTenantBootstrapUrl(process.argv))) {
+    // Tenant bootstrap already selected the correct workspace.
+  } else if (process.argv.includes('--spacemountain')) showSpaceMountain();
   else if (process.argv.includes('--workspace')) showWorkspace();
   else if (process.argv.includes('--overlay-interact')) setOverlayInteraction(true);
   else if (!process.argv.includes('--hidden') && !config.startup.startMinimized) showSettings();

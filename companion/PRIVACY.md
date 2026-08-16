@@ -6,6 +6,11 @@ sell personal information.
 The app stores its non-secret settings locally in Electron's per-user
 application-data directory. Pairing credentials are encrypted with Electron
 `safeStorage`. Media remains in the local library selected by the user.
+The local `diagnostics` folder contains redacted Companion logs and bounded,
+sanitized Fly production snapshots delivered by the user's tenant-scoped SPMT
+relay. It retains 30 daily log files and 30 dated snapshots plus the latest
+snapshot shortcut. Credential-like fields and values are redacted again before
+the Companion writes them.
 
 Network connections occur only for features the user opens or enables:
 

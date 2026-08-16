@@ -14,7 +14,7 @@
       <div>
       <p class="eyebrow">SPACEMOUNTAIN</p>
       <h1>Companion Control Center</h1>
-      <p class="subtitle">Your local bridge for overlays, OBS, audio, media, and reviewed cloud commands.</p>
+      <p class="subtitle">Your tenant-linked bridge for SPMT, StreamWeaver, overlays, OBS, audio, media, and reviewed cloud commands.</p>
       </div>
     </div>
     <div id="status" class="status-grid"></div>
@@ -43,7 +43,7 @@
         <button data-window-action="overlay.interact">Enter interaction mode</button>
         <button data-window-action="overlay.fit" class="secondary">Fit to current screen</button>
       </div>
-      <label>Personal overlay URL <input id="overlay-url" type="url"></label>
+      <p id="overlay-source-status" class="section-copy">Personal overlay source is resolved from the tenant linked to this Companion.</p>
       <label>StreamWeaver social effects URL <input id="overlay-social-url" type="url"></label>
       <label class="check"><input id="overlay-social-enabled" type="checkbox"> Layer StreamWeaver social command effects over the personal overlay</label>
       <div class="grid two">
@@ -52,7 +52,7 @@
         <label class="check"><input id="overlay-fit-display" type="checkbox"> Fit to the current Windows display</label>
         <label>Interaction hotkey <input id="overlay-hotkey" placeholder="CommandOrControl+Shift+O"></label>
       </div>
-      <p class="section-copy">Widget visibility, widget opacity, dock visibility, and glass opacity come from your SpaceMountain workspace. Use the hotkey to focus the overlay, then press it again or choose Done. Fit-to-display follows the full bounds of the Windows screen containing the overlay.</p>
+      <p class="section-copy">Widget visibility, geometry, alerts, and shared appearance come from your canonical SPMT workspace. Use the hotkey to focus the overlay, then press it again or choose Done. Fit-to-display follows the full bounds of the Windows screen containing the overlay.</p>
       <div id="popouts" class="cards"></div>
     </section>
 
@@ -134,15 +134,20 @@
       <label class="check"><input id="start-minimized" type="checkbox"> Start in the system tray</label>
       <div class="actions">
         <button id="check-updates" class="secondary">Check for updates</button>
+        <button id="open-diagnostics" class="secondary">Open diagnostics folder</button>
         <span id="update-status" class="footer-note"></span>
       </div>
+      <p id="diagnostics-status" class="footer-note">Companion and production Fly logs are stored together in the local diagnostics folder.</p>
     </section>
   </main>
 
   <footer>
     <div class="footer-context">
-      <button id="open-spacemountain">Open SpaceMountain Crew Desk</button>
-      <button id="open-streamweaver" class="secondary">Open StreamWeaver</button>
+      <button id="open-streamweaver">Open StreamWeaver</button>
+      <button id="open-spmt-workspace" class="secondary">SPMT Workspace</button>
+      <button id="open-spmt-settings" class="secondary">Universal Settings</button>
+      <button id="open-spmt-overlays" class="secondary">Overlay Bay</button>
+      <button id="open-spacemountain" class="secondary">SpaceMountain</button>
       <span class="footer-note">Secrets stay protected by the operating system.</span>
     </div>
     <span id="message" role="status" aria-live="polite"></span>

@@ -3,7 +3,7 @@ const path = require('node:path');
 const { safeStorage } = require('electron');
 
 const DEFAULT_CONFIG = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   server: { host: '127.0.0.1', port: 3100, wsPort: 8090 },
   startup: { openAtLogin: false, startMinimized: true },
   relay: { url: 'wss://spmt.live/api/companion/relay', deviceId: '', enabled: false },
@@ -14,7 +14,7 @@ const DEFAULT_CONFIG = {
       url: 'https://spacemountain.live/crew'
     },
     workspace: {
-      url: 'https://spmt.live'
+      url: 'https://spacemountain.live/?companionWorkspace=streamweaver'
     },
     overlay: {
       // This is a last-known canonical Personal launch URL cache, not a user setting.
@@ -65,6 +65,9 @@ class ConfigStore {
         && String(stored.windows.overlay.url || '').includes('desktopOverlay=1')) {
         stored.windows.overlay.url = '';
       }
+    }
+    if (storedVersion < 5 && stored.windows?.workspace) {
+      stored.windows.workspace.url = DEFAULT_CONFIG.windows.workspace.url;
     }
     return {
       ...clone(DEFAULT_CONFIG),

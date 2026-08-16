@@ -65,7 +65,12 @@ async function load() {
   const config = state.config;
   renderStatus(state.status);
   byId('update-status').textContent = state.update?.message || `Companion ${state.update?.currentVersion || ''}`.trim();
-  byId('overlay-url').value = config.windows.overlay.url;
+  byId('diagnostics-status').textContent = state.diagnostics?.latest?.capturedAt
+    ? `Latest production snapshot: ${state.diagnostics.latest.capturedAt} (${state.diagnostics.latest.logCount} log entries).`
+    : 'Companion logs are ready. The first production snapshot will appear after the secure relay connects.';
+  byId('overlay-source-status').textContent = config.windows.overlay.url
+    ? 'Canonical Personal overlay connected to this Companion tenant.'
+    : 'Use the tenant-linked SPMT download flow to connect the Personal overlay.';
   byId('overlay-social-url').value = config.windows.overlay.socialUrl || 'https://streamweaver-new.fly.dev/overlay/social';
   byId('overlay-social-enabled').checked = config.windows.overlay.socialEnabled !== false;
   byId('overlay-click-through').checked = config.windows.overlay.clickThrough !== false;
@@ -162,7 +167,6 @@ byId('save').addEventListener('click', async () => {
     windows: {
       overlay: {
         ...state.config.windows.overlay,
-        url: byId('overlay-url').value.trim(),
         socialUrl: byId('overlay-social-url').value.trim(),
         socialEnabled: byId('overlay-social-enabled').checked,
         clickThrough: byId('overlay-click-through').checked,
@@ -233,7 +237,11 @@ byId('audio-volume').addEventListener('input', () => window.companion.setAudio({
 byId('audio-muted').addEventListener('change', () => window.companion.setAudio({ muted: byId('audio-muted').checked }));
 byId('open-spacemountain').addEventListener('click', () => window.companion.windowAction('spacemountain.show'));
 byId('open-streamweaver').addEventListener('click', () => window.companion.windowAction('workspace.show'));
+byId('open-spmt-workspace').addEventListener('click', () => window.companion.windowAction('spmt.worktray'));
+byId('open-spmt-settings').addEventListener('click', () => window.companion.windowAction('spmt.settings'));
+byId('open-spmt-overlays').addEventListener('click', () => window.companion.windowAction('spmt.overlays'));
 byId('check-updates').addEventListener('click', () => window.companion.checkForUpdates());
+byId('open-diagnostics').addEventListener('click', () => window.companion.openDiagnostics());
 window.companion.onStatus(renderStatus);
 window.companion.onMediaJob((job) => {
   const index = jobs.findIndex((item) => item.id === job.id);

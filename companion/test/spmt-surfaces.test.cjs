@@ -61,7 +61,7 @@ test('resolver uses the Electron session fetch contract for registry and Persona
   assert.ok(calls.every((call) => call.init.cache === 'no-store'));
 });
 
-test('patched Companion has one canonical source path and no editable Personal URL', () => {
+test('Companion tracks canonical surfaces directly and keeps StreamWeaver on the authenticated wrapper', () => {
   const root = path.resolve(__dirname, '..');
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
   const ui = fs.readFileSync(path.join(root, 'ui', 'index.html'), 'utf8');
@@ -75,14 +75,18 @@ test('patched Companion has one canonical source path and no editable Personal U
   assert.match(main, /action === 'spmt\.worktray'/);
   assert.match(main, /action === 'spmt\.settings'/);
   assert.match(main, /action === 'spmt\.overlays'/);
+  assert.match(main, /COMPANION_WORKSPACE_URL = 'https:\/\/spacemountain\.live\/\?companionWorkspace=streamweaver'/);
+  assert.match(main, /function showSpmtSurface/);
+  assert.match(main, /function showWorkspace/);
+  assert.doesNotMatch(main, /function showWorkspace\(\) \{\s*return showSpmtSurface\('worktray'\)/);
   assert.doesNotMatch(main, /https:\/\/spmt\.live\/embed\/(worktray|settings|overlays)/);
 
   assert.doesNotMatch(ui, /id="overlay-url"/);
   assert.match(ui, /overlay-source-status/);
   assert.doesNotMatch(renderer, /byId\('overlay-url'\)/);
-  assert.match(config, /schemaVersion: 4/);
+  assert.match(config, /schemaVersion: 5/);
   assert.match(config, /overlay:\s*\{[\s\S]*?url: ''/);
   assert.match(config, /includes\('desktopOverlay=1'\)[\s\S]*?stored\.windows\.overlay\.url = ''/);
   assert.doesNotMatch(config, /url:\s*'https:\/\/spacemountain\.live\/\?desktopOverlay=1'/);
-  assert.doesNotMatch(config, /companionWorkspace=streamweaver/);
+  assert.match(config, /https:\/\/spacemountain\.live\/\?companionWorkspace=streamweaver/);
 });

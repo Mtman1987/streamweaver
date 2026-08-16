@@ -11,7 +11,8 @@ const ACTION_CAPABILITIES = {
   'media.transcode': 'media.write',
   'obs.media.play': 'obs.control',
   'workflow.run': 'workflow.run',
-  'companion.status': 'companion.status'
+  'companion.status': 'companion.status',
+  'diagnostics.snapshot.write': 'diagnostics.write'
 };
 
 class RelayClient {

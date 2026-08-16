@@ -1,18 +1,14 @@
 {
   "name": "@spmt/companion",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
   "author": "Mtman1987",
   "license": "MIT",
   "main": "main.cjs",
   "scripts": {
-    "patch:workspace": "node scripts/patch-spmt-workspace.cjs",
-    "prestart": "npm run patch:workspace",
     "start": "electron .",
-    "precheck": "npm run patch:workspace",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
-    "predist:win": "npm run patch:workspace",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/diagnostics-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/spmt-surfaces.cjs && node --check lib/tenant-bootstrap.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
     "dist:win": "electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never"
   },
   "build": {
@@ -51,6 +47,12 @@
       }
     ],
     "win": { "icon": "../public/favicon.ico", "target": ["nsis"] },
+    "protocols": [
+      {
+        "name": "SPMT Companion",
+        "schemes": ["spmt-companion"]
+      }
+    ],
     "publish": [{ "provider": "github", "owner": "Mtman1987", "repo": "streamweaver", "releaseType": "release" }],
     "nsis": {
       "oneClick": false,
