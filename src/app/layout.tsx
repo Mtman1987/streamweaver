@@ -1,4 +1,5 @@
 import type {Metadata} from 'next';
+import Script from 'next/script';
 import './globals.css';
 import './workspace-parity.css';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -50,6 +51,7 @@ export default function RootLayout({
         <div className="sw-starfield sw-starfield-c" />
         <OverlayDocumentMode />
         <SpaceMountainEmbedBridge />
+        <Script src="https://spmt.live/shared/ecosystem-header.js" data-app="streamweaver" strategy="afterInteractive" />
         {/* <DashboardConnection /> */}
         <SidebarProvider>
         {children}
