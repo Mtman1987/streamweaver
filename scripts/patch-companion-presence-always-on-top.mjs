@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
-const file = 'companion/main.cjs';
+const file = fileURLToPath(new URL('../companion/main.cjs', import.meta.url));
 let source = await readFile(file, 'utf8');
 
 if (source.includes('SPMT_PRESENCE_ENDPOINT') && source.includes('enforceOverlayAlwaysOnTop')) {
