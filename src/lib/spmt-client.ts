@@ -1,5 +1,6 @@
 const SPMT_BASE_URL = process.env.SPMT_BASE_URL || 'https://spmt.live';
 const SPMT_API_KEY = process.env.SPMT_API_KEY || '';
+const SPMT_SYSTEM_KEY = process.env.SPMT_SYSTEM_KEY || '';
 
 export type SpmtEventVisibility = 'private' | 'creator' | 'community' | 'public' | 'system';
 
@@ -19,6 +20,27 @@ export type SpmtEventInput = {
     kind: 'launch' | 'details' | 'manage' | 'external';
   }>;
 };
+
+export type SpmtOwnerRecoveryResult = {
+  ok: true;
+  username: string;
+  account: string;
+  displayName: string;
+  targetDiscordId: string;
+  recoveryCode: string;
+  issuedAt: string;
+  instructions: string;
+};
+
+export class SpmtOwnerRecoveryError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SpmtOwnerRecoveryError';
+    this.status = status;
+  }
+}
 
 export function isSpmtEnabled() {
   return Boolean(SPMT_API_KEY);
@@ -56,4 +78,40 @@ export async function publishSpmtEvent(event: SpmtEventInput) {
     console.warn('[SPMT] event publish error', error);
     return { skipped: false, ok: false };
   }
+}
+
+export async function requestSpmtOwnerRecoveryCode(input: {
+  requesterDiscordId: string;
+  targetDiscordId: string;
+}): Promise<SpmtOwnerRecoveryResult> {
+  if (!SPMT_SYSTEM_KEY) {
+    throw new SpmtOwnerRecoveryError('SPMT owner recovery service is not configured', 503);
+  }
+
+  const response = await fetch(`${SPMT_BASE_URL.replace(/\/$/, '')}/api/internal/auth/admin-recovery-code`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-spmt-key': SPMT_SYSTEM_KEY,
+    },
+    body: JSON.stringify({
+      requesterDiscordId: String(input.requesterDiscordId || '').trim(),
+      targetDiscordId: String(input.targetDiscordId || '').trim(),
+    }),
+    cache: 'no-store',
+    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(8000)
+      : undefined,
+  });
+  const payload = await response.json().catch(() => null) as any;
+  if (!response.ok) {
+    throw new SpmtOwnerRecoveryError(
+      String(payload?.error || `SPMT owner recovery returned ${response.status}`),
+      response.status,
+    );
+  }
+  if (!payload?.ok || !payload?.account || !payload?.recoveryCode) {
+    throw new SpmtOwnerRecoveryError('SPMT owner recovery returned an incomplete handoff', 502);
+  }
+  return payload as SpmtOwnerRecoveryResult;
 }
