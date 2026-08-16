@@ -25,6 +25,13 @@ patchFile('src/services/shared-chat-normalizers.ts', (source) => {
   const newChannelId = "  const channelId = channelIdRaw || 'unknown';";
   if (source.includes(oldChannelId)) source = source.replace(oldChannelId, newChannelId);
   if (!source.includes(newChannelId)) throw new Error('Rich Discord chat patch: Discord channel-id marker missing');
+
+  const oldRouting = "      canReply: Boolean(channelIdRaw),\n      replyTarget: channelIdRaw ? `discord:${channelIdRaw}` : undefined,";
+  const newRouting = "      // Discord channel compose/delete are verified, but source-thread reply is\n      // not implemented by the SPMT outbound adapter. Do not advertise a dead action.\n      canReply: false,\n      replyTarget: undefined,";
+  if (source.includes(oldRouting)) source = source.replace(oldRouting, newRouting);
+  if (!source.includes('canReply: false,\n      replyTarget: undefined,')) {
+    throw new Error('Rich Discord chat patch: Discord reply capability marker missing');
+  }
   return source;
 });
 
@@ -39,9 +46,20 @@ patchFile('src/services/discord-rich-chat.ts', (source) => {
     if (!source.includes(oldReturn)) throw new Error('Rich Discord chat patch: hydrated channel-id return marker missing');
     source = source.replace(oldReturn, newReturn);
   }
+
+  const oldMetaStart = "      text: resolveDiscordText(content, message, channelNames, rolesByGuild.get(guildId) || new Map()),\n      media,\n      reply,\n      editedAt: text(message?.edited_timestamp) || event.editedAt,\n      meta: {";
+  const newMetaStart = "      text: resolveDiscordText(content, message, channelNames, rolesByGuild.get(guildId) || new Map()),\n      media,\n      reply,\n      editedAt: text(message?.edited_timestamp) || event.editedAt,\n      // Old replay entries may have been recorded when Discord incorrectly\n      // advertised canReply=true. Hydration repairs that stale capability too.\n      routing: { ...event.routing, canReply: false, replyTarget: undefined },\n      meta: {";
+  if (!source.includes('routing: { ...event.routing, canReply: false, replyTarget: undefined }')) {
+    if (!source.includes(oldMetaStart)) throw new Error('Rich Discord chat patch: hydrated routing marker missing');
+    source = source.replace(oldMetaStart, newMetaStart);
+  }
+
   if (!source.includes('AbortSignal.timeout(1_800)')) throw new Error('Rich Discord chat patch: provider timeout marker missing');
   if (!source.includes('mapWithConcurrency(channelIds, 12')) throw new Error('Rich Discord chat patch: channel concurrency marker missing');
   if (!source.includes('channelId: channelId || event.channelId')) throw new Error('Rich Discord chat patch: legacy channel id normalization missing');
+  if (!source.includes('routing: { ...event.routing, canReply: false, replyTarget: undefined }')) {
+    throw new Error('Rich Discord chat patch: hydrated Discord reply capability repair missing');
+  }
   return source;
 });
 
