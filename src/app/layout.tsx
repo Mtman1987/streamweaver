@@ -52,6 +52,7 @@ export default function RootLayout({
         <OverlayDocumentMode />
         <SpaceMountainEmbedBridge />
         <Script src="https://spmt.live/shared/ecosystem-header.js" data-app="streamweaver" strategy="afterInteractive" />
+        <Script src="https://spmt.live/shared/workspace-controller.js" strategy="afterInteractive" />
         {/* <DashboardConnection /> */}
         <SidebarProvider>
         {children}
