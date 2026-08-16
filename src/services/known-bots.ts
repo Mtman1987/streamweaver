@@ -100,10 +100,13 @@ export function isKnownBotSync(username: string): boolean {
 /**
  * Add a bot to the tenant's custom list.
  */
-export async function addCustomBot(username: string, tenantId?: string): Promise<void> {
+export async function addCustomBot(username: string, tenantId?: string): Promise<boolean> {
   const custom = await loadCustomBots(tenantId);
-  custom.add(username.toLowerCase());
+  const lower = username.toLowerCase();
+  if (custom.has(lower)) return false;
+  custom.add(lower);
   await saveCustomBots(custom, tenantId);
+  return true;
 }
 
 /**
