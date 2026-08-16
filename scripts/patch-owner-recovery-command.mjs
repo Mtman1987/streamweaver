@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const routePath = path.join(repoRoot, 'src', 'app', 'api', 'discord', 'chat', 'route.ts');
-let source = fs.readFileSync(routePath, 'utf8');
+let source = fs.readFileSync(routePath, 'utf8').replace(/\r\n/g, '\n');
 
 const importLine = "import { requestSpmtOwnerRecoveryCode } from '@/lib/spmt-client';";
 if (!source.includes(importLine)) {
