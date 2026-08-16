@@ -18,7 +18,6 @@ export default function BicCounterOverlay() {
     fetch(`/api/bic-counter?ts=${Date.now()}${tenantQuery}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null);
 
-  // Load initial count from global API
   useEffect(() => {
     fetchLatest()
       .then(d => {
@@ -32,7 +31,6 @@ export default function BicCounterOverlay() {
       .catch(() => {});
   }, [tenantQuery]);
 
-  // Listen for live updates via WebSocket
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnect: NodeJS.Timeout;
@@ -69,7 +67,6 @@ export default function BicCounterOverlay() {
     return () => { clearTimeout(reconnect); ws?.close(); };
   }, [tenantId]);
 
-  // Also poll as fallback every 5s
   useEffect(() => {
     const interval = setInterval(() => {
       fetchLatest()
@@ -93,26 +90,29 @@ export default function BicCounterOverlay() {
   return (
     <div style={{
       position: 'fixed',
-      bottom: 20,
-      right: 20,
-      minWidth: 420,
+      bottom: 'clamp(6px, 2vh, 20px)',
+      right: 'clamp(6px, 2vw, 20px)',
+      width: 'min(420px, calc(100vw - 12px))',
+      maxWidth: 'calc(100vw - 12px)',
+      maxHeight: 'calc(100vh - 12px)',
+      boxSizing: 'border-box',
+      overflow: 'hidden',
       background: flash
         ? 'linear-gradient(135deg, rgba(255,69,0,0.96), rgba(255,140,0,0.92))'
         : 'linear-gradient(135deg, rgba(10,10,10,0.86), rgba(35,35,35,0.82))',
-      borderRadius: 18,
-      padding: '16px 22px',
+      borderRadius: 'clamp(10px, 3vw, 18px)',
+      padding: 'clamp(8px, 2.2vw, 16px) clamp(10px, 3vw, 22px)',
       color: 'white',
       fontFamily: 'Impact, Haettenschweiler, sans-serif',
-      border: '3px solid #FF7A00',
+      border: 'clamp(1px, 0.6vw, 3px) solid #FF7A00',
       boxShadow: burst
-        ? '0 0 0 8px rgba(255,122,0,0.18), 0 0 30px rgba(255,122,0,0.65)'
+        ? '0 0 0 6px rgba(255,122,0,0.14), 0 0 24px rgba(255,122,0,0.55)'
         : '0 10px 30px rgba(0,0,0,0.4)',
-      transform: burst ? 'scale(1.08)' : 'scale(1)',
-      transition: 'background 0.25s ease, transform 0.2s ease, box-shadow 0.2s ease',
+      transition: 'background 0.25s ease, box-shadow 0.2s ease',
     }}>
       <div style={{
-        fontSize: 16,
-        letterSpacing: 2,
+        fontSize: 'clamp(10px, 3.4vw, 16px)',
+        letterSpacing: 'clamp(1px, 0.5vw, 2px)',
         opacity: 0.9,
         textTransform: 'uppercase',
       }}>
@@ -121,25 +121,27 @@ export default function BicCounterOverlay() {
       <div style={{
         display: 'flex',
         alignItems: 'baseline',
-        gap: 12,
+        gap: 'clamp(6px, 2vw, 12px)',
         marginTop: 2,
+        minWidth: 0,
       }}>
-        <span style={{ fontSize: 44, lineHeight: 1 }}>🔥</span>
-        <span style={{ fontSize: 56, lineHeight: 1 }}>{total ?? 0}</span>
+        <span style={{ fontSize: 'clamp(26px, 10vw, 44px)', lineHeight: 1, flex: '0 0 auto' }}>🔥</span>
+        <span style={{ fontSize: 'clamp(34px, 14vw, 56px)', lineHeight: 1, minWidth: 0 }}>{total ?? 0}</span>
       </div>
       <div style={{
-        fontSize: 18,
+        fontSize: 'clamp(11px, 4vw, 18px)',
         marginTop: 4,
         opacity: 0.95,
       }}>
         total lighters stolen
       </div>
       <div style={{
-        marginTop: 10,
-        paddingTop: 10,
+        marginTop: 'clamp(6px, 2vw, 10px)',
+        paddingTop: 'clamp(6px, 2vw, 10px)',
         borderTop: '1px solid rgba(255,255,255,0.18)',
-        fontSize: 20,
+        fontSize: 'clamp(12px, 4.5vw, 20px)',
         letterSpacing: 0.5,
+        overflowWrap: 'anywhere',
       }}>
         {lastUser
           ? `Latest victim: ${lastUser} (${lastUserCount ?? 0} stolen)`
@@ -148,7 +150,7 @@ export default function BicCounterOverlay() {
       {burst && (
         <div style={{
           marginTop: 8,
-          fontSize: 22,
+          fontSize: 'clamp(13px, 5vw, 22px)',
           color: '#FFF4B1',
           textShadow: '0 0 10px rgba(255,244,177,0.45)',
         }}>
