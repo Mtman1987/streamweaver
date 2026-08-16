@@ -29,8 +29,15 @@ patchFile('src/services/discord-rich-chat.ts', (source) => {
   source = source.replace(".filter(Boolean))).slice(0, 30);", ".filter(Boolean))).slice(0, 12);");
   source = source.replace("/messages?limit=100`, 45_000", "/messages?limit=50`, 45_000");
   source = source.replace("mapWithConcurrency(channelIds, 4", "mapWithConcurrency(channelIds, 12");
+  const oldReturn = "      sourceName: text(guild?.name) || event.sourceName,\n      channelName: channelName || event.channelName,";
+  const newReturn = "      sourceName: text(guild?.name) || event.sourceName,\n      channelId: channelId || event.channelId,\n      channelName: channelName || event.channelName,";
+  if (!source.includes('channelId: channelId || event.channelId')) {
+    if (!source.includes(oldReturn)) throw new Error('Rich Discord chat patch: hydrated channel-id return marker missing');
+    source = source.replace(oldReturn, newReturn);
+  }
   if (!source.includes('AbortSignal.timeout(1_800)')) throw new Error('Rich Discord chat patch: provider timeout marker missing');
   if (!source.includes('mapWithConcurrency(channelIds, 12')) throw new Error('Rich Discord chat patch: channel concurrency marker missing');
+  if (!source.includes('channelId: channelId || event.channelId')) throw new Error('Rich Discord chat patch: legacy channel id normalization missing');
   return source;
 });
 
