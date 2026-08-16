@@ -89,3 +89,24 @@ patchFile('src/app/api/shared-chat/spmt-feed/route.ts', (source) => {
   if (!source.includes('hasMore: filteredAll.length > events.length')) throw new Error('Rich Discord chat patch: hasMore marker missing');
   return source;
 });
+
+patchFile('src/server/websocket.ts', (source) => {
+  const importMarker = "import { resolveTenantSocketAction } from './websocket-tenant';";
+  const aliasImport = "import { resolveOverlayTenantId } from '../lib/overlay-tenant.server';";
+  if (!source.includes(aliasImport)) {
+    if (!source.includes(importMarker)) throw new Error('Overlay tenant alias patch: websocket import marker missing');
+    source = source.replace(importMarker, `${importMarker}\n${aliasImport}`);
+  }
+
+  const oldResolution = "        const urlTenantId = extractTenantIdFromRequest(request);\n        const cookieTenantId = extractTenantIdFromCookie(request);\n        const resolvedTenantId = cookieTenantId || urlTenantId;";
+  const newResolution = "        const urlTenantAlias = extractTenantIdFromRequest(request);\n        const cookieTenantId = extractTenantIdFromCookie(request);\n        const urlTenantId = urlTenantAlias ? (await resolveOverlayTenantId(urlTenantAlias) || urlTenantAlias) : '';\n        const resolvedTenantId = cookieTenantId || urlTenantId;";
+  if (!source.includes(newResolution)) {
+    if (!source.includes(oldResolution)) throw new Error('Overlay tenant alias patch: websocket tenant marker missing');
+    source = source.replace(oldResolution, newResolution);
+  }
+
+  if (!source.includes(aliasImport) || !source.includes('await resolveOverlayTenantId(urlTenantAlias)')) {
+    throw new Error('Overlay tenant alias patch: websocket alias resolution missing');
+  }
+  return source;
+});
