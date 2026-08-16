@@ -5,12 +5,15 @@ import {
   readSharedChatOperatorState,
   writeSharedChatOperatorState,
 } from '@/services/shared-chat-operator-state';
+import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
-  const tenantId = String(request.nextUrl.searchParams.get('tenant') || '').trim();
+  const requestedTenant = String(request.nextUrl.searchParams.get('tenant') || '').trim();
+  if (!requestedTenant) return NextResponse.json({ error: 'tenant query parameter is required' }, { status: 400 });
+  const tenantId = await resolveOverlayTenantId(requestedTenant);
   if (!tenantId) return NextResponse.json({ error: 'tenant query parameter is required' }, { status: 400 });
 
   const replay = await readSharedChatReplay(tenantId, { limit: 500 });
