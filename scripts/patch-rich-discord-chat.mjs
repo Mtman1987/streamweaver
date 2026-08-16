@@ -6,9 +6,13 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 
 function patchFile(relativePath, transform) {
   const filePath = path.join(repoRoot, relativePath);
-  const before = fs.readFileSync(filePath, 'utf8');
+  const diskSource = fs.readFileSync(filePath, 'utf8');
+  // GitHub Windows runners check files out as CRLF while Fly/Linux uses LF.
+  // Normalize only inside the disposable build workspace so deterministic
+  // source markers behave identically on both platforms.
+  const before = diskSource.replace(/\r\n/g, '\n');
   const after = transform(before);
-  if (after === before) {
+  if (after === before && diskSource === before) {
     console.log(`Rich Discord chat patch already applied: ${relativePath}`);
     return;
   }
