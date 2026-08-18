@@ -40,13 +40,15 @@ test('shared local model detects visibly incomplete replies before they reach Di
   assert.equal(looksAbruptlyCutOff('Athena remembers the number was 42.', 'stop'), false);
   assert.equal(looksAbruptlyCutOff('Athena remembers the number was', 'length'), true);
   assert.equal(looksAbruptlyCutOff('Athena remembers the number was about', 'stop'), true);
-  assert.equal(looksAbruptlyCutOff('Here is `the answer', 'stop'), true);
+  assert.equal(looksAbruptlyCutOff('Use the ` character when needed.', 'stop'), false);
+  assert.equal(looksAbruptlyCutOff('```text\nunfinished', 'stop'), true);
 });
 
-test('shared local model retries truncated generations with a larger token budget', () => {
+test('shared local model retries truncated generations without ignoring the caller token cap', () => {
   const local = readFileSync(new URL('../src/services/spmt-local-llm.ts', import.meta.url), 'utf8');
   assert.match(local, /looksAbruptlyCutOff\(first\.text, first\.finishReason\)/);
-  assert.match(local, /Math\.max\(requestedBudget \* 2, 800\)/);
+  assert.match(local, /const retryBudget = maxTokens\(requestedBudget \* 2\)/);
+  assert.doesNotMatch(local, /Math\.max\(requestedBudget \* 2, 800\)/);
   assert.match(local, /The previous draft ended abruptly before the answer was complete/);
   assert.match(local, /throw new Error\(`SPMT local LLM returned an incomplete response/);
 });
