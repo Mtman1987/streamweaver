@@ -9,6 +9,7 @@ import {
   THE_COUNT_STABLE_ID,
   messageInvokesTheCount,
 } from '../src/lib/the-count';
+import { VOIDWALKER_TITLE, getVoidwalkerSystemPrompt } from '../src/lib/voidwalker';
 
 const repoRoot = path.resolve(process.cwd());
 
@@ -56,4 +57,17 @@ test('Count entitlement lookup is fail-closed and uses canonical SPMT state', ()
   assert.match(source, /blackHole/);
   assert.match(source, /EMPTY_ENTITLEMENT/);
   assert.match(source, /title: payload\?\.title === 'Voidwalker'/);
+});
+
+test('Voidwalker is a shared non-editable identity flag derived from the three-egg entitlement', () => {
+  const helper = read('src/lib/voidwalker.ts');
+  const patch = read('scripts/patch-the-count-easter-egg.mjs');
+  assert.equal(VOIDWALKER_TITLE, 'Voidwalker');
+  assert.match(getVoidwalkerSystemPrompt(), /all three hidden Space Mountain anomalies/i);
+  assert.match(helper, /entitlement\.title === VOIDWALKER_TITLE/);
+  assert.match(helper, /context\.startsWith\('discord'\)/);
+  assert.match(helper, /context\.startsWith\('twitch'\)/);
+  assert.match(patch, /const userIsVoidwalker = await isVoidwalker/);
+  assert.match(patch, /const voidwalkerContext = userIsVoidwalker/);
+  assert.match(patch, /commanderContext,\\n      voidwalkerContext/);
 });
