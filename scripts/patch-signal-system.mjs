@@ -50,7 +50,7 @@ patch('src/services/chat-dispatcher.ts', (source) => {
 patch('server.ts', (source) => {
   if (source.includes('startSignalScheduler();')) return source;
   const marker = "        const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig?.server?.host || '127.0.0.1');";
-  const block = `        try {\n            const { startSignalScheduler } = await import('./src/services/signal-system');\n            startSignalScheduler();\n            console.log('[Signal] Lost Signal scheduler armed');\n        } catch (error) {\n            console.warn('[Signal] Scheduler startup skipped:', error);\n        }\n\n`;
+  const block = `        if (process.env.SIGNAL_SCHEDULER_ENABLED === 'true') {\n            try {\n                const { startSignalScheduler } = await import('./src/services/signal-system');\n                startSignalScheduler();\n                console.log('[Signal] Lost Signal scheduler armed');\n            } catch (error) {\n                console.warn('[Signal] Scheduler startup skipped:', error);\n            }\n        } else {\n            console.log('[Signal] Lost Signal scheduler disabled until SIGNAL_SCHEDULER_ENABLED=true');\n        }\n\n`;
   if (!source.includes(marker)) throw new Error('Signal patch: server startup marker missing');
   return source.replace(marker, `${block}${marker}`);
 });
