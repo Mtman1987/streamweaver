@@ -76,6 +76,26 @@ function extractText(payload: any): string {
   return '';
 }
 
+function finishReason(payload: any): string {
+  return String(payload?.choices?.[0]?.finish_reason || '').trim().toLowerCase();
+}
+
+function hasUnbalancedMarkdownFence(text: string): boolean {
+  const ticks = (String(text || '').match(/`/g) || []).length;
+  return ticks % 2 !== 0;
+}
+
+export function looksAbruptlyCutOff(text: string, reason = ''): boolean {
+  const value = String(text || '').trim();
+  const normalizedReason = String(reason || '').trim().toLowerCase();
+  if (!value) return true;
+  if (['length', 'max_tokens', 'max_token', 'token_limit'].includes(normalizedReason)) return true;
+  if (hasUnbalancedMarkdownFence(value)) return true;
+  if (/[,:;\-–—/\\]$/.test(value)) return true;
+  if (/\b(?:and|or|but|because|about|with|to|from|for|the|a|an|this|that|these|those|your|my|our|its)$/i.test(value)) return true;
+  return false;
+}
+
 export function isSpmtLocalLlmEnabled(): boolean {
   return process.env.SPMT_LOCAL_LLM_ENABLED !== 'false';
 }
@@ -106,51 +126,77 @@ export async function requestSpmtLocalLlm(
   };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-  const messages = [
-    ...(systemPrompt.trim() ? [{ role: 'system', content: systemPrompt.trim() }] : []),
-    { role: 'user', content: noThinkPrompt(prompt) },
-  ];
+  const perform = async (attemptPrompt: string, tokenBudget: number) => {
+    const messages = [
+      ...(systemPrompt.trim() ? [{ role: 'system', content: systemPrompt.trim() }] : []),
+      { role: 'user', content: noThinkPrompt(attemptPrompt) },
+    ];
 
-  const response = await fetchImpl(endpoint.endpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: false,
-      thinking_budget_tokens: 0,
-      max_tokens: maxTokens(options.maxTokens),
-      temperature: options.temperature ?? sampling.temperature,
-      top_p: sampling.top_p,
-      top_k: sampling.top_k,
-      repetition_penalty: sampling.repetition_penalty,
-      presence_penalty: sampling.presence_penalty,
-      frequency_penalty: sampling.frequency_penalty,
-    }),
-    signal: typeof AbortSignal.timeout === 'function'
-      ? AbortSignal.timeout(requestTimeoutMs())
-      : undefined,
-  });
+    const response = await fetchImpl(endpoint.endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        thinking_budget_tokens: 0,
+        max_tokens: tokenBudget,
+        temperature: options.temperature ?? sampling.temperature,
+        top_p: sampling.top_p,
+        top_k: sampling.top_k,
+        repetition_penalty: sampling.repetition_penalty,
+        presence_penalty: sampling.presence_penalty,
+        frequency_penalty: sampling.frequency_penalty,
+      }),
+      signal: typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.timeout(requestTimeoutMs())
+        : undefined,
+    });
 
-  const raw = await response.text();
-  let payload: any = {};
-  try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { raw }; }
-  if (!response.ok) {
-    const detail = String(payload?.error?.message || payload?.error || raw || `HTTP ${response.status}`)
-      .replace(/\s+/g, ' ')
-      .slice(0, 300);
-    throw new Error(`SPMT local LLM returned ${response.status}: ${detail}`);
+    const raw = await response.text();
+    let payload: any = {};
+    try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { raw }; }
+    if (!response.ok) {
+      const detail = String(payload?.error?.message || payload?.error || raw || `HTTP ${response.status}`)
+        .replace(/\s+/g, ' ')
+        .slice(0, 300);
+      throw new Error(`SPMT local LLM returned ${response.status}: ${detail}`);
+    }
+
+    return {
+      text: sanitizeQwenReply({
+        text: extractText(payload),
+        latestUserMessage: attemptPrompt,
+        maxCharacters: 12_000,
+      }).trim(),
+      finishReason: finishReason(payload),
+    };
+  };
+
+  const requestedBudget = maxTokens(options.maxTokens);
+  const first = await perform(prompt, requestedBudget);
+  if (!first.text) throw new Error('SPMT local LLM returned an empty response.');
+  if (!looksAbruptlyCutOff(first.text, first.finishReason)) {
+    return { text: first.text, provider: 'spmt-local-qwen', model };
   }
 
-  const text = sanitizeQwenReply({
-    text: extractText(payload),
-    latestUserMessage: prompt,
-    maxCharacters: 12_000,
-  }).trim();
-  if (!text) throw new Error('SPMT local LLM returned an empty response.');
+  // Never publish a visibly chopped answer. Regenerate once from the beginning
+  // with more headroom; if that is still incomplete, throw so the shared AI
+  // provider can use its normal EdenAI fallback instead of showing a fragment.
+  const retryPrompt = [
+    prompt,
+    '',
+    'The previous draft ended abruptly before the answer was complete.',
+    'Answer again from the beginning. Finish every sentence and close any Markdown you open.',
+  ].join('\n');
+  const retryBudget = maxTokens(Math.max(requestedBudget * 2, 800));
+  const retry = await perform(retryPrompt, retryBudget);
+  if (!retry.text || looksAbruptlyCutOff(retry.text, retry.finishReason)) {
+    throw new Error(`SPMT local LLM returned an incomplete response${retry.finishReason ? ` (${retry.finishReason})` : ''}.`);
+  }
 
   return {
-    text,
+    text: retry.text,
     provider: 'spmt-local-qwen',
     model,
   };
