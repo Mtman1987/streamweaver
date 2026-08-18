@@ -5,6 +5,7 @@ import {
   buildRuntimeSystemIdentity,
   NATURAL_DIALOGUE_POLICY,
   PERSONALITY_RUNTIME_VERSION,
+  shouldIncludeExtendedPersonality,
   splitPersonalityPrompt,
 } from '../src/lib/personality-prompt';
 
@@ -20,6 +21,63 @@ test('splits CRLF personality copied from Windows or a document', () => {
   const result = splitPersonalityPrompt('You are Athena.\r\n---\r\nVOICE:\r\n- dry and warm');
   assert.match(result.systemIdentity, /^You are Athena\./);
   assert.equal(result.extendedGuidance, 'VOICE:\n- dry and warm');
+});
+
+test('three-dash separator is a runtime context budget boundary', () => {
+  const prompt = splitPersonalityPrompt([
+    'You are Athena, the ship AI and old friend of the Commander.',
+    '---',
+    'BACKSTORY: very long optional lore',
+    'EXAMPLES: lots of example dialogue',
+  ].join('\n'));
+  assert.match(prompt.systemIdentity, /^You are Athena, the ship AI/);
+  assert.doesNotMatch(prompt.systemIdentity, /very long optional lore/i);
+  assert.match(prompt.extendedGuidance, /very long optional lore/i);
+});
+
+test('routine recent turns keep extended personality cold', () => {
+  const result = shouldIncludeExtendedPersonality({
+    message: 'what number did I ask you to remember?',
+    participant: 'mtman1987',
+    nowMs: Date.parse('2026-08-18T20:00:00Z'),
+    history: [{
+      type: 'user', username: 'mtman1987', message: 'remember 42', timestamp: '2026-08-18T19:50:00Z',
+    }],
+  });
+  assert.equal(result.conversationStart, false);
+  assert.equal(result.requested, false);
+  assert.equal(result.includeExtended, false);
+});
+
+test('new or stale conversations get one full personality refresher', () => {
+  const fresh = shouldIncludeExtendedPersonality({
+    message: 'hey Athena', participant: 'mtman1987', history: [], nowMs: Date.parse('2026-08-18T20:00:00Z'),
+  });
+  assert.equal(fresh.conversationStart, true);
+  assert.equal(fresh.includeExtended, true);
+
+  const stale = shouldIncludeExtendedPersonality({
+    message: 'hey again',
+    participant: 'mtman1987',
+    nowMs: Date.parse('2026-08-18T20:00:00Z'),
+    history: [{
+      type: 'user', username: 'mtman1987', message: 'later', timestamp: '2026-08-18T18:30:00Z',
+    }],
+  });
+  assert.equal(stale.conversationStart, true);
+  assert.equal(stale.includeExtended, true);
+});
+
+test('explicit character questions can request the cold personality section mid-conversation', () => {
+  const result = shouldIncludeExtendedPersonality({
+    message: 'tell me about your backstory and where you came from',
+    participant: 'viewer',
+    nowMs: Date.parse('2026-08-18T20:00:00Z'),
+    history: [{ type: 'user', username: 'viewer', message: 'hi', timestamp: '2026-08-18T19:58:00Z' }],
+  });
+  assert.equal(result.conversationStart, false);
+  assert.equal(result.requested, true);
+  assert.equal(result.includeExtended, true);
 });
 
 test('Adult Mode removes only conflicting SFW lines and preserves the actual personality', () => {
