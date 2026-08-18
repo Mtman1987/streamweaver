@@ -4,6 +4,7 @@ import { getTenantFromRequest } from '@/lib/tenant-context';
 import { readPrivateChatMessages } from '@/lib/private-chat-store';
 import { addLTMEntry } from '@/lib/private-ltm-store';
 import { generateAIResponse } from '@/services/ai-provider';
+import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -13,8 +14,19 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = getTenantFromRequest(request);
+    const internal = hasInternalServiceAccess(request);
     const parsedBody = schema.safeParse(await request.json().catch(() => undefined));
-    const tenantId = session?.tenantId || (parsedBody.success ? parsedBody.data?.tenantId : undefined);
+    if (!parsedBody.success) {
+      return apiError('Invalid request body', { status: 400, code: 'INVALID_BODY' });
+    }
+
+    const tenantId = session?.tenantId || (internal ? parsedBody.data?.tenantId : undefined);
+    if (!tenantId) {
+      return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    }
+    if (session?.tenantId && parsedBody.data?.tenantId && parsedBody.data.tenantId !== session.tenantId) {
+      return apiError('Forbidden', { status: 403, code: 'TENANT_MISMATCH' });
+    }
 
     const messages = await readPrivateChatMessages(50, tenantId);
     if (messages.length < 10) {
@@ -61,7 +73,7 @@ export async function POST(request: NextRequest) {
       },
     }, tenantId);
 
-    console.log(`[Private LTM] Condensed: "${memoryEntry.title}" for tenant ${tenantId || 'global'}`);
+    console.log(`[Private LTM] Condensed: "${memoryEntry.title}" for tenant ${tenantId}`);
     return apiOk({ success: true, title: memoryEntry.title });
   } catch (error) {
     console.error('[Private LTM] Condense error:', error);
