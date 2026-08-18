@@ -23,6 +23,8 @@ jobs:
         run: npm ci
       - name: Apply and test The Count Easter egg integration
         run: node scripts/patch-the-count-easter-egg.mjs && node --import tsx --test tests/the-count-easter-egg.test.ts
+      - name: Apply and test final Signal integration
+        run: node scripts/patch-signal-system.mjs && node --import tsx --test tests/signal-system.test.ts
       - name: Run shared command and AI-provider tests
         run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/shared-bot-runtime-local-llm.test.ts tests/shared-ai-provider-routing.test.ts tests/admin-bot-fleet.test.ts tests/cloudflare-image-settings.test.ts
       - name: Run shared workspace shell regression
