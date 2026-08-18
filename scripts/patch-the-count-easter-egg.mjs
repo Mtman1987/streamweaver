@@ -97,8 +97,8 @@ patchFile('src/app/api/ai/chat-with-memory/route.ts', (source) => {
   }
 
   const commanderMarker = '    const userIsCommander = isCommander(username);';
-  const titleFlag = "    const userIsCommander = isCommander(username);\n    const userIsVoidwalker = await isVoidwalker({ context, providerUserId: userId });";
-  if (!source.includes('const userIsVoidwalker = await isVoidwalker')) {
+  const titleFlag = "    const userIsCommander = isCommander(username);\n    const userIsVoidwalker = userIsCommander ? false : await isVoidwalker({ context, providerUserId: userId });";
+  if (!source.includes('const userIsVoidwalker = userIsCommander ? false : await isVoidwalker')) {
     if (!source.includes(commanderMarker)) throw new Error('Voidwalker patch: commander flag marker missing');
     source = source.replace(commanderMarker, titleFlag);
   }
