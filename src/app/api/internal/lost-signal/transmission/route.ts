@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 import { apiError, apiOk } from '@/lib/api-response';
+import { authorizeSpmtCoreService } from '@/lib/spmt-incoming-service-auth';
 import { generateAIResponse } from '@/services/ai-provider';
 
 const RequestSchema = z.object({
@@ -56,14 +57,7 @@ Return ONLY valid JSON in this exact schema:
 {"fragments":["fragment one","fragment two","fragment three","fragment four","fragment five"],"message":["line one","optional line two","optional line three","optional line four"]}`;
 
 export async function POST(request: NextRequest) {
-  const expectedKey = String(
-    process.env.SPMT_SYSTEM_KEY
-    || process.env.SYSTEM_API_KEY
-    || process.env.SPMT_API_KEY
-    || '',
-  ).trim();
-  const providedKey = String(request.headers.get('x-spmt-key') || '').trim();
-  if (!expectedKey || providedKey !== expectedKey) {
+  if (!(await authorizeSpmtCoreService(request, 'signal:generate'))) {
     return apiError('SPMT service authentication required', { status: 401, code: 'UNAUTHORIZED' });
   }
 
