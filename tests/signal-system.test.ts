@@ -22,31 +22,33 @@ test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 h
   assert.match(signal, /sendStructuredDiscordReply/);
 });
 
-test('Discord !signal requires Egg 3, targets comms-lounge, preserves the user identity, then deletes the source command', () => {
+test('Discord !signal is a local cosmetic replacement only', () => {
   assert.match(signal, /provider: 'discord'/);
   assert.match(signal, /entitlement\.eggs\.signal/);
-  assert.match(signal, /resolveDiscordStreamHubTwitchIdentity/);
-  assert.match(signal, /kind: 'signal'/);
+  assert.match(signal, /usage: !signal <message>/);
   assert.match(signal, /sendWebhookMessage/);
+  assert.match(signal, /input\.sourceChannelId/);
   assert.match(signal, /input\.actualUsername/);
-  assert.match(signal, /input\.sourceUserAvatarUrl/);
+  assert.match(signal, /SIGNAL_DISCORD_GIF_URL/);
+  assert.match(signal, /description: boldSignalText\(signalText\)/);
   assert.match(signal, /deleteMessage\(input\.sourceChannelId, sourceMessageId\)/);
-  assert.match(signal, /resolveSignalChannelId\(guildId, input\.sourceChannelId\)/);
+  assert.doesNotMatch(signal, /resolveDiscordStreamHubTwitchIdentity/);
+
+  const discordStart = signal.indexOf('export async function handleDiscordSignalCommand');
+  const twitchStart = signal.indexOf('export async function handleTwitchSignalCommand');
+  const discordBody = signal.slice(discordStart, twitchStart);
+  assert.doesNotMatch(discordBody, /postDiscordStreamHubSignal/);
+  assert.doesNotMatch(discordBody, /signalCooldownAvailable/);
+  assert.doesNotMatch(discordBody, /recordSignalCooldown/);
 });
 
-test('Signal cooldown is broadcaster scoped, persistent, and only recorded after a successful DSH carrier post', () => {
-  assert.match(signal, /signal-command-cooldowns\.json/);
-  assert.match(signal, /async function signalCooldownAvailable/);
-  assert.match(signal, /async function recordSignalCooldown/);
-  assert.doesNotMatch(signal, /claimSignalCooldown/);
-  const discordPost = signal.indexOf('const posted = await postDiscordStreamHubSignal({');
-  const discordRecord = signal.indexOf('await recordSignalCooldown(targetName);', discordPost);
-  assert.ok(discordPost >= 0 && discordRecord > discordPost);
-});
-
-test('Twitch !signal requires Egg 3, targets the current broadcaster, posts the Discord carrier and acknowledges as SpaceMountainLive', () => {
+test('Twitch !signal uses the current live broadcaster as the carrier target', () => {
   assert.match(signal, /provider: 'twitch'/);
+  assert.match(signal, /usage: !signal <message>/);
   assert.match(signal, /input\.broadcaster\.replace/);
+  assert.match(signal, /postDiscordStreamHubSignal/);
+  assert.match(signal, /signalCooldownAvailable\(targetName\)/);
+  assert.match(signal, /recordSignalCooldown\(targetName\)/);
   assert.match(signal, /SIGNAL_TWITCH_TENANT_ID/);
   assert.match(signal, /SIGNAL ACKNOWLEDGED/);
   assert.match(signal, /sendChatMessage\([^]*'bot', targetName, SIGNAL_TWITCH_TENANT_ID\)/);
