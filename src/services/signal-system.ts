@@ -185,13 +185,17 @@ function dayKey(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
-async function claimSignalCooldown(target: string): Promise<boolean> {
+async function signalCooldownAvailable(target: string): Promise<boolean> {
   const key = target.toLowerCase();
   const state = await readJson<CooldownState>(SIGNAL_COOLDOWN_STATE, {});
-  if (state[key]?.day === dayKey()) return false;
+  return state[key]?.day !== dayKey();
+}
+
+async function recordSignalCooldown(target: string): Promise<void> {
+  const key = target.toLowerCase();
+  const state = await readJson<CooldownState>(SIGNAL_COOLDOWN_STATE, {});
   state[key] = { day: dayKey(), at: Date.now() };
   await writeJson(SIGNAL_COOLDOWN_STATE, state);
-  return true;
 }
 
 async function postDiscordStreamHubSignal(input: {
@@ -251,7 +255,7 @@ export async function handleDiscordSignalCommand(input: {
   const linked = await resolveDiscordStreamHubTwitchIdentity(userId, guildId).catch(() => null);
   const targetName = parsed.target || String(linked?.twitchLogin || '').trim().toLowerCase();
   if (!targetName) return { handled: true, ok: false, message: 'No linked Twitch carrier was found. Use !signal @twitchname message.' };
-  if (!(await claimSignalCooldown(targetName))) return { handled: true, ok: false, message: `Carrier ${targetName} has already accepted a Signal today.` };
+  if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `Carrier ${targetName} has already accepted a Signal today.` };
 
   const signalText = parsed.text || `A Signal from @${input.actualUsername} has crossed the network.`;
   const destinationChannelId = await resolveSignalChannelId(guildId, input.sourceChannelId);
@@ -264,6 +268,7 @@ export async function handleDiscordSignalCommand(input: {
     sourceMessageId,
     signalText,
   });
+  await recordSignalCooldown(targetName);
 
   const local = await sendWebhookMessage(
     input.sourceChannelId,
@@ -276,7 +281,10 @@ export async function handleDiscordSignalCommand(input: {
       color: 0x22d3ee,
       footer: { text: `Carrier: ${targetName}` },
     }],
-  );
+  ).catch((error) => {
+    console.warn('[Signal] same-channel cosmetic replacement failed after carrier delivery', error);
+    return null;
+  });
   if (local?.id && sourceMessageId) await deleteMessage(input.sourceChannelId, sourceMessageId).catch(() => {});
   return { handled: true, ok: true, messageId: posted?.messageId || local?.id || null };
 }
@@ -292,7 +300,7 @@ export async function handleTwitchSignalCommand(input: {
   if (!entitlement.eggs.signal) return { handled: true, ok: false, message: `@${input.username}, NO CARRIER AUTHORIZATION.` };
   const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim() || `Signal from @${input.username}.`;
   const targetName = input.broadcaster.replace(/^#/, '').trim().toLowerCase();
-  if (!(await claimSignalCooldown(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };
+  if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };
   const guildId = await getDiscordStreamHubDefaultGuildId();
   const channelId = await resolveSignalChannelId(guildId);
   if (!channelId) throw new Error(`${SIGNAL_CHANNEL_NAME} was not found in the Space Mountain Discord.`);
@@ -303,6 +311,9 @@ export async function handleTwitchSignalCommand(input: {
     targetName,
     signalText,
   });
-  await sendChatMessage(`📡 SIGNAL ACKNOWLEDGED — transmission accepted from @${input.username}.`, 'bot', targetName, SIGNAL_TWITCH_TENANT_ID);
+  await recordSignalCooldown(targetName);
+  await sendChatMessage(`📡 SIGNAL ACKNOWLEDGED — transmission accepted from @${input.username}.`, 'bot', targetName, SIGNAL_TWITCH_TENANT_ID).catch((error) => {
+    console.warn('[Signal] Discord carrier posted but SpaceMountainLive Twitch acknowledgement failed', error);
+  });
   return { handled: true, ok: true, messageId: posted?.messageId || null };
 }
