@@ -14,10 +14,18 @@ test('SPMT bot adapter validates bearer identity and reuses canonical tenant map
   assert.match(source, /\/api\/tts/);
 });
 
-test('SPMT bot adapter propagates the OAuth bearer to protected internal API hops', async () => {
+test('SPMT bot adapter uses HTTP loopback for same-process internal API hops', async () => {
   const source = await readFile(routeUrl, 'utf8');
-  assert.match(source, /async function postInternal\(request: NextRequest, path: string, cookie: string, token: string, body: unknown\)/);
-  assert.match(source, /Authorization: `Bearer \$\{token\}`,[\s\S]*Cookie: cookie/);
+  assert.match(source, /function internalBaseUrl\(\): string/);
+  assert.match(source, /http:\/\/127\.0\.0\.1:\$\{port\}/);
+  assert.match(source, /new URL\(path, internalBaseUrl\(\)\)/);
+  assert.equal(source.includes('new URL(path, request.nextUrl.origin)'), false);
+});
+
+test('SPMT bot adapter carries signed tenant context through internal API hops', async () => {
+  const source = await readFile(routeUrl, 'utf8');
+  assert.match(source, /async function postInternal\(_request: NextRequest, path: string, cookie: string, token: string, body: unknown\)/);
+  assert.match(source, /headers: \{[\s\S]*?Authorization: `Bearer \$\{token\}`,[\s\S]*?Cookie: cookie,[\s\S]*?\}/);
   assert.match(source, /postInternal\(request, '\/api\/ai\/chat-with-memory', session\.header, token,/);
   assert.match(source, /postInternal\(request, '\/api\/tts', cookie, token,/);
 });

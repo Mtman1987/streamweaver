@@ -71,8 +71,13 @@ function internalSessionCookie(user: SpmtUser, tenantOverride?: string) {
   };
 }
 
-async function postInternal(request: NextRequest, path: string, cookie: string, token: string, body: unknown) {
-  const response = await fetch(new URL(path, request.nextUrl.origin), {
+function internalBaseUrl(): string {
+  const port = String(process.env.PORT || '3000').trim() || '3000';
+  return `http://127.0.0.1:${port}`;
+}
+
+async function postInternal(_request: NextRequest, path: string, cookie: string, token: string, body: unknown) {
+  const response = await fetch(new URL(path, internalBaseUrl()), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
