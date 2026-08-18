@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Black hole">
+  <defs>
+    <radialGradient id="void" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#000000"/>
+      <stop offset="0.34" stop-color="#010105"/>
+      <stop offset="0.43" stop-color="#17072d"/>
+      <stop offset="0.51" stop-color="#5b21b6"/>
+      <stop offset="0.58" stop-color="#22d3ee"/>
+      <stop offset="0.64" stop-color="#7c3aed"/>
+      <stop offset="0.74" stop-color="#111827"/>
+      <stop offset="1" stop-color="#02030a"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="128" fill="#02030a"/>
+  <ellipse cx="128" cy="128" rx="112" ry="44" fill="none" stroke="#7c3aed" stroke-width="12" opacity="0.52" transform="rotate(-17 128 128)" filter="url(#glow)"/>
+  <ellipse cx="128" cy="128" rx="104" ry="32" fill="none" stroke="#22d3ee" stroke-width="5" opacity="0.66" transform="rotate(-17 128 128)"/>
+  <circle cx="128" cy="128" r="72" fill="url(#void)" filter="url(#glow)"/>
+  <circle cx="128" cy="128" r="39" fill="#000000"/>
+  <circle cx="102" cy="99" r="4" fill="#ffffff" opacity="0.75"/>
+  <circle cx="175" cy="78" r="2.5" fill="#ffffff" opacity="0.55"/>
+  <circle cx="189" cy="155" r="3" fill="#c4b5fd" opacity="0.75"/>
+</svg>
