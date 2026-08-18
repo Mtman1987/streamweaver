@@ -14,7 +14,7 @@ type FailureCache = {
   message: string;
 };
 
-let cached: ServiceTokenCache | null = null;
+const cached = new Map<string, ServiceTokenCache>();
 const inFlight = new Map<string, Promise<string>>();
 const failures = new Map<string, FailureCache>();
 
@@ -62,13 +62,14 @@ async function mintSpmtServiceToken(requested: string[], key: string): Promise<s
 
     const now = Date.now();
     const expiresIn = Math.max(60, Number(payload.expires_in || 3600));
-    cached = {
+    const entry = {
       token: String(payload.access_token),
       expiresAt: now + expiresIn * 1000,
       scopes: grantedScopes(payload, requested),
     };
+    cached.set(key, entry);
     failures.delete(key);
-    return cached.token;
+    return entry.token;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     failures.set(key, { until: Date.now() + FAILURE_BACKOFF_MS, message });
@@ -80,12 +81,11 @@ export async function getSpmtServiceToken(scopes: string[]): Promise<string> {
   const requested = normalizedScopes(scopes);
   if (!requested.length) throw new Error('At least one SPMT service scope is required');
 
-  const now = Date.now();
-  if (cached && cached.expiresAt - now > FRESHNESS_MARGIN_MS && requested.every((scope) => cached!.scopes.includes(scope))) {
-    return cached.token;
-  }
-
   const key = scopeKey(requested);
+  const now = Date.now();
+  const current = cached.get(key);
+  if (current && current.expiresAt - now > FRESHNESS_MARGIN_MS) return current.token;
+
   const failed = failures.get(key);
   if (failed && failed.until > now) {
     throw new Error(`SPMT service token exchange is backing off after a recent failure: ${failed.message}`);
@@ -103,7 +103,13 @@ export async function getSpmtServiceToken(scopes: string[]): Promise<string> {
   return promise;
 }
 
-export function clearSpmtServiceTokenCache() {
-  cached = null;
-  failures.clear();
+export function clearSpmtServiceTokenCache(scopes?: string[]) {
+  if (!scopes?.length) {
+    cached.clear();
+    failures.clear();
+    return;
+  }
+  const key = scopeKey(normalizedScopes(scopes));
+  cached.delete(key);
+  failures.delete(key);
 }
