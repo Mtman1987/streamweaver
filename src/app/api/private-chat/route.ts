@@ -20,10 +20,15 @@ const privateChatMessageSchema = z.object({
   message: 'Message or media is required',
 });
 
+function requirePrivateTenant(request: NextRequest): string | null {
+  return getTenantFromRequest(request)?.tenantId || null;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const session = getTenantFromRequest(request);
-    const messages = await readPrivateChatMessages(undefined, session?.tenantId);
+    const tenantId = requirePrivateTenant(request);
+    if (!tenantId) return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+    const messages = await readPrivateChatMessages(undefined, tenantId);
     return apiOk({ messages });
   } catch (error) {
     console.error('Private chat GET API error:', error);
@@ -33,12 +38,13 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = getTenantFromRequest(request);
+    const tenantId = requirePrivateTenant(request);
+    if (!tenantId) return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
     const { getPrivateChatFilePath } = await import('@/lib/private-chat-store');
     const { promises: fsp } = await import('fs');
-    const filePath = getPrivateChatFilePath(session?.tenantId);
+    const filePath = getPrivateChatFilePath(tenantId);
     await fsp.writeFile(filePath, '[]');
-    console.log(`[Private Chat] Cleared history for tenant ${session?.tenantId || 'global'}`);
+    console.log(`[Private Chat] Cleared history for tenant ${tenantId}`);
     return apiOk({ cleared: true });
   } catch (error) {
     console.error('Private chat DELETE API error:', error);
@@ -48,12 +54,14 @@ export async function DELETE(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const tenantId = requirePrivateTenant(request);
+    if (!tenantId) return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
+
     const parsedBody = privateChatMessageSchema.safeParse(await request.json().catch(() => null));
     if (!parsedBody.success) {
       return apiError('Missing required fields', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const session = getTenantFromRequest(request);
     const { type, username, message, timestamp, attachments, embeds } = parsedBody.data;
     const normalizedAttachments: PrivateChatMessage['attachments'] | undefined = attachments
       ?.reduce<NonNullable<PrivateChatMessage['attachments']>>((acc, attachment) => {
@@ -70,10 +78,10 @@ export async function POST(request: NextRequest) {
     await appendPrivateChatMessages(
       [{ type, username, message, timestamp, attachments: normalizedAttachments, embeds }],
       100,
-      session?.tenantId
+      tenantId
     );
 
-    console.log(`[Private Chat] Saved ${type} message from ${username}`);
+    console.log(`[Private Chat] Saved ${type} message from ${username} for tenant ${tenantId}`);
     return apiOk({ success: true });
   } catch (error) {
     console.error('Private chat API error:', error);
