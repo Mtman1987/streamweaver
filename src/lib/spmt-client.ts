@@ -45,29 +45,61 @@ export class SpmtOwnerRecoveryError extends Error {
   }
 }
 
+function attemptSignal(timeoutMs: number): AbortSignal | undefined {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(timeoutMs)
+    : undefined;
+}
+
+async function fetchSpmtAttempt(
+  url: string,
+  init: RequestInit,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<Response> {
+  const { signal: _sharedSignal, ...baseInit } = init;
+  return fetch(url, {
+    ...baseInit,
+    signal: attemptSignal(timeoutMs),
+    headers: { ...((init.headers || {}) as Record<string, string>), ...headers },
+  });
+}
+
+async function discardResponse(response: Response) {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The connection/body is already closed; retry can continue safely.
+  }
+}
+
 async function fetchSpmtWithServiceAuth(
   scope: string,
   url: string,
   init: RequestInit,
   legacyHeaders: Record<string, string> | null,
+  timeoutMs: number,
 ): Promise<Response> {
   let serviceError: unknown = null;
   try {
     let token = await getSpmtServiceToken([scope]);
-    let response = await fetch(url, {
-      ...init,
-      headers: { ...((init.headers || {}) as Record<string, string>), Authorization: `Bearer ${token}` },
-    });
-    if (response.status === 401 || response.status === 403) {
-      clearSpmtServiceTokenCache();
+    let response = await fetchSpmtAttempt(url, init, { Authorization: `Bearer ${token}` }, timeoutMs);
+
+    // 403 is a real authorization decision from the receiver. Never escalate a
+    // denied scoped request to a broader compatibility credential.
+    if (response.status === 403) return response;
+
+    if (response.status === 401) {
+      await discardResponse(response);
+      clearSpmtServiceTokenCache([scope]);
       token = await getSpmtServiceToken([scope]);
-      response = await fetch(url, {
-        ...init,
-        headers: { ...((init.headers || {}) as Record<string, string>), Authorization: `Bearer ${token}` },
-      });
+      response = await fetchSpmtAttempt(url, init, { Authorization: `Bearer ${token}` }, timeoutMs);
+      if (response.status === 403) return response;
     }
-    if (response.status !== 401 && response.status !== 403) return response;
-    serviceError = new Error(`SPMT service token rejected for ${scope} (${response.status})`);
+
+    if (response.status !== 401) return response;
+    await discardResponse(response);
+    serviceError = new Error(`SPMT service token was not accepted for ${scope}`);
   } catch (error) {
     serviceError = error;
   }
@@ -76,19 +108,18 @@ async function fetchSpmtWithServiceAuth(
     if (serviceError instanceof Error) throw serviceError;
     throw new Error(`SPMT service OAuth unavailable for ${scope}`);
   }
-  console.warn(`[auth-migration] LEGACY_AUTH_USED caller=streamweaver scope=${scope}`);
-  return fetch(url, {
-    ...init,
-    headers: { ...((init.headers || {}) as Record<string, string>), ...legacyHeaders },
-  });
+  console.warn(`[auth-migration] LEGACY_AUTH_USED caller=streamweaver scope=${scope} reason=service-auth-unavailable`);
+  return fetchSpmtAttempt(url, init, legacyHeaders, timeoutMs);
 }
 
 export function isSpmtEnabled() {
-  return Boolean(STREAMWEAVER_CLIENT_SECRET || SPMT_API_KEY);
+  return Boolean(STREAMWEAVER_CLIENT_SECRET || SPMT_API_KEY || SPMT_SYSTEM_KEY);
 }
 
 export async function publishSpmtEvent(event: SpmtEventInput) {
-  if (!isSpmtEnabled()) return { skipped: true, reason: 'SPMT service auth not configured' };
+  if (!STREAMWEAVER_CLIENT_SECRET && !SPMT_API_KEY) {
+    return { skipped: true, reason: 'SPMT event service auth not configured' };
+  }
 
   try {
     const response = await fetchSpmtWithServiceAuth(
@@ -103,11 +134,9 @@ export async function publishSpmtEvent(event: SpmtEventInput) {
           payload: {},
           ...event,
         }),
-        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-          ? AbortSignal.timeout(5000)
-          : undefined,
       },
       SPMT_API_KEY ? { Authorization: `Bearer ${SPMT_API_KEY}` } : null,
+      5000,
     );
 
     if (!response.ok) {
@@ -142,11 +171,9 @@ export async function requestSpmtOwnerRecoveryCode(input: {
         targetDiscordId: String(input.targetDiscordId || '').trim(),
       }),
       cache: 'no-store',
-      signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-        ? AbortSignal.timeout(8000)
-        : undefined,
     },
     SPMT_SYSTEM_KEY ? { 'x-spmt-key': SPMT_SYSTEM_KEY } : null,
+    8000,
   );
   const payload = await response.json().catch(() => null) as any;
   if (!response.ok) {
