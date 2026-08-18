@@ -40,9 +40,6 @@ function configuredModel(): string {
 }
 
 function configuredApiKey(): string {
-  // The built-in Fly worker is intentionally private-network only and needs no
-  // second model credential. This remains only for an already-supported custom
-  // Qwen endpoint that uses PRIVATE_QWEN_API_KEY.
   return String(process.env.PRIVATE_QWEN_API_KEY || '').trim();
 }
 
@@ -80,9 +77,9 @@ function finishReason(payload: any): string {
   return String(payload?.choices?.[0]?.finish_reason || '').trim().toLowerCase();
 }
 
-function hasUnbalancedMarkdownFence(text: string): boolean {
-  const ticks = (String(text || '').match(/`/g) || []).length;
-  return ticks % 2 !== 0;
+function hasUnclosedTripleBacktickFence(text: string): boolean {
+  const fences = String(text || '').match(/```+/g) || [];
+  return fences.length % 2 !== 0;
 }
 
 export function looksAbruptlyCutOff(text: string, reason = ''): boolean {
@@ -90,7 +87,7 @@ export function looksAbruptlyCutOff(text: string, reason = ''): boolean {
   const normalizedReason = String(reason || '').trim().toLowerCase();
   if (!value) return true;
   if (['length', 'max_tokens', 'max_token', 'token_limit'].includes(normalizedReason)) return true;
-  if (hasUnbalancedMarkdownFence(value)) return true;
+  if (hasUnclosedTripleBacktickFence(value)) return true;
   if (/[,:;\-–—/\\]$/.test(value)) return true;
   if (/\b(?:and|or|but|because|about|with|to|from|for|the|a|an|this|that|these|those|your|my|our|its)$/i.test(value)) return true;
   return false;
@@ -180,16 +177,13 @@ export async function requestSpmtLocalLlm(
     return { text: first.text, provider: 'spmt-local-qwen', model };
   }
 
-  // Never publish a visibly chopped answer. Regenerate once from the beginning
-  // with more headroom; if that is still incomplete, throw so the shared AI
-  // provider can use its normal EdenAI fallback instead of showing a fragment.
   const retryPrompt = [
     prompt,
     '',
     'The previous draft ended abruptly before the answer was complete.',
     'Answer again from the beginning. Finish every sentence and close any Markdown you open.',
   ].join('\n');
-  const retryBudget = maxTokens(Math.max(requestedBudget * 2, 800));
+  const retryBudget = maxTokens(requestedBudget * 2);
   const retry = await perform(retryPrompt, retryBudget);
   if (!retry.text || looksAbruptlyCutOff(retry.text, retry.finishReason)) {
     throw new Error(`SPMT local LLM returned an incomplete response${retry.finishReason ? ` (${retry.finishReason})` : ''}.`);
