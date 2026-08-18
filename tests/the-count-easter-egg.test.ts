@@ -67,7 +67,7 @@ test('Voidwalker is a shared non-editable identity flag derived from the three-e
   assert.match(helper, /entitlement\.title === VOIDWALKER_TITLE/);
   assert.match(helper, /context\.startsWith\('discord'\)/);
   assert.match(helper, /context\.startsWith\('twitch'\)/);
-  assert.match(patch, /const userIsVoidwalker = await isVoidwalker/);
+  assert.match(patch, /const userIsVoidwalker = userIsCommander \? false : await isVoidwalker/);
   assert.match(patch, /const voidwalkerContext = userIsVoidwalker/);
   assert.match(patch, /commanderContext,\\n      voidwalkerContext/);
 });
