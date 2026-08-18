@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = path.resolve(process.cwd());
+const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+
+const signal = read('src/services/signal-system.ts');
+const patch = read('scripts/patch-signal-system.mjs');
+
+test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 hour shuffle bag', () => {
+  assert.match(signal, /SIGNAL_CHANNEL_NAME = 'comms-lounge'/);
+  assert.match(signal, /SIGNAL_MIN_DELAY_MS = 2 \* 60 \* 60 \* 1000/);
+  assert.match(signal, /SIGNAL_MAX_DELAY_MS = 5 \* 60 \* 60 \* 1000/);
+  assert.match(signal, /signal-scheduler\.json/);
+  assert.match(signal, /if \(!lastChannelId && first\) return \[first\.id, \.\.\.rest\]/);
+  assert.match(signal, /bag\[0\] === lastChannelId/);
+  assert.match(signal, /log\|staff\|admin\|support\|ticket\|announce/);
+  assert.match(signal, /UNIDENTIFIED SIGNAL/);
+  assert.match(signal, /Intercept Signal/);
+  assert.match(signal, /sendStructuredDiscordReply/);
+});
+
+test('Discord !signal is a local cosmetic replacement only', () => {
+  assert.match(signal, /provider: 'discord'/);
+  assert.match(signal, /entitlement\.eggs\.signal/);
+  assert.match(signal, /usage: !signal <message>/);
+  assert.match(signal, /sendWebhookMessage/);
+  assert.match(signal, /input\.sourceChannelId/);
+  assert.match(signal, /input\.actualUsername/);
+  assert.match(signal, /SIGNAL_DISCORD_GIF_URL/);
+  assert.match(signal, /description: boldSignalText\(signalText\)/);
+  assert.match(signal, /deleteMessage\(input\.sourceChannelId, sourceMessageId\)/);
+  assert.doesNotMatch(signal, /resolveDiscordStreamHubTwitchIdentity/);
+
+  const discordStart = signal.indexOf('export async function handleDiscordSignalCommand');
+  const twitchStart = signal.indexOf('export async function handleTwitchSignalCommand');
+  const discordBody = signal.slice(discordStart, twitchStart);
+  assert.doesNotMatch(discordBody, /postDiscordStreamHubSignal/);
+  assert.doesNotMatch(discordBody, /signalCooldownAvailable/);
+  assert.doesNotMatch(discordBody, /recordSignalCooldown/);
+});
+
+test('Twitch !signal uses the current live broadcaster as the carrier target', () => {
+  assert.match(signal, /provider: 'twitch'/);
+  assert.match(signal, /usage: !signal <message>/);
+  assert.match(signal, /input\.broadcaster\.replace/);
+  assert.match(signal, /postDiscordStreamHubSignal/);
+  assert.match(signal, /signalCooldownAvailable\(targetName\)/);
+  assert.match(signal, /recordSignalCooldown\(targetName\)/);
+  assert.match(signal, /SIGNAL_TWITCH_TENANT_ID/);
+  assert.match(signal, /SIGNAL ACKNOWLEDGED/);
+  assert.match(signal, /sendChatMessage\([^]*'bot', targetName, SIGNAL_TWITCH_TENANT_ID\)/);
+});
+
+test('runtime patch wires !signal in both Discord and Twitch and arms the scheduler', () => {
+  assert.match(patch, /handleDiscordSignalCommand/);
+  assert.match(patch, /handleTwitchSignalCommand/);
+  assert.match(patch, /cmdName === 'signal'/);
+  assert.match(patch, /\^!signal/);
+  assert.match(patch, /startSignalScheduler/);
+});
