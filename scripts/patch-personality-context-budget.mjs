@@ -12,13 +12,20 @@ const importBlock = `import {
 } from '@/lib/personality-prompt';`;
 const replacementImportBlock = `import {
   buildPersonalityPrompt,
-  NATURAL_DIALOGUE_POLICY,
   shouldIncludeExtendedPersonality,
 } from '@/lib/personality-prompt';`;
 if (!source.includes('shouldIncludeExtendedPersonality')) {
   if (!source.includes(importBlock)) throw new Error('Private personality budget import marker missing');
   source = source.replace(importBlock, replacementImportBlock);
 }
+
+// Private turns may borrow a little public continuity, but twelve full public
+// messages on every DM is unnecessary prompt weight. Four is enough to orient
+// the bot without crowding out the private conversation itself.
+source = source.replace(
+  '    const publicHistory = await readPublicChatMessages(12, tenantId).catch(() => []);',
+  '    const publicHistory = await readPublicChatMessages(4, tenantId).catch(() => []);',
+);
 
 const oldPromptBlock = `    const publicContext = formatRecentPublicContext(publicHistory as any, botName);
     const qwenSystemPrompt = [
@@ -46,12 +53,12 @@ if (!source.includes('const personalityContext = shouldIncludeExtendedPersonalit
   source = source.replace(oldPromptBlock, newPromptBlock);
 }
 
-// buildPersonalityPrompt already appends the global natural-dialogue policy to
-// systemIdentity, so do not send the same policy a second time in qwenSystemPrompt.
-source = source.replace(
-  `      governedSystemIdentity,\n      personalityContext.includeExtended ? extendedGuidance : '',\n      personalityContext.conversationStart && extendedGuidance\n        ? '[Conversation refresher: extended personality/background is loaded for this opening turn only. Routine turns use the compact identity above the --- separator.]'\n        : '',\n      NATURAL_DIALOGUE_POLICY,\n      publicContext,`,
-  `      governedSystemIdentity,\n      personalityContext.includeExtended ? extendedGuidance : '',\n      personalityContext.conversationStart && extendedGuidance\n        ? '[Conversation refresher: extended personality/background is loaded for this opening turn only. Routine turns use the compact identity above the --- separator.]'\n        : '',\n      publicContext,`,
-);
+if (!source.includes('readPublicChatMessages(4, tenantId)')) {
+  throw new Error('Private personality budget: compact public-history limit was not applied');
+}
+if (source.includes('NATURAL_DIALOGUE_POLICY')) {
+  throw new Error('Private personality budget: duplicate natural-dialogue policy import/use remains');
+}
 
 fs.writeFileSync(file, source, 'utf8');
 console.log('Personality context budget patch applied.');
