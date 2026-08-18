@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { globalPath } from './tenant';
+import { THE_COUNT_CHARACTER } from './the-count';
 
 export type WorldLoreCharacter = {
   stableId: string;
@@ -54,6 +55,16 @@ function getDefaultWorldLoreFilePath(): string {
   return resolve(process.cwd(), 'src', 'data', 'world-lore-default.json');
 }
 
+function withSystemCharacters(lore: WorldLore): WorldLore {
+  return {
+    ...lore,
+    characters: {
+      ...(lore.characters || {}),
+      [THE_COUNT_CHARACTER.stableId]: THE_COUNT_CHARACTER,
+    },
+  };
+}
+
 export async function readWorldLore(): Promise<WorldLore | null> {
   for (const filePath of [getWorldLoreFilePath(), getDefaultWorldLoreFilePath()]) {
     try {
@@ -62,7 +73,7 @@ export async function readWorldLore(): Promise<WorldLore | null> {
       if (!parsed || typeof parsed !== 'object' || typeof parsed.worldId !== 'string') {
         continue;
       }
-      return parsed as WorldLore;
+      return withSystemCharacters(parsed as WorldLore);
     } catch {
       // Try the next source.
     }
