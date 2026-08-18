@@ -4,8 +4,10 @@ import { globalPath, listTenants } from '../lib/tenant';
 import { getBotName } from '../lib/bot-settings-store';
 import { readWorldLore } from '../lib/world-lore-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
-import { getDiscordStreamHubDefaultGuildId, resolveDiscordStreamHubTwitchIdentity } from './discord-stream-hub';
+import { getDiscordStreamHubDefaultGuildId } from './discord-stream-hub';
 import { sendStructuredDiscordReply, type DiscordReplySpeaker } from './discord-structured-replies';
+import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-branding';
+import { hasTenantOwnAvatar } from './discord-avatar-media';
 import { sendWebhookMessage } from './discord-webhooks';
 import { deleteMessage } from './discord';
 import { sendChatMessage } from './twitch';
@@ -229,11 +231,16 @@ async function postDiscordStreamHubSignal(input: {
   return response.json().catch(() => ({}));
 }
 
-function parseSignalPayload(raw: string): { target?: string; text: string } {
-  const text = String(raw || '').trim();
-  const match = text.match(/^@([a-z0-9_]{3,25})(?:\s+([\s\S]*))?$/i);
-  if (!match) return { text };
-  return { target: match[1].toLowerCase(), text: String(match[2] || '').trim() };
+function boldSignalText(value: string): string {
+  const escaped = String(value || '').replace(/\\/g, '\\\\').replace(/\*/g, '\\*').trim();
+  return `**${escaped}**`;
+}
+
+async function resolveSignalDiscordAvatarUrl(): Promise<string> {
+  const configured = String(process.env.SIGNAL_DISCORD_GIF_URL || '').trim();
+  if (/^https?:\/\//i.test(configured)) return configured;
+  if (hasTenantOwnAvatar(SIGNAL_TWITCH_TENANT_ID)) return buildBotAvatarUrl(SIGNAL_TWITCH_TENANT_ID);
+  return resolveDiscordBotThumbnailUrl(SIGNAL_TWITCH_TENANT_ID).catch(() => '');
 }
 
 export async function handleDiscordSignalCommand(input: {
@@ -245,48 +252,38 @@ export async function handleDiscordSignalCommand(input: {
   sourceUserAvatarUrl?: string;
 }): Promise<SignalCommandResult> {
   const userId = String(input.msg.author?.id || input.msg.userId || input.msg.user_id || '').trim();
-  const guildId = String(input.msg.guildId || input.msg.guild_id || '').trim();
   const sourceMessageId = String(input.msg.messageId || input.msg.message_id || '').trim();
-  if (!userId || !guildId) return { handled: true, ok: false, message: 'Signal authorization requires a linked Discord identity.' };
+  if (!userId) return { handled: true, ok: false, message: 'Signal authorization requires a linked Discord identity.' };
+
+  const signalText = input.actualMessage.replace(/^!signal\b/i, '').trim();
+  if (!signalText) return { handled: true, ok: false, message: 'usage: !signal <message>' };
+
   const entitlement = await getSpmtEasterEggEntitlement({ provider: 'discord', providerUserId: userId });
   if (!entitlement.eggs.signal) return { handled: true, ok: false, message: 'NO CARRIER AUTHORIZATION.' };
 
-  const parsed = parseSignalPayload(input.actualMessage.replace(/^!signal\b/i, ''));
-  const linked = await resolveDiscordStreamHubTwitchIdentity(userId, guildId).catch(() => null);
-  const targetName = parsed.target || String(linked?.twitchLogin || '').trim().toLowerCase();
-  if (!targetName) return { handled: true, ok: false, message: 'No linked Twitch carrier was found. Use !signal @twitchname message.' };
-  if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `Carrier ${targetName} has already accepted a Signal today.` };
-
-  const signalText = parsed.text || `A Signal from @${input.actualUsername} has crossed the network.`;
-  const destinationChannelId = await resolveSignalChannelId(guildId, input.sourceChannelId);
-  const posted = await postDiscordStreamHubSignal({
-    guildId,
-    channelId: destinationChannelId,
-    requesterName: input.actualUsername,
-    requesterDiscordId: userId,
-    targetName,
-    sourceMessageId,
-    signalText,
-  });
-  await recordSignalCooldown(targetName);
-
+  const signalAvatarUrl = await resolveSignalDiscordAvatarUrl();
   const local = await sendWebhookMessage(
     input.sourceChannelId,
     '',
     input.actualUsername,
-    input.sourceUserAvatarUrl,
+    signalAvatarUrl || input.sourceUserAvatarUrl,
     [{
-      title: '📡 SIGNAL TRANSMITTED',
-      description: signalText,
+      title: '📡 SIGNAL',
+      description: boldSignalText(signalText),
       color: 0x22d3ee,
-      footer: { text: `Carrier: ${targetName}` },
+      ...(signalAvatarUrl ? { thumbnail: { url: signalAvatarUrl } } : {}),
     }],
-  ).catch((error) => {
-    console.warn('[Signal] same-channel cosmetic replacement failed after carrier delivery', error);
-    return null;
-  });
-  if (local?.id && sourceMessageId) await deleteMessage(input.sourceChannelId, sourceMessageId).catch(() => {});
-  return { handled: true, ok: true, messageId: posted?.messageId || local?.id || null };
+  );
+
+  if (!local?.id) {
+    throw new Error('Signal replacement could not be posted in this Discord channel.');
+  }
+  if (sourceMessageId) {
+    await deleteMessage(input.sourceChannelId, sourceMessageId).catch((error) => {
+      console.warn('[Signal] replacement posted but source Discord command could not be deleted', error);
+    });
+  }
+  return { handled: true, ok: true, messageId: local.id };
 }
 
 export async function handleTwitchSignalCommand(input: {
@@ -298,12 +295,17 @@ export async function handleTwitchSignalCommand(input: {
 }): Promise<SignalCommandResult> {
   const entitlement = await getSpmtEasterEggEntitlement({ provider: 'twitch', providerUserId: input.providerUserId });
   if (!entitlement.eggs.signal) return { handled: true, ok: false, message: `@${input.username}, NO CARRIER AUTHORIZATION.` };
-  const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim() || `Signal from @${input.username}.`;
+
+  const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim();
+  if (!signalText) return { handled: true, ok: false, message: `@${input.username}, usage: !signal <message>` };
+
   const targetName = input.broadcaster.replace(/^#/, '').trim().toLowerCase();
   if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };
+
   const guildId = await getDiscordStreamHubDefaultGuildId();
   const channelId = await resolveSignalChannelId(guildId);
   if (!channelId) throw new Error(`${SIGNAL_CHANNEL_NAME} was not found in the Space Mountain Discord.`);
+
   const posted = await postDiscordStreamHubSignal({
     guildId,
     channelId,
@@ -312,6 +314,7 @@ export async function handleTwitchSignalCommand(input: {
     signalText,
   });
   await recordSignalCooldown(targetName);
+
   await sendChatMessage(`📡 SIGNAL ACKNOWLEDGED — transmission accepted from @${input.username}.`, 'bot', targetName, SIGNAL_TWITCH_TENANT_ID).catch((error) => {
     console.warn('[Signal] Discord carrier posted but SpaceMountainLive Twitch acknowledgement failed', error);
   });
