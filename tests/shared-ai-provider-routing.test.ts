@@ -30,7 +30,7 @@ test('shared local model is enabled by default and falls back only after failure
   const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
   const local = readFileSync(new URL('../src/services/spmt-local-llm.ts', import.meta.url), 'utf8');
   assert.match(local, /SPMT_LOCAL_LLM_ENABLED !== 'false'/);
-  assert.match(provider, /if \(isSpmtLocalLlmEnabled\(\)\)/);
+  assert.match(provider, /if \(isSpmtLocalLlmEnabled\(\) && !localLlmCircuitIsOpen\(\)\)/);
   assert.match(provider, /catch \(error\)/);
   assert.match(provider, /falling back to EdenAI/);
 });
