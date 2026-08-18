@@ -1,5 +1,7 @@
+import { getSpmtServiceToken } from './spmt-service-token';
+
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
-const SPMT_SYSTEM_KEY = String(process.env.SPMT_SYSTEM_KEY || '').trim();
+const LEGACY_SPMT_SYSTEM_KEY = String(process.env.SPMT_SYSTEM_KEY || '').trim();
 
 export type SpmtEasterEggEntitlement = {
   knownIdentity: boolean;
@@ -17,19 +19,30 @@ const EMPTY_ENTITLEMENT: SpmtEasterEggEntitlement = {
   title: null,
 };
 
+async function entitlementAuthorizationHeaders(): Promise<Record<string, string>> {
+  try {
+    const token = await getSpmtServiceToken(['entitlements:read']);
+    return { Authorization: `Bearer ${token}` };
+  } catch (error) {
+    if (!LEGACY_SPMT_SYSTEM_KEY) throw error;
+    console.warn('[auth-migration] LEGACY_AUTH_USED migration=AUTH-SW-003 route=/api/internal/easter-eggs/entitlement transport=x-spmt-key');
+    return { 'x-spmt-key': LEGACY_SPMT_SYSTEM_KEY };
+  }
+}
+
 export async function getSpmtEasterEggEntitlement(input: {
   provider: 'discord' | 'twitch';
   providerUserId: string;
 }): Promise<SpmtEasterEggEntitlement> {
   const providerUserId = String(input.providerUserId || '').trim();
-  if (!SPMT_SYSTEM_KEY || !providerUserId) return EMPTY_ENTITLEMENT;
+  if (!providerUserId) return EMPTY_ENTITLEMENT;
 
   try {
     const response = await fetch(`${SPMT_BASE_URL}/api/internal/easter-eggs/entitlement`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-spmt-key': SPMT_SYSTEM_KEY,
+        ...(await entitlementAuthorizationHeaders()),
       },
       body: JSON.stringify({ provider: input.provider, providerUserId }),
       cache: 'no-store',
