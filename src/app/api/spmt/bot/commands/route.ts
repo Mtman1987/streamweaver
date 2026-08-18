@@ -71,10 +71,11 @@ function internalSessionCookie(user: SpmtUser, tenantOverride?: string) {
   };
 }
 
-async function postInternal(request: NextRequest, path: string, cookie: string, body: unknown) {
+async function postInternal(request: NextRequest, path: string, cookie: string, token: string, body: unknown) {
   const response = await fetch(new URL(path, request.nextUrl.origin), {
     method: 'POST',
     headers: {
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
       Cookie: cookie,
@@ -92,12 +93,13 @@ async function postInternal(request: NextRequest, path: string, cookie: string, 
 async function maybeGenerateTts(
   request: NextRequest,
   cookie: string,
+  token: string,
   tenantId: string,
   responseText: string,
   body: any,
 ) {
   if (!responseText || body?.speak === false) return null;
-  const ttsResult = await postInternal(request, '/api/tts', cookie, {
+  const ttsResult = await postInternal(request, '/api/tts', cookie, token, {
     text: responseText,
     voice: firstString(body?.voice) || undefined,
     tenantId,
@@ -152,7 +154,7 @@ export async function POST(request: NextRequest) {
   if (openCommand) {
     try {
       const responseText = await runOpenBotCommand(openCommand);
-      const tts = await maybeGenerateTts(request, session.header, targetTenantId, responseText, body);
+      const tts = await maybeGenerateTts(request, session.header, token, targetTenantId, responseText, body);
       return apiOk({
         accepted: true,
         routed: true,
@@ -180,7 +182,7 @@ export async function POST(request: NextRequest) {
   // Prefix cross-tenant usernames so private Commander recognition cannot be
   // inherited merely because a public-room caller happens to share that name.
   const aiUsername = isGuestBot ? `hmo:${caller.username}` : caller.username;
-  const ai = await postInternal(request, '/api/ai/chat-with-memory', session.header, {
+  const ai = await postInternal(request, '/api/ai/chat-with-memory', session.header, token, {
     username: aiUsername,
     userId: user.id,
     displayName: caller.displayName,
@@ -197,7 +199,7 @@ export async function POST(request: NextRequest) {
   }
 
   const responseText = firstString(ai.data?.response, ai.data?.data?.response);
-  const tts = await maybeGenerateTts(request, session.header, targetTenantId, responseText, body);
+  const tts = await maybeGenerateTts(request, session.header, token, targetTenantId, responseText, body);
 
   return apiOk({
     accepted: true,
