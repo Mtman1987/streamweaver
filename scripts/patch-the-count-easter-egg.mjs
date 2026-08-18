@@ -87,3 +87,35 @@ patchFile('src/app/api/discord/chat/route.ts', (source) => {
 
   return source;
 });
+
+patchFile('src/app/api/ai/chat-with-memory/route.ts', (source) => {
+  const commanderImport = "import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';";
+  const titleImport = "import { isVoidwalker, getVoidwalkerSystemPrompt } from '@/lib/voidwalker';";
+  if (!source.includes(titleImport)) {
+    if (!source.includes(commanderImport)) throw new Error('Voidwalker patch: commander import marker missing');
+    source = source.replace(commanderImport, `${commanderImport}\n${titleImport}`);
+  }
+
+  const commanderMarker = '    const userIsCommander = isCommander(username);';
+  const titleFlag = "    const userIsCommander = isCommander(username);\n    const userIsVoidwalker = await isVoidwalker({ context, providerUserId: userId });";
+  if (!source.includes('const userIsVoidwalker = await isVoidwalker')) {
+    if (!source.includes(commanderMarker)) throw new Error('Voidwalker patch: commander flag marker missing');
+    source = source.replace(commanderMarker, titleFlag);
+  }
+
+  const commanderContextMarker = "    }\n\n    const contextFlags: Record<string, string> = {";
+  const titleContextReplacement = "    }\n    const voidwalkerContext = userIsVoidwalker ? getVoidwalkerSystemPrompt() : '';\n\n    const contextFlags: Record<string, string> = {";
+  if (!source.includes('const voidwalkerContext = userIsVoidwalker')) {
+    if (!source.includes(commanderContextMarker)) throw new Error('Voidwalker patch: context marker missing');
+    source = source.replace(commanderContextMarker, titleContextReplacement);
+  }
+
+  const promptMarker = '      commanderContext,\n      contextFlag,';
+  const promptReplacement = '      commanderContext,\n      voidwalkerContext,\n      contextFlag,';
+  if (!source.includes(promptReplacement)) {
+    if (!source.includes(promptMarker)) throw new Error('Voidwalker patch: prompt marker missing');
+    source = source.replace(promptMarker, promptReplacement);
+  }
+
+  return source;
+});
