@@ -1,3 +1,4 @@
+import { clearSpmtServiceTokenCache, getSpmtServiceToken } from '../lib/spmt-service-token';
 import { syncSignalCarrierChannels } from './twitch-client';
 
 const DSH_BASE_URL = String(
@@ -16,6 +17,7 @@ const DSH_SECRET = String(
   || process.env.BOT_SECRET_KEY
   || ''
 ).trim();
+const CHAT_TAG_BLACKLIST_SCOPE = 'chat-tag:blacklist:read';
 const SIGNAL_CARRIER_SYNC_MS = Math.max(30_000, Number(process.env.SIGNAL_CARRIER_SYNC_MS || 120_000));
 
 let timer: NodeJS.Timeout | null = null;
@@ -59,12 +61,28 @@ async function fetchSignalCarrierRoster(): Promise<string[]> {
   return [...new Set<string>(channels)].sort();
 }
 
-async function fetchChatTagBotBlacklist(): Promise<Set<string>> {
-  const response = await fetch(`${CHAT_TAG_BASE_URL}/api/bot/blacklist`, {
-    headers: { Accept: 'application/json' },
+async function fetchChatTagBlacklistAttempt(token: string): Promise<Response> {
+  return fetch(`${CHAT_TAG_BASE_URL}/api/bot/blacklist`, {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     cache: 'no-store',
     signal: requestTimeout(),
   });
+}
+
+async function fetchChatTagBotBlacklist(): Promise<Set<string>> {
+  let token = await getSpmtServiceToken([CHAT_TAG_BLACKLIST_SCOPE]);
+  let response = await fetchChatTagBlacklistAttempt(token);
+
+  if (response.status === 401) {
+    await response.body?.cancel().catch(() => undefined);
+    clearSpmtServiceTokenCache([CHAT_TAG_BLACKLIST_SCOPE]);
+    token = await getSpmtServiceToken([CHAT_TAG_BLACKLIST_SCOPE]);
+    response = await fetchChatTagBlacklistAttempt(token);
+  }
+
   if (!response.ok) {
     throw new Error(`ChatTag bot blacklist failed: ${response.status} ${await response.text().catch(() => '')}`);
   }
