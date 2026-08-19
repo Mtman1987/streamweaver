@@ -47,10 +47,44 @@ patch('src/services/chat-dispatcher.ts', (source) => {
   return source;
 });
 
+patch('src/services/twitch-client.ts', (source) => {
+  const channelSetMarker = 'const communityBotChannels = new Set<string>();';
+  const signalCarrierSet = 'const signalCarrierChannels = new Set<string>();';
+  if (!source.includes(signalCarrierSet)) {
+    if (!source.includes(channelSetMarker)) throw new Error('Signal patch: community bot channel set marker missing');
+    source = source.replace(channelSetMarker, `${channelSetMarker}\n${signalCarrierSet}`);
+  }
+
+  if (!source.includes('const isSignalCarrier = signalCarrierChannels.has(channelName);')) {
+    const oldBlock = `          const tenantId = channelToTenant.get(channelName);\n          if (!tenantId) return;\n          const tenant = tenantClients.get(tenantId);\n          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {\n            return;\n          }\n\n          if (!self && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {\n            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);\n            return;\n          }\n\n          await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);`;
+    const newBlock = `          const tenantId = channelToTenant.get(channelName);\n          const isSignalCarrier = signalCarrierChannels.has(channelName);\n          if (!tenantId && !isSignalCarrier) return;\n          const tenant = tenantId ? tenantClients.get(tenantId) : undefined;\n          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {\n            return;\n          }\n\n          if (!tenantId && isSignalCarrier) {\n            if (self || !/^!signal(?:\\s|$)/i.test(String(message || ''))) return;\n            const { handleTwitchSignalCommand } = await import('./signal-system');\n            const username = String(tags?.username || tags?.['display-name'] || 'viewer').trim();\n            const result = await handleTwitchSignalCommand({\n              providerUserId: String(tags?.['user-id'] || ''),\n              username,\n              broadcaster: channelName,\n              rawMessage: String(message || ''),\n            });\n            if (!result.ok && result.message) {\n              await client.say(channelName, result.message).catch(() => {});\n            }\n            return;\n          }\n\n          if (!self && tenantId && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {\n            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);\n            return;\n          }\n\n          await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);`;
+    if (!source.includes(oldBlock)) throw new Error('Signal patch: community bot message handler marker missing');
+    source = source.replace(oldBlock, newBlock);
+  }
+
+  if (!source.includes('export async function syncSignalCarrierChannels(')) {
+    const marker = 'async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {';
+    const block = `function normalizeSignalCarrierChannel(value: string): string {\n  return String(value || '').replace(/^#/, '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 25);\n}\n\nexport async function syncSignalCarrierChannels(channels: string[]): Promise<{ active: string[]; joined: string[]; parted: string[] }> {\n  const clientId = process.env.TWITCH_CLIENT_ID;\n  const clientSecret = process.env.TWITCH_CLIENT_SECRET;\n  if (!clientId || !clientSecret) throw new Error('Twitch client credentials are not configured');\n\n  const next = new Set((channels || []).map(normalizeSignalCarrierChannel).filter(Boolean));\n  const joined: string[] = [];\n  const parted: string[] = [];\n\n  for (const channel of next) {\n    if (!communityBotChannels.has(channel)) {\n      const client = await ensureCommunityBotForChannel(channel, clientId, clientSecret);\n      if (!client || !communityBotChannels.has(channel)) {\n        throw new Error(\`Community bot could not join Signal carrier #\${channel}\`);\n      }\n      joined.push(channel);\n    }\n    signalCarrierChannels.add(channel);\n  }\n\n  for (const channel of [...signalCarrierChannels]) {\n    if (next.has(channel)) continue;\n    signalCarrierChannels.delete(channel);\n    if (channelToTenant.has(channel)) continue;\n    if (communityBotClient && communityBotChannels.has(channel)) {\n      try {\n        await communityBotClient.part(channel);\n      } catch (error) {\n        console.warn(\`[Twitch:community-bot] Failed to part removed Signal carrier #\${channel}:\`, error);\n      }\n      communityBotChannels.delete(channel);\n      parted.push(channel);\n    }\n  }\n\n  return { active: [...signalCarrierChannels].sort(), joined, parted };\n}\n\n`;
+    if (!source.includes(marker)) throw new Error('Signal patch: reauth notice marker missing');
+    source = source.replace(marker, `${block}${marker}`);
+  }
+
+  return source;
+});
+
 patch('server.ts', (source) => {
-  if (source.includes('startSignalScheduler();')) return source;
   const marker = "        const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig?.server?.host || '127.0.0.1');";
-  const block = `        if (process.env.SIGNAL_SCHEDULER_ENABLED === 'true') {\n            try {\n                const { startSignalScheduler } = await import('./src/services/signal-system');\n                startSignalScheduler();\n                console.log('[Signal] Lost Signal scheduler armed');\n            } catch (error) {\n                console.warn('[Signal] Scheduler startup skipped:', error);\n            }\n        } else {\n            console.log('[Signal] Lost Signal scheduler disabled until SIGNAL_SCHEDULER_ENABLED=true');\n        }\n\n`;
   if (!source.includes(marker)) throw new Error('Signal patch: server startup marker missing');
-  return source.replace(marker, `${block}${marker}`);
+
+  if (!source.includes('startSignalCarrierRosterSync();')) {
+    const carrierBlock = `        try {\n            const { startSignalCarrierRosterSync } = await import('./src/services/signal-carrier-sync');\n            startSignalCarrierRosterSync();\n            console.log('[Signal] DSH shoutout carrier listener armed');\n        } catch (error) {\n            console.warn('[Signal] Carrier listener startup skipped:', error);\n        }\n\n`;
+    source = source.replace(marker, `${carrierBlock}${marker}`);
+  }
+
+  if (!source.includes('startSignalScheduler();')) {
+    const schedulerBlock = `        if (process.env.SIGNAL_SCHEDULER_ENABLED === 'true') {\n            try {\n                const { startSignalScheduler } = await import('./src/services/signal-system');\n                startSignalScheduler();\n                console.log('[Signal] Lost Signal scheduler armed');\n            } catch (error) {\n                console.warn('[Signal] Scheduler startup skipped:', error);\n            }\n        } else {\n            console.log('[Signal] Lost Signal scheduler disabled until SIGNAL_SCHEDULER_ENABLED=true');\n        }\n\n`;
+    source = source.replace(marker, `${schedulerBlock}${marker}`);
+  }
+
+  return source;
 });
