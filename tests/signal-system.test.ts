@@ -7,6 +7,7 @@ const root = path.resolve(process.cwd());
 const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
 const signal = read('src/services/signal-system.ts');
+const carrierSync = read('src/services/signal-carrier-sync.ts');
 const patch = read('scripts/patch-signal-system.mjs');
 
 test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 hour shuffle bag', () => {
@@ -54,10 +55,26 @@ test('Twitch !signal uses the current live broadcaster as the carrier target', (
   assert.match(signal, /sendChatMessage\([^]*'bot', targetName, SIGNAL_TWITCH_TENANT_ID\)/);
 });
 
-test('runtime patch wires !signal in both Discord and Twitch and arms the scheduler', () => {
+test('DSH shoutout roster is synced into the shared Twitch community bot', () => {
+  assert.match(carrierSync, /\/api\/internal\/signal\/carriers/);
+  assert.match(carrierSync, /Authorization: `Bearer \$\{DSH_SECRET\}`/);
+  assert.match(carrierSync, /syncSignalCarrierChannels\(channels\)/);
+  assert.match(carrierSync, /SIGNAL_CARRIER_SYNC_MS/);
+  assert.match(patch, /signalCarrierChannels = new Set<string>/);
+  assert.match(patch, /isSignalCarrier = signalCarrierChannels\.has\(channelName\)/);
+  assert.match(patch, /!tenantId && isSignalCarrier/);
+  assert.match(patch, /self \|\| !\/\^!signal/);
+  assert.match(patch, /handleTwitchSignalCommand/);
+  assert.match(patch, /export async function syncSignalCarrierChannels/);
+  assert.match(patch, /startSignalCarrierRosterSync/);
+});
+
+test('runtime patch wires !signal in both Discord and Twitch without enabling the held scheduler', () => {
   assert.match(patch, /handleDiscordSignalCommand/);
   assert.match(patch, /handleTwitchSignalCommand/);
   assert.match(patch, /cmdName === 'signal'/);
   assert.match(patch, /\^!signal/);
   assert.match(patch, /startSignalScheduler/);
+  assert.match(patch, /process\.env\.SIGNAL_SCHEDULER_ENABLED === 'true'/);
+  assert.doesNotMatch(carrierSync, /startSignalScheduler/);
 });
