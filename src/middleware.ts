@@ -19,6 +19,10 @@ const MACHINE_PATHS = [
   '/api/discord/chat', '/api/integrations/social-stream', '/api/ai/shoutout',
   '/api/kick/chat-tag-broadcast', '/api/quackverse/pack-overlay',
   '/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator',
+  // This route performs its own service-auth check. Do not force a human SPMT
+  // session in middleware before DiscordStreamHub's machine credential can be
+  // evaluated by the route itself.
+  '/api/internal/known-bots',
 ];
 
 const MACHINE_PREFIXES = ['/api/discord-avatar/', '/api/discord-media/', '/api/say/', '/api/webhooks/'];
