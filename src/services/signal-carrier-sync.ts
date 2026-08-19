@@ -5,6 +5,11 @@ const DSH_BASE_URL = String(
   || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL
   || 'https://discord-stream-hub-new.fly.dev'
 ).replace(/\/$/, '');
+const CHAT_TAG_BASE_URL = String(
+  process.env.CHAT_TAG_BASE_URL
+  || process.env.NEXT_PUBLIC_CHAT_TAG_URL
+  || 'https://chat-tag-new.fly.dev'
+).replace(/\/$/, '');
 const DSH_SECRET = String(
   process.env.DSH_SERVICE_SECRET
   || process.env.DSH_CLIENT_SECRET
@@ -27,6 +32,12 @@ function normalizeChannel(value: unknown): string {
     .slice(0, 25);
 }
 
+function requestTimeout(): AbortSignal | undefined {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(5000)
+    : undefined;
+}
+
 async function fetchSignalCarrierRoster(): Promise<string[]> {
   if (!DSH_SECRET) throw new Error('DSH service secret is not configured');
   const response = await fetch(`${DSH_BASE_URL}/api/internal/signal/carriers`, {
@@ -35,9 +46,7 @@ async function fetchSignalCarrierRoster(): Promise<string[]> {
       Authorization: `Bearer ${DSH_SECRET}`,
     },
     cache: 'no-store',
-    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-      ? AbortSignal.timeout(5000)
-      : undefined,
+    signal: requestTimeout(),
   });
   if (!response.ok) {
     throw new Error(`DSH Signal carrier roster failed: ${response.status} ${await response.text().catch(() => '')}`);
@@ -50,16 +59,42 @@ async function fetchSignalCarrierRoster(): Promise<string[]> {
   return [...new Set<string>(channels)].sort();
 }
 
+async function fetchChatTagBotBlacklist(): Promise<Set<string>> {
+  const response = await fetch(`${CHAT_TAG_BASE_URL}/api/bot/blacklist`, {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+    signal: requestTimeout(),
+  });
+  if (!response.ok) {
+    throw new Error(`ChatTag bot blacklist failed: ${response.status} ${await response.text().catch(() => '')}`);
+  }
+  const payload = await response.json().catch(() => null) as any;
+  const rawChannels: unknown[] = Array.isArray(payload?.blacklisted) ? payload.blacklisted : [];
+  return new Set(
+    rawChannels
+      .map(normalizeChannel)
+      .filter((channel): channel is string => Boolean(channel)),
+  );
+}
+
 export async function syncSignalCarrierRosterOnce(): Promise<void> {
   if (syncInFlight) return syncInFlight;
   syncInFlight = (async () => {
-    const channels = await fetchSignalCarrierRoster();
-    const result = await syncSignalCarrierChannels(channels);
-    if (result.joined.length || result.parted.length) {
+    // Do not join or change community-bot carrier channels unless the canonical
+    // ChatTag no-bot list is available. Opt-out takes precedence over shoutouts.
+    const [channels, botBlacklist] = await Promise.all([
+      fetchSignalCarrierRoster(),
+      fetchChatTagBotBlacklist(),
+    ]);
+    const excluded = channels.filter((channel) => botBlacklist.has(channel));
+    const eligibleChannels = channels.filter((channel) => !botBlacklist.has(channel));
+    const result = await syncSignalCarrierChannels(eligibleChannels);
+    if (result.joined.length || result.parted.length || excluded.length) {
       console.log('[Signal] carrier listener synced', {
         total: result.active.length,
         joined: result.joined,
         parted: result.parted,
+        chatTagBotOptOuts: excluded,
       });
     }
   })().finally(() => {
