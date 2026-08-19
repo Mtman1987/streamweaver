@@ -43,11 +43,11 @@ async function fetchSignalCarrierRoster(): Promise<string[]> {
     throw new Error(`DSH Signal carrier roster failed: ${response.status} ${await response.text().catch(() => '')}`);
   }
   const payload = await response.json().catch(() => null) as any;
-  return Array.from(new Set(
-    (Array.isArray(payload?.channels) ? payload.channels : [])
-      .map(normalizeChannel)
-      .filter(Boolean),
-  )).sort();
+  const rawChannels: unknown[] = Array.isArray(payload?.channels) ? payload.channels : [];
+  const channels = rawChannels
+    .map(normalizeChannel)
+    .filter((channel): channel is string => Boolean(channel));
+  return [...new Set<string>(channels)].sort();
 }
 
 export async function syncSignalCarrierRosterOnce(): Promise<void> {
