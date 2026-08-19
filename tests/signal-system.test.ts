@@ -64,7 +64,6 @@ test('Twitch !signal uses the current broadcaster and asks DSH for its Discord d
 test('DSH shoutout roster is synced into the shared Twitch community bot', () => {
   assert.match(carrierSync, /\/api\/internal\/signal\/carriers/);
   assert.match(carrierSync, /Authorization: `Bearer \$\{DSH_SECRET\}`/);
-  assert.match(carrierSync, /syncSignalCarrierChannels\(channels\)/);
   assert.match(carrierSync, /SIGNAL_CARRIER_SYNC_MS/);
   assert.match(patch, /signalCarrierChannels = new Set<string>/);
   assert.match(patch, /isSignalCarrier = signalCarrierChannels\.has\(channelName\)/);
@@ -75,6 +74,19 @@ test('DSH shoutout roster is synced into the shared Twitch community bot', () =>
   assert.match(patch, /Signal failed:/);
   assert.match(patch, /export async function syncSignalCarrierChannels/);
   assert.match(patch, /startSignalCarrierRosterSync/);
+});
+
+test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () => {
+  assert.match(carrierSync, /CHAT_TAG_BASE_URL/);
+  assert.match(carrierSync, /\/api\/bot\/blacklist/);
+  assert.match(carrierSync, /payload\?\.blacklisted/);
+  assert.match(carrierSync, /Promise\.all\(\[/);
+  assert.match(carrierSync, /fetchSignalCarrierRoster\(\)/);
+  assert.match(carrierSync, /fetchChatTagBotBlacklist\(\)/);
+  assert.match(carrierSync, /eligibleChannels = channels\.filter\(\(channel\) => !botBlacklist\.has\(channel\)\)/);
+  assert.match(carrierSync, /syncSignalCarrierChannels\(eligibleChannels\)/);
+  assert.match(carrierSync, /chatTagBotOptOuts: excluded/);
+  assert.doesNotMatch(carrierSync, /syncSignalCarrierChannels\(channels\)/);
 });
 
 test('runtime patch wires !signal in both Discord and Twitch without enabling the held scheduler', () => {
