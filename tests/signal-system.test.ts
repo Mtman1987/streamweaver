@@ -24,6 +24,18 @@ test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 h
   assert.match(signal, /sendStructuredDiscordReply/);
 });
 
+test('Signal hint posts keep a readable persistent count and channel history', () => {
+  assert.match(signal, /signal-hint-history\.json/);
+  assert.match(signal, /totalPosts/);
+  assert.match(signal, /uniqueChannelIds/);
+  assert.match(signal, /channelName/);
+  assert.match(signal, /lastPostAt/);
+  assert.match(signal, /recordSignalHintPost\(guildId, channel\)/);
+  assert.match(signal, /history\.slice\(-SIGNAL_HINT_HISTORY_LIMIT\)|slice\(-SIGNAL_HINT_HISTORY_LIMIT\)/);
+  assert.match(signal, /\[Signal\] hint posted/);
+  assert.match(signal, /uniqueChannels: nextState\.uniqueChannelIds\.length/);
+});
+
 test('Discord !signal is a local cosmetic replacement only', () => {
   assert.match(signal, /provider: 'discord'/);
   assert.match(signal, /entitlement\.eggs\.signal/);
