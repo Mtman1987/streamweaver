@@ -8,6 +8,7 @@ const read = (relativePath: string) => fs.readFileSync(path.join(root, relativeP
 
 const signal = read('src/services/signal-system.ts');
 const carrierSync = read('src/services/signal-carrier-sync.ts');
+const carrierAthena = read('src/services/carrier-athena.ts');
 const patch = read('scripts/patch-signal-system.mjs');
 
 test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 hour shuffle bag', () => {
@@ -53,12 +54,14 @@ test('Twitch !signal uses the current broadcaster and asks DSH for its Discord d
   assert.match(signal, /resolveDiscordStreamHubSignalDestination\(\)/);
   assert.match(signal, /\/api\/internal\/signal\/channel/);
   assert.match(signal, /Authorization: `Bearer \$\{secret\}`/);
+  assert.match(signal, /deferAcknowledgement\?: boolean/);
+  assert.match(signal, /if \(!input\.deferAcknowledgement\)/);
+  assert.match(signal, /message: acknowledgement/);
   const twitchStart = signal.indexOf('export async function handleTwitchSignalCommand');
   const twitchBody = signal.slice(twitchStart);
   assert.doesNotMatch(twitchBody, /resolveSignalChannelId\(guildId\)/);
   assert.match(signal, /SIGNAL_TWITCH_TENANT_ID/);
   assert.match(signal, /SIGNAL ACKNOWLEDGED/);
-  assert.match(signal, /sendChatMessage\([^]*'bot', targetName, SIGNAL_TWITCH_TENANT_ID\)/);
 });
 
 test('DSH shoutout roster is synced into the shared Twitch community bot', () => {
@@ -68,12 +71,29 @@ test('DSH shoutout roster is synced into the shared Twitch community bot', () =>
   assert.match(patch, /signalCarrierChannels = new Set<string>/);
   assert.match(patch, /isSignalCarrier = signalCarrierChannels\.has\(channelName\)/);
   assert.match(patch, /!tenantId && isSignalCarrier/);
-  assert.match(patch, /self \|\| !\/\^!signal/);
   assert.match(patch, /handleTwitchSignalCommand/);
+  assert.match(patch, /deferAcknowledgement: true/);
+  assert.match(patch, /sayCarrierReply/);
+  assert.match(patch, /Failed to reply in carrier/);
   assert.match(patch, /Carrier !signal failed/);
   assert.match(patch, /Signal failed:/);
   assert.match(patch, /export async function syncSignalCarrierChannels/);
   assert.match(patch, /startSignalCarrierRosterSync/);
+});
+
+test('authorized Athena calls work in non-tenant shoutout carrier chats only through the narrow carrier path', () => {
+  assert.match(carrierAthena, /ATHENA_WHITELIST_TENANT_ID/);
+  assert.match(carrierAthena, /canUseAthenaEverywhere/);
+  assert.match(carrierAthena, /athena\|annie\|athenabot87/i);
+  assert.match(carrierAthena, /athena-everywhere-mode\.json/);
+  assert.match(carrierAthena, /\/api\/ai\/chat-with-memory/);
+  assert.match(carrierAthena, /tenantId: ATHENA_WHITELIST_TENANT_ID/);
+  assert.match(carrierAthena, /channelId:/);
+  assert.match(carrierAthena, /context: 'twitch'/);
+  assert.match(carrierAthena, /Athena failed:/);
+  assert.match(patch, /handleTwitchCarrierAthenaCall/);
+  assert.match(patch, /athena\|annie\|athenabot87/i);
+  assert.match(patch, /athenaResult\.handled && athenaResult\.message/);
 });
 
 test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () => {
