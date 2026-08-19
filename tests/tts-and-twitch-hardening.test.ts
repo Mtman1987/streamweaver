@@ -4,6 +4,8 @@ import { NextRequest } from 'next/server';
 import { generateTTS, getLifelikeFallbackVoices, getTTSProviderCooldownMs } from '../src/services/tts-provider';
 import {
   DEFAULT_TTS_VOICE,
+  ATHENA_CANONICAL_TTS_VOICE,
+  ATHENA_LIVEKIT_TTS_DESCRIPTOR,
   TTS_VOICE_OPTIONS,
   normalizeTtsProvider,
   normalizeTtsVoice,
@@ -17,15 +19,16 @@ import {
 import { normalizeTwitchUserIdentifier } from '../src/services/twitch';
 import { ProactiveTwitchRefreshGate } from '../src/lib/token-utils.server';
 
-test('TTS catalog is Eden-only and contains named voice models', () => {
+test('TTS catalog contains named Eden voices and the portable Deepgram Athena identity', () => {
   assert.equal(normalizeTtsProvider('gemini'), 'edenai');
   assert.equal(normalizeTtsProvider('openai'), 'edenai');
-  assert.ok(TTS_VOICE_OPTIONS.length >= 10);
+  assert.ok(TTS_VOICE_OPTIONS.length >= 14);
   for (const voice of TTS_VOICE_OPTIONS) {
-    assert.equal(voice.provider, 'edenai');
     assert.ok(voice.edenaiVoiceModel);
     assert.doesNotMatch(voice.edenaiVoiceModel, /^(?:MALE|FEMALE)$/);
   }
+  assert.equal(normalizeTtsVoice('athena'), ATHENA_CANONICAL_TTS_VOICE);
+  assert.equal(ATHENA_LIVEKIT_TTS_DESCRIPTOR, 'deepgram/aura-2:athena');
 });
 
 test('legacy and unknown voices normalize to curated Eden voices', () => {

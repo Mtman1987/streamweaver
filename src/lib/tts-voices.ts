@@ -1,4 +1,4 @@
-export type TTSProvider = 'edenai';
+export type TTSProvider = 'edenai' | 'deepgram';
 export type EdenAITTSProvider = 'google' | 'microsoft' | 'amazon' | 'openai';
 export type TTSVoiceGender = 'MALE' | 'FEMALE';
 
@@ -12,7 +12,69 @@ export type TTSVoiceOption = {
   edenaiProvider: EdenAITTSProvider;
   edenaiOption: TTSVoiceGender;
   edenaiVoiceModel: string;
+  deepgramModel?: string;
+  livekitDescriptor?: string;
 };
+
+export const ATHENA_TENANT_ID = '94371378';
+export const ATHENA_CANONICAL_TTS_VOICE = 'deepgram:aura-2:athena';
+export const ATHENA_DEEPGRAM_TTS_MODEL = 'aura-2-athena-en';
+export const ATHENA_LIVEKIT_TTS_DESCRIPTOR = 'deepgram/aura-2:athena';
+
+export const DEEPGRAM_VOICE_OPTIONS: TTSVoiceOption[] = [
+  {
+    id: ATHENA_CANONICAL_TTS_VOICE,
+    label: 'Athena',
+    provider: 'deepgram',
+    providerLabel: 'Deepgram Aura-2',
+    gender: 'Female',
+    description: 'Athena canonical voice across direct Deepgram and LiveKit Inference',
+    edenaiProvider: 'openai',
+    edenaiOption: 'FEMALE',
+    edenaiVoiceModel: ATHENA_DEEPGRAM_TTS_MODEL,
+    deepgramModel: ATHENA_DEEPGRAM_TTS_MODEL,
+    livekitDescriptor: ATHENA_LIVEKIT_TTS_DESCRIPTOR,
+  },
+  {
+    id: 'deepgram:aura-2:apollo',
+    label: 'Apollo',
+    provider: 'deepgram',
+    providerLabel: 'Deepgram Aura-2',
+    gender: 'Male',
+    description: 'Comfortable, casual US English voice available through LiveKit',
+    edenaiProvider: 'openai',
+    edenaiOption: 'MALE',
+    edenaiVoiceModel: 'aura-2-apollo-en',
+    deepgramModel: 'aura-2-apollo-en',
+    livekitDescriptor: 'deepgram/aura-2:apollo',
+  },
+  {
+    id: 'deepgram:aura-2:odysseus',
+    label: 'Odysseus',
+    provider: 'deepgram',
+    providerLabel: 'Deepgram Aura-2',
+    gender: 'Male',
+    description: 'Calm, professional US English voice available through LiveKit',
+    edenaiProvider: 'openai',
+    edenaiOption: 'MALE',
+    edenaiVoiceModel: 'aura-2-odysseus-en',
+    deepgramModel: 'aura-2-odysseus-en',
+    livekitDescriptor: 'deepgram/aura-2:odysseus',
+  },
+  {
+    id: 'deepgram:aura-2:theia',
+    label: 'Theia',
+    provider: 'deepgram',
+    providerLabel: 'Deepgram Aura-2',
+    gender: 'Female',
+    description: 'Expressive Australian English voice available through LiveKit',
+    edenaiProvider: 'openai',
+    edenaiOption: 'FEMALE',
+    edenaiVoiceModel: 'aura-2-theia-en',
+    deepgramModel: 'aura-2-theia-en',
+    livekitDescriptor: 'deepgram/aura-2:theia',
+  },
+];
 
 // Curated, named voices only. Every entry here was smoke-tested against the
 // production Eden AI account on 2026-07-23. Do not add generic gender-only
@@ -152,7 +214,7 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   },
 ];
 
-export const TTS_VOICE_OPTIONS = EDENAI_VOICE_OPTIONS;
+export const TTS_VOICE_OPTIONS = [...DEEPGRAM_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS];
 export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
 export const DEFAULT_TTS_VOICE = 'edenai:openai:nova';
 
@@ -175,10 +237,17 @@ const LEGACY_VOICE_MAP: Record<string, string> = {
   'edenai:microsoft:male': 'edenai:microsoft:en-US-GuyNeural',
   'edenai:amazon:female': 'edenai:amazon:Ruth',
   'edenai:amazon:male': 'edenai:amazon:Matthew',
+  athena: ATHENA_CANONICAL_TTS_VOICE,
+  'deepgram:athena': ATHENA_CANONICAL_TTS_VOICE,
+  'deepgram/aura-2:athena': ATHENA_CANONICAL_TTS_VOICE,
+  'aura-2-athena-en': ATHENA_CANONICAL_TTS_VOICE,
+  apollo: 'deepgram:aura-2:apollo',
+  odysseus: 'deepgram:aura-2:odysseus',
+  theia: 'deepgram:aura-2:theia',
 };
 
-export function normalizeTtsProvider(_provider: unknown): TTSProvider {
-  return DEFAULT_TTS_PROVIDER;
+export function normalizeTtsProvider(provider: unknown): TTSProvider {
+  return String(provider || '').trim().toLowerCase() === 'deepgram' ? 'deepgram' : DEFAULT_TTS_PROVIDER;
 }
 
 export function normalizeTtsVoice(voice: string | undefined | null, _provider: TTSProvider = DEFAULT_TTS_PROVIDER): string {
@@ -203,8 +272,8 @@ export function getTtsVoiceOption(voice: string | undefined | null, provider: TT
   return TTS_VOICE_OPTIONS.find((option) => option.id === normalized) || TTS_VOICE_OPTIONS[0];
 }
 
-export function getProviderForVoice(_voice: string | undefined | null, _fallback: TTSProvider = DEFAULT_TTS_PROVIDER): TTSProvider {
-  return 'edenai';
+export function getProviderForVoice(voice: string | undefined | null, fallback: TTSProvider = DEFAULT_TTS_PROVIDER): TTSProvider {
+  return getTtsVoiceOption(voice, fallback)?.provider || fallback;
 }
 
 export function getFallbackVoiceForProvider(_provider: TTSProvider, selectedVoice?: string | null): string {

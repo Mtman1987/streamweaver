@@ -97,6 +97,10 @@ startup choices, and other non-secret settings are stored in
 - Route managed HTML media to an explicitly configured output-device ID.
 - Import files into a user-selected local media library.
 - Run bounded MP4, MP3, and GIF FFmpeg presets as tracked background jobs.
+- Run opt-in, resumable HTTPS media downloads with a bounded LRU cache and
+  local approval for paired relay requests.
+- Select CPU or detected NVIDIA, Intel, or AMD FFmpeg encoders, with automatic
+  CPU fallback when a hardware encode fails.
 - Run the harmless `test.echo` workflow across the `workflow.run` boundary.
 - Require local approval for cloud-requested jingle playback and song briefs.
 - Play approved library jingles through a named OBS media input.

@@ -2,6 +2,8 @@ const byId = (id) => document.getElementById(id);
 let state;
 let media = [];
 let jobs = [];
+let mediaCache = null;
+let hardware = null;
 let workflowJobs = [];
 let confirmations = [];
 
@@ -35,8 +37,13 @@ function renderMedia() {
       <button data-transcode="${escapeHtml(item.name)}" data-preset="gif" class="secondary">GIF</button>
       <button data-play-media="${escapeHtml(item.name)}">Play in OBS</button></span></div>`
   ).join('') : '<p>No local media yet.</p>';
-  byId('jobs').innerHTML = jobs.length ? jobs.slice().reverse().map((job) =>
-    `<div class="media-row"><span>${escapeHtml(job.outputName || job.inputName)}</span><strong>${escapeHtml(job.status)}</strong></div>`
+  byId('jobs').innerHTML = jobs.length ? jobs.slice().reverse().map((job) => {
+    const progress = job.totalBytes ? ` · ${Math.min(100, Math.round((Number(job.bytes || 0) / Number(job.totalBytes)) * 100))}%` : job.bytes ? ` · ${Math.round(job.bytes / 1024 / 1024)} MB` : '';
+    const cancel = job.status === 'running' && job.type === 'download'
+      ? `<button data-cancel-job="${escapeHtml(job.id)}" class="danger">Cancel</button>`
+      : `<strong>${escapeHtml(job.status)}</strong>`;
+    return `<div class="media-row"><span>${escapeHtml(job.outputName || job.inputName)}<br><small>${escapeHtml(job.engine || job.type || '')}${escapeHtml(progress)}</small></span>${cancel}</div>`;
+  }
   ).join('') : '';
 }
 
@@ -90,8 +97,20 @@ async function load() {
   byId('open-at-login').checked = config.startup.openAtLogin;
   byId('start-minimized').checked = config.startup.startMinimized;
   byId('library-path').textContent = config.media.libraryPath || 'Using Companion-managed media folder';
+  byId('local-relay-enabled').checked = config.media.localRelayEnabled === true;
+  byId('downloads-enabled').checked = config.media.downloadsEnabled === true;
+  byId('cache-budget-gb').value = Math.max(0.5, Number(config.media.cacheBudgetBytes || 0) / 1024 / 1024 / 1024).toFixed(1);
+  byId('transcode-engine').value = config.media.transcodeEngine || 'auto';
   media = state.media || [];
   jobs = state.jobs || [];
+  mediaCache = state.mediaCache || null;
+  hardware = state.hardware || null;
+  byId('media-cache-status').textContent = mediaCache
+    ? `Download cache: ${Math.round(Number(mediaCache.bytes || 0) / 1024 / 1024)} MB / ${Math.round(Number(mediaCache.budgetBytes || 0) / 1024 / 1024)} MB · ${mediaCache.entries?.length || 0} files`
+    : 'Download cache is unavailable.';
+  byId('hardware-status').textContent = hardware
+    ? `${hardware.cpu} · ${hardware.logicalCores} threads · encoder ${hardware.selectedEngine} · NVENC ${hardware.encoders?.nvidia ? 'yes' : 'no'} · QSV ${hardware.encoders?.intel ? 'yes' : 'no'} · AMF ${hardware.encoders?.amd ? 'yes' : 'no'}`
+    : 'Hardware detection unavailable.';
   workflowJobs = state.workflowJobs || [];
   confirmations = state.confirmations || [];
   renderMedia();
@@ -130,6 +149,9 @@ document.addEventListener('click', async (event) => {
   if (target.dataset.playMedia) {
     await window.companion.playObsMedia(target.dataset.playMedia, byId('obs-media-input').value.trim());
   }
+  if (target.dataset.cancelJob) {
+    await window.companion.cancelMediaJob(target.dataset.cancelJob);
+  }
   if (target.dataset.reviewJob) {
     await window.companion.reviewWorkflow(target.dataset.reviewJob, target.dataset.approved === 'true');
     await load();
@@ -163,6 +185,13 @@ byId('save').addEventListener('click', async () => {
       volume: Number(byId('audio-volume').value),
       muted: byId('audio-muted').checked,
       outputDeviceId: byId('audio-output-device').value.trim(),
+    },
+    media: {
+      ...state.config.media,
+      localRelayEnabled: byId('local-relay-enabled').checked,
+      downloadsEnabled: byId('downloads-enabled').checked,
+      cacheBudgetBytes: Math.round(Number(byId('cache-budget-gb').value || 20) * 1024 * 1024 * 1024),
+      transcodeEngine: byId('transcode-engine').value,
     },
     windows: {
       overlay: {
@@ -200,6 +229,22 @@ byId('save').addEventListener('click', async () => {
 byId('import-media').addEventListener('click', async () => {
   const imported = await window.companion.importMedia();
   if (imported) await load();
+});
+byId('download-media').addEventListener('click', async () => {
+  const url = byId('download-url').value.trim();
+  if (!url) return;
+  try {
+    const job = await window.companion.downloadMedia({ url, fileName: byId('download-name').value.trim() });
+    jobs.push(job);
+    renderMedia();
+  } catch (error) {
+    byId('message').classList.add('error');
+    byId('message').textContent = `Download failed: ${error?.message || 'unknown error'}`;
+  }
+});
+byId('prune-media-cache').addEventListener('click', async () => {
+  await window.companion.pruneMediaCache();
+  await load();
 });
 byId('choose-library').addEventListener('click', async () => {
   const selected = await window.companion.chooseLibrary();
@@ -248,6 +293,7 @@ window.companion.onMediaJob((job) => {
   if (index >= 0) jobs[index] = job;
   else jobs.push(job);
   renderMedia();
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') void load();
 });
 window.companion.onWorkflowJob((job) => {
   const index = workflowJobs.findIndex((item) => item.id === job.id);

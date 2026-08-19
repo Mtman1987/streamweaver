@@ -28,6 +28,8 @@ const { exchangeTenantBootstrap, findTenantBootstrapUrl, parseTenantBootstrapUrl
 const COMPANION_PROTOCOL = 'spmt-companion';
 const COMPANION_WORKSPACE_URL = 'https://spacemountain.live/?companionWorkspace=streamweaver';
 const STREAMWEAVER_ORIGIN = 'https://streamweaver-new.fly.dev';
+const SPMT_PRESENCE_ENDPOINT = 'https://spmt.live/api/presence/heartbeat';
+const COMPANION_PRESENCE_INTERVAL_MS = 25_000;
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 const hasLock = app.requestSingleInstanceLock();
@@ -60,6 +62,7 @@ let overlayHotkeyRegistered = false;
 let overlayHotkeyAccelerator = '';
 let bootstrapInFlight = false;
 let pendingBootstrapUrl = findTenantBootstrapUrl(process.argv);
+let companionPresenceTimer = null;
 
 function logCompanion(message, error) {
   const detail = error instanceof Error ? `${error.stack || error.message}` : error ? String(error) : '';
@@ -98,6 +101,51 @@ function emitStatus() {
 
 function saveConfig() {
   configStore.write(config);
+}
+
+function ensureCompanionPresenceConfig() {
+  const existing = String(config?.presence?.clientId || '').trim();
+  const clientId = /^[A-Za-z0-9._:-]{8,96}$/.test(existing)
+    ? existing
+    : `companion-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`.slice(0, 96);
+  const displayName = String(config?.presence?.displayName || 'SpaceMountain Companion').trim().slice(0, 60) || 'SpaceMountain Companion';
+  config.presence = { clientId, displayName };
+  return config.presence;
+}
+
+async function heartbeatCompanionPresence() {
+  if (!config) return;
+  const presence = ensureCompanionPresenceConfig();
+  try {
+    await fetch(SPMT_PRESENCE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ appId: 'companion', clientId: presence.clientId, displayName: presence.displayName }),
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
+    });
+  } catch {
+    // Presence is observational and must never interfere with Companion.
+  }
+}
+
+function startCompanionPresence() {
+  if (companionPresenceTimer) clearInterval(companionPresenceTimer);
+  void heartbeatCompanionPresence();
+  companionPresenceTimer = setInterval(() => void heartbeatCompanionPresence(), COMPANION_PRESENCE_INTERVAL_MS);
+}
+
+function stopCompanionPresence() {
+  if (companionPresenceTimer) clearInterval(companionPresenceTimer);
+  companionPresenceTimer = null;
+}
+
+function enforceOverlayAlwaysOnTop(target = overlayWindow) {
+  if (!target || target.isDestroyed()) return;
+  try { target.setAlwaysOnTop(true, 'screen-saver'); } catch { target.setAlwaysOnTop(true); }
+  try { target.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch {
+    try { target.setVisibleOnAllWorkspaces(true); } catch {}
+  }
+  if (config?.windows?.overlay) config.windows.overlay.alwaysOnTop = true;
 }
 
 function windowBoundsKey(kind, id = '') {
@@ -316,6 +364,7 @@ function emitOverlayInteractionState() {
 
 function setOverlayInteraction(active) {
   const window = ensureOverlayWindow();
+  enforceOverlayAlwaysOnTop(window);
   overlayInteractionActive = Boolean(active);
   if (overlayInteractionActive) {
     if (config.windows.overlay.fitToDisplay !== false) fitOverlayToDisplay();
@@ -355,8 +404,11 @@ function ensureOverlayWindow() {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
   overlayWindow = new BrowserWindow(managedWindowOptions('overlay'));
   overlayWindow.setTitle('SPMT Personal Overlay');
-  overlayWindow.setAlwaysOnTop(config.windows.overlay.alwaysOnTop !== false, 'floating');
-  overlayWindow.setVisibleOnAllWorkspaces(config.windows.overlay.alwaysOnTop !== false);
+  config.windows.overlay.alwaysOnTop = true;
+  enforceOverlayAlwaysOnTop(overlayWindow);
+  overlayWindow.on('always-on-top-changed', (_event, isAlwaysOnTop) => {
+    if (!isAlwaysOnTop && !quitting) setTimeout(() => enforceOverlayAlwaysOnTop(overlayWindow), 0);
+  });
   overlayWindow.setFullScreenable(false);
   overlayWindow.setOpacity(1);
   overlayWindow.setIgnoreMouseEvents(
@@ -434,6 +486,7 @@ function ensurePopoutWindow(id) {
 
 function showOverlay() {
   const window = ensureOverlayWindow();
+  enforceOverlayAlwaysOnTop(window);
   if (config.windows.overlay.fitToDisplay !== false) fitOverlayToDisplay();
   window.showInactive();
   if (config.windows.overlay.socialEnabled !== false) {
@@ -681,6 +734,8 @@ function setupIpc() {
       }
     },
     media: mediaJobs.list(),
+    mediaCache: mediaJobs.cacheStatus(),
+    hardware: mediaJobs.hardware(),
     jobs: mediaJobs.snapshot(),
     workflowCatalog: workflowJobs.catalog(),
     workflowJobs: workflowJobs.snapshot(),
@@ -727,6 +782,11 @@ function setupIpc() {
     registerOverlayHotkey();
     app.setLoginItemSettings({ openAtLogin: Boolean(config.startup.openAtLogin), args: ['--hidden'] });
     applyAudio(config.audio);
+    mediaJobs.configure({
+      maxCacheBytes: config.media.cacheBudgetBytes,
+      downloadsEnabled: config.media.downloadsEnabled,
+      transcodeEngine: config.media.transcodeEngine,
+    });
     await connectObs();
     relay.stop();
     relay.start();
@@ -769,6 +829,9 @@ function setupIpc() {
     return mediaJobs.importFile(selection.filePaths[0]);
   });
   ipcMain.handle('companion:media-transcode', (_event, inputName, preset) => mediaJobs.transcode(inputName, preset));
+  ipcMain.handle('companion:media-download', (_event, payload) => mediaJobs.download(payload || {}));
+  ipcMain.handle('companion:media-cancel', (_event, jobId) => mediaJobs.cancel(jobId));
+  ipcMain.handle('companion:media-cache-prune', (_event, targetBytes) => mediaJobs.pruneDownloads(targetBytes));
   ipcMain.handle('companion:obs-play-media', (_event, mediaName, obsInputName) => playObsMedia({ mediaName, obsInputName }));
   ipcMain.handle('companion:workflow-create', (_event, workflowId, payload) => workflowJobs.createReviewRequest(workflowId, payload, 'local'));
   ipcMain.handle('companion:workflow-review', (_event, jobId, approved) => workflowJobs.review(jobId, Boolean(approved)));
@@ -798,6 +861,9 @@ function createMediaJobs() {
   const libraryPath = config.media.libraryPath || path.join(app.getPath('userData'), 'media');
   return new MediaJobs({
     libraryPath,
+    maxCacheBytes: config.media.cacheBudgetBytes,
+    downloadsEnabled: config.media.downloadsEnabled === true,
+    transcodeEngine: config.media.transcodeEngine,
     onUpdate: (job) => settingsWindow?.webContents.send('companion:media-job', job)
   });
 }
@@ -824,7 +890,13 @@ function createRelay() {
       showSettings();
     },
     handlers: {
-      'companion.status': async () => ({ server: serverStatus, relay: relayStatus, obs: obsStatus }),
+      'companion.status': async () => ({
+        server: serverStatus,
+        relay: relayStatus,
+        obs: obsStatus,
+        media: mediaJobs.cacheStatus(),
+        hardware: mediaJobs.hardware(),
+      }),
       'diagnostics.snapshot.write': async (payload) => {
         const saved = diagnosticsStore.writeSnapshot(payload);
         logCompanion(`Saved production Fly diagnostics snapshot ${saved.filename} (${saved.logCount} entries)`);
@@ -844,6 +916,16 @@ function createRelay() {
       'audio.mute': async (payload) => applyAudio({ muted: payload.muted }),
       'audio.volume': async (payload) => applyAudio({ volume: payload.volume }),
       'media.transcode': async (payload) => mediaJobs.transcode(payload.inputName, payload.preset),
+      'media.cache.status': async () => mediaJobs.cacheStatus(),
+      'media.download': async (payload) => {
+        if (config.media.localRelayEnabled !== true) throw new Error('HearMeOut local media relay is disabled on this device');
+        return mediaJobs.download(payload);
+      },
+      'media.download.cancel': async (payload) => mediaJobs.cancel(payload.jobId),
+      'media.cache.prune': async (payload) => {
+        if (config.media.localRelayEnabled !== true) throw new Error('HearMeOut local media relay is disabled on this device');
+        return mediaJobs.pruneDownloads(payload.targetBytes);
+      },
       'obs.media.play': playObsMedia,
       'workflow.run': async (payload) => {
         const workflowId = String(payload.workflowId || '');
@@ -922,7 +1004,13 @@ async function handleTenantBootstrap(value) {
     };
     const currentSecrets = configStore.readSecrets();
     configStore.writeSecrets({ ...currentSecrets, relayToken: String(payload.pairingToken) });
+    const linkedDisplayName = String(payload.user?.displayName || payload.user?.username || '').trim().slice(0, 60);
+    if (linkedDisplayName) {
+      const presence = ensureCompanionPresenceConfig();
+      config.presence = { ...presence, displayName: linkedDisplayName };
+    }
     saveConfig();
+    void heartbeatCompanionPresence();
     relay.stop();
     relay.start();
     if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.reload();
@@ -969,6 +1057,7 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   clearTimeout(serverRestartTimer);
   relay?.stop();
+  stopCompanionPresence();
   updateManager?.stop();
   stopManagedServer();
   void obs?.disconnect().catch(() => {});
@@ -981,7 +1070,10 @@ app.whenReady().then(async () => {
   app.setAsDefaultProtocolClient(COMPANION_PROTOCOL);
   configStore = new ConfigStore(app.getPath('userData'));
   config = configStore.read();
+  config.windows.overlay.alwaysOnTop = true;
+  ensureCompanionPresenceConfig();
   saveConfig();
+  startCompanionPresence();
   mediaJobs = createMediaJobs();
   workflowJobs = createWorkflowJobs();
   relay = createRelay();

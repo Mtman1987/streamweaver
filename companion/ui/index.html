@@ -84,12 +84,34 @@
         <span class="section-icon">03</span>
         <div><p class="kicker">Asset library</p><h2>Local media and FFmpeg</h2></div>
       </div>
-      <p class="section-copy">Import stream assets, prepare delivery formats, and send approved media straight to OBS.</p>
+      <p class="section-copy">Import stream assets, resume bounded HTTPS downloads, cache media locally, and use the selected CPU/GPU encoder for delivery formats.</p>
+      <div class="grid two">
+        <label class="check"><input id="local-relay-enabled" type="checkbox"> Allow paired HearMeOut media relay</label>
+        <label class="check"><input id="downloads-enabled" type="checkbox"> Enable local HTTPS downloads</label>
+        <label>Cache budget (GB) <input id="cache-budget-gb" type="number" min="0.5" max="100" step="0.5"></label>
+        <label>Video transcode engine
+          <select id="transcode-engine">
+            <option value="auto">Auto detect GPU</option>
+            <option value="cpu">CPU / libx264</option>
+            <option value="nvidia">NVIDIA NVENC</option>
+            <option value="intel">Intel Quick Sync</option>
+            <option value="amd">AMD AMF</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid two">
+        <label>HTTPS media URL <input id="download-url" type="url" placeholder="https://provider.example/movie.mp4"></label>
+        <label>Optional file name <input id="download-name" placeholder="Movie Name.mp4"></label>
+      </div>
       <div class="actions">
         <button id="choose-library" class="secondary">Choose library</button>
         <button id="import-media">Import media</button>
+        <button id="download-media">Download / resume</button>
+        <button id="prune-media-cache" class="secondary">Prune download cache</button>
       </div>
       <p id="library-path" class="mono"></p>
+      <p id="media-cache-status" class="mono"></p>
+      <p id="hardware-status" class="mono"></p>
       <div id="media-list" class="media-list"></div>
       <div id="jobs" class="media-list"></div>
     </section>

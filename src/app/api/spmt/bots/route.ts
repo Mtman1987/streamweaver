@@ -4,6 +4,7 @@ import { bootstrapTenant, listTenants } from '@/lib/tenant';
 import { getBotSettings } from '@/lib/bot-settings-store';
 import { getBotShareMode } from '@/lib/bot-interactions-store';
 import { readUserConfigSync } from '@/lib/user-config';
+import { ATHENA_CANONICAL_TTS_VOICE, ATHENA_TENANT_ID, getTtsVoiceOption } from '@/lib/tts-voices';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -39,6 +40,8 @@ function splitAliases(value: string): string[] {
       .filter(Boolean),
   ));
 }
+
+const splitInterests = splitAliases;
 
 async function resolveSpmtUser(token: string): Promise<SpmtUser | null> {
   const response = await fetch(`${SPMT_BASE_URL}/api/oauth/userinfo`, {
@@ -76,7 +79,12 @@ export async function GET(request: NextRequest) {
     ownerTenantId: string;
     aliases: string[];
     wakeNames: string[];
+    interests: string[];
     voice: string;
+    livekitTtsDescriptor: string;
+    avatar: string;
+    idleAvatar: string;
+    talkingAvatar: string;
     shareMode: 'off' | 'on';
     isOwner: boolean;
     canInvite: boolean;
@@ -93,6 +101,11 @@ export async function GET(request: NextRequest) {
     if (!name) continue;
 
     const aliases = splitAliases(settings.aliases);
+    const avatar = firstString(config.AI_BOT_AVATAR_URL, config.PUBLIC_DISCORD_GIF_URL);
+    const idleAvatar = firstString(config.AI_BOT_IDLE_AVATAR_URL, avatar);
+    const talkingAvatar = firstString(config.AI_BOT_TALKING_AVATAR_URL, config.PUBLIC_DISCORD_GIF_URL, idleAvatar);
+    const voice = tenantId === ATHENA_TENANT_ID ? ATHENA_CANONICAL_TTS_VOICE : firstString(settings.voice);
+    const voiceOption = getTtsVoiceOption(voice);
     bots.push({
       id: tenantId,
       name,
@@ -106,7 +119,12 @@ export async function GET(request: NextRequest) {
       ownerTenantId: tenantId,
       aliases,
       wakeNames: Array.from(new Set([name, ...aliases])),
-      voice: firstString(settings.voice),
+      interests: splitInterests(settings.interests),
+      voice,
+      livekitTtsDescriptor: voiceOption.livekitDescriptor || '',
+      avatar,
+      idleAvatar,
+      talkingAvatar,
       shareMode,
       isOwner,
       canInvite: isOwner || shareMode === 'on',
