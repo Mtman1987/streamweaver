@@ -17,6 +17,8 @@ const SIGNAL_GAME_URL = 'https://spmt.live/signal/';
 const SIGNAL_MIN_DELAY_MS = 2 * 60 * 60 * 1000;
 const SIGNAL_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
 const SIGNAL_SCHEDULER_STATE = 'signal-scheduler.json';
+const SIGNAL_HINT_HISTORY_STATE = 'signal-hint-history.json';
+const SIGNAL_HINT_HISTORY_LIMIT = 500;
 const SIGNAL_COOLDOWN_STATE = 'signal-command-cooldowns.json';
 const SIGNAL_TWITCH_TENANT_ID = String(process.env.SIGNAL_TWITCH_TENANT_ID || 'spacemountainlive').trim();
 const CHANNEL_EXCLUDE = /(?:log|staff|admin|support|ticket|announce|moderator|mod-only|private|audit)/i;
@@ -33,6 +35,20 @@ type SchedulerState = {
   bag: string[];
   lastChannelId?: string;
   nextAt: number;
+};
+
+type SignalHintHistoryEntry = {
+  at: string;
+  guildId: string;
+  channelId: string;
+  channelName: string;
+};
+
+type SignalHintHistoryState = {
+  totalPosts: number;
+  uniqueChannelIds: string[];
+  lastPostAt?: string;
+  history: SignalHintHistoryEntry[];
 };
 
 type CooldownState = Record<string, { day: string; at: number }>;
@@ -64,6 +80,38 @@ async function writeJson(fileName: string, value: unknown): Promise<void> {
   const file = globalPath(fileName);
   await fs.mkdir(resolve(file, '..'), { recursive: true });
   await fs.writeFile(file, JSON.stringify(value, null, 2));
+}
+
+async function recordSignalHintPost(guildId: string, channel: DiscordChannel): Promise<void> {
+  const at = new Date().toISOString();
+  const state = await readJson<SignalHintHistoryState>(SIGNAL_HINT_HISTORY_STATE, {
+    totalPosts: 0,
+    uniqueChannelIds: [],
+    history: [],
+  });
+  const unique = new Set((state.uniqueChannelIds || []).map(String).filter(Boolean));
+  unique.add(channel.id);
+  const entry: SignalHintHistoryEntry = {
+    at,
+    guildId,
+    channelId: channel.id,
+    channelName: channel.name,
+  };
+  const history = [...(Array.isArray(state.history) ? state.history : []), entry].slice(-SIGNAL_HINT_HISTORY_LIMIT);
+  const nextState: SignalHintHistoryState = {
+    totalPosts: Math.max(0, Number(state.totalPosts || 0)) + 1,
+    uniqueChannelIds: [...unique].sort(),
+    lastPostAt: at,
+    history,
+  };
+  await writeJson(SIGNAL_HINT_HISTORY_STATE, nextState);
+  console.log('[Signal] hint posted', {
+    channelId: channel.id,
+    channelName: channel.name,
+    totalPosts: nextState.totalPosts,
+    uniqueChannels: nextState.uniqueChannelIds.length,
+    historyFile: globalPath(SIGNAL_HINT_HISTORY_STATE),
+  });
 }
 
 function discordBotToken(): string {
@@ -169,6 +217,8 @@ async function schedulerTick(): Promise<void> {
 
   const channelId = state.bag.shift()!;
   await postSignalClue(channelId);
+  const channel = channels.find((candidate) => candidate.id === channelId) || { id: channelId, name: channelId, type: 0 };
+  await recordSignalHintPost(guildId, channel);
   state.lastChannelId = channelId;
   state.nextAt = Date.now() + randomDelay();
   if (!state.bag.length) state.bag = makeBag(channels, state.lastChannelId);
