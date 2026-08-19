@@ -47,6 +47,25 @@ patch('src/services/chat-dispatcher.ts', (source) => {
   return source;
 });
 
+patch('src/services/signal-system.ts', (source) => {
+  const helperName = 'async function resolveDiscordStreamHubSignalDestination()';
+  if (!source.includes(helperName)) {
+    const marker = 'function boldSignalText(value: string): string {';
+    const helper = `async function resolveDiscordStreamHubSignalDestination(): Promise<{ guildId: string; channelId: string }> {\n  const base = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || 'https://discord-stream-hub-new.fly.dev').replace(/\\/$/, '');\n  const secret = String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();\n  if (!secret) throw new Error('DSH service secret is not configured');\n  const response = await fetch(\`\${base}/api/internal/signal/channel\`, {\n    headers: { Authorization: \`Bearer \${secret}\` },\n    cache: 'no-store',\n    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'\n      ? AbortSignal.timeout(5000)\n      : undefined,\n  });\n  if (!response.ok) {\n    throw new Error(\`Signal destination lookup failed: \${response.status} \${await response.text().catch(() => '')}\`);\n  }\n  const payload = await response.json().catch(() => null) as any;\n  const guildId = String(payload?.guildId || '').trim();\n  const channelId = String(payload?.channelId || '').trim();\n  if (!guildId || !channelId) throw new Error('DSH Signal destination response was incomplete');\n  return { guildId, channelId };\n}\n\n`;
+    if (!source.includes(marker)) throw new Error('Signal patch: bold signal marker missing');
+    source = source.replace(marker, `${helper}${marker}`);
+  }
+
+  const oldDestination = `  const guildId = await getDiscordStreamHubDefaultGuildId();\n  const channelId = await resolveSignalChannelId(guildId);\n  if (!channelId) throw new Error(\`\${SIGNAL_CHANNEL_NAME} was not found in the Space Mountain Discord.\`);`;
+  const newDestination = `  const { guildId, channelId } = await resolveDiscordStreamHubSignalDestination();`;
+  if (!source.includes(newDestination)) {
+    if (!source.includes(oldDestination)) throw new Error('Signal patch: Twitch destination marker missing');
+    source = source.replace(oldDestination, newDestination);
+  }
+
+  return source;
+});
+
 patch('src/services/twitch-client.ts', (source) => {
   const channelSetMarker = 'const communityBotChannels = new Set<string>();';
   const signalCarrierSet = 'const signalCarrierChannels = new Set<string>();';
@@ -57,7 +76,7 @@ patch('src/services/twitch-client.ts', (source) => {
 
   if (!source.includes('const isSignalCarrier = signalCarrierChannels.has(channelName);')) {
     const oldBlock = `          const tenantId = channelToTenant.get(channelName);\n          if (!tenantId) return;\n          const tenant = tenantClients.get(tenantId);\n          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {\n            return;\n          }\n\n          if (!self && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {\n            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);\n            return;\n          }\n\n          await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);`;
-    const newBlock = `          const tenantId = channelToTenant.get(channelName);\n          const isSignalCarrier = signalCarrierChannels.has(channelName);\n          if (!tenantId && !isSignalCarrier) return;\n          const tenant = tenantId ? tenantClients.get(tenantId) : undefined;\n          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {\n            return;\n          }\n\n          if (!tenantId && isSignalCarrier) {\n            if (self || !/^!signal(?:\\s|$)/i.test(String(message || ''))) return;\n            const { handleTwitchSignalCommand } = await import('./signal-system');\n            const username = String(tags?.username || tags?.['display-name'] || 'viewer').trim();\n            const result = await handleTwitchSignalCommand({\n              providerUserId: String(tags?.['user-id'] || ''),\n              username,\n              broadcaster: channelName,\n              rawMessage: String(message || ''),\n            });\n            if (!result.ok && result.message) {\n              await client.say(channelName, result.message).catch(() => {});\n            }\n            return;\n          }\n\n          if (!self && tenantId && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {\n            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);\n            return;\n          }\n\n          await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);`;
+    const newBlock = `          const tenantId = channelToTenant.get(channelName);\n          const isSignalCarrier = signalCarrierChannels.has(channelName);\n          if (!tenantId && !isSignalCarrier) return;\n          const tenant = tenantId ? tenantClients.get(tenantId) : undefined;\n          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {\n            return;\n          }\n\n          if (!tenantId && isSignalCarrier) {\n            if (self || !/^!signal(?:\\s|$)/i.test(String(message || ''))) return;\n            const { handleTwitchSignalCommand } = await import('./signal-system');\n            const username = String(tags?.username || tags?.['display-name'] || 'viewer').trim();\n            try {\n              const result = await handleTwitchSignalCommand({\n                providerUserId: String(tags?.['user-id'] || ''),\n                username,\n                broadcaster: channelName,\n                rawMessage: String(message || ''),\n              });\n              if (!result.ok && result.message) {\n                await client.say(channelName, result.message).catch(() => {});\n              }\n            } catch (error: any) {\n              console.error('[Twitch:community-bot] Carrier !signal failed:', error);\n              await client.say(channelName, \`@\${username}, Signal failed: \${error?.message || 'unknown error'}\`).catch(() => {});\n            }\n            return;\n          }\n\n          if (!self && tenantId && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {\n            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);\n            return;\n          }\n\n          await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);`;
     if (!source.includes(oldBlock)) throw new Error('Signal patch: community bot message handler marker missing');
     source = source.replace(oldBlock, newBlock);
   }

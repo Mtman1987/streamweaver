@@ -43,13 +43,19 @@ test('Discord !signal is a local cosmetic replacement only', () => {
   assert.doesNotMatch(discordBody, /recordSignalCooldown/);
 });
 
-test('Twitch !signal uses the current live broadcaster as the carrier target', () => {
+test('Twitch !signal uses the current broadcaster and asks DSH for its Discord destination', () => {
   assert.match(signal, /provider: 'twitch'/);
   assert.match(signal, /usage: !signal <message>/);
   assert.match(signal, /input\.broadcaster\.replace/);
   assert.match(signal, /postDiscordStreamHubSignal/);
   assert.match(signal, /signalCooldownAvailable\(targetName\)/);
   assert.match(signal, /recordSignalCooldown\(targetName\)/);
+  assert.match(signal, /resolveDiscordStreamHubSignalDestination\(\)/);
+  assert.match(signal, /\/api\/internal\/signal\/channel/);
+  assert.match(signal, /Authorization: `Bearer \$\{secret\}`/);
+  const twitchStart = signal.indexOf('export async function handleTwitchSignalCommand');
+  const twitchBody = signal.slice(twitchStart);
+  assert.doesNotMatch(twitchBody, /resolveSignalChannelId\(guildId\)/);
   assert.match(signal, /SIGNAL_TWITCH_TENANT_ID/);
   assert.match(signal, /SIGNAL ACKNOWLEDGED/);
   assert.match(signal, /sendChatMessage\([^]*'bot', targetName, SIGNAL_TWITCH_TENANT_ID\)/);
@@ -65,6 +71,8 @@ test('DSH shoutout roster is synced into the shared Twitch community bot', () =>
   assert.match(patch, /!tenantId && isSignalCarrier/);
   assert.match(patch, /self \|\| !\/\^!signal/);
   assert.match(patch, /handleTwitchSignalCommand/);
+  assert.match(patch, /Carrier !signal failed/);
+  assert.match(patch, /Signal failed:/);
   assert.match(patch, /export async function syncSignalCarrierChannels/);
   assert.match(patch, /startSignalCarrierRosterSync/);
 });
