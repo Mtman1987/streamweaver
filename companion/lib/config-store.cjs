@@ -3,7 +3,7 @@ const path = require('node:path');
 const { safeStorage } = require('electron');
 
 const DEFAULT_CONFIG = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   server: { host: '127.0.0.1', port: 3100, wsPort: 8090 },
   startup: { openAtLogin: false, startMinimized: true },
   relay: { url: 'wss://spmt.live/api/companion/relay', deviceId: '', enabled: false },
@@ -34,7 +34,13 @@ const DEFAULT_CONFIG = {
       { id: 3, title: 'HearMeOut', url: 'https://hearmeout-main.fly.dev', visible: false }
     ]
   },
-  media: { libraryPath: '' }
+  media: {
+    libraryPath: '',
+    localRelayEnabled: false,
+    downloadsEnabled: false,
+    cacheBudgetBytes: 20 * 1024 * 1024 * 1024,
+    transcodeEngine: 'auto'
+  }
 };
 
 function clone(value) {

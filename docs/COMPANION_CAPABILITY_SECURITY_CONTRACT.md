@@ -90,8 +90,9 @@ Always require local confirmation for:
 Scene changes, source toggles, volume, PTT, playback, and previously approved
 downloads may be configured as “allow while paired”.
 
-Current implementation note: `obs.media.play`, `audio.jingle.play`, and
-`song.render.request` require local approval. Commands waiting for approval
+Current implementation note: `obs.media.play`, `audio.jingle.play`,
+`song.render.request`, `media.download`, and `media.cache.prune` require local
+approval. Commands waiting for approval
 receive a longer bounded expiry than non-interactive commands. Rejection and
 expiry are returned to SPMT as failed command results.
 
@@ -140,6 +141,10 @@ new mutating actions require a capability-contract revision and tests.
 | `obs.media.play` | `obs.control` | Yes |
 | `audio.mute`, `audio.volume` | `audio.control` | No |
 | `media.transcode` | `media.write` | No |
+| `media.cache.status` | `media.read` | No |
+| `media.download` | `media.write` | Yes |
+| `media.download.cancel` | `media.write` | No |
+| `media.cache.prune` | `media.write` | Yes |
 | `workflow.run` / `test.echo` | `workflow.run` | No |
 | `workflow.run` / reviewed creative workflows | `workflow.run` | Yes |
 | `diagnostics.snapshot.write` | `diagnostics.write` | No |
@@ -148,3 +153,11 @@ new mutating actions require a capability-contract revision and tests.
 cannot select a path, append an arbitrary filename, execute content, or expose
 an inbound listener. SPMT derives the target tenant from the platform key,
 queues the newest snapshot for at most seven days, and rate-limits delivery.
+
+Companion media downloads are opt-in twice: local downloads must be enabled,
+and the paired HearMeOut media relay must be enabled. Downloads accept HTTPS
+only, write to a deterministic file inside the selected media library, resume
+from a bounded `.part` file, enforce the local cache budget, and never expose a
+public listener or a local filesystem path to the cloud caller. Automatic LRU
+pruning affects only files tagged as Companion download-cache entries; imported
+user media is never removed by cache pruning.

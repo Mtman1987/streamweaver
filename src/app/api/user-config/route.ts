@@ -33,6 +33,7 @@ const ALLOWED_KEYS = new Set([
   'AI_BOT_INTERESTS',
   'GEMINI_API_KEY',
   'EDENAI_API_KEY',
+  'DEEPGRAM_API_KEY',
   'OPENAI_API_KEY',
 
   // TTS Configuration (user-specific)
@@ -40,6 +41,9 @@ const ALLOWED_KEYS = new Set([
   'TTS_VOICE',
   'PRIVATE_DM_GIF_URL',
   'PUBLIC_DISCORD_GIF_URL',
+  'AI_BOT_AVATAR_URL',
+  'AI_BOT_IDLE_AVATAR_URL',
+  'AI_BOT_TALKING_AVATAR_URL',
 
   // Raid train tuning (user-specific)
   'EMERGENCY_SLOTS_LOOKAHEAD_HOURS',

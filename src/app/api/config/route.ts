@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 const KEY_MAPPING: Record<string, string> = {
   edenaiApiKey: 'EDENAI_API_KEY',
+  deepgramApiKey: 'DEEPGRAM_API_KEY',
   geminiApiKey: 'GEMINI_API_KEY',
   openaiApiKey: 'OPENAI_API_KEY',
   inworldApiKey: 'INWORLD_API_KEY',

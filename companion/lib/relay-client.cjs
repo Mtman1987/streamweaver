@@ -9,11 +9,17 @@ const ACTION_CAPABILITIES = {
   'audio.mute': 'audio.control',
   'audio.volume': 'audio.control',
   'media.transcode': 'media.write',
+  'media.download': 'media.write',
+  'media.download.cancel': 'media.write',
+  'media.cache.status': 'media.read',
+  'media.cache.prune': 'media.write',
   'obs.media.play': 'obs.control',
   'workflow.run': 'workflow.run',
   'companion.status': 'companion.status',
   'diagnostics.snapshot.write': 'diagnostics.write'
 };
+
+const LOCAL_CONFIRMATION_ACTIONS = new Set(['media.download', 'media.cache.prune']);
 
 class RelayClient {
   constructor({ getConfig, getToken, handlers, onStatus = () => {}, onConfirmationRequired = () => {} }) {
@@ -94,7 +100,8 @@ class RelayClient {
     }
     this.seen.add(id);
     if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value);
-    if (command.requiresConfirmation) {
+    if (command.requiresConfirmation || LOCAL_CONFIRMATION_ACTIONS.has(action)) {
+      command.requiresConfirmation = true;
       this.pendingConfirmations.set(id, command);
       this.onConfirmationRequired(command);
       return;
@@ -147,4 +154,4 @@ class RelayClient {
   }
 }
 
-module.exports = { RelayClient, ACTION_CAPABILITIES };
+module.exports = { RelayClient, ACTION_CAPABILITIES, LOCAL_CONFIRMATION_ACTIONS };

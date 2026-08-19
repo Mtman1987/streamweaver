@@ -84,7 +84,7 @@ test('Companion tracks canonical surfaces directly and keeps StreamWeaver on the
   assert.doesNotMatch(ui, /id="overlay-url"/);
   assert.match(ui, /overlay-source-status/);
   assert.doesNotMatch(renderer, /byId\('overlay-url'\)/);
-  assert.match(config, /schemaVersion: 5/);
+  assert.match(config, /schemaVersion: 6/);
   assert.match(config, /overlay:\s*\{[\s\S]*?url: ''/);
   assert.match(config, /includes\('desktopOverlay=1'\)[\s\S]*?stored\.windows\.overlay\.url = ''/);
   assert.doesNotMatch(config, /url:\s*'https:\/\/spacemountain\.live\/\?desktopOverlay=1'/);
