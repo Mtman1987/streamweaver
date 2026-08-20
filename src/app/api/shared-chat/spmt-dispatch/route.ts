@@ -28,6 +28,28 @@ function canonicalPlatform(event: { platform: string; meta?: Record<string, unkn
     : event.platform;
 }
 
+function canonicalDestinationChannelId(platform: string, value: string) {
+  const raw = String(value || '').trim();
+  return platform === 'discord' ? raw.replace(/^discord:/i, '') : raw;
+}
+
+function destinationMatchesEvent(
+  event: { platform: string; channelId: string; channelName?: string; sourceName?: string; meta?: Record<string, unknown> },
+  destination: z.infer<typeof DestinationSchema>,
+) {
+  if (canonicalPlatform(event) !== destination.platform) return false;
+  const eventChannelId = canonicalDestinationChannelId(destination.platform, event.channelId);
+  const destinationChannelId = canonicalDestinationChannelId(destination.platform, destination.channelId);
+  if (!eventChannelId || eventChannelId !== destinationChannelId) return false;
+
+  // Discord channel ids are globally unique. Older replay records sometimes had
+  // a generic/missing channel name, so the verified channel id is authoritative.
+  if (destination.platform === 'discord') return true;
+
+  return String(event.channelName || event.sourceName || '').replace(/^#/, '').toLowerCase()
+    === destination.channelName.replace(/^#/, '').toLowerCase();
+}
+
 export async function POST(request: NextRequest) {
   const expectedKey = String(process.env.SPMT_SYSTEM_KEY || '').trim();
   const providedKey = String(request.headers.get('x-spmt-key') || '').trim();
@@ -48,12 +70,7 @@ export async function POST(request: NextRequest) {
   }
 
   const replay = await readSharedChatReplay(tenantId, { limit: 500 });
-  const matchingEvents = replay.filter((event) => (
-    canonicalPlatform(event) === input.destination.platform
-    && event.channelId === input.destination.channelId
-    && String(event.channelName || event.sourceName || '').replace(/^#/, '').toLowerCase()
-      === input.destination.channelName.replace(/^#/, '').toLowerCase()
-  ));
+  const matchingEvents = replay.filter((event) => destinationMatchesEvent(event, input.destination));
   if (!matchingEvents.length) {
     return apiError('Destination is not present in this tenant replay window', {
       status: 409,
@@ -85,7 +102,10 @@ export async function POST(request: NextRequest) {
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || `Twitch send failed (${response.status})`);
       } else if (input.destination.platform === 'discord') {
-        await sendDiscordMessage(input.destination.channelId, input.message);
+        await sendDiscordMessage(
+          canonicalDestinationChannelId('discord', input.destination.channelId),
+          input.message,
+        );
       } else if (input.destination.platform === 'kick') {
         await getKickService(tenantId).sendChatMessage(input.message);
       } else {
@@ -129,7 +149,10 @@ export async function POST(request: NextRequest) {
       if (input.destination.platform !== 'discord' || !sourceEvent) {
         return apiError('Delete is not available for this source', { status: 409, code: 'MODERATION_UNSUPPORTED' });
       }
-      await deleteDiscordMessage(input.destination.channelId, sourceEvent.upstreamId);
+      await deleteDiscordMessage(
+        canonicalDestinationChannelId('discord', input.destination.channelId),
+        sourceEvent.upstreamId,
+      );
     }
 
     return apiOk({
