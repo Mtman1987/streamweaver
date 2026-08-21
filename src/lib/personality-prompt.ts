@@ -1,4 +1,12 @@
 export const PERSONALITY_RUNTIME_VERSION = 'natural-v3';
+export const DEFAULT_PERSONALITY_REFRESH_GAP_MS = 45 * 60 * 1000;
+
+export type PersonalityConversationMessage = {
+  type?: 'user' | 'ai';
+  username?: string;
+  message?: string;
+  timestamp?: string;
+};
 
 export const NATURAL_DIALOGUE_POLICY = [
   `[Runtime personality policy: ${PERSONALITY_RUNTIME_VERSION}]`,
@@ -23,6 +31,8 @@ export function buildRuntimeSystemIdentity(systemIdentity: string, additionalPol
 
 const ADULT_MODE_CONFLICT = /\b(?:family[- ]friendly|family[- ]safe|safe[- ]for[- ]work|sfw|no adult|no explicit|no mature|keep it clean|stay clean|appropriate for all|all ages|child[- ]friendly|not explicit|not mature|avoid explicit|avoid adult|avoid mature|pg[- ]?1?3?[- ]?rated?|keep.*appropriate|appropriate.*all)\b|\b(?:no|never|avoid|without)\b[^\n]{0,120}\b(?:adult|explicit|mature)\b/i;
 
+const EXTENDED_PERSONALITY_REQUEST = /(?:\bwho\s+are\s+you\b|\btell\s+me\s+(?:more\s+)?about\s+yourself\b|\bwhere\s+(?:are\s+you\s+from|did\s+you\s+come\s+from)\b|\byour\s+(?:personality|background|backstory|origin|history|lore|bio(?:graphy)?|role|purpose|mission|rules?|boundaries|voice|style|favorites?|preferences?|likes?|dislikes?|hobbies|interests|relationships?|abilities|powers)\b|\bwhat\s+(?:do\s+you\s+(?:like|love|hate|prefer)|are\s+your\s+(?:favorites?|preferences?|rules?|boundaries|hobbies|interests|abilities|powers))\b)/i;
+
 function splitRawPersonalityPrompt(rawPersonality: string): {
   systemIdentity: string;
   extendedGuidance: string;
@@ -36,6 +46,59 @@ function splitRawPersonalityPrompt(rawPersonality: string): {
   return {
     systemIdentity: raw.slice(0, splitIndex).trim(),
     extendedGuidance: raw.slice(splitIndex).replace(/^\n---\n?/, '').trim(),
+  };
+}
+
+/**
+ * The --- line is a runtime context budget boundary.
+ * Above it is the always-on identity. Below it is cold guidance: load it only
+ * when the user asks for character/background detail or when a conversation is
+ * being refreshed after a meaningful gap.
+ */
+export function isExtendedPersonalityRequest(message: string): boolean {
+  return EXTENDED_PERSONALITY_REQUEST.test(String(message || '').trim());
+}
+
+export function isConversationStart(input: {
+  history: PersonalityConversationMessage[];
+  participant?: string;
+  nowMs?: number;
+  gapMs?: number;
+}): boolean {
+  const history = Array.isArray(input.history) ? input.history : [];
+  const participant = String(input.participant || '').trim().toLowerCase();
+  const nowMs = Number.isFinite(input.nowMs) ? Number(input.nowMs) : Date.now();
+  const gapMs = Math.max(60_000, Number(input.gapMs || DEFAULT_PERSONALITY_REFRESH_GAP_MS));
+
+  const candidates = participant
+    ? history.filter((entry) => entry.type !== 'ai' && String(entry.username || '').trim().toLowerCase() === participant)
+    : history;
+  if (!candidates.length) return true;
+
+  for (let index = candidates.length - 1; index >= 0; index--) {
+    const timestamp = Date.parse(String(candidates[index]?.timestamp || ''));
+    if (!Number.isFinite(timestamp)) continue;
+    return nowMs - timestamp >= gapMs;
+  }
+
+  // Existing history without usable timestamps should not repeatedly trigger a
+  // full personality refresh on every turn.
+  return false;
+}
+
+export function shouldIncludeExtendedPersonality(input: {
+  message: string;
+  history: PersonalityConversationMessage[];
+  participant?: string;
+  nowMs?: number;
+  gapMs?: number;
+}): { includeExtended: boolean; conversationStart: boolean; requested: boolean } {
+  const requested = isExtendedPersonalityRequest(input.message);
+  const conversationStart = isConversationStart(input);
+  return {
+    includeExtended: requested || conversationStart,
+    conversationStart,
+    requested,
   };
 }
 

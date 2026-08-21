@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { looksAbruptlyCutOff } from '../src/services/spmt-local-llm';
 
 const directEdenChat = /api\.edenai\.run\/v3\/llm\/chat\/completions/;
 const sharedAiCallers = [
@@ -33,4 +34,21 @@ test('shared local model is enabled by default and falls back only after failure
   assert.match(provider, /if \(isSpmtLocalLlmEnabled\(\) && !localLlmCircuitIsOpen\(\)\)/);
   assert.match(provider, /catch \(error\)/);
   assert.match(provider, /falling back to EdenAI/);
+});
+
+test('shared local model detects visibly incomplete replies before they reach Discord', () => {
+  assert.equal(looksAbruptlyCutOff('Athena remembers the number was 42.', 'stop'), false);
+  assert.equal(looksAbruptlyCutOff('Athena remembers the number was', 'length'), true);
+  assert.equal(looksAbruptlyCutOff('Athena remembers the number was about', 'stop'), true);
+  assert.equal(looksAbruptlyCutOff('Use the ` character when needed.', 'stop'), false);
+  assert.equal(looksAbruptlyCutOff('```text\nunfinished', 'stop'), true);
+});
+
+test('shared local model retries truncated generations without ignoring the caller token cap', () => {
+  const local = readFileSync(new URL('../src/services/spmt-local-llm.ts', import.meta.url), 'utf8');
+  assert.match(local, /looksAbruptlyCutOff\(first\.text, first\.finishReason\)/);
+  assert.match(local, /const retryBudget = maxTokens\(requestedBudget \* 2\)/);
+  assert.doesNotMatch(local, /Math\.max\(requestedBudget \* 2, 800\)/);
+  assert.match(local, /The previous draft ended abruptly before the answer was complete/);
+  assert.match(local, /throw new Error\(`SPMT local LLM returned an incomplete response/);
 });

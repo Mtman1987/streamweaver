@@ -10,7 +10,7 @@ import { hasInternalServiceAccess, hasMountainViewBridgeAccess } from '@/lib/int
 import { resolveResearchMode } from '@/services/research-mode';
 import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
-import { NATURAL_DIALOGUE_POLICY, splitPersonalityPrompt } from '@/lib/personality-prompt';
+import { shouldIncludeExtendedPersonality, splitPersonalityPrompt } from '@/lib/personality-prompt';
 
 type ChatContext = 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private';
 
@@ -34,6 +34,12 @@ type RequestBody = {
 };
 
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
+const ROUTINE_HISTORY_LIMIT = 8;
+const ROUTINE_COMMANDER_MEMORY_LIMIT = 4;
+const EXPANDED_COMMANDER_MEMORY_LIMIT = 10;
+const MEMORY_RECALL_REQUEST = /\b(?:remember|recall|remind|memory|memories|earlier|before|previous(?:ly)?|last\s+(?:time|message|thing|number)|what\s+did\s+i|what\s+was\s+the|ago)\b/i;
+const LORE_REQUEST = /\b(?:lore|backstory|origin|history|world|universe|character|persona|personality|who\s+are\s+you|tell\s+me\s+about\s+yourself)\b/i;
+const BOT_HISTORY_REQUEST = /\b(?:other\s+bots?|bot\s+interaction|who\s+said|what\s+did\s+(?:athena|dave|the\s+count)|conversation\s+between\s+bots?)\b/i;
 
 const chatWithMemorySchema = z.object({
   username: z.string().trim().min(1, 'Missing required fields: username, message').max(128),
@@ -67,7 +73,19 @@ function formatHistory(messages: AIChatMessage[], botName: string): string {
     const role = m.type === 'ai' ? botName : m.username || 'User';
     return `${role}: ${m.message}`;
   });
-  return `Conversation so far:\n${lines.join('\n')}`;
+  return `Recent conversation:\n${lines.join('\n')}`;
+}
+
+function needsMemoryRecall(message: string): boolean {
+  return MEMORY_RECALL_REQUEST.test(message);
+}
+
+function needsWorldLore(message: string, extendedRequested: boolean): boolean {
+  return extendedRequested || LORE_REQUEST.test(message);
+}
+
+function needsBotInteractionHistory(message: string): boolean {
+  return BOT_HISTORY_REQUEST.test(message);
 }
 
 export async function POST(request: NextRequest) {
@@ -126,7 +144,7 @@ export async function POST(request: NextRequest) {
     const { getBotPersonality } = require('@/lib/bot-settings-store');
     const storedPersonality = getBotPersonality(tenantId);
     const DEFAULTS_PERSONALITY_CHECK = 'You are a helpful AI assistant.';
-    const history = await readPublicChatMessages(20, tenantId);
+    const history = await readPublicChatMessages(ROUTINE_HISTORY_LIMIT, tenantId);
 
     const defaultPersonality = `You are StreamWeaver87, the onboard AI steward of the Space Mountain. You're friendly, slightly theatrical, and obsessed with keeping passengers (chat) entertained. Keep responses to 1-2 sentences. Address viewers as "passengers" and the streamer as "Captain."`;
     const rawPersonality = ((context === 'discord-cross-bot' || context === 'twitch-cross-bot') && personality ? personality : null)
@@ -152,14 +170,28 @@ export async function POST(request: NextRequest) {
     }
 
     const { systemIdentity, extendedGuidance } = splitPersonalityPrompt(rawPersonality);
+    const personalityContext = shouldIncludeExtendedPersonality({
+      message,
+      history,
+      participant: username,
+    });
     const historyText = formatHistory(history, botResponseName);
-    const worldLoreText = await formatWorldLoreForPrompt();
-    const botInteractionHistory = await formatBotInteractionHistoryForPrompt(8, tenantId);
+    const memoryRecall = needsMemoryRecall(message);
+    const worldLoreText = needsWorldLore(message, personalityContext.requested)
+      ? await formatWorldLoreForPrompt()
+      : '';
+    const botInteractionHistory = needsBotInteractionHistory(message)
+      ? await formatBotInteractionHistoryForPrompt(4, tenantId)
+      : '';
 
     let commanderContext = '';
     const userIsCommander = isCommander(username);
     if (userIsCommander) {
-      const commanderHistory = await readCommanderMemory(10);
+      const commanderHistory = await readCommanderMemory(
+        memoryRecall || personalityContext.conversationStart
+          ? EXPANDED_COMMANDER_MEMORY_LIMIT
+          : ROUTINE_COMMANDER_MEMORY_LIMIT,
+      );
       commanderContext = [getCommanderSystemPrompt(), formatCommanderHistory(commanderHistory)]
         .filter(Boolean)
         .join('\n\n');
@@ -168,7 +200,7 @@ export async function POST(request: NextRequest) {
     const contextFlags: Record<string, string> = {
       twitch: '[Context: Live Twitch chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
       'twitch-cross-bot': '[Context: Twitch cross-bot follow-up. Answer as the requested bot only, then stop.]',
-      discord: '[Context: Discord server message. Can be slightly longer but stay concise.]',
+      discord: '[Context: Discord server message. Stay concise unless the user asks for detail.]',
       'discord-cross-bot': '[Context: Discord cross-bot follow-up. Answer as the requested bot only, then stop.]',
       kick: '[Context: Live Kick chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
       voice: `[Context: The broadcaster is speaking to you via voice command. This is ${userIsCommander ? 'the Commander (M.T.)' : 'the streamer'}. Respond conversationally.]`,
@@ -176,19 +208,16 @@ export async function POST(request: NextRequest) {
     };
     const contextFlag = contextFlags[context] || contextFlags.twitch;
     const speakerDisplayName = displayName?.trim() || username;
-    const discordMetadata = [
-      `Discord identity: username=${username};`,
-      `displayName=${displayName || 'none'};`,
-      `userId=${userId || 'unknown'};`,
-      guildId ? `guildId=${guildId};` : '',
-      guildName ? `guildName=${guildName};` : '',
-      channelId ? `channelId=${channelId};` : '',
-      channelName ? `channelName=${channelName};` : '',
-      channelType !== undefined && channelType !== null ? `channelType=${String(channelType)};` : '',
-      messageId ? `messageId=${messageId};` : '',
-      createdAt ? `createdAt=${createdAt};` : '',
-      `isDirectMessage=${isDirectMessage ? 'true' : 'false'};`,
-    ].filter(Boolean).join(' ');
+    const discordMetadata = context.startsWith('discord')
+      ? [
+          `Discord identity: username=${username};`,
+          `displayName=${displayName || 'none'};`,
+          `userId=${userId || 'unknown'};`,
+          guildId ? `guildId=${guildId};` : '',
+          channelId ? `channelId=${channelId};` : '',
+          `isDirectMessage=${isDirectMessage ? 'true' : 'false'};`,
+        ].filter(Boolean).join(' ')
+      : '';
 
     const botConductPolicy = [
       BOT_NO_SELF_PROMOTION_POLICY,
@@ -197,8 +226,10 @@ export async function POST(request: NextRequest) {
 
     const prompt = [
       botConductPolicy,
-      extendedGuidance,
-      NATURAL_DIALOGUE_POLICY,
+      personalityContext.includeExtended ? extendedGuidance : '',
+      personalityContext.conversationStart && extendedGuidance
+        ? '[Conversation refresher: the extended personality/background below is supplied for this first turn only; keep routine turns anchored to the compact identity above the --- separator.]'
+        : '',
       worldLoreText,
       botInteractionHistory,
       commanderContext,
@@ -207,7 +238,9 @@ export async function POST(request: NextRequest) {
       historyText,
       research.kind === 'research' ? research.context : '',
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : speakerDisplayName}: ${message}`,
-      'Important: use the exact Discord identity context above. Do not rename the user to M.T. unless the Discord username itself belongs to the Commander.',
+      context.startsWith('discord')
+        ? 'Use the exact Discord identity context above. Do not rename the user to M.T. unless the Discord username itself belongs to the Commander.'
+        : '',
       `Respond as ${botResponseName}:`,
     ].filter(Boolean).join('\n\n');
 

@@ -60,3 +60,8 @@ patchFile('src/services/chat-monitor.ts', (source) => {
   }
   return source;
 });
+
+// Keep the private AI context budget on the same lifecycle as the privacy
+// bootstrap so normal dev/build entry points cannot silently regress to loading
+// the full personality tail on every DM turn.
+await import('./patch-personality-context-budget.mjs');
