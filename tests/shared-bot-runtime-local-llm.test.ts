@@ -68,7 +68,7 @@ test('public control API never exposes Adult Mode or private memory deletion', (
   assert.doesNotMatch(source, /writePrivateChatSettings/);
 });
 
-test('public AI uses the shared local-first provider instead of calling EdenAI directly', () => {
+test('public AI uses the shared EdenAI-first provider with local Qwen fallback', () => {
   const chatSource = readFileSync(
     new URL('../src/app/api/ai/chat-with-memory/route.ts', import.meta.url),
     'utf8',
@@ -80,9 +80,26 @@ test('public AI uses the shared local-first provider instead of calling EdenAI d
 
   assert.match(chatSource, /generateAIResponse\(prompt, systemIdentity, tenantId/);
   assert.doesNotMatch(chatSource, /api\.edenai\.run\/v3\/llm\/chat\/completions/);
-  assert.match(providerSource, /requestSpmtLocalLlm/);
-  assert.match(providerSource, /falling back to EdenAI/);
-  assert.match(providerSource, /generateEdenAIFallbackResponse/);
+  const edenCall = providerSource.indexOf('await generateEdenAIFallbackResponse(');
+  const qwenCall = providerSource.indexOf('await requestSpmtLocalLlm(');
+  assert.ok(edenCall >= 0 && qwenCall > edenCall);
+  assert.match(providerSource, /EdenAI primary failed/);
+  assert.match(providerSource, /falling back to local Qwen/);
+});
+
+test('private tenant chat also uses EdenAI first and local Qwen only as fallback', () => {
+  const source = readFileSync(
+    new URL('../src/app/api/private-chat/respond/route.ts', import.meta.url),
+    'utf8',
+  );
+  const completionSource = source.slice(source.indexOf('async function completePrivateTurn'));
+  const edenCall = completionSource.indexOf('await generateEdenAIFallbackResponse(');
+  const qwenCall = completionSource.indexOf('await requestQwenPrivateChatCompletion(');
+  assert.ok(edenCall >= 0, 'private EdenAI primary call is missing');
+  assert.ok(qwenCall > edenCall, 'private Qwen must only be attempted after EdenAI');
+  assert.match(completionSource, /EdenAI primary unavailable; trying local Qwen fallback/);
+  assert.match(completionSource, /provider: 'edenai-primary'/);
+  assert.match(completionSource, /provider: 'self-hosted-qwen-fallback'/);
 });
 
 test('private chat can see recent public context while public chat remains blind to private stores', () => {

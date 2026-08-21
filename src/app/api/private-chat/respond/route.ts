@@ -60,7 +60,7 @@ type RequestBody = {
 
 type PrivateCompletionResult = {
   text: string;
-  provider: 'self-hosted-qwen' | 'edenai-fallback';
+  provider: 'edenai-primary' | 'self-hosted-qwen-fallback';
   error?: string;
 };
 
@@ -129,6 +129,40 @@ async function completePrivateTurn(input: {
   adultMode: boolean;
   tenantId: string;
 }): Promise<PrivateCompletionResult> {
+  const edenSystem = [
+    input.systemPrompt,
+    QWEN_PRIVATE_CHAT_POLICY,
+    input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
+    input.memoryContext ? `Private memory context:\n${input.memoryContext}` : '',
+  ].filter(Boolean).join('\n\n');
+  const edenPrompt = [
+    formatPrivateHistoryForFallback(input.history, input.botName),
+    input.memoryIndex?.length ? `Available private memory titles: ${input.memoryIndex.join(' | ')}` : '',
+    `Newest private message from ${input.username}: ${input.message}`,
+    `Respond as ${input.botName}. Return only the assistant reply.`,
+  ].filter(Boolean).join('\n\n');
+
+  let edenError = '';
+  try {
+    const rawPrimary = await generateEdenAIFallbackResponse(
+      edenPrompt,
+      edenSystem,
+      input.tenantId,
+      { maxTokens: 900, temperature: 0.7 },
+    );
+    const text = sanitizeQwenReply({
+      text: rawPrimary,
+      username: input.username,
+      botName: input.botName,
+      latestUserMessage: input.message,
+    }).trim();
+    if (!text) throw new Error('EdenAI returned an empty private reply.');
+    return { text, provider: 'edenai-primary' };
+  } catch (error) {
+    edenError = safeModelError(error instanceof Error ? error.message : String(error));
+    console.warn('[Private Chat API] EdenAI primary unavailable; trying local Qwen fallback:', edenError);
+  }
+
   const qwen = await requestQwenPrivateChatCompletion({
     baseUrl: input.baseUrl,
     model: input.model,
@@ -144,47 +178,15 @@ async function completePrivateTurn(input: {
   });
 
   if (!qwen.upstreamStatus && !qwen.upstreamError && qwen.text.trim()) {
-    return { text: qwen.text.trim(), provider: 'self-hosted-qwen' };
+    return { text: qwen.text.trim(), provider: 'self-hosted-qwen-fallback', error: edenError };
   }
 
   const qwenError = safeModelError(qwen.upstreamError || (qwen.upstreamStatus ? `HTTP ${qwen.upstreamStatus}` : 'empty response'));
-  console.warn('[Private Chat API] Local Qwen unavailable; trying EdenAI fallback:', qwenError);
-
-  const fallbackSystem = [
-    input.systemPrompt,
-    QWEN_PRIVATE_CHAT_POLICY,
-    input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
-    input.memoryContext ? `Private memory context:\n${input.memoryContext}` : '',
-  ].filter(Boolean).join('\n\n');
-  const fallbackPrompt = [
-    formatPrivateHistoryForFallback(input.history, input.botName),
-    `Newest private message from ${input.username}: ${input.message}`,
-    `Respond as ${input.botName}. Return only the assistant reply.`,
-  ].filter(Boolean).join('\n\n');
-
-  try {
-    const rawFallback = await generateEdenAIFallbackResponse(
-      fallbackPrompt,
-      fallbackSystem,
-      input.tenantId,
-      { maxTokens: 900, temperature: 0.7 },
-    );
-    const text = sanitizeQwenReply({
-      text: rawFallback,
-      username: input.username,
-      botName: input.botName,
-      latestUserMessage: input.message,
-    }).trim();
-    if (!text) throw new Error('EdenAI fallback returned an empty private reply.');
-    return { text, provider: 'edenai-fallback', error: qwenError };
-  } catch (error) {
-    const fallbackError = safeModelError(error instanceof Error ? error.message : String(error));
-    return {
-      text: '',
-      provider: 'edenai-fallback',
-      error: `Local LLM: ${qwenError} EdenAI fallback: ${fallbackError}`,
-    };
-  }
+  return {
+    text: '',
+    provider: 'self-hosted-qwen-fallback',
+    error: `EdenAI primary: ${edenError} Local Qwen fallback: ${qwenError}`,
+  };
 }
 
 async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
@@ -279,10 +281,10 @@ export async function POST(request: NextRequest) {
       const responseText = effectiveMode
         ? [
             'Adult Mode is ON for private DMs.',
-            `${botName} will use the owner-hosted SPMT model first with the adult private-chat policy.`,
+            `${botName} will use EdenAI first with the adult private-chat policy and the owner-hosted SPMT model as backup.`,
             'This mode is only for fictional, consenting adults age 18 or older.',
           ].join(' ')
-        : `Adult Mode is OFF. ${botName} will use the owner-hosted SPMT model first with the normal private-chat policy.`;
+        : `Adult Mode is OFF. ${botName} will use EdenAI first with the normal private-chat policy and local Qwen as backup.`;
 
       await savePrivateReply(tenantId, botName, responseText);
       return apiOk({ response: responseText, provider: 'private-chat-control', adultMode: effectiveMode });
@@ -325,7 +327,7 @@ export async function POST(request: NextRequest) {
 
     if (!completion.text) {
       const responseText = [
-        `The owner-hosted SPMT model and EdenAI fallback are unavailable for ${botName} right now.`,
+        `EdenAI and the owner-hosted SPMT backup are unavailable for ${botName} right now.`,
         safeModelError(completion.error),
       ].join(' ');
       await savePrivateReply(tenantId, botName, responseText);

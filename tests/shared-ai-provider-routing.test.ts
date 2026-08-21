@@ -11,7 +11,7 @@ const sharedAiCallers = [
   '../src/services/shoutout-matcher.ts',
 ];
 
-test('all normal text-AI callers use the shared local-first provider', () => {
+test('all normal text-AI callers use the shared provider', () => {
   for (const relativePath of sharedAiCallers) {
     const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(source, /generateAIResponse/);
@@ -19,18 +19,22 @@ test('all normal text-AI callers use the shared local-first provider', () => {
   }
 });
 
-test('only the shared AI provider owns the EdenAI text fallback endpoint', () => {
+test('only the shared AI provider owns the EdenAI text endpoint', () => {
   const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
   assert.match(provider, /requestSpmtLocalLlm/);
   assert.match(provider, /generateEdenAIFallbackResponse/);
   assert.match(provider, directEdenChat);
 });
 
-test('shared local model is enabled by default and falls back only after failure', () => {
+test('EdenAI is primary and local Qwen is fallback when EdenAI fails', () => {
   const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
   const local = readFileSync(new URL('../src/services/spmt-local-llm.ts', import.meta.url), 'utf8');
   assert.match(local, /SPMT_LOCAL_LLM_ENABLED !== 'false'/);
-  assert.match(provider, /if \(isSpmtLocalLlmEnabled\(\) && !localLlmCircuitIsOpen\(\)\)/);
-  assert.match(provider, /catch \(error\)/);
-  assert.match(provider, /falling back to EdenAI/);
+  const edenCall = provider.indexOf('await generateEdenAIFallbackResponse(');
+  const qwenCall = provider.indexOf('await requestSpmtLocalLlm(');
+  assert.ok(edenCall >= 0, 'EdenAI primary call is missing');
+  assert.ok(qwenCall >= 0, 'Qwen fallback call is missing');
+  assert.ok(edenCall < qwenCall, 'EdenAI must be attempted before Qwen');
+  assert.match(provider, /EdenAI primary failed/);
+  assert.match(provider, /falling back to local Qwen/);
 });

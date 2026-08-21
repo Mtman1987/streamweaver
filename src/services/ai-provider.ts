@@ -111,12 +111,13 @@ function closeLocalLlmCircuit(): void {
 /**
  * Shared bot AI entry point.
  *
- * Provider order is intentionally global and tenant-neutral:
- *   1. owner-hosted SPMT Qwen worker over Fly private networking;
- *   2. EdenAI only when the local worker fails or is deliberately disabled.
+ * Emergency quality routing is intentionally global and tenant-neutral:
+ *   1. EdenAI first for normal tenant text generation;
+ *   2. owner-hosted SPMT Qwen only when EdenAI is unavailable, rate-limited,
+ *      out of credits, missing a usable key, or otherwise fails.
  *
- * Transient local-worker failures open a short circuit so one saturated worker
- * does not force every tenant to wait for the same timeout repeatedly.
+ * The local circuit breaker remains in place so an unavailable Qwen fallback
+ * does not add the same timeout to every EdenAI failure.
  */
 export async function generateAIResponse(
   prompt: string,
@@ -124,37 +125,46 @@ export async function generateAIResponse(
   tenantId?: string,
   options?: AIResponseOptions,
 ): Promise<string> {
-  const system = governedPrompt(systemPrompt);
-  let localFailure = '';
-
-  if (isSpmtLocalLlmEnabled() && !localLlmCircuitIsOpen()) {
-    try {
-      const local = await requestSpmtLocalLlm(prompt, system, options);
-      closeLocalLlmCircuit();
-      console.log(`[AI Provider] SPMT local LLM served tenant ${tenantId || 'global'} with ${local.model}`);
-      return local.text;
-    } catch (error) {
-      localFailure = error instanceof Error ? error.message : String(error);
-      if (isTransientLocalLlmFailure(localFailure)) {
-        openLocalLlmCircuit(localFailure);
-        console.warn(`[AI Provider] SPMT local LLM temporarily unavailable; opening fallback circuit for 5 minutes: ${localFailure}`);
-      } else {
-        console.warn(`[AI Provider] SPMT local LLM failed for tenant ${tenantId || 'global'}; falling back to EdenAI:`, localFailure);
-      }
-    }
-  } else if (isSpmtLocalLlmEnabled() && localLlmCircuitIsOpen()) {
-    localFailure = `Local LLM fallback circuit is open${localLlmCircuitReason ? ` after: ${localLlmCircuitReason}` : ''}`;
-  }
+  let edenFailure = '';
 
   try {
-    return await generateEdenAIFallbackResponse(prompt, systemPrompt, tenantId, options);
+    const response = await generateEdenAIFallbackResponse(prompt, systemPrompt, tenantId, options);
+    console.log(`[AI Provider] EdenAI served tenant ${tenantId || 'global'}`);
+    return response;
   } catch (error) {
-    const fallbackFailure = error instanceof Error ? error.message : String(error);
+    edenFailure = error instanceof Error ? error.message : String(error);
+    console.warn(`[AI Provider] EdenAI primary failed for tenant ${tenantId || 'global'}; falling back to local Qwen:`, edenFailure);
+  }
+
+  if (!isSpmtLocalLlmEnabled()) {
+    throw new Error(`AI generation failed. EdenAI primary: ${edenFailure} Local Qwen fallback is disabled.`);
+  }
+
+  if (localLlmCircuitIsOpen()) {
     throw new Error([
       'AI generation failed.',
-      localFailure ? `Local LLM: ${localFailure}` : '',
-      `EdenAI fallback: ${fallbackFailure}`,
-    ].filter(Boolean).join(' '));
+      `EdenAI primary: ${edenFailure}`,
+      `Local Qwen fallback circuit is open${localLlmCircuitReason ? ` after: ${localLlmCircuitReason}` : ''}`,
+    ].join(' '));
+  }
+
+  const system = governedPrompt(systemPrompt);
+  try {
+    const local = await requestSpmtLocalLlm(prompt, system, options);
+    closeLocalLlmCircuit();
+    console.log(`[AI Provider] Local Qwen fallback served tenant ${tenantId || 'global'} with ${local.model}`);
+    return local.text;
+  } catch (error) {
+    const localFailure = error instanceof Error ? error.message : String(error);
+    if (isTransientLocalLlmFailure(localFailure)) {
+      openLocalLlmCircuit(localFailure);
+      console.warn(`[AI Provider] Local Qwen fallback temporarily unavailable; opening circuit for 5 minutes: ${localFailure}`);
+    }
+    throw new Error([
+      'AI generation failed.',
+      `EdenAI primary: ${edenFailure}`,
+      `Local Qwen fallback: ${localFailure}`,
+    ].join(' '));
   }
 }
 
@@ -166,7 +176,7 @@ export async function generateEdenAIFallbackResponse(
 ): Promise<string> {
   const config = getEdenFallbackConfig(tenantId);
   if (!config.apiKey) {
-    throw new Error('No EdenAI fallback API key is configured.');
+    throw new Error('No EdenAI API key is configured.');
   }
   return generateEdenAIResponse(prompt, governedPrompt(systemPrompt), config, options);
 }
