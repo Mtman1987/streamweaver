@@ -21,7 +21,6 @@ import {
   internalServiceHeaders,
 } from '@/lib/internal-service-auth';
 import {
-  QWEN_ADULT_ROLEPLAY_POLICY,
   QWEN_PRIVATE_CHAT_POLICY,
   requestQwenPrivateChatCompletion,
   sanitizeQwenReply,
@@ -60,7 +59,7 @@ type RequestBody = {
 
 type PrivateCompletionResult = {
   text: string;
-  provider: 'edenai-primary' | 'self-hosted-qwen-fallback';
+  provider: 'edenai-primary' | 'self-hosted-qwen-adult';
   error?: string;
 };
 
@@ -129,10 +128,38 @@ async function completePrivateTurn(input: {
   adultMode: boolean;
   tenantId: string;
 }): Promise<PrivateCompletionResult> {
+  if (input.adultMode) {
+    const qwen = await requestQwenPrivateChatCompletion({
+      baseUrl: input.baseUrl,
+      model: input.model,
+      apiKey: input.apiKey,
+      systemPrompt: input.systemPrompt,
+      username: input.username,
+      botName: input.botName,
+      message: input.message,
+      history: input.history,
+      memoryIndex: input.memoryIndex,
+      memoryContext: input.memoryContext,
+      adultMode: true,
+    });
+
+    if (!qwen.upstreamStatus && !qwen.upstreamError && qwen.text.trim()) {
+      return { text: qwen.text.trim(), provider: 'self-hosted-qwen-adult' };
+    }
+
+    const qwenError = safeModelError(
+      qwen.upstreamError || (qwen.upstreamStatus ? `HTTP ${qwen.upstreamStatus}` : 'empty response'),
+    );
+    return {
+      text: '',
+      provider: 'self-hosted-qwen-adult',
+      error: `Adult Mode local Qwen: ${qwenError}`,
+    };
+  }
+
   const edenSystem = [
     input.systemPrompt,
     QWEN_PRIVATE_CHAT_POLICY,
-    input.adultMode ? QWEN_ADULT_ROLEPLAY_POLICY : '',
     input.memoryContext ? `Private memory context:\n${input.memoryContext}` : '',
   ].filter(Boolean).join('\n\n');
   const edenPrompt = [
@@ -142,7 +169,6 @@ async function completePrivateTurn(input: {
     `Respond as ${input.botName}. Return only the assistant reply.`,
   ].filter(Boolean).join('\n\n');
 
-  let edenError = '';
   try {
     const rawPrimary = await generateEdenAIFallbackResponse(
       edenPrompt,
@@ -159,34 +185,14 @@ async function completePrivateTurn(input: {
     if (!text) throw new Error('EdenAI returned an empty private reply.');
     return { text, provider: 'edenai-primary' };
   } catch (error) {
-    edenError = safeModelError(error instanceof Error ? error.message : String(error));
-    console.warn('[Private Chat API] EdenAI primary unavailable; trying local Qwen fallback:', edenError);
+    const edenError = safeModelError(error instanceof Error ? error.message : String(error));
+    console.warn('[Private Chat API] EdenAI private chat unavailable; local Qwen remains disabled because Adult Mode is off:', edenError);
+    return {
+      text: '',
+      provider: 'edenai-primary',
+      error: `EdenAI private chat: ${edenError}`,
+    };
   }
-
-  const qwen = await requestQwenPrivateChatCompletion({
-    baseUrl: input.baseUrl,
-    model: input.model,
-    apiKey: input.apiKey,
-    systemPrompt: input.systemPrompt,
-    username: input.username,
-    botName: input.botName,
-    message: input.message,
-    history: input.history,
-    memoryIndex: input.memoryIndex,
-    memoryContext: input.memoryContext,
-    adultMode: input.adultMode,
-  });
-
-  if (!qwen.upstreamStatus && !qwen.upstreamError && qwen.text.trim()) {
-    return { text: qwen.text.trim(), provider: 'self-hosted-qwen-fallback', error: edenError };
-  }
-
-  const qwenError = safeModelError(qwen.upstreamError || (qwen.upstreamStatus ? `HTTP ${qwen.upstreamStatus}` : 'empty response'));
-  return {
-    text: '',
-    provider: 'self-hosted-qwen-fallback',
-    error: `EdenAI primary: ${edenError} Local Qwen fallback: ${qwenError}`,
-  };
 }
 
 async function checkAndCondensePrivateMemory(tenantId?: string): Promise<void> {
@@ -281,10 +287,11 @@ export async function POST(request: NextRequest) {
       const responseText = effectiveMode
         ? [
             'Adult Mode is ON for private DMs.',
-            `${botName} will use EdenAI first with the adult private-chat policy and the owner-hosted SPMT model as backup.`,
+            `${botName} will use the owner-hosted SPMT Qwen model with the adult private-chat policy.`,
+            'EdenAI is not used while Adult Mode is on.',
             'This mode is only for fictional, consenting adults age 18 or older.',
           ].join(' ')
-        : `Adult Mode is OFF. ${botName} will use EdenAI first with the normal private-chat policy and local Qwen as backup.`;
+        : `Adult Mode is OFF. ${botName} will use EdenAI for private chat. Local Qwen is only used when Adult Mode is turned on.`;
 
       await savePrivateReply(tenantId, botName, responseText);
       return apiOk({ response: responseText, provider: 'private-chat-control', adultMode: effectiveMode });
@@ -327,7 +334,9 @@ export async function POST(request: NextRequest) {
 
     if (!completion.text) {
       const responseText = [
-        `EdenAI and the owner-hosted SPMT backup are unavailable for ${botName} right now.`,
+        privateSettings.adultMode
+          ? `The owner-hosted SPMT Adult Mode model is unavailable for ${botName} right now.`
+          : `EdenAI is unavailable for ${botName} private chat right now.`,
         safeModelError(completion.error),
       ].join(' ');
       await savePrivateReply(tenantId, botName, responseText);
@@ -361,7 +370,7 @@ export async function POST(request: NextRequest) {
               adultMode: privateSettings.adultMode,
               tenantId,
             });
-            responseText = completion.text || `I found the memory, but both AI providers failed to complete the reply.`;
+            responseText = completion.text || 'I found the memory, but the selected private AI provider failed to complete the reply.';
           } else {
             responseText = `I tried to recall "${canonicalTitle}" but that memory seems to have faded. Could you remind me what it was about?`;
           }
