@@ -90,3 +90,5 @@ jobs:
           git add src/services/twitch-client.ts src/services/chat-dispatcher.ts tests/twitch-client.test.ts public/twitch-mappings.json
           git commit -m "Fix tenant AI replies in Twitch chat"
           git push origin HEAD:main
+
+# one-shot trigger refresh
