@@ -3,7 +3,7 @@ name: Apply tenant AI hotfix
 on:
   push:
     branches:
-      - fix/tenant-ai-replies-20260820
+      - main
     paths:
       - .github/workflows/apply-tenant-ai-hotfix.yml
 
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/tenant-ai-replies-20260820
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -26,6 +26,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import json
 
           client_path = Path('src/services/twitch-client.ts')
           text = client_path.read_text()
@@ -50,11 +51,11 @@ jobs:
 
           test_path = Path('tests/twitch-client.test.ts')
           test_text = test_path.read_text()
-          test_text = test_text.replace(
-              "import { shouldDispatchIncomingFromCommunityBot } from '../src/services/twitch-client';",
-              "import { resolveIncomingTenantId, shouldDispatchIncomingFromCommunityBot } from '../src/services/twitch-client';",
-              1,
-          )
+          old_import = "import { shouldDispatchIncomingFromCommunityBot } from '../src/services/twitch-client';"
+          new_import = "import { resolveIncomingTenantId, shouldDispatchIncomingFromCommunityBot } from '../src/services/twitch-client';"
+          if old_import not in test_text:
+              raise SystemExit('twitch-client test import anchor not found')
+          test_text = test_text.replace(old_import, new_import, 1)
           test_text += """\n\ntest('listener tenant fallback survives a missing channel mapping', () => {\n  assert.equal(resolveIncomingTenantId('#unmapped-tenant-channel', 'tenant-123'), 'tenant-123');\n});\n"""
           test_path.write_text(test_text)
 
@@ -69,15 +70,14 @@ jobs:
           dispatcher_path.write_text(dispatcher)
 
           mappings_path = Path('public/twitch-mappings.json')
-          if mappings_path.exists():
-              import json
-              data = json.loads(mappings_path.read_text())
-              not_found = data.get('notFound')
-              if isinstance(not_found, list):
-                  data['notFound'] = [item for item in not_found if str(item).lower() != 'nephalem2']
-                  mappings_path.write_text(json.dumps(data, indent=2) + '\n')
+          data = json.loads(mappings_path.read_text())
+          not_found = data.get('notFound')
+          if isinstance(not_found, list):
+              data['notFound'] = [item for item in not_found if str(item).lower() != 'nephalem2']
+              mappings_path.write_text(json.dumps(data, indent=2) + '\n')
           PY
 
+          npm install --include=dev --no-audit --no-fund
           node --import tsx --test tests/twitch-client.test.ts
           npx tsc --noEmit --incremental false
 
@@ -89,4 +89,4 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add src/services/twitch-client.ts src/services/chat-dispatcher.ts tests/twitch-client.test.ts public/twitch-mappings.json
           git commit -m "Fix tenant AI replies in Twitch chat"
-          git push origin HEAD:fix/tenant-ai-replies-20260820
+          git push origin HEAD:main
