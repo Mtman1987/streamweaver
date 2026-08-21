@@ -87,6 +87,21 @@ test('public AI uses the shared EdenAI-first provider with local Qwen fallback',
   assert.match(providerSource, /falling back to local Qwen/);
 });
 
+test('private tenant chat also uses EdenAI first and local Qwen only as fallback', () => {
+  const source = readFileSync(
+    new URL('../src/app/api/private-chat/respond/route.ts', import.meta.url),
+    'utf8',
+  );
+  const completionSource = source.slice(source.indexOf('async function completePrivateTurn'));
+  const edenCall = completionSource.indexOf('await generateEdenAIFallbackResponse(');
+  const qwenCall = completionSource.indexOf('await requestQwenPrivateChatCompletion(');
+  assert.ok(edenCall >= 0, 'private EdenAI primary call is missing');
+  assert.ok(qwenCall > edenCall, 'private Qwen must only be attempted after EdenAI');
+  assert.match(completionSource, /EdenAI primary unavailable; trying local Qwen fallback/);
+  assert.match(completionSource, /provider: 'edenai-primary'/);
+  assert.match(completionSource, /provider: 'self-hosted-qwen-fallback'/);
+});
+
 test('private chat can see recent public context while public chat remains blind to private stores', () => {
   const privateSource = readFileSync(
     new URL('../src/app/api/private-chat/respond/route.ts', import.meta.url),
