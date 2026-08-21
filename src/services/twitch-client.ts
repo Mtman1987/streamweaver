@@ -50,6 +50,16 @@ async function dispatchIncomingTwitchMessage(
 
   let effectiveChannel = channel;
   const isMirrored = isMirroredSharedMessage(tags);
+
+  // The IRC listener already knows the tenant for direct channel traffic. If the
+  // reverse map is missing or stale, heal it before chat-dispatcher tries to
+  // resolve the tenant again. Never learn mappings from mirrored shared-chat
+  // traffic because its effective source channel may belong to another tenant.
+  if (!isMirrored && msgTenantId && !channelToTenant.has(channelName)) {
+    channelToTenant.set(channelName, msgTenantId);
+    console.warn(`[Twitch:${msgTenantId}] Healed missing channel tenant mapping for #${channelName} from listener context.`);
+  }
+
   if (isMirrored) {
     const sourceRoomId = tags['source-room-id'] || tags['source-id'];
     effectiveChannel = '#' + await resolveRoomIdToLogin(sourceRoomId, channelName);
