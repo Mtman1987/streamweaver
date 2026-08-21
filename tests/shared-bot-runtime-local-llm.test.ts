@@ -87,19 +87,26 @@ test('public AI uses the shared EdenAI-first provider with local Qwen fallback',
   assert.match(providerSource, /falling back to local Qwen/);
 });
 
-test('private tenant chat also uses EdenAI first and local Qwen only as fallback', () => {
+test('private tenant chat uses Qwen only when Adult Mode is enabled', () => {
   const source = readFileSync(
     new URL('../src/app/api/private-chat/respond/route.ts', import.meta.url),
     'utf8',
   );
-  const completionSource = source.slice(source.indexOf('async function completePrivateTurn'));
-  const edenCall = completionSource.indexOf('await generateEdenAIFallbackResponse(');
-  const qwenCall = completionSource.indexOf('await requestQwenPrivateChatCompletion(');
-  assert.ok(edenCall >= 0, 'private EdenAI primary call is missing');
-  assert.ok(qwenCall > edenCall, 'private Qwen must only be attempted after EdenAI');
-  assert.match(completionSource, /EdenAI primary unavailable; trying local Qwen fallback/);
+  const start = source.indexOf('async function completePrivateTurn');
+  const end = source.indexOf('async function checkAndCondensePrivateMemory');
+  const completionSource = source.slice(start, end);
+
+  assert.match(
+    completionSource,
+    /if \(input\.adultMode\) \{[\s\S]*await requestQwenPrivateChatCompletion\([\s\S]*provider: 'self-hosted-qwen-adult'/,
+  );
+  assert.match(completionSource, /adultMode: true/);
+  assert.match(completionSource, /await generateEdenAIFallbackResponse\(/);
   assert.match(completionSource, /provider: 'edenai-primary'/);
-  assert.match(completionSource, /provider: 'self-hosted-qwen-fallback'/);
+  assert.match(completionSource, /local Qwen remains disabled because Adult Mode is off/);
+  assert.doesNotMatch(completionSource, /falling back to local Qwen/);
+  assert.match(source, /Local Qwen is only used when Adult Mode is turned on/);
+  assert.match(source, /EdenAI is not used while Adult Mode is on/);
 });
 
 test('private chat can see recent public context while public chat remains blind to private stores', () => {
