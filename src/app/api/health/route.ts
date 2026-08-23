@@ -10,6 +10,8 @@ export async function GET() {
     status: missingSecretNames.length ? 'not-ready' : 'ok',
     timestamp: new Date().toISOString(),
     service: 'streamweaver',
+    manifestVersion: 'spmt.app-manifest/v1',
+    manifestUrl: '/api/platform/manifest',
     buildSha: process.env.BUILD_SHA || 'development',
     dependencies: {
       serviceCredentials: isPackagedLocalRuntime
