@@ -13,7 +13,7 @@
     "dev:next": "cross-env PORT=3100 NEXT_PUBLIC_STREAMWEAVE_PORT=3100 npx next dev -p 3100 -H 127.0.0.1",
     "dev:ws": "cross-env WS_PORT=8090 npx tsx server.ts",
     "prebuild": "node scripts/patch-private-dm-privacy.mjs && node scripts/patch-rich-discord-chat.mjs && node scripts/patch-owner-recovery-command.mjs && node scripts/patch-the-count-easter-egg.mjs && node scripts/patch-signal-system.mjs && node scripts/patch-signal-scheduler-default.mjs",
-    "build": "npm run lint && npm run typecheck && npx next build",
+    "build": "npm run lint && npm run typecheck && npm run test:flagship-contract && npx next build",
     "prebuild:simple": "node scripts/patch-private-dm-privacy.mjs && node scripts/patch-rich-discord-chat.mjs && node scripts/patch-owner-recovery-command.mjs && node scripts/patch-the-count-easter-egg.mjs && node scripts/patch-signal-system.mjs && node scripts/patch-signal-scheduler-default.mjs",
     "build:simple": "npx next build",
     "flow-library:sync": "npx tsx scripts/sync-flow-library.ts",
@@ -41,7 +41,8 @@
     "package:mac": "npm run build:simple && npx pkg . --targets node20-macos-x64 --output dist/bin/StreamWeaver && npx tsx scripts/package-local-release.ts mac",
     "package:linux": "npm run build:simple && npx pkg . --targets node20-linux-x64 --output dist/bin/StreamWeaver && npx tsx scripts/package-local-release.ts linux",
     "companion:start": "npm --prefix companion start",
-    "companion:check": "npm --prefix companion run check"
+    "companion:check": "npm --prefix companion run check",
+    "test:flagship-contract": "node scripts/flagship-developer-contract-smoke.mjs"
   },
   "dependencies": {
     "@emnapi/runtime": "^1.7.0",
