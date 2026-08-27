@@ -121,12 +121,19 @@ test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () =>
   assert.doesNotMatch(carrierSync, /syncSignalCarrierChannels\(channels\)/);
 });
 
-test('runtime patch wires !signal in both Discord and Twitch without enabling the held scheduler', () => {
+test('runtime patch wires !signal and enables the existing scheduler unless explicitly disabled', () => {
   assert.match(patch, /handleDiscordSignalCommand/);
   assert.match(patch, /handleTwitchSignalCommand/);
   assert.match(patch, /cmdName === 'signal'/);
   assert.match(patch, /\^!signal/);
   assert.match(patch, /startSignalScheduler/);
-  assert.match(patch, /process\.env\.SIGNAL_SCHEDULER_ENABLED === 'true'/);
+  assert.match(patch, /process\.env\.SIGNAL_SCHEDULER_ENABLED !== 'false'/);
+  assert.match(patch, /disabled by SIGNAL_SCHEDULER_ENABLED=false/);
   assert.doesNotMatch(carrierSync, /startSignalScheduler/);
+});
+
+test('a new or changed guild makes the existing scheduler post once immediately before random delays', () => {
+  assert.match(signal, /readJson<SchedulerState>\(SIGNAL_SCHEDULER_STATE, \{ bag: \[\], nextAt: Date\.now\(\) \}\)/);
+  assert.match(signal, /state = \{ guildId, bag: \[\], nextAt: Date\.now\(\) \}/);
+  assert.match(signal, /state\.nextAt = Date\.now\(\) \+ randomDelay\(\)/);
 });

@@ -115,7 +115,7 @@ patch('server.ts', (source) => {
   }
 
   if (!source.includes('startSignalScheduler();')) {
-    const schedulerBlock = `        if (process.env.SIGNAL_SCHEDULER_ENABLED === 'true') {\n            try {\n                const { startSignalScheduler } = await import('./src/services/signal-system');\n                startSignalScheduler();\n                console.log('[Signal] Lost Signal scheduler armed');\n            } catch (error) {\n                console.warn('[Signal] Scheduler startup skipped:', error);\n            }\n        } else {\n            console.log('[Signal] Lost Signal scheduler disabled until SIGNAL_SCHEDULER_ENABLED=true');\n        }\n\n`;
+    const schedulerBlock = `        if (process.env.SIGNAL_SCHEDULER_ENABLED !== 'false') {\n            try {\n                const { startSignalScheduler } = await import('./src/services/signal-system');\n                startSignalScheduler();\n                console.log('[Signal] Lost Signal scheduler armed');\n            } catch (error) {\n                console.warn('[Signal] Scheduler startup skipped:', error);\n            }\n        } else {\n            console.log('[Signal] Lost Signal scheduler disabled by SIGNAL_SCHEDULER_ENABLED=false');\n        }\n\n`;
     source = source.replace(marker, `${schedulerBlock}${marker}`);
   }
 

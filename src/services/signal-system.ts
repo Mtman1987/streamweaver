@@ -208,8 +208,8 @@ async function schedulerTick(): Promise<void> {
   if (!guildId) return;
   const channels = await listGuildTextChannels(guildId).catch(() => []);
   if (!channels.length) return;
-  let state = await readJson<SchedulerState>(SIGNAL_SCHEDULER_STATE, { bag: [], nextAt: Date.now() + randomDelay() });
-  if (state.guildId !== guildId) state = { guildId, bag: [], nextAt: Date.now() + randomDelay() };
+  let state = await readJson<SchedulerState>(SIGNAL_SCHEDULER_STATE, { bag: [], nextAt: Date.now() });
+  if (state.guildId !== guildId) state = { guildId, bag: [], nextAt: Date.now() };
   if (!state.bag.length) state.bag = makeBag(channels, state.lastChannelId);
   if (!state.nextAt) state.nextAt = Date.now() + randomDelay();
   await writeJson(SIGNAL_SCHEDULER_STATE, state);
