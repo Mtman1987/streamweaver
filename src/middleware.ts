@@ -27,6 +27,7 @@ const MACHINE_PATHS = [
 
 const MACHINE_PREFIXES = ['/api/discord-avatar/', '/api/discord-media/', '/api/say/', '/api/webhooks/'];
 const ADMIN_PREFIXES = ['/admin', '/api/admin/', '/settings/admin', '/api/settings/admin'];
+const TWITCH_SESSION_BOOTSTRAP_PATHS = ['/api/user-profile', '/api/user-config'];
 
 function isPublicApiRequest(request: NextRequest): boolean {
   const { pathname, searchParams } = request.nextUrl;
@@ -109,7 +110,13 @@ export async function middleware(request: NextRequest) {
   // waiting on a cross-service userinfo request. Protected APIs and all admin
   // routes continue through authoritative SPMT validation below, so this is a
   // stale-while-revalidate UI shell rather than an authorization bypass.
-  if (cached && !pathname.startsWith('/api/') && !adminPath) {
+  const twitchSessionBootstrap =
+    request.method.toUpperCase() === 'GET' && TWITCH_SESSION_BOOTSTRAP_PATHS.includes(pathname);
+
+  // Twitch compatibility sign-in only needs these two read-only bootstrap
+  // endpoints to render the dashboard. Every other protected API still requires
+  // an authoritative SPMT session below.
+  if (cached && !adminPath && (!pathname.startsWith('/api/') || twitchSessionBootstrap)) {
     if (pathname === '/' || pathname === '') return NextResponse.redirect(new URL('/dashboard', request.url));
     return NextResponse.next({ request: { headers: cached.headers } });
   }
