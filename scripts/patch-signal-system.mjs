@@ -34,13 +34,13 @@ patch('src/services/chat-dispatcher.ts', (source) => {
     const soMarker = "    if (cmdName === 'so') {";
     const signalBlock = `    if (cmdName === 'signalbot') {
         if (!isPermanentDiscordOwner(msg)) {
-            await reply(`@${actualUsername}, this control is restricted to the StreamWeaver owner.`);
+            await reply('@' + actualUsername + ', this control is restricted to the StreamWeaver owner.');
             return true;
         }
         const requested = actualMessage.replace(/^!signalbot\b/i, '').trim().toLowerCase();
         const force = requested === 'on' ? true : requested === 'off' ? false : undefined;
         const result = await toggleSignalScheduler(force);
-        await reply(`Signal clue scheduler is now ${result.enabled ? 'ON' : 'OFF'}.${result.enabled ? ' The first clue was fired immediately and a DM receipt was sent.' : ''}`);
+        await reply('Signal clue scheduler is now ' + (result.enabled ? 'ON' : 'OFF') + '.' + (result.enabled ? ' The first clue was fired immediately and a DM receipt was sent.' : ''));
         return true;
     }
 
