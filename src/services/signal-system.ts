@@ -10,6 +10,8 @@ import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-bran
 import { hasTenantOwnAvatar } from './discord-avatar-media';
 import { sendWebhookMessage } from './discord-webhooks';
 import { deleteMessage } from './discord';
+import { createDiscordDmChannel, sendDiscordMessage } from './discord-local';
+import { randomUUID } from 'node:crypto';
 import { sendChatMessage } from './twitch';
 
 const SIGNAL_CHANNEL_NAME = 'comms-lounge';
@@ -20,6 +22,8 @@ const SIGNAL_SCHEDULER_STATE = 'signal-scheduler.json';
 const SIGNAL_HINT_HISTORY_STATE = 'signal-hint-history.json';
 const SIGNAL_HINT_HISTORY_LIMIT = 500;
 const SIGNAL_COOLDOWN_STATE = 'signal-command-cooldowns.json';
+const SIGNAL_OWNER_DISCORD_ID = String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '767875979561009173').trim();
+const SIGNAL_CLICK_STATE = 'signal-click-tracking.json';
 const SIGNAL_TWITCH_TENANT_ID = String(process.env.SIGNAL_TWITCH_TENANT_ID || 'spacemountainlive').trim();
 const CHANNEL_EXCLUDE = /(?:log|staff|admin|support|ticket|announce|moderator|mod-only|private|audit)/i;
 
@@ -31,6 +35,7 @@ export type SignalCommandResult = {
 };
 
 type SchedulerState = {
+  enabled?: boolean;
   guildId?: string;
   bag: string[];
   lastChannelId?: string;
@@ -188,9 +193,34 @@ const SIGNAL_CLUES = [
   'A transmission just crossed the dark. It is incomplete, persistent, and almost certainly a bad idea to ignore.',
 ];
 
-async function postSignalClue(channelId: string): Promise<void> {
+type SignalClickRecord = {
+  id: string;
+  createdAt: string;
+  guildId: string;
+  channelId: string;
+  channelName: string;
+  botName: string;
+  clue: string;
+  clicks: number;
+  lastClickedAt?: string;
+};
+
+async function sendSignalOwnerDm(message: string): Promise<void> {
+  if (!SIGNAL_OWNER_DISCORD_ID) return;
+  const dm = await createDiscordDmChannel(SIGNAL_OWNER_DISCORD_ID);
+  await sendDiscordMessage(dm.id, message);
+}
+
+function signalTrackingUrl(id: string): string {
+  const base = String(process.env.STREAMWEAVER_PUBLIC_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://streamweaver-new.fly.dev').replace(/\/$/, '');
+  return `${base}/api/signal/click?id=${encodeURIComponent(id)}`;
+}
+
+async function postSignalClue(channelId: string, guildId: string, channelName: string): Promise<void> {
   const speaker = await randomSignalSpeaker();
   const clue = SIGNAL_CLUES[Math.floor(Math.random() * SIGNAL_CLUES.length)];
+  const id = randomUUID();
+  const trackingUrl = signalTrackingUrl(id);
   await sendStructuredDiscordReply({
     channelId,
     message: clue,
@@ -198,9 +228,28 @@ async function postSignalClue(channelId: string): Promise<void> {
     responseType: 'Signal anomaly',
     speaker,
     rotateSpeaker: false,
-    embedUrl: SIGNAL_GAME_URL,
-    fields: [{ name: 'Carrier', value: '[Intercept Signal](https://spmt.live/signal/)', inline: false }],
+    embedUrl: trackingUrl,
+    fields: [{ name: 'Carrier', value: `[Intercept Signal](${trackingUrl})`, inline: false }],
   });
+  const records = await readJson<Record<string, SignalClickRecord>>(SIGNAL_CLICK_STATE, {});
+  records[id] = { id, createdAt: new Date().toISOString(), guildId, channelId, channelName, botName: speaker.botName, clue, clicks: 0 };
+  await writeJson(SIGNAL_CLICK_STATE, records);
+  await sendSignalOwnerDm(`📡 Signal clue fired\nChannel: #${channelName} (${channelId})\nBot: ${speaker.botName}\nMessage: ${clue}\nClicks: 0`).catch((error) => {
+    console.warn('[Signal] owner fire receipt failed', error);
+  });
+}
+
+export async function recordSignalClueClick(id: string): Promise<SignalClickRecord | null> {
+  const records = await readJson<Record<string, SignalClickRecord>>(SIGNAL_CLICK_STATE, {});
+  const record = records[String(id || '').trim()];
+  if (!record) return null;
+  record.clicks = Math.max(0, Number(record.clicks || 0)) + 1;
+  record.lastClickedAt = new Date().toISOString();
+  await writeJson(SIGNAL_CLICK_STATE, records);
+  await sendSignalOwnerDm(`👁️ Signal clue clicked\nChannel: #${record.channelName}\nBot: ${record.botName}\nMessage: ${record.clue}\nTotal clicks: ${record.clicks}`).catch((error) => {
+    console.warn('[Signal] owner click receipt failed', error);
+  });
+  return record;
 }
 
 async function schedulerTick(): Promise<void> {
@@ -208,16 +257,20 @@ async function schedulerTick(): Promise<void> {
   if (!guildId) return;
   const channels = await listGuildTextChannels(guildId).catch(() => []);
   if (!channels.length) return;
-  let state = await readJson<SchedulerState>(SIGNAL_SCHEDULER_STATE, { bag: [], nextAt: Date.now() + randomDelay() });
-  if (state.guildId !== guildId) state = { guildId, bag: [], nextAt: Date.now() + randomDelay() };
+  let state = await readJson<SchedulerState>(SIGNAL_SCHEDULER_STATE, { enabled: false, bag: [], nextAt: Date.now() });
+  if (state.guildId !== guildId) state = { ...state, guildId, bag: [], nextAt: Date.now() };
+  if (state.enabled !== true) {
+    await writeJson(SIGNAL_SCHEDULER_STATE, state);
+    return;
+  }
   if (!state.bag.length) state.bag = makeBag(channels, state.lastChannelId);
   if (!state.nextAt) state.nextAt = Date.now() + randomDelay();
   await writeJson(SIGNAL_SCHEDULER_STATE, state);
   if (Date.now() < state.nextAt || !state.bag.length) return;
 
   const channelId = state.bag.shift()!;
-  await postSignalClue(channelId);
   const channel = channels.find((candidate) => candidate.id === channelId) || { id: channelId, name: channelId, type: 0 };
+  await postSignalClue(channelId, guildId, channel.name);
   await recordSignalHintPost(guildId, channel);
   state.lastChannelId = channelId;
   state.nextAt = Date.now() + randomDelay();
@@ -225,9 +278,18 @@ async function schedulerTick(): Promise<void> {
   await writeJson(SIGNAL_SCHEDULER_STATE, state);
 }
 
+export async function toggleSignalScheduler(force?: boolean): Promise<{ enabled: boolean; nextAt?: number }> {
+  const current = await readJson<SchedulerState>(SIGNAL_SCHEDULER_STATE, { enabled: false, bag: [], nextAt: Date.now() });
+  const enabled = typeof force === 'boolean' ? force : current.enabled !== true;
+  const next: SchedulerState = { ...current, enabled, nextAt: enabled ? Date.now() : current.nextAt };
+  await writeJson(SIGNAL_SCHEDULER_STATE, next);
+  if (enabled) await schedulerTick();
+  return { enabled, nextAt: next.nextAt };
+}
+
 let schedulerTimer: NodeJS.Timeout | null = null;
 export function startSignalScheduler(): void {
-  if (schedulerTimer || process.env.SIGNAL_SCHEDULER_ENABLED === 'false') return;
+  if (schedulerTimer) return;
   schedulerTimer = setInterval(() => void schedulerTick().catch((error) => console.warn('[Signal] scheduler tick failed', error)), 60_000);
   schedulerTimer.unref?.();
   void schedulerTick().catch((error) => console.warn('[Signal] scheduler bootstrap failed', error));

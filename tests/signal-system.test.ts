@@ -121,12 +121,31 @@ test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () =>
   assert.doesNotMatch(carrierSync, /syncSignalCarrierChannels\(channels\)/);
 });
 
-test('runtime patch wires !signal in both Discord and Twitch without enabling the held scheduler', () => {
+test('runtime patch wires owner-only control for the existing Signal scheduler', () => {
   assert.match(patch, /handleDiscordSignalCommand/);
   assert.match(patch, /handleTwitchSignalCommand/);
-  assert.match(patch, /cmdName === 'signal'/);
-  assert.match(patch, /\^!signal/);
+  assert.match(patch, /toggleSignalScheduler/);
+  assert.match(patch, /cmdName === 'signalbot'/);
+  assert.match(patch, /isPermanentDiscordOwner\(msg\)/);
+  assert.match(patch, /requested === 'on'/);
+  assert.match(patch, /requested === 'off'/);
   assert.match(patch, /startSignalScheduler/);
-  assert.match(patch, /process\.env\.SIGNAL_SCHEDULER_ENABLED === 'true'/);
+  assert.doesNotMatch(patch, /SIGNAL_SCHEDULER_ENABLED/);
   assert.doesNotMatch(carrierSync, /startSignalScheduler/);
+});
+
+test('the existing scheduler persists its toggle, fires immediately when enabled, and reports posts and clicks', () => {
+  assert.match(signal, /enabled\?: boolean/);
+  assert.match(signal, /toggleSignalScheduler/);
+  assert.match(signal, /enabled: false, bag: \[\], nextAt: Date\.now\(\)/);
+  assert.match(signal, /nextAt: enabled \? Date\.now\(\) : current\.nextAt/);
+  assert.match(signal, /if \(enabled\) await schedulerTick\(\)/);
+  assert.match(signal, /Signal clue fired/);
+  assert.match(signal, /Channel:/);
+  assert.match(signal, /Bot:/);
+  assert.match(signal, /Message:/);
+  assert.match(signal, /recordSignalClueClick/);
+  assert.match(signal, /Signal clue clicked/);
+  assert.match(signal, /Total clicks:/);
+  assert.doesNotMatch(signal, /SIGNAL_SCHEDULER_ENABLED/);
 });
