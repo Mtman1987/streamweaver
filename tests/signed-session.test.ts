@@ -37,6 +37,24 @@ test('middleware accepts a verified SPMT identity and forwards identity headers 
   }
 });
 
+test('middleware allows signed Twitch sessions to read dashboard bootstrap APIs only', async () => {
+  process.env.STREAMWEAVER_SESSION_SECRET = 'test-session-secret-that-is-not-used-in-production';
+  const signed = serializeSessionCookie({ id: 'tenant-a', username: 'owner' });
+
+  for (const pathname of ['/api/user-profile', '/api/user-config']) {
+    const response = await middleware(new NextRequest(`https://streamweaver-new.fly.dev${pathname}`, {
+      headers: { cookie: `streamweaver-session=${signed}` },
+    }));
+    assert.equal(response.headers.get('x-middleware-next'), '1');
+    assert.equal(response.headers.get('x-middleware-request-x-spmt-user-id'), 'tenant-a');
+  }
+
+  const protectedApi = await middleware(new NextRequest('https://streamweaver-new.fly.dev/api/settings', {
+    headers: { cookie: `streamweaver-session=${signed}` },
+  }));
+  assert.equal(protectedApi.status, 401);
+});
+
 test('middleware rejects requests without a signed session candidate', async () => {
   const request = new NextRequest('https://streamweaver-new.fly.dev/dashboard');
   const response = await middleware(request);
