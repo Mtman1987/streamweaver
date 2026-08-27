@@ -5,6 +5,23 @@ import { getConfiguredAppUrl, getOAuthRedirectUri } from '@/lib/runtime-origin';
 import { tenantPath, bootstrapTenant, communityBotTokensPath, isAdmin } from '@/lib/tenant';
 import { parseSessionCookie, serializeSessionCookie, STREAMWEAVER_SESSION_MAX_AGE } from '@/lib/session-cookie';
 
+async function reconnectTwitchTenant(tenantId: string): Promise<void> {
+  try {
+    console.log(`[OAuth] Triggering IRC reconnect for tenant ${tenantId}...`);
+    const wsPort = process.env.WS_PORT || '8090';
+    const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/reconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId }),
+    });
+    console.log(`[OAuth] IRC reconnect response: ${response.status}`);
+  } catch (error) {
+    // The tokens are already durable. The runtime maintenance loop can retry,
+    // but a reconnect failure must not discard the completed authorization.
+    console.warn('[OAuth] Twitch IRC reconnect failed:', error);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
@@ -113,6 +130,11 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       };
       await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
+
+      // A tenant may be paused in the in-memory reauthorization gate. Reload
+      // the durable token immediately so chat commands such as !points recover
+      // without waiting for a restart or maintenance sweep.
+      await reconnectTwitchTenant(twitchId);
 
       // Set session cookie
       const sessionData = {
@@ -280,19 +302,8 @@ export async function GET(request: NextRequest) {
 
     await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
 
-    // Reconnect Twitch IRC via the custom HTTP server (same process as the IRC client map)
-    try {
-      console.log(`[OAuth] Triggering IRC reconnect for tenant ${tenantId}...`);
-      const wsPort = process.env.WS_PORT || '8090';
-      const res = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/reconnect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId }),
-      });
-      console.log(`[OAuth] IRC reconnect response: ${res.status}`);
-    } catch (e) {
-      console.warn('[OAuth] Twitch IRC reconnect failed:', e);
-    }
+    // Reload the tenant's durable grant and clear any in-memory reauth pause.
+    await reconnectTwitchTenant(tenantId);
 
     return NextResponse.redirect(`${appOrigin}/integrations?success=true`);
   } catch (error) {
