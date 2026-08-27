@@ -121,19 +121,31 @@ test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () =>
   assert.doesNotMatch(carrierSync, /syncSignalCarrierChannels\(channels\)/);
 });
 
-test('runtime patch wires !signal and enables the existing scheduler unless explicitly disabled', () => {
+test('runtime patch wires owner-only control for the existing Signal scheduler', () => {
   assert.match(patch, /handleDiscordSignalCommand/);
   assert.match(patch, /handleTwitchSignalCommand/);
-  assert.match(patch, /cmdName === 'signal'/);
-  assert.match(patch, /\^!signal/);
+  assert.match(patch, /toggleSignalScheduler/);
+  assert.match(patch, /cmdName === 'signalbot'/);
+  assert.match(patch, /isPermanentDiscordOwner\(msg\)/);
+  assert.match(patch, /requested === 'on'/);
+  assert.match(patch, /requested === 'off'/);
   assert.match(patch, /startSignalScheduler/);
-  assert.match(patch, /process\.env\.SIGNAL_SCHEDULER_ENABLED !== 'false'/);
-  assert.match(patch, /disabled by SIGNAL_SCHEDULER_ENABLED=false/);
+  assert.doesNotMatch(patch, /SIGNAL_SCHEDULER_ENABLED/);
   assert.doesNotMatch(carrierSync, /startSignalScheduler/);
 });
 
-test('a new or changed guild makes the existing scheduler post once immediately before random delays', () => {
-  assert.match(signal, /readJson<SchedulerState>\(SIGNAL_SCHEDULER_STATE, \{ bag: \[\], nextAt: Date\.now\(\) \}\)/);
-  assert.match(signal, /state = \{ guildId, bag: \[\], nextAt: Date\.now\(\) \}/);
-  assert.match(signal, /state\.nextAt = Date\.now\(\) \+ randomDelay\(\)/);
+test('the existing scheduler persists its toggle, fires immediately when enabled, and reports posts and clicks', () => {
+  assert.match(signal, /enabled\?: boolean/);
+  assert.match(signal, /toggleSignalScheduler/);
+  assert.match(signal, /enabled: false, bag: \[\], nextAt: Date\.now\(\)/);
+  assert.match(signal, /nextAt: enabled \? Date\.now\(\) : current\.nextAt/);
+  assert.match(signal, /if \(enabled\) await schedulerTick\(\)/);
+  assert.match(signal, /Signal clue fired/);
+  assert.match(signal, /Channel:/);
+  assert.match(signal, /Bot:/);
+  assert.match(signal, /Message:/);
+  assert.match(signal, /recordSignalClueClick/);
+  assert.match(signal, /Signal clue clicked/);
+  assert.match(signal, /Total clicks:/);
+  assert.doesNotMatch(signal, /SIGNAL_SCHEDULER_ENABLED/);
 });
