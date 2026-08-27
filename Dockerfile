@@ -25,7 +25,7 @@ ENV NEXT_PUBLIC_STREAMWEAVE_URL=$NEXT_PUBLIC_STREAMWEAVE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p config logs MasterStats data/default data/runtime/global data/runtime/tenants tokens actions commands sb plugin-exports tmp scripts
-RUN npm run prebuild:simple && node scripts/patch-signal-discord-presentation.mjs && node scripts/patch-signal-carrier-join-hardening.mjs && node scripts/patch-signal-carrier-runtime-recovery.mjs && npx next build
+RUN npm run prebuild:simple && node scripts/patch-signal-discord-presentation.mjs && node scripts/patch-discord-lore-tenant-routing.mjs && node scripts/patch-signal-carrier-join-hardening.mjs && node scripts/patch-signal-carrier-runtime-recovery.mjs && npx next build
 
 FROM node:20-slim AS runner
 
