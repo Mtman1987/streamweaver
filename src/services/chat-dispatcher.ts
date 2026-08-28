@@ -2199,8 +2199,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
     } catch {}
     
-    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
-    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
+    const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername);
+    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
+    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
     const isKnownAutomationBotMessage = !isBotMessage && (
         await isKnownBot(actualUsername, tenantId) ||
         await isConfiguredTwitchBotUsername(actualUsername) ||
@@ -2223,7 +2224,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Skip self messages (broadcaster client echoes its own sends).
     // The dedicated Count client is send-only, so its echo arrives through the
     // tenant listener as another bot message and must be stopped explicitly.
-    if (self || isTheCountTwitchLogin(actualUsername)) return;
+    if (self || isTheCountAccountMessage) return;
 
     if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
         const links = await buildTwitchListenLinks(replyChannel);
