@@ -47,7 +47,7 @@ async function reconnectTheCountRuntime(): Promise<void> {
 function clearPrivilegedOAuthCookie(response: NextResponse): NextResponse {
   response.cookies.set(TWITCH_PRIVILEGED_OAUTH_COOKIE, '', {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 0,
     path: '/',
