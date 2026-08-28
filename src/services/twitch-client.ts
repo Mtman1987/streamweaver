@@ -7,6 +7,11 @@ import { recordSharedChatEvent } from './shared-chat-ingestion';
 import { normalizeTwitchSharedChatEvent } from './shared-chat-normalizers';
 import { promises as fsp } from 'fs';
 import { getConfiguredAppUrl } from '../lib/runtime-origin';
+import {
+  ensureValidTheCountTwitchToken,
+  readTheCountTwitchCredential,
+} from '../lib/the-count-twitch-vault.server';
+import { THE_COUNT_TWITCH_LOGIN } from '../lib/the-count';
 
 interface TenantClients {
   broadcasterClient: tmi.Client | null;
@@ -31,6 +36,9 @@ let communityBotClient: tmi.Client | null = null;
 let communityBotUsername = '';
 const communityBotChannels = new Set<string>();
 let communityBotConnectPromise: Promise<tmi.Client | null> | null = null;
+let theCountTwitchClient: tmi.Client | null = null;
+let theCountConnectPromise: Promise<tmi.Client | null> | null = null;
+const theCountChannels = new Set<string>();
 const tenantsNeedingReauth = new Set<string>();
 const lastReauthNotice = new Map<string, number>();
 const REAUTH_NOTICE_INTERVAL_MS = 60_000;
@@ -256,6 +264,111 @@ async function ensureCommunityBotForChannel(
   return client;
 }
 
+async function getOrConnectTheCountTwitchClient(
+  clientId: string,
+  clientSecret: string,
+): Promise<tmi.Client | null> {
+  if (!theCountConnectPromise) {
+    theCountConnectPromise = (async () => {
+      const credential = await readTheCountTwitchCredential();
+      if (!credential) return null;
+      if (credential.login !== THE_COUNT_TWITCH_LOGIN) {
+        throw new Error('The Count Twitch vault contains the wrong login');
+      }
+
+      const oauth = await ensureValidTheCountTwitchToken(clientId, clientSecret);
+      const client = new tmi.Client({
+        options: { debug: false },
+        identity: {
+          username: THE_COUNT_TWITCH_LOGIN,
+          password: `oauth:${oauth.replace(/^oauth:/, '')}`,
+        },
+        channels: [],
+      });
+
+      client.on('connected', () => {
+        console.log(`[Twitch:the-count] Connected as ${THE_COUNT_TWITCH_LOGIN}`);
+      });
+      client.on('disconnected', (reason) => {
+        console.log(`[Twitch:the-count] Disconnected: ${reason}`);
+        theCountTwitchClient = null;
+        theCountConnectPromise = null;
+        theCountChannels.clear();
+      });
+
+      // Incoming chat is already handled by each tenant's broadcaster or shared
+      // listener. The Count client is send-only so it cannot duplicate dispatch.
+      await client.connect();
+      theCountTwitchClient = client;
+      return client;
+    })().catch((error) => {
+      console.error('[Twitch:the-count] Setup failed:', error);
+      theCountTwitchClient = null;
+      theCountConnectPromise = null;
+      return null;
+    });
+  }
+
+  return theCountConnectPromise;
+}
+
+async function ensureTheCountForChannel(
+  channel: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<tmi.Client | null> {
+  const normalizedChannel = String(channel || '').replace(/^#/, '').trim().toLowerCase();
+  if (!normalizedChannel) return null;
+
+  const client = await getOrConnectTheCountTwitchClient(clientId, clientSecret);
+  if (!client) return null;
+
+  if (!theCountChannels.has(normalizedChannel)) {
+    try {
+      await client.join(normalizedChannel);
+      theCountChannels.add(normalizedChannel);
+      console.log(`[Twitch:the-count] Joined #${normalizedChannel}`);
+    } catch (error) {
+      console.error(`[Twitch:the-count] Failed to join #${normalizedChannel}:`, error);
+    }
+  }
+
+  return client;
+}
+
+export async function setupTheCountTwitchClient(): Promise<tmi.Client | null> {
+  const clientId = process.env.TWITCH_CLIENT_ID || process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  const channels = Array.from(new Set(
+    Array.from(tenantClients.values())
+      .map((tenant) => tenant.broadcasterUsername.replace(/^#/, '').trim().toLowerCase())
+      .filter(Boolean),
+  ));
+
+  let client = await getOrConnectTheCountTwitchClient(clientId, clientSecret);
+  for (const channel of channels) {
+    client = await ensureTheCountForChannel(channel, clientId, clientSecret) || client;
+  }
+  return client;
+}
+
+export async function reconnectTheCountTwitchClient(): Promise<tmi.Client | null> {
+  if (theCountTwitchClient) {
+    try {
+      theCountTwitchClient.removeAllListeners();
+      await disconnectIfOpen(theCountTwitchClient);
+    } catch (error) {
+      console.warn('[Twitch:the-count] Reconnect cleanup warning:', error);
+    }
+  }
+  theCountTwitchClient = null;
+  theCountConnectPromise = null;
+  theCountChannels.clear();
+  return setupTheCountTwitchClient();
+}
+
 async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {
   const key = `${tenantId}:${String(username || 'chat').toLowerCase()}`;
   const now = Date.now();
@@ -369,6 +482,7 @@ export async function setupTwitchClient(tenantId: string) {
       console.error(`[Twitch:${tenantId}] No tokens available.`);
       if (tokens?.broadcasterUsername) {
         channelToTenant.set(tokens.broadcasterUsername.toLowerCase(), tenantId);
+        void ensureTheCountForChannel(tokens.broadcasterUsername, clientId, clientSecret);
         tenantsNeedingReauth.add(tenantId);
         const tenant = tenantClients.get(tenantId) || {
           broadcasterClient: null,
@@ -411,6 +525,7 @@ export async function setupTwitchClient(tenantId: string) {
 
     if (broadcasterUsername) {
       channelToTenant.set(broadcasterUsername.toLowerCase(), tenantId);
+      void ensureTheCountForChannel(broadcasterUsername, clientId, clientSecret);
       const existingTenant = tenantClients.get(tenantId);
       if (!existingTenant) {
         tenantClients.set(tenantId, {
@@ -583,6 +698,9 @@ export async function setupAllTenants() {
       console.error(`[Twitch:${id}] Boot failed:`, e)
     );
   }
+  await setupTheCountTwitchClient().catch((error) =>
+    console.error('[Twitch:the-count] Boot failed:', error)
+  );
 }
 
 /**
@@ -643,6 +761,18 @@ export function getActiveTenantIds(): string[] {
 /**
  * Return current shared community bot runtime state.
  */
+export function getTheCountTwitchClient(): tmi.Client | null {
+  return isClientUsable(theCountTwitchClient) ? theCountTwitchClient : null;
+}
+
+export function getTheCountTwitchRuntimeState(): { connected: boolean; username: string | null; channels: string[] } {
+  return {
+    connected: Boolean(isClientUsable(theCountTwitchClient)),
+    username: theCountTwitchClient ? THE_COUNT_TWITCH_LOGIN : null,
+    channels: Array.from(theCountChannels),
+  };
+}
+
 export function getCommunityBotRuntimeState(): { connected: boolean; username: string | null; channels: string[] } {
   return {
     connected: Boolean(communityBotClient),
@@ -681,6 +811,12 @@ export async function disconnectCommunityBot(): Promise<void> {
  * Called periodically from the polling service.
  */
 export async function reconnectDisconnectedTenants(): Promise<void> {
+  if (!isClientUsable(theCountTwitchClient) && !theCountConnectPromise) {
+    await setupTheCountTwitchClient().catch((error) =>
+      console.error('[Twitch:the-count] Health-check reconnect failed:', error)
+    );
+  }
+
   for (const [tenantId, tenant] of tenantClients) {
     if (tenantsNeedingReauth.has(tenantId)) {
       continue;
