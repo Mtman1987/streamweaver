@@ -185,6 +185,14 @@ export async function postDiscordStreamHubSignalDrop(input: {
   return postDiscordStreamHub('/api/internal/signal/drop', input);
 }
 
+export async function toggleDiscordStreamHubSignalSeeker(input: {
+  twitchUserId: string;
+  twitchUsername: string;
+  action?: 'join' | 'leave' | 'toggle';
+}): Promise<{ ok: true; linked: boolean; status?: 'joined' | 'left'; inviteUrl?: string }> {
+  return postDiscordStreamHub('/api/internal/signal/seekers', input);
+}
+
 export function getDiscordPointsContext() {
   const output = getChatOutputContext();
   if (!output || output.platform !== 'discord' || !output.userId) return null;

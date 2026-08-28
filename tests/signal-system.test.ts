@@ -63,9 +63,11 @@ test('Discord !signal is a local cosmetic replacement only', () => {
   assert.doesNotMatch(discordBody, /recordSignalCooldown/);
 });
 
-test('Twitch !signal uses the current broadcaster and asks DSH for its Discord destination', () => {
+test('Twitch !signal toggles the shared hunt while !signal <message> keeps the earned carrier reward', () => {
   assert.match(signal, /provider: 'twitch'/);
-  assert.match(signal, /usage: !signal <message>/);
+  assert.match(signal, /toggleDiscordStreamHubSignalSeeker/);
+  assert.match(signal, /check your whispers for the egg-hunt invitation/);
+  assert.match(signal, /you're now a Signal Seeker/);
   assert.match(signal, /input\.broadcaster\.replace/);
   assert.match(signal, /postDiscordStreamHubSignal/);
   assert.match(signal, /signalCooldownAvailable\(targetName\)/);

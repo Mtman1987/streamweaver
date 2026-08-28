@@ -5,6 +5,7 @@ import { sendDiscordMessage } from './discord';
 import { getUserCards } from './pokemon-collection';
 import { getChatOutputContext } from './chat-output-context';
 import { getDiscordStreamHubPoints, getDiscordStreamHubPointsLeaderboard } from './discord-stream-hub';
+import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
 
 const COOLDOWNS = {
   user: new Map<string, number>(),
@@ -74,6 +75,7 @@ export async function handleLeaderboardCommand(
   args: string,
   broadcast: (message: { type: string; payload: unknown }, tid?: string) => void,
   tenantId?: string,
+  providerUserId?: string,
 ) {
   if (!checkCooldown(username)) return;
 
@@ -106,6 +108,10 @@ export async function handleLeaderboardCommand(
   const realRare = userCards.filter((c: any) => c.rarity?.includes('Rare')).length;
   
   if (command === '!leader') {
+    const entitlement = providerUserId
+      ? await getSpmtEasterEggEntitlement({ provider: 'twitch', providerUserId }).catch(() => null)
+      : null;
+    const eggsFound = entitlement ? Object.values(entitlement.eggs).filter(Boolean).length : 0;
     const profile = {
       type: 'profile',
       user: username,
@@ -134,10 +140,9 @@ export async function handleLeaderboardCommand(
     const wtStr = channelUsername && channelMinutes > 0
       ? `Watchtime: ${channelHours}h (${totalHours}h total)`
       : `Watchtime: ${totalHours}h`;
-    const badgeList = user.badges.length > 0 ? ` | Badges: ${user.badges.join(', ')}` : '';
     const cardStr = `Cards: ${realTotal} (${realRare} rare)`;
     sendChatMessage(
-      `@${username} | Points: ${pointsData.pointsDisplay} | ${wtStr} | ${cardStr}${badgeList}`,
+      `@${username} | Points: ${pointsData.pointsDisplay} | ${wtStr} | ${cardStr} | Gym Badges: ${user.badges.length} | Eggs Found: ${eggsFound}/3`,
       'bot', undefined, tenantId
     ).catch(() => {});
     return;
@@ -223,9 +228,6 @@ export async function handleLeaderboardCommand(
       chatMsg = chMin > 0
         ? `@${username}, you're #${myRank} with ${chH}h here (${totalH}h total)!`
         : `@${username}, you're #${myRank} with ${totalH}h total watchtime!`;
-    }
-    if (stat === 'badges' && user.badges.length > 0) {
-      chatMsg += ` (${user.badges.join(', ')})`;
     }
     sendChatMessage(chatMsg, 'bot', undefined, tenantId).catch(() => {});
   }

@@ -366,6 +366,36 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 return;
             }
             
+            if (pathname === '/api/twitch/send-whisper' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                    try {
+                        const { username, message, tenantId } = JSON.parse(body);
+                        const target = String(username || '').replace(/^@/, '').trim();
+                        const text = String(message || '').trim();
+                        if (!target || !text) throw new Error('username and message are required');
+                        const { getTwitchClient, setupTwitchClient } = twitchClientModule;
+                        let client = getTwitchClient('bot', tenantId);
+                        if (!client && tenantId) {
+                            await setupTwitchClient(String(tenantId));
+                            client = getTwitchClient('bot', tenantId);
+                        }
+                        if (!client || typeof (client as any).whisper !== 'function') {
+                            throw new Error('Twitch bot whisper client is unavailable');
+                        }
+                        await (client as any).whisper(target, text);
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true }));
+                    } catch (error: any) {
+                        console.error('[HTTP /api/twitch/send-whisper] Error:', error);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: error.message }));
+                    }
+                });
+                return;
+            }
+
             if (pathname === '/api/__health' && req.method === 'GET') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'ok' }));
