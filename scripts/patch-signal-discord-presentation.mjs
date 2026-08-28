@@ -17,7 +17,10 @@ function patch(relativePath, transform) {
 }
 
 patch('src/services/signal-system.ts', (source) => {
-  source = source.replace("import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-branding';\n", '');
+  source = source.replace(
+    "import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-branding';\n",
+    "import { resolveDiscordBotThumbnailUrl } from './discord-branding';\n",
+  );
   source = source.replace("import { hasTenantOwnAvatar } from './discord-avatar-media';\n", '');
 
   const tenantMarker = "const SIGNAL_TWITCH_TENANT_ID = String(process.env.SIGNAL_TWITCH_TENANT_ID || 'spacemountainlive').trim();";
@@ -43,6 +46,10 @@ patch('src/services/signal-system.ts', (source) => {
 
   if (!source.includes('webhookAvatarUrl') || !source.includes('SIGNAL_COMMUNITY_SPOTLIGHT_GIF_URL')) {
     throw new Error('Signal presentation patch: Signal presentation postcondition failed');
+  }
+  if (source.includes('resolveDiscordBotThumbnailUrl(')
+    && !source.includes("import { resolveDiscordBotThumbnailUrl } from './discord-branding';")) {
+    throw new Error('Signal presentation patch: Discord thumbnail resolver import was lost');
   }
   return source;
 });

@@ -60,6 +60,11 @@ import {
 
 const DISCORD_DM_IMAGE_COMMANDS_ENABLED = process.env.DISCORD_DM_IMAGE_COMMANDS_ENABLED !== 'false';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
+const PERMANENT_OWNER_DISCORD_IDS = new Set([
+  '767875979561009173',
+  String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '').trim(),
+  String(process.env.NEXT_PUBLIC_HARDCODED_ADMIN_DISCORD_ID || '').trim(),
+].filter(Boolean));
 
 function logDiscordTrace(traceId: string, stage: string, details: Record<string, unknown> = {}) {
   console.log(`[DiscordTrace] ${JSON.stringify({
@@ -299,7 +304,10 @@ export async function POST(request: NextRequest) {
     const permissions = Array.isArray(normalized.memberPermissions)
       ? normalized.memberPermissions
       : String(normalized.memberPermissions || '').split(/[,\s]+/).filter(Boolean);
-    const dshAccess = await checkDiscordStreamHubAdminAccess({ guildId, userId });
+    const permanentOwner = PERMANENT_OWNER_DISCORD_IDS.has(userId);
+    const dshAccess = permanentOwner
+      ? { isAdmin: true, isMod: true, isOwner: true, matchedBy: 'permanent-owner' }
+      : await checkDiscordStreamHubAdminAccess({ guildId, userId });
     const effectiveIsAdmin = Boolean(normalized.isAdmin || dshAccess?.isAdmin);
     const effectiveIsMod = Boolean(normalized.isMod || dshAccess?.isMod);
     const effectiveIsOwner = Boolean(normalized.isOwner || dshAccess?.isOwner);
