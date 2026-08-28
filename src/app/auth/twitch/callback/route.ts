@@ -4,6 +4,13 @@ import path from 'path';
 import { getConfiguredAppUrl, getOAuthRedirectUri } from '@/lib/runtime-origin';
 import { tenantPath, bootstrapTenant, communityBotTokensPath, isAdmin } from '@/lib/tenant';
 import { parseSessionCookie, serializeSessionCookie, STREAMWEAVER_SESSION_MAX_AGE } from '@/lib/session-cookie';
+import { THE_COUNT_TWITCH_LOGIN } from '@/lib/the-count';
+import { storeTheCountTwitchCredential } from '@/lib/the-count-twitch-vault.server';
+import {
+  readPrivilegedTwitchOAuthTransaction,
+  TWITCH_PRIVILEGED_OAUTH_COOKIE,
+} from '@/lib/twitch-privileged-oauth.server';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 async function reconnectTwitchTenant(tenantId: string): Promise<void> {
   try {
@@ -22,6 +29,32 @@ async function reconnectTwitchTenant(tenantId: string): Promise<void> {
   }
 }
 
+async function reconnectTheCountRuntime(): Promise<void> {
+  try {
+    const wsPort = process.env.WS_PORT || '8090';
+    const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/the-count/reconnect`, {
+      method: 'POST',
+      headers: internalServiceHeaders(),
+    });
+    if (!response.ok) {
+      console.warn('[OAuth] The Count runtime reconnect returned', response.status);
+    }
+  } catch (error) {
+    console.warn('[OAuth] The Count credential is durable; runtime reconnect will retry:', error);
+  }
+}
+
+function clearPrivilegedOAuthCookie(response: NextResponse): NextResponse {
+  response.cookies.set(TWITCH_PRIVILEGED_OAUTH_COOKIE, '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/',
+  });
+  return response;
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
@@ -30,7 +63,6 @@ export async function GET(request: NextRequest) {
   const requestedState = searchParams.get('state') || 'login';
 
   console.info('[Twitch OAuth] Callback received', {
-    state: requestedState,
     hasCode: Boolean(code),
     providerError: error || null,
   });
@@ -41,6 +73,30 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.json({ error: 'No authorization code provided' }, { status: 400 });
+  }
+
+  const sessionCookie = request.cookies.get('streamweaver-session')?.value;
+  const preflightTenantId = parseSessionCookie(sessionCookie)?.id || null;
+  const privilegedTransaction = preflightTenantId
+    ? readPrivilegedTwitchOAuthTransaction(
+        request.cookies.get(TWITCH_PRIVILEGED_OAUTH_COOKIE)?.value,
+        requestedState,
+        preflightTenantId,
+      )
+    : null;
+  const ordinaryStates = new Set(['login', 'broadcaster', 'bot']);
+  const state = privilegedTransaction?.role || (ordinaryStates.has(requestedState) ? requestedState : null);
+  if (!state) {
+    const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
+    return clearPrivilegedOAuthCookie(
+      NextResponse.redirect(`${appOrigin}/integrations?error=invalid_oauth_state`),
+    );
+  }
+  if ((state === 'community-bot' || state === 'the-count') && (!preflightTenantId || !isAdmin(preflightTenantId))) {
+    const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
+    return clearPrivilegedOAuthCookie(
+      NextResponse.redirect(`${appOrigin}/integrations?error=admin_only`),
+    );
   }
 
   try {
@@ -91,8 +147,6 @@ export async function GET(request: NextRequest) {
     if (!userInfo) {
       console.error('[Twitch OAuth] User profile lookup failed', { status: userResponse.status });
     }
-
-    const state = requestedState;
 
     // ─── LOGIN FLOW ───
     // Creates/validates the tenant and sets the session cookie.
@@ -158,8 +212,7 @@ export async function GET(request: NextRequest) {
 
     // ─── BROADCASTER / BOT / COMMUNITY-BOT FLOW ───
     // Requires an existing session so we know which tenant to write to.
-    const sessionCookie = request.cookies.get('streamweaver-session')?.value;
-    const tenantId = parseSessionCookie(sessionCookie)?.id || null;
+    const tenantId = preflightTenantId;
 
     if (!tenantId) {
       // No session — if this is a broadcaster re-auth, treat it like a login
@@ -213,6 +266,36 @@ export async function GET(request: NextRequest) {
     const isBroadcaster = state === 'broadcaster';
     const isBot = state === 'bot';
     const isCommunityBot = state === 'community-bot';
+    const isTheCount = state === 'the-count';
+
+    if (isTheCount) {
+      const login = String(userInfo?.login || '').trim().toLowerCase();
+      const userId = String(userInfo?.id || '').trim();
+      if (!userId || login !== THE_COUNT_TWITCH_LOGIN) {
+        return clearPrivilegedOAuthCookie(
+          NextResponse.redirect(
+            `${appOrigin}/integrations?error=wrong_count_account&msg=Authorize+the+Twitch+account+TheCountSPMT+only.`,
+          ),
+        );
+      }
+
+      await storeTheCountTwitchCredential({
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        expiresAt: tokenExpiry,
+        userId,
+        login,
+        scopes: Array.isArray(tokenData.scope)
+          ? tokenData.scope.map((scope: unknown) => String(scope))
+          : [],
+        updatedAt: new Date().toISOString(),
+      });
+      await reconnectTheCountRuntime();
+
+      return clearPrivilegedOAuthCookie(
+        NextResponse.redirect(`${appOrigin}/integrations?success=the-count`),
+      );
+    }
 
     // Community bot is admin-only and stored globally
     if (isCommunityBot) {
@@ -236,7 +319,9 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       };
       await fs.writeFile(cbPath, JSON.stringify(storage, null, 2));
-      return NextResponse.redirect(`${appOrigin}/integrations?success=true`);
+      return clearPrivilegedOAuthCookie(
+        NextResponse.redirect(`${appOrigin}/integrations?success=true`),
+      );
     }
 
     // Broadcaster or Bot — store in tenant folder
