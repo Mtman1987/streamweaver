@@ -168,8 +168,8 @@ export async function POST(request: NextRequest) {
     const contextFlags: Record<string, string> = {
       twitch: '[Context: Live Twitch chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
       'twitch-cross-bot': '[Context: Twitch cross-bot follow-up. Answer as the requested bot only, then stop.]',
-      discord: '[Context: Discord server message. Can be slightly longer but stay concise.]',
-      'discord-cross-bot': '[Context: Discord cross-bot follow-up. Answer as the requested bot only, then stop.]',
+      discord: '[Context: Discord server message. Answer in 1-3 complete sentences. Never end mid-sentence or with a dangling ellipsis.]',
+      'discord-cross-bot': '[Context: Discord cross-bot follow-up. Answer as the requested bot only in complete sentences, then stop. Never end mid-sentence or with a dangling ellipsis.]',
       kick: '[Context: Live Kick chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
       voice: `[Context: The broadcaster is speaking to you via voice command. This is ${userIsCommander ? 'the Commander (M.T.)' : 'the streamer'}. Respond conversationally.]`,
       private: '[Context: Private conversation. Not on stream. You can be more detailed and personal.]',
@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
       research.kind === 'research' ? research.context : '',
       `Latest message from ${userIsCommander ? 'the Commander (M.T.)' : speakerDisplayName}: ${message}`,
       'Important: use the exact Discord identity context above. Do not rename the user to M.T. unless the Discord username itself belongs to the Commander.',
+      'Complete every sentence before stopping. Do not use a trailing ellipsis as a substitute for finishing the thought.',
       `Respond as ${botResponseName}:`,
     ].filter(Boolean).join('\n\n');
 
@@ -224,7 +225,8 @@ export async function POST(request: NextRequest) {
     let responseText = '';
     try {
       responseText = (await generateAIResponse(prompt, systemIdentity, tenantId, {
-        maxTokens: context === 'voice' || context === 'twitch' ? 300 : 600,
+        maxTokens: context === 'voice' || context === 'twitch' ? 300 : 800,
+        maxCharacters: context === 'discord' || context === 'discord-cross-bot' ? 3_800 : 12_000,
         temperature: 0.7,
       })).trim();
     } catch (error) {

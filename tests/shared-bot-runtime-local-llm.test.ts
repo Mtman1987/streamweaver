@@ -79,7 +79,7 @@ test('public AI uses the shared EdenAI-first provider with local Qwen fallback',
   );
 
   assert.match(chatSource, /generateAIResponse\(prompt, systemIdentity, tenantId/);
-  assert.doesNotMatch(chatSource, /api\.edenai\.run\/v3\/llm\/chat\/completions/);
+  assert.doesNotMatch(chatSource, /api\.edenai\.run\/v3\/chat\/completions/);
   const edenCall = providerSource.indexOf('await generateEdenAIFallbackResponse(');
   const qwenCall = providerSource.indexOf('await requestSpmtLocalLlm(');
   assert.ok(edenCall >= 0 && qwenCall > edenCall);

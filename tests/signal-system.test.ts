@@ -81,7 +81,7 @@ test('Twitch !signal toggles the shared hunt while !signal <message> keeps the e
   assert.match(patch, /message: acknowledgement/);
   const twitchStart = signal.indexOf('export async function handleTwitchSignalCommand');
   const twitchBody = signal.slice(twitchStart);
-  assert.match(twitchBody, /resolveSignalChannelId\(guildId\)/);
+  assert.match(twitchBody, /resolveDiscordStreamHubSignalDestination\(\)/);
   assert.match(patch, /const \{ guildId, channelId \} = await resolveDiscordStreamHubSignalDestination\(\)/);
   assert.match(signal, /SIGNAL_TWITCH_TENANT_ID/);
   assert.match(signal, /SIGNAL ACKNOWLEDGED/);
