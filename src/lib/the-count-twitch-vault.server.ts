@@ -57,6 +57,7 @@ function assertCredential(value: Partial<TheCountTwitchCredential>): asserts val
     !value.refreshToken ||
     !value.userId ||
     !value.login ||
+    typeof value.expiresAt !== 'number' ||
     !Number.isFinite(value.expiresAt)
   ) {
     throw new Error('The Count Twitch credential is incomplete');
