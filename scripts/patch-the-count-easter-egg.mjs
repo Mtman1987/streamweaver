@@ -88,6 +88,38 @@ patchFile('src/app/api/discord/chat/route.ts', (source) => {
   return source;
 });
 
+patchFile('src/services/chat-dispatcher.ts', (source) => {
+  const importMarker = "import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';";
+  const countImports = "import {\n    THE_COUNT_NAME,\n    THE_COUNT_PERSONALITY,\n    isTheCountTwitchLogin,\n    messageInvokesTheCount,\n} from '../lib/the-count';";
+  if (!source.includes(countImports)) {
+    if (!source.includes(importMarker)) throw new Error('The Count patch: Twitch dispatcher import marker missing');
+    source = source.replace(importMarker, `${importMarker}\n${countImports}`);
+  }
+
+  const botMarker = "    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();\n    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();\n";
+  const botReplacement = "    const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername);\n    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;\n    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;\n";
+  if (!source.includes('const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername)')) {
+    if (!source.includes(botMarker)) throw new Error('The Count patch: Twitch bot classification marker missing');
+    source = source.replace(botMarker, botReplacement);
+  }
+
+  const selfMarker = "    // Skip self messages (broadcaster client echoes its own sends)\n    if (self) return;\n\n";
+  const selfReplacement = "    // Skip self messages (broadcaster client echoes its own sends).\n    // The dedicated Count client is send-only, so its echo arrives through the\n    // tenant listener as another bot message and must be stopped explicitly.\n    if (self || isTheCountAccountMessage) return;\n\n";
+  if (!source.includes('if (self || isTheCountAccountMessage) return;')) {
+    if (!source.includes(selfMarker)) throw new Error('The Count patch: Twitch self-message marker missing');
+    source = source.replace(selfMarker, selfReplacement);
+  }
+
+  const branchMarker = "            // Check for shoutout command (without bot name)\n";
+  const countBranch = "            // The Count is a built-in character, not a tenant bot. His Twitch\n            // account is only a delivery identity; the canonical Black Hole\n            // entitlement remains the sole personal invocation gate.\n            if (!isCommand && !userIsKnownBot && messageInvokesTheCount(actualMessage)) {\n                const twitchUserId = String(tags?.['user-id'] || '').trim();\n                const entitlement = await getSpmtEasterEggEntitlement({\n                    provider: 'twitch',\n                    providerUserId: twitchUserId,\n                });\n                if (!entitlement.eggs.blackHole) {\n                    return;\n                }\n\n                try {\n                    const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {\n                        method: 'POST',\n                        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),\n                        body: JSON.stringify({\n                            username: actualUsername,\n                            displayName,\n                            userId: twitchUserId,\n                            message: actualMessage,\n                            personality: THE_COUNT_PERSONALITY,\n                            responseName: THE_COUNT_NAME,\n                            tenantId: tenantId || undefined,\n                            channelId: replyChannel,\n                            context: 'twitch-cross-bot',\n                        }),\n                    });\n\n                    if (!response.ok) {\n                        console.error('[Dispatcher] The Count Twitch AI failed:', response.status);\n                        return;\n                    }\n\n                    const data = await response.json();\n                    const aiReply = String(data.response || data.data?.response || '').trim();\n                    if (!aiReply) return;\n\n                    const responseChannel = await resolveTwitchReplyChannel({\n                        sourceChannel: replyChannel,\n                        sourceTenantId: tenantId,\n                        responseTenantId: tenantId,\n                    });\n                    await sendChatMessage(aiReply, 'count', responseChannel, tenantId);\n                    console.log(`[Dispatcher] The Count answered @${actualUsername} in #${responseChannel}`);\n                } catch (error) {\n                    console.error('[Dispatcher] The Count Twitch response failed:', error);\n                }\n                return;\n            }\n\n";
+  if (!source.includes('The Count is a built-in character, not a tenant bot')) {
+    if (!source.includes(branchMarker)) throw new Error('The Count patch: Twitch invocation marker missing');
+    source = source.replace(branchMarker, `${countBranch}${branchMarker}`);
+  }
+
+  return source;
+});
+
 patchFile('src/app/api/ai/chat-with-memory/route.ts', (source) => {
   const commanderImport = "import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';";
   const titleImport = "import { isVoidwalker, getVoidwalkerSystemPrompt } from '@/lib/voidwalker';";
