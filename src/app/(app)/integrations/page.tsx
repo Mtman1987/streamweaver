@@ -66,17 +66,23 @@ export default function IntegrationsPage() {
     broadcasterConnected: boolean;
     botConnected: boolean;
     communityBotConnected: boolean;
+    theCountConnected: boolean;
+    owner: boolean;
     broadcasterUsername: string | null;
     botUsername: string | null;
     communityBotUsername: string | null;
+    theCountUsername: string | null;
   }>({
     loading: true,
     broadcasterConnected: false,
     botConnected: false,
     communityBotConnected: false,
+    theCountConnected: false,
+    owner: false,
     broadcasterUsername: null,
     botUsername: null,
     communityBotUsername: null,
+    theCountUsername: null,
   });
 
   const [kickStatus, setKickStatus] = useState<{
@@ -133,9 +139,12 @@ export default function IntegrationsPage() {
         broadcasterConnected: !!data?.broadcasterConnected,
         botConnected: !!data?.botConnected,
         communityBotConnected: !!data?.communityBotConnected,
+        theCountConnected: !!data?.theCountConnected,
+        owner: data?.owner === true,
         broadcasterUsername: data?.broadcasterUsername ?? null,
         botUsername: data?.botUsername ?? null,
         communityBotUsername: data?.communityBotUsername ?? null,
+        theCountUsername: data?.theCountUsername ?? null,
       });
     } catch {
       setTwitchStatus((prev) => ({ ...prev, loading: false }));
@@ -155,13 +164,19 @@ export default function IntegrationsPage() {
   }, []);
 
   // --- Actions ---
-  const connectTwitch = (role: "broadcaster" | "bot" | "community-bot") => {
+  const connectTwitch = (role: "broadcaster" | "bot" | "community-bot" | "the-count") => {
     if (!twitchConfigured) {
       toast({ variant: "destructive", title: "Twitch not configured", description: "Missing NEXT_PUBLIC_TWITCH_CLIENT_ID" });
       return;
     }
     if (role === "bot") {
       toast({ title: "⚠️ Use your BOT account", description: "Sign in as your BOT account on the Twitch login page — not your broadcaster account." });
+    }
+    if (role === "the-count") {
+      toast({
+        title: "Authorize The Count",
+        description: "On Twitch, sign in as TheCountSPMT. StreamWeaver will reject every other account.",
+      });
     }
     window.location.href = `/api/auth/twitch?role=${role}`;
   };
@@ -351,6 +366,24 @@ export default function IntegrationsPage() {
             )}
           </AccountRow>
 
+          {twitchStatus.owner && (
+            <>
+              <AccountRow
+                connected={twitchStatus.theCountConnected}
+                label="The Count"
+                username={twitchStatus.theCountUsername || "TheCountSPMT"}
+                description="Owner-locked community character. Only the pinned TheCountSPMT Twitch ID can re-authorize this connection."
+              >
+                <Button
+                  size="sm"
+                  variant={twitchStatus.theCountConnected ? "ghost" : "default"}
+                  className={twitchStatus.theCountConnected ? "text-xs" : ""}
+                  onClick={() => connectTwitch("the-count")}
+                >
+                  {twitchStatus.theCountConnected ? "Re-authorize Same Account" : "Authorize The Count"}
+                </Button>
+              </AccountRow>
+
           <AccountRow
             connected={twitchStatus.communityBotConnected}
             label="Community Bot"
@@ -384,6 +417,8 @@ export default function IntegrationsPage() {
               )}
             </div>
           </AccountRow>
+            </>
+          )}
         </CardContent>
       </Card>
 
