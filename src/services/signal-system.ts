@@ -4,7 +4,7 @@ import { globalPath, listTenants } from '../lib/tenant';
 import { getBotName } from '../lib/bot-settings-store';
 import { readWorldLore } from '../lib/world-lore-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
-import { getDiscordStreamHubDefaultGuildId, postDiscordStreamHubSignalDrop } from './discord-stream-hub';
+import { getDiscordStreamHubDefaultGuildId, postDiscordStreamHubSignalDrop, toggleDiscordStreamHubSignalSeeker } from './discord-stream-hub';
 import { sendStructuredDiscordReply, type DiscordReplySpeaker } from './discord-structured-replies';
 import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-branding';
 import { hasTenantOwnAvatar } from './discord-avatar-media';
@@ -12,7 +12,7 @@ import { sendWebhookMessage } from './discord-webhooks';
 import { deleteMessage } from './discord';
 import { createDiscordDmChannel, sendDiscordMessage } from './discord-local';
 import { randomUUID } from 'node:crypto';
-import { sendChatMessage } from './twitch';
+import { sendChatMessage, sendTwitchWhisper } from './twitch';
 
 const SIGNAL_CHANNEL_NAME = 'comms-lounge';
 const SIGNAL_GAME_URL = 'https://spmt.live/signal/';
@@ -398,12 +398,43 @@ export async function handleTwitchSignalCommand(input: {
   broadcaster: string;
   tenantId?: string;
   rawMessage: string;
+  deferAcknowledgement?: boolean;
 }): Promise<SignalCommandResult> {
+  const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim();
+  if (!signalText) {
+    const seeker = await toggleDiscordStreamHubSignalSeeker({
+      twitchUserId: input.providerUserId,
+      twitchUsername: input.username,
+      action: 'toggle',
+    });
+    if (seeker.linked) {
+      const message = seeker.status === 'joined'
+        ? `@${input.username}, you're now a Signal Seeker. Discord will ping you when a new egg Signal appears.`
+        : `@${input.username}, you left the Signal Seekers. Type !signal anytime to rejoin.`;
+      if (!input.deferAcknowledgement) {
+        await sendChatMessage(message, 'bot', input.broadcaster, input.tenantId).catch(() => {});
+      }
+      return {
+        handled: true,
+        ok: true,
+        ...(input.deferAcknowledgement ? { message } : {}),
+      };
+    }
+    const inviteUrl = String(seeker.inviteUrl || 'https://discord.gg/spacemountain');
+    await sendTwitchWhisper(
+      input.username,
+      `Join Space Mountain to begin the egg hunt: ${inviteUrl} — once you join, type !signal in Discord and press Join the Egg Hunt.`,
+      input.tenantId || SIGNAL_TWITCH_TENANT_ID,
+    );
+    const message = `@${input.username}, check your whispers for the egg-hunt invitation.`;
+    if (!input.deferAcknowledgement) {
+      await sendChatMessage(message, 'bot', input.broadcaster, input.tenantId).catch(() => {});
+    }
+    return { handled: true, ok: true, ...(input.deferAcknowledgement ? { message } : {}) };
+  }
+
   const entitlement = await getSpmtEasterEggEntitlement({ provider: 'twitch', providerUserId: input.providerUserId });
   if (!entitlement.eggs.signal) return { handled: true, ok: false, message: `@${input.username}, NO CARRIER AUTHORIZATION.` };
-
-  const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim();
-  if (!signalText) return { handled: true, ok: false, message: `@${input.username}, usage: !signal <message>` };
 
   const targetName = input.broadcaster.replace(/^#/, '').trim().toLowerCase();
   if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };

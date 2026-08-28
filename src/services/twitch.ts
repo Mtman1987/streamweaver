@@ -120,6 +120,20 @@ export async function sendChatMessage(
   }
 }
 
+export async function sendTwitchWhisper(username: string, message: string, tenantId?: string): Promise<void> {
+  if (tenantId?.startsWith('__kick_silent__')) return;
+  const wsPort = process.env.WS_PORT || '8090';
+  const response = await fetch(`http://localhost:${wsPort}/api/twitch/send-whisper`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, message, tenantId }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error || `Whisper failed (${response.status})`);
+  }
+}
+
 
 type TwitchUser = {
     id: string;

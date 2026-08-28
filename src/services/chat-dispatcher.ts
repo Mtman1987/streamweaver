@@ -19,6 +19,7 @@ import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from '.
 import { getPoints, getPointBalance, setPoints, settleWager } from './points';
 import { getAIConfig } from './ai-provider';
 import { getBotName } from '../lib/bot-settings-store';
+import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { replaceDiscordUserMentions } from './discord-mentions';
 import { getTenantIdFromChannel } from './twitch-client';
@@ -930,7 +931,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         try {
             const { getUser, getUserRank } = require('./user-stats');
             const { getUserCards } = require('./pokemon-collection');
-            const [spmt, profile, cards] = await Promise.all([
+            const [spmt, profile, cards, entitlement] = await Promise.all([
                 getDiscordStreamHubPoints({
                     userId: targetUserId,
                     username: mentionTarget?.username || actualUsername,
@@ -939,6 +940,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 }),
                 getUser(String(mentionTarget?.username || actualUsername).toLowerCase()),
                 getUserCards(String(mentionTarget?.username || actualUsername).toLowerCase()),
+                getSpmtEasterEggEntitlement({ provider: 'discord', providerUserId: String(targetUserId || '') }).catch(() => null),
             ]);
             const [watchRank, cardRank, badgeRank] = await Promise.all([
                 getUserRank(profile.user, 'watchtime'),
@@ -946,7 +948,8 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                 getUserRank(profile.user, 'badges'),
             ]);
             const badges = Array.isArray(profile.badges) ? profile.badges : [];
-            const chatTag = String(profile.chatTag || profile.activeChatTag || badges[0] || 'None');
+            const eggsFound = entitlement ? Object.values(entitlement.eggs).filter(Boolean).length : 0;
+            const chatTag = String(profile.chatTag || profile.activeChatTag || 'None');
             await reply('Global Space Mountain profile across every connected community.', {
                 title: `🌌 ${targetName}'s Global Profile`,
                 color: DISCORD_POINTS_COLOR,
@@ -958,7 +961,8 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                     { name: 'Watchtime rank', value: watchRank ? `#${watchRank}` : 'Unranked', inline: true },
                     { name: 'Global cards', value: cards.length.toLocaleString(), inline: true },
                     { name: 'Card rank', value: cardRank ? `#${cardRank}` : 'Unranked', inline: true },
-                    { name: 'Global badges', value: badges.length ? badges.join(', ') : 'None', inline: false },
+                    { name: 'Gym Badges', value: String(badges.length), inline: true },
+                    { name: 'Eggs Found', value: `${eggsFound}/3`, inline: true },
                     { name: 'Badge rank', value: badgeRank ? `#${badgeRank}` : 'Unranked', inline: true },
                     { name: 'Chat tag', value: chatTag, inline: true },
                 ],
@@ -3817,7 +3821,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const cmd = actualMessage.split(' ')[0].toLowerCase();
             const args = actualMessage.substring(cmd.length).trim();
             const broadcastFn = typeof (global as any).broadcast === 'function' ? (global as any).broadcast : () => {};
-            await handleLeaderboardCommand(cmd, actualUsername, args, broadcastFn, tenantId);
+            await handleLeaderboardCommand(cmd, actualUsername, args, broadcastFn, tenantId, String(tags['user-id'] || tags.userId || ''));
             return;
         }
         
