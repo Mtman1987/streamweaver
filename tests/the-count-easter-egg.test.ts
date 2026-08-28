@@ -7,6 +7,8 @@ import {
   THE_COUNT_NAME,
   THE_COUNT_OWNER_TITLE,
   THE_COUNT_STABLE_ID,
+  THE_COUNT_TWITCH_LOGIN,
+  isTheCountTwitchLogin,
   messageInvokesTheCount,
 } from '../src/lib/the-count';
 import { VOIDWALKER_TITLE, getVoidwalkerSystemPrompt } from '../src/lib/voidwalker';
@@ -21,11 +23,14 @@ test('The Count is a built-in lore character with the black-hole mystery identit
   assert.equal(THE_COUNT_STABLE_ID, 'unknown:the_count');
   assert.equal(THE_COUNT_NAME, 'The Count');
   assert.equal(THE_COUNT_OWNER_TITLE, 'Voidwalker');
+  assert.equal(THE_COUNT_TWITCH_LOGIN, 'thecountspmt');
   assert.equal(THE_COUNT_CHARACTER.currentName, THE_COUNT_NAME);
   assert.match(THE_COUNT_CHARACTER.summary || '', /black-hole/i);
   assert.ok(THE_COUNT_CHARACTER.personalityNotes?.some((note) => /riddle|puzzle/i.test(note)));
   assert.equal(messageInvokesTheCount('Count, give me a riddle'), true);
   assert.equal(messageInvokesTheCount('Hey The Count?'), true);
+  assert.equal(messageInvokesTheCount('@TheCountSPMT what have you counted?'), true);
+  assert.equal(isTheCountTwitchLogin('TheCountSPMT'), true);
   assert.equal(messageInvokesTheCount('discount points'), false);
 });
 
