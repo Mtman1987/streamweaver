@@ -70,11 +70,11 @@ export async function GET(request: NextRequest) {
   ];
   const scope = (requestedRole === 'the-count' ? countScopes : standardScopes).join(' ');
 
-  let state = requestedRole;
+  let state: string = requestedRole;
   let privilegedCookie: string | null = null;
   if (isPrivilegedRole(requestedRole)) {
     const transaction = createPrivilegedTwitchOAuthTransaction(requestedRole, session!.tenantId);
-    state = transaction.state as TwitchOAuthRole;
+    state = transaction.state;
     privilegedCookie = transaction.cookieValue;
   }
 
