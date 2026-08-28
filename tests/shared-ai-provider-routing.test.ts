@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const directEdenChat = /api\.edenai\.run\/v3\/llm\/chat\/completions/;
+const directEdenChat = /api\.edenai\.run\/v3\/chat\/completions/;
+const legacyEdenChat = /api\.edenai\.run\/v3\/llm\/chat\/completions/;
 const sharedAiCallers = [
   '../src/app/api/ai/chat-with-memory/route.ts',
   '../src/app/api/ai/optimize-personality/route.ts',
@@ -24,6 +25,20 @@ test('only the shared AI provider owns the EdenAI text endpoint', () => {
   assert.match(provider, /requestSpmtLocalLlm/);
   assert.match(provider, /generateEdenAIFallbackResponse/);
   assert.match(provider, directEdenChat);
+  assert.doesNotMatch(provider, legacyEdenChat);
+});
+
+test('the shared provider repairs incomplete completions instead of returning cut-off bot replies', () => {
+  const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
+  const memoryChat = readFileSync(new URL('../src/app/api/ai/chat-with-memory/route.ts', import.meta.url), 'utf8');
+
+  assert.match(provider, /finish_reason/);
+  assert.match(provider, /looksIncompleteCompletion/);
+  assert.match(provider, /requesting continuation/);
+  assert.match(provider, /Continue exactly where your previous answer stopped/);
+  assert.match(provider, /EdenAI returned an incomplete response after/);
+  assert.match(memoryChat, /Never end mid-sentence or with a dangling ellipsis/);
+  assert.match(memoryChat, /maxCharacters:\s*context === 'discord'/);
 });
 
 test('EdenAI is primary and local Qwen is fallback when EdenAI fails', () => {
