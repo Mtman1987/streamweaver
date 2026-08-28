@@ -19,9 +19,9 @@ test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 h
   assert.match(signal, /if \(!lastChannelId && first\) return \[first\.id, \.\.\.rest\]/);
   assert.match(signal, /bag\[0\] === lastChannelId/);
   assert.match(signal, /log\|staff\|admin\|support\|ticket\|announce/);
-  assert.match(signal, /UNIDENTIFIED SIGNAL/);
-  assert.match(signal, /Intercept Signal/);
-  assert.match(signal, /sendStructuredDiscordReply/);
+  assert.match(signal, /postDiscordStreamHubSignalDrop/);
+  assert.match(signal, /guildId/);
+  assert.match(signal, /channelId/);
 });
 
 test('Signal hint posts keep a readable persistent count and channel history', () => {
