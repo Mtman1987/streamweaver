@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 import { globalPath, listTenants } from '../lib/tenant';
-import { getBotName } from '../lib/bot-settings-store';
+import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
 import { readWorldLore } from '../lib/world-lore-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
 import { getDiscordStreamHubDefaultGuildId, postDiscordStreamHubSignalDrop } from './discord-stream-hub';
@@ -13,6 +13,7 @@ import { deleteMessage } from './discord';
 import { createDiscordDmChannel, sendDiscordMessage } from './discord-local';
 import { randomUUID } from 'node:crypto';
 import { sendChatMessage } from './twitch';
+import { generateAIResponse } from './ai-provider';
 
 const SIGNAL_CHANNEL_NAME = 'comms-lounge';
 const SIGNAL_GAME_URL = 'https://spmt.live/signal/';
@@ -185,13 +186,42 @@ async function randomSignalSpeaker(): Promise<DiscordReplySpeaker> {
   };
 }
 
-const SIGNAL_CLUES = [
-  'Something is bleeding through a carrier that should not exist. I would probably intercept it before it disappears.',
-  'I keep hearing the same broken transmission under the noise. That is either interesting or deeply inconvenient.',
-  'Unregistered carrier detected. The source keeps slipping behind the anomaly. Someone should tune it before the path collapses.',
-  'There is a signal where there should be silence. I am choosing to make that everyone else\'s problem.',
-  'A transmission just crossed the dark. It is incomplete, persistent, and almost certainly a bad idea to ignore.',
+const SIGNAL_NEUTRAL_FALLBACKS = [
+  'An unidentified transmission is breaking through the noise. Intercept it before the carrier disappears.',
+  'A weak carrier has surfaced in this channel. The transmission will not remain stable for long.',
+  'An anomalous signal has crossed the network. Interception is available while the carrier holds.',
 ];
+
+async function generateSignalClue(speaker: DiscordReplySpeaker): Promise<string> {
+  const lore = await readWorldLore().catch(() => null);
+  const character = speaker.stableId ? lore?.characters?.[speaker.stableId] : null;
+  const personality = getBotPersonality(speaker.tenantId);
+  try {
+    const clue = await generateAIResponse(
+      [
+        'A hidden Discord Signal Easter egg has appeared in a random community channel.',
+        'Tell the room that you detected a strange transmission and invite them to intercept it before it disappears.',
+        'Write exactly one short sentence under 220 characters.',
+        'Do not reveal the reward, explain the puzzle, mention another bot, or use a generic assistant voice.',
+      ].join('\n'),
+      [
+        `You are ${speaker.botName}.`,
+        personality,
+        character?.archetype ? `Archetype: ${character.archetype}.` : '',
+        character?.summary || '',
+        character?.personalityNotes?.length ? character.personalityNotes.join(' ') : '',
+        `Speak only as ${speaker.botName}. Never imitate or borrow the voice, catchphrases, attitude, memories, or personality of another tenant's bot.`,
+      ].filter(Boolean).join('\n'),
+      speaker.tenantId,
+      { maxTokens: 100, temperature: 0.8 },
+    );
+    const compact = String(clue || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+    if (compact) return compact;
+  } catch (error) {
+    console.warn(`[Signal] ${speaker.botName} tenant-bound clue generation failed; using neutral fallback`, error);
+  }
+  return SIGNAL_NEUTRAL_FALLBACKS[Math.floor(Math.random() * SIGNAL_NEUTRAL_FALLBACKS.length)];
+}
 
 type SignalClickRecord = {
   id: string;
@@ -213,7 +243,7 @@ async function sendSignalOwnerDm(message: string): Promise<void> {
 
 async function postSignalClue(channelId: string, guildId: string, channelName: string): Promise<void> {
   const speaker = await randomSignalSpeaker();
-  const clue = SIGNAL_CLUES[Math.floor(Math.random() * SIGNAL_CLUES.length)];
+  const clue = await generateSignalClue(speaker);
   const avatarUrl = await resolveDiscordBotThumbnailUrl(speaker.tenantId).catch(() => '');
   const posted = await postDiscordStreamHubSignalDrop({
     guildId,
