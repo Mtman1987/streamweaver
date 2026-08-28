@@ -1,0 +1,175 @@
+name: Apply Signal Discord button claim
+on:
+  push:
+    branches: [fix/signal-discord-identity-claim]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/signal-discord-identity-claim
+      - name: Patch StreamWeaver Signal button flow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # 1) Turn the random Discord hint into a real signed Discord button.
+          p = Path('src/services/signal-system.ts')
+          s = p.read_text()
+          old = """  const trackingUrl = signalTrackingUrl(id);\n  await sendStructuredDiscordReply({\n    channelId,\n    message: clue,\n    title: '📡 UNIDENTIFIED SIGNAL',\n    responseType: 'Signal anomaly',\n    speaker,\n    rotateSpeaker: false,\n    embedUrl: trackingUrl,\n    fields: [{ name: 'Carrier', value: `[Intercept Signal](${trackingUrl})`, inline: false }],\n  });"""
+          new = """  await sendStructuredDiscordReply({\n    channelId,\n    message: clue,\n    title: '📡 UNIDENTIFIED SIGNAL',\n    responseType: 'Signal anomaly',\n    speaker,\n    rotateSpeaker: false,\n    components: [{\n      type: 1,\n      components: [{\n        type: 2,\n        style: 1,\n        label: 'Intercept Signal',\n        custom_id: `sw_signal_claim:${id}`,\n        emoji: { name: '📡' },\n      }],\n    }],\n  });"""
+          if old not in s:
+              raise SystemExit('Signal hint link marker not found')
+          s = s.replace(old, new)
+
+          old_type = """type SignalClickRecord = {\n  id: string;\n  createdAt: string;\n  guildId: string;\n  channelId: string;\n  channelName: string;\n  botName: string;\n  clue: string;\n  clicks: number;\n  lastClickedAt?: string;\n};"""
+          new_type = """type SignalClickRecord = {\n  id: string;\n  createdAt: string;\n  guildId: string;\n  channelId: string;\n  channelName: string;\n  botName: string;\n  clue: string;\n  clicks: number;\n  lastClickedAt?: string;\n  lastClickedByDiscordId?: string;\n  lastClickedByName?: string;\n};"""
+          if old_type not in s:
+              raise SystemExit('Signal click type marker not found')
+          s = s.replace(old_type, new_type)
+
+          old_fn = """export async function recordSignalClueClick(id: string): Promise<SignalClickRecord | null> {\n  const records = await readJson<Record<string, SignalClickRecord>>(SIGNAL_CLICK_STATE, {});\n  const record = records[String(id || '').trim()];\n  if (!record) return null;\n  record.clicks = Math.max(0, Number(record.clicks || 0)) + 1;\n  record.lastClickedAt = new Date().toISOString();\n  await writeJson(SIGNAL_CLICK_STATE, records);\n  await sendSignalOwnerDm(`👁️ Signal clue clicked\\nChannel: #${record.channelName}\\nBot: ${record.botName}\\nMessage: ${record.clue}\\nTotal clicks: ${record.clicks}`).catch((error) => {\n    console.warn('[Signal] owner click receipt failed', error);\n  });\n  return record;\n}"""
+          new_fn = """export async function recordSignalClueClick(\n  id: string,\n  actorDiscordId?: string,\n  actorName?: string,\n): Promise<SignalClickRecord | null> {\n  const records = await readJson<Record<string, SignalClickRecord>>(SIGNAL_CLICK_STATE, {});\n  const record = records[String(id || '').trim()];\n  if (!record) return null;\n  record.clicks = Math.max(0, Number(record.clicks || 0)) + 1;\n  record.lastClickedAt = new Date().toISOString();\n  record.lastClickedByDiscordId = String(actorDiscordId || '').trim() || undefined;\n  record.lastClickedByName = String(actorName || '').trim() || undefined;\n  await writeJson(SIGNAL_CLICK_STATE, records);\n  const actor = record.lastClickedByName || record.lastClickedByDiscordId || 'unknown Discord user';\n  await sendSignalOwnerDm(`👁️ Signal clue clicked\\nChannel: #${record.channelName}\\nBot: ${record.botName}\\nMessage: ${record.clue}\\nClicked by: ${actor}${record.lastClickedByDiscordId ? ` (${record.lastClickedByDiscordId})` : ''}\\nTotal clicks: ${record.clicks}`).catch((error) => {\n    console.warn('[Signal] owner click receipt failed', error);\n  });\n  return record;\n}"""
+          if old_fn not in s:
+              raise SystemExit('Signal click function marker not found')
+          s = s.replace(old_fn, new_fn)
+          p.write_text(s)
+
+          # 2) Add a trusted SPMT claim helper alongside the existing entitlement read helper.
+          p = Path('src/lib/spmt-easter-eggs.ts')
+          s = p.read_text()
+          append = r'''
+
+export async function claimSpmtEasterEgg(input: {
+  provider: 'discord' | 'twitch';
+  providerUserId: string;
+  providerUsername?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  egg: 'rocket' | 'blackHole' | 'signal';
+}): Promise<{ ok: boolean; userId?: string; username?: string; created?: boolean; alreadyCompleted?: boolean }> {
+  const providerUserId = String(input.providerUserId || '').trim();
+  if (!providerUserId) return { ok: false };
+  const body = JSON.stringify({
+    provider: input.provider,
+    providerUserId,
+    providerUsername: input.providerUsername,
+    displayName: input.displayName,
+    avatarUrl: input.avatarUrl,
+    egg: input.egg,
+  });
+  const post = (authorization: Record<string, string>) => fetch(`${SPMT_BASE_URL}/api/internal/easter-eggs/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authorization },
+    body,
+    cache: 'no-store',
+    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(5000)
+      : undefined,
+  });
+  try {
+    let response: Response;
+    try {
+      const token = await getSpmtServiceToken(['entitlements:read']);
+      response = await post({ Authorization: `Bearer ${token}` });
+    } catch {
+      if (!LEGACY_SPMT_SYSTEM_KEY) return { ok: false };
+      response = await post({ 'x-spmt-key': LEGACY_SPMT_SYSTEM_KEY });
+    }
+    if ((response.status === 401 || response.status === 403) && LEGACY_SPMT_SYSTEM_KEY) {
+      clearSpmtServiceTokenCache();
+      response = await post({ 'x-spmt-key': LEGACY_SPMT_SYSTEM_KEY });
+    }
+    const payload = await response.json().catch(() => null) as any;
+    if (!response.ok || payload?.ok !== true) return { ok: false };
+    return {
+      ok: true,
+      userId: String(payload.userId || ''),
+      username: String(payload.username || ''),
+      created: payload.created === true,
+      alreadyCompleted: payload.alreadyCompleted === true,
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+'''
+          if 'export async function claimSpmtEasterEgg' not in s:
+              s = s.rstrip() + append + '\n'
+          p.write_text(s)
+
+          # 3) Add the DSH-only interaction endpoint. It validates the Signal post ID before awarding.
+          route = Path('src/app/api/discord/signal-interaction/route.ts')
+          route.parent.mkdir(parents=True, exist_ok=True)
+          route.write_text(r'''import { NextRequest, NextResponse } from 'next/server';
+import { claimSpmtEasterEgg } from '@/lib/spmt-easter-eggs';
+import { recordSignalClueClick } from '@/services/signal-system';
+
+function authorized(request: NextRequest): boolean {
+  const token = String(request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const allowed = [
+    process.env.DSH_SERVICE_SECRET,
+    process.env.DSH_CLIENT_SECRET,
+    process.env.BOT_SECRET_KEY,
+  ].map((value) => String(value || '').trim()).filter(Boolean);
+  return Boolean(token && allowed.includes(token));
+}
+
+export async function POST(request: NextRequest) {
+  if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const body = await request.json().catch(() => null);
+  const customId = String(body?.customId || '').trim();
+  const match = customId.match(/^sw_signal_claim:([^:]+)$/);
+  const actorDiscordId = String(body?.actorDiscordId || '').trim();
+  const actorUsername = String(body?.actorUsername || '').trim();
+  const actorName = String(body?.actorName || actorUsername || 'Discord User').trim();
+  const actorAvatarUrl = String(body?.actorAvatarUrl || '').trim();
+  if (!match || !actorDiscordId) {
+    return NextResponse.json({ error: 'Invalid Signal interaction' }, { status: 400 });
+  }
+
+  const signalId = match[1];
+  const record = await recordSignalClueClick(signalId, actorDiscordId, actorName);
+  if (!record) {
+    return NextResponse.json({
+      type: 4,
+      data: { content: '📡 That Signal is no longer active.', flags: 64, allowed_mentions: { parse: [] } },
+    });
+  }
+
+  const claim = await claimSpmtEasterEgg({
+    provider: 'discord',
+    providerUserId: actorDiscordId,
+    providerUsername: actorUsername || actorName,
+    displayName: actorName,
+    avatarUrl: actorAvatarUrl,
+    egg: 'signal',
+  });
+  if (!claim.ok) {
+    return NextResponse.json({
+      type: 4,
+      data: { content: '📡 Signal intercepted, but the SPMT reward store did not answer. Try this Signal again.', flags: 64, allowed_mentions: { parse: [] } },
+    }, { status: 503 });
+  }
+
+  const content = claim.alreadyCompleted
+    ? '📡 Signal recognized. You already have the **Signal Egg** on your SPMT identity.'
+    : '📡 **SIGNAL LOCKED.** You found the **Signal Egg**. It has been saved to your SPMT identity using your Discord account.';
+  return NextResponse.json({
+    type: 4,
+    data: { content, flags: 64, allowed_mentions: { parse: [] } },
+  });
+}
+''')
+          PY
+          rm -f .github/workflows/apply-signal-discord-claim.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/services/signal-system.ts src/lib/spmt-easter-eggs.ts src/app/api/discord/signal-interaction/route.ts .github/workflows/apply-signal-discord-claim.yml
+          git commit -m "fix: award Signal egg from authenticated Discord button"
+          git push origin HEAD:fix/signal-discord-identity-claim
