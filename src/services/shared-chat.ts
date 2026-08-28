@@ -12,6 +12,8 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import { communityBotTokensPath, tenantPath } from '../lib/tenant';
+import { ensureValidTheCountTwitchToken } from '../lib/the-count-twitch-vault.server';
+import { THE_COUNT_TWITCH_LOGIN } from '../lib/the-count';
 
 let appAccessToken: string | null = null;
 let appTokenExpiry = 0;
@@ -240,7 +242,7 @@ export async function isChannelInSharedChat(channelLogin: string, tenantId?: str
  * Uses ensureValidToken to auto-refresh expired tokens.
  */
 type HelixAuthCandidate = {
-  kind: 'bot' | 'community-bot' | 'broadcaster';
+  kind: 'bot' | 'community-bot' | 'broadcaster' | 'count';
   token: string;
 };
 
@@ -259,7 +261,7 @@ export class SharedChatSendError extends Error {
   }
 }
 
-async function getUserTokenCandidates(as: 'bot' | 'broadcaster', tenantId?: string): Promise<HelixAuthCandidate[]> {
+async function getUserTokenCandidates(as: 'bot' | 'broadcaster' | 'count', tenantId?: string): Promise<HelixAuthCandidate[]> {
   try {
     const { getStoredTokens, ensureValidToken } = require('../lib/token-utils.server');
     const clientId = process.env.TWITCH_CLIENT_ID || process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
@@ -268,6 +270,14 @@ async function getUserTokenCandidates(as: 'bot' | 'broadcaster', tenantId?: stri
 
     const tokens = await getStoredTokens(tenantId);
     const candidates: HelixAuthCandidate[] = [];
+
+    if (as === 'count') {
+      candidates.push({
+        kind: 'count',
+        token: await ensureValidTheCountTwitchToken(clientId, clientSecret),
+      });
+      return candidates;
+    }
 
     if (as === 'bot' && tokens?.botToken && tokens?.botRefreshToken) {
       candidates.push({
@@ -409,8 +419,8 @@ export interface SendOptions {
   channel: string;
   /** Message text */
   message: string;
-  /** Which identity is sending ('bot' | 'broadcaster') */
-  as: 'bot' | 'broadcaster';
+  /** Which identity is sending ('bot' | 'broadcaster' | 'count') */
+  as: 'bot' | 'broadcaster' | 'count';
   /** Tenant ID for broadcasting */
   tenantId?: string;
 }
@@ -478,9 +488,11 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
     const senderLogin =
       (typeof client?.getUsername === 'function' ? String(client.getUsername() || '') : '').toLowerCase() ||
       (
-        as === 'bot'
-          ? (process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME || process.env.TWITCH_BOT_USERNAME || '')
-          : (process.env.TWITCH_BROADCASTER_USERNAME || process.env.NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME || '')
+        as === 'count'
+          ? THE_COUNT_TWITCH_LOGIN
+          : as === 'bot'
+            ? (process.env.NEXT_PUBLIC_TWITCH_BOT_USERNAME || process.env.TWITCH_BOT_USERNAME || '')
+            : (process.env.TWITCH_BROADCASTER_USERNAME || process.env.NEXT_PUBLIC_TWITCH_BROADCASTER_USERNAME || '')
       ).toLowerCase();
 
     const userAuthCandidates = await getUserTokenCandidates(as, tenantId);
@@ -518,8 +530,10 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
       try {
         const twitchClientModule = require('./twitch-client');
         await twitchClientModule.setupTwitchClient(String(tenantId));
-        const retryClient = twitchClientModule.getTwitchClient(as === 'broadcaster' ? 'broadcaster' : 'bot', String(tenantId))
-          || twitchClientModule.getTwitchClient('bot', String(tenantId));
+        const retryClient = as === 'count'
+          ? await twitchClientModule.reconnectTheCountTwitchClient()
+          : twitchClientModule.getTwitchClient(as === 'broadcaster' ? 'broadcaster' : 'bot', String(tenantId))
+            || twitchClientModule.getTwitchClient('bot', String(tenantId));
         if (retryClient) {
           await ensureJoinedAndSay(retryClient, normalized, message);
           return;
