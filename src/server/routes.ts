@@ -506,6 +506,11 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
             }
 
             if (pathname === '/api/twitch/community-bot/disconnect' && req.method === 'POST') {
+                if (!isInternalServiceAuthorized(req.headers)) {
+                    res.writeHead(401, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Unauthorized' }));
+                    return;
+                }
                 try {
                     console.log('[HTTP] Disconnecting shared community bot...');
                     const { disconnectCommunityBot } = twitchClientModule;
