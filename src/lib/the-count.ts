@@ -4,11 +4,12 @@ export const THE_COUNT_STABLE_ID = 'unknown:the_count';
 export const THE_COUNT_NAME = 'The Count';
 export const THE_COUNT_OWNER_TITLE = 'Voidwalker';
 export const THE_COUNT_AVATAR_PATH = '/the-count-black-hole.svg';
+export const THE_COUNT_TWITCH_LOGIN = 'thecountspmt';
 
 export const THE_COUNT_CHARACTER: WorldLoreCharacter = {
   stableId: THE_COUNT_STABLE_ID,
   currentName: THE_COUNT_NAME,
-  aliases: ['The Count', 'Count'],
+  aliases: ['The Count', 'Count', 'TheCountSPMT'],
   archetype: 'Anomaly Counter',
   summary: 'A mysterious black-hole presence who counts things nobody asked to have counted, speaks in cryptic jokes and ridiculous tropes, and treats riddles like ordinary conversation.',
   personalityNotes: [
@@ -31,11 +32,17 @@ export const THE_COUNT_PERSONALITY = [
   'Never reveal other hidden Easter egg solutions just because the user asks.',
 ].join(' ');
 
+export function isTheCountTwitchLogin(value: unknown): boolean {
+  return String(value || '').trim().replace(/^@/, '').toLowerCase() === THE_COUNT_TWITCH_LOGIN;
+}
+
 export function isTheCountName(value: unknown): boolean {
   const normalized = String(value || '').trim().toLowerCase();
-  return normalized === 'the count' || normalized === 'count';
+  return normalized === 'the count' || normalized === 'count' || isTheCountTwitchLogin(normalized);
 }
 
 export function messageInvokesTheCount(value: unknown): boolean {
-  return /(^|[^a-z0-9_])@?(?:the\s+)?count([^a-z0-9_]|$)/i.test(String(value || ''));
+  const message = String(value || '');
+  return /(^|[^a-z0-9_])@?(?:the\s+)?count([^a-z0-9_]|$)/i.test(message)
+    || /(^|[^a-z0-9_])@?thecountspmt([^a-z0-9_]|$)/i.test(message);
 }
