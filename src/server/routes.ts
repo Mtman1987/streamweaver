@@ -208,138 +208,123 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 req.on('data', chunk => body += chunk);
                 req.on('end', async () => {
                     try {
-                        const { message, as, targetChannel, tenantId: requestedTenantId, bridgeToDiscord } = JSON.parse(body);
-                        
+                        const {
+                            message,
+                            as = 'bot',
+                            targetChannel,
+                            tenantId: requestedTenantId,
+                            bridgeToDiscord,
+                        } = JSON.parse(body);
+                        if (typeof message !== 'string' || !message.trim()) {
+                            throw new Error('message is required');
+                        }
+                        if (!['bot', 'broadcaster', 'count'].includes(as)) {
+                            throw new Error('unsupported Twitch send identity');
+                        }
+                        if (as === 'count' && !isInternalServiceAuthorized(req.headers)) {
+                            res.writeHead(401, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Unauthorized Count identity send' }));
+                            return;
+                        }
+
                         if (message.startsWith('[Discord]') && requestedTenantId) {
                             try {
                                 const channels = await readDiscordConfig(requestedTenantId);
                                 if (channels.discordBridgeEnabled === false) {
-                                    console.log('[HTTP /api/twitch/send-message] Discord bridge disabled, skipping message');
                                     res.writeHead(200, { 'Content-Type': 'application/json' });
                                     res.end(JSON.stringify({ success: true, skipped: true }));
                                     return;
                                 }
                             } catch {}
                         }
-                        
-                        console.log(`[HTTP /api/twitch/send-message] Sending as '${as || 'bot'}': ${message}`);
-                        
+
                         const { getActiveTenantIds, getTwitchClient: getTc } = twitchClientModule;
                         const { sendWithSharedChatAwareness } = require('../services/shared-chat');
-                        const clientType = as === 'broadcaster' ? 'broadcaster' : 'bot';
-                        let sendAs: 'bot' | 'broadcaster' = clientType;
-                        console.log(`[HTTP /api/twitch/send-message] Requesting client type: ${clientType}`);
-                        
-                        // Resolve tenant in strict order:
-                        // 1) explicit tenantId from caller
-                        // 2) targetChannel mapping
-                        // 3) single-tenant fallback only when exactly one tenant is active
-                        let channel = targetChannel || '';
-                        let client = null;
-                        let tid: string | undefined = undefined;
+                        const isCountSend = as === 'count';
+                        const clientType: 'bot' | 'broadcaster' = as === 'broadcaster' ? 'broadcaster' : 'bot';
+                        let sendAs: 'bot' | 'broadcaster' | 'count' = isCountSend ? 'count' : clientType;
+                        let channel = String(targetChannel || '').replace(/^#/, '').trim().toLowerCase();
+                        let tid: string | undefined = requestedTenantId ? String(requestedTenantId) : undefined;
 
-                        if (requestedTenantId) {
-                            tid = String(requestedTenantId);
-                            client = getTc(clientType, tid);
-                            if (client) {
-                                console.log(`[HTTP /api/twitch/send-message] Found client for tenant ${tid} via explicit tenantId`);
-                            }
+                        if (!tid && channel) {
+                            tid = twitchClientModule.getTenantIdFromChannel(channel);
                         }
 
-                        if (!client && channel) {
-                            // Look up tenant by channel name
-                            const { getTenantIdFromChannel } = twitchClientModule;
-                            tid = getTenantIdFromChannel(channel);
-                            if (tid) {
-                                client = getTc(clientType, tid);
-                                console.log(`[HTTP /api/twitch/send-message] Found client for tenant ${tid} via channel ${channel}`);
-                            }
-                        }
-
-                        if ((!channel || !channel.trim()) && requestedTenantId) {
+                        if (!channel && tid) {
                             try {
                                 const { getStoredTokens } = require('../lib/token-utils.server');
-                                const tokens = await getStoredTokens(String(requestedTenantId));
-                                const tenantChannel = String(tokens?.broadcasterUsername || '').trim().toLowerCase();
-                                if (tenantChannel) {
-                                    channel = tenantChannel;
-                                    console.log(`[HTTP /api/twitch/send-message] Resolved channel '${channel}' from tenant ${requestedTenantId} tokens`);
-                                }
+                                const tokens = await getStoredTokens(tid);
+                                channel = String(tokens?.broadcasterUsername || '').trim().toLowerCase();
                             } catch (resolveChannelError) {
                                 console.warn('[HTTP /api/twitch/send-message] Failed to resolve tenant broadcaster channel:', resolveChannelError);
                             }
                         }
 
-                        // Owner fallback: ambiguous traffic should resolve to the admin tenant, never
-                        // to the first connected tenant.
-                        if (!client) {
+                        let client = isCountSend
+                            ? twitchClientModule.getTheCountTwitchClient()
+                            : (tid ? getTc(clientType, tid) : null);
+
+                        if (!client && !isCountSend && channel) {
+                            tid = tid || twitchClientModule.getTenantIdFromChannel(channel);
+                            if (tid) client = getTc(clientType, tid);
+                        }
+
+                        if (!client && !isCountSend) {
                             const ownerTenantId = getAdminTwitchId();
                             if (ownerTenantId) {
                                 tid = ownerTenantId;
                                 client = getTc(clientType, tid);
-                                if ((!channel || !channel.trim()) && tid) {
+                                if (!channel) {
                                     try {
                                         const { getStoredTokens } = require('../lib/token-utils.server');
-                                        const tokens = await getStoredTokens(String(tid));
-                                        const ownerChannel = String(tokens?.broadcasterUsername || '').trim().toLowerCase();
-                                        if (ownerChannel) {
-                                            channel = ownerChannel;
-                                        }
-                                    } catch (resolveOwnerChannelError) {
-                                        console.warn('[HTTP /api/twitch/send-message] Failed to resolve owner broadcaster channel:', resolveOwnerChannelError);
-                                    }
+                                        const tokens = await getStoredTokens(tid);
+                                        channel = String(tokens?.broadcasterUsername || '').trim().toLowerCase();
+                                    } catch {}
                                 }
-                                console.warn(`[HTTP /api/twitch/send-message] Using owner fallback tenant: ${tid}`);
                             }
                         }
 
-                        // Safety fallback for strict single-tenant mode only.
-                        if (!client) {
+                        if (!client && !isCountSend) {
                             const tenantIds = getActiveTenantIds();
                             if (tenantIds.length === 1) {
                                 tid = tenantIds[0];
                                 client = getTc(clientType, tid);
-                                console.log(`[HTTP /api/twitch/send-message] Using single-tenant fallback: ${tid}`);
-                            }
-                        }
-
-                        if (!client && tid) {
-                            console.warn(`[HTTP /api/twitch/send-message] No usable ${clientType} client for tenant ${tid}; attempting reconnect once.`);
-                            try {
-                                await twitchClientModule.setupTwitchClient(tid);
-                                client = getTc(clientType, tid);
-                            } catch (reconnectError) {
-                                console.error(`[HTTP /api/twitch/send-message] Reconnect attempt failed for tenant ${tid}:`, reconnectError);
-                            }
-                        }
-
-                        if (!client && clientType === 'broadcaster' && tid) {
-                            client = getTc('bot', tid);
-                            if (client) {
-                                sendAs = 'bot';
-                                console.warn(`[HTTP /api/twitch/send-message] Broadcaster client unavailable for tenant ${tid}; sending with bot client instead.`);
                             }
                         }
 
                         if (!client) {
-                            console.error(`[HTTP /api/twitch/send-message] ${clientType} client is null/undefined`);
-                            res.writeHead(500, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: `${clientType} client not available` }));
+                            try {
+                                if (isCountSend) {
+                                    client = await twitchClientModule.reconnectTheCountTwitchClient();
+                                } else if (tid) {
+                                    await twitchClientModule.setupTwitchClient(tid);
+                                    client = getTc(clientType, tid);
+                                }
+                            } catch (reconnectError) {
+                                console.error('[HTTP /api/twitch/send-message] Reconnect attempt failed:', reconnectError);
+                            }
+                        }
+
+                        if (!client && !isCountSend && clientType === 'broadcaster' && tid) {
+                            client = getTc('bot', tid);
+                            if (client) sendAs = 'bot';
+                        }
+
+                        if (!client) {
+                            res.writeHead(503, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                error: isCountSend
+                                    ? 'The Count Twitch client is not authorized or connected'
+                                    : `${clientType} client not available`,
+                            }));
                             return;
                         }
-                        
-                        console.log(`[HTTP /api/twitch/send-message] Client username: ${(client as any).getUsername()}`);
-                        
-                        const sendChannel = channel || '';
-                        
-                        // If no target channel specified, use the client's connected channel
-                        const finalChannel = sendChannel || (client.getChannels?.()[0]?.replace('#', '') || '');
-                        console.log(`[HTTP /api/twitch/send-message] Final channel: ${finalChannel || '(empty)'}`);
 
+                        const finalChannel = channel || (client.getChannels?.()[0]?.replace('#', '') || '');
                         if (!finalChannel) {
                             throw new Error('No Twitch channel could be resolved for outbound message');
                         }
-                        
+
                         await sendWithSharedChatAwareness({
                             client,
                             channel: finalChannel,
@@ -353,8 +338,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             message,
                             displayName: String((client as any).getUsername?.() || sendAs),
                         });
-                        
-                        console.log(`[HTTP /api/twitch/send-message] Message sent successfully as ${sendAs}`);
+
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: true }));
                     } catch (e: any) {
@@ -365,7 +349,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 });
                 return;
             }
-            
+
             if (pathname === '/api/twitch/send-whisper' && req.method === 'POST') {
                 let body = '';
                 req.on('data', chunk => body += chunk);
@@ -497,6 +481,27 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         res.end(JSON.stringify({ error: e.message }));
                     }
                 });
+                return;
+            }
+
+            if (pathname === '/api/twitch/the-count/reconnect' && req.method === 'POST') {
+                if (!isInternalServiceAuthorized(req.headers)) {
+                    res.writeHead(401, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Unauthorized' }));
+                    return;
+                }
+                try {
+                    const client = await twitchClientModule.reconnectTheCountTwitchClient();
+                    res.writeHead(client ? 200 : 503, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: Boolean(client),
+                        error: client ? undefined : 'The Count Twitch credential is unavailable',
+                    }));
+                } catch (e: any) {
+                    console.error('[HTTP] The Count Twitch reconnect failed:', e);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
                 return;
             }
 
