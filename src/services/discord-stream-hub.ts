@@ -174,6 +174,17 @@ export async function getDiscordStreamHubDefaultGuildId(): Promise<string> {
   return guildId;
 }
 
+export async function postDiscordStreamHubSignalDrop(input: {
+  guildId: string;
+  channelId: string;
+  channelName: string;
+  clue: string;
+  botName: string;
+  avatarUrl?: string;
+}): Promise<{ ok: true; dropId: string; messageId: string }> {
+  return postDiscordStreamHub('/api/internal/signal/drop', input);
+}
+
 export function getDiscordPointsContext() {
   const output = getChatOutputContext();
   if (!output || output.platform !== 'discord' || !output.userId) return null;
