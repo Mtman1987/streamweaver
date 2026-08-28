@@ -73,7 +73,7 @@ async function getTwitchAppAccessToken(): Promise<string> {
  */
 export async function sendChatMessage(
   message: string,
-  as: 'bot' | 'broadcaster' = 'broadcaster',
+  as: 'bot' | 'broadcaster' | 'count' = 'broadcaster',
   targetChannel?: string,
   tenantId?: string
 ): Promise<void> {
@@ -100,7 +100,7 @@ export async function sendChatMessage(
     if (tenantId) body.tenantId = tenantId;
     const response = await fetch(`http://localhost:${wsPort}/api/twitch/send-message`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body)
     });
     

@@ -20,6 +20,12 @@ import { getPoints, getPointBalance, setPoints, settleWager } from './points';
 import { getAIConfig } from './ai-provider';
 import { getBotName } from '../lib/bot-settings-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
+import {
+    THE_COUNT_NAME,
+    THE_COUNT_PERSONALITY,
+    isTheCountTwitchLogin,
+    messageInvokesTheCount,
+} from '../lib/the-count';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { replaceDiscordUserMentions } from './discord-mentions';
 import { getTenantIdFromChannel } from './twitch-client';
@@ -2193,8 +2199,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
     } catch {}
     
-    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
-    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();
+    const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername);
+    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
+    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
     const isKnownAutomationBotMessage = !isBotMessage && (
         await isKnownBot(actualUsername, tenantId) ||
         await isConfiguredTwitchBotUsername(actualUsername) ||
@@ -2214,8 +2221,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage}, isKnownAutomationBotMessage: ${isKnownAutomationBotMessage})`);
     }
     
-    // Skip self messages (broadcaster client echoes its own sends)
-    if (self) return;
+    // Skip self messages (broadcaster client echoes its own sends).
+    // The dedicated Count client is send-only, so its echo arrives through the
+    // tenant listener as another bot message and must be stopped explicitly.
+    if (self || isTheCountAccountMessage) return;
 
     if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
         const links = await buildTwitchListenLinks(replyChannel);
@@ -4356,6 +4365,58 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.warn('[Dispatcher] broadcasterUsername unresolved (config/tokens unreadable); skipping foreign-channel guardrail for', { tenantId, replyChannel });
             }
             
+            // The Count is a built-in character, not a tenant bot. His Twitch
+            // account is only a delivery identity; the canonical Black Hole
+            // entitlement remains the sole personal invocation gate.
+            if (!isCommand && !userIsKnownBot && messageInvokesTheCount(actualMessage)) {
+                const twitchUserId = String(tags?.['user-id'] || '').trim();
+                const entitlement = await getSpmtEasterEggEntitlement({
+                    provider: 'twitch',
+                    providerUserId: twitchUserId,
+                });
+                if (!entitlement.eggs.blackHole) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {
+                        method: 'POST',
+                        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({
+                            username: actualUsername,
+                            displayName,
+                            userId: twitchUserId,
+                            message: actualMessage,
+                            personality: THE_COUNT_PERSONALITY,
+                            responseName: THE_COUNT_NAME,
+                            tenantId: tenantId || undefined,
+                            channelId: replyChannel,
+                            context: 'twitch-cross-bot',
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        console.error('[Dispatcher] The Count Twitch AI failed:', response.status);
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const aiReply = String(data.response || data.data?.response || '').trim();
+                    if (!aiReply) return;
+
+                    const responseChannel = await resolveTwitchReplyChannel({
+                        sourceChannel: replyChannel,
+                        sourceTenantId: tenantId,
+                        responseTenantId: tenantId,
+                    });
+                    await sendChatMessage(aiReply, 'count', responseChannel, tenantId);
+                    console.log(`[Dispatcher] The Count answered @${actualUsername} in #${responseChannel}`);
+                } catch (error) {
+                    console.error('[Dispatcher] The Count Twitch response failed:', error);
+                }
+                return;
+            }
+
             // Check for shoutout command (without bot name)
             // Skip messages that look like the formatted shoutout output to prevent re-triggering
             // Skip shoutout processing for known bots to prevent automated messages from triggering shoutouts
