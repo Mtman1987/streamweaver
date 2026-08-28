@@ -4,7 +4,7 @@ import { globalPath, listTenants } from '../lib/tenant';
 import { getBotName } from '../lib/bot-settings-store';
 import { readWorldLore } from '../lib/world-lore-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
-import { getDiscordStreamHubDefaultGuildId } from './discord-stream-hub';
+import { getDiscordStreamHubDefaultGuildId, postDiscordStreamHubSignalDrop } from './discord-stream-hub';
 import { sendStructuredDiscordReply, type DiscordReplySpeaker } from './discord-structured-replies';
 import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-branding';
 import { hasTenantOwnAvatar } from './discord-avatar-media';
@@ -211,28 +211,20 @@ async function sendSignalOwnerDm(message: string): Promise<void> {
   await sendDiscordMessage(dm.id, message);
 }
 
-function signalTrackingUrl(id: string): string {
-  const base = String(process.env.STREAMWEAVER_PUBLIC_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://streamweaver-new.fly.dev').replace(/\/$/, '');
-  return `${base}/api/signal/click?id=${encodeURIComponent(id)}`;
-}
-
 async function postSignalClue(channelId: string, guildId: string, channelName: string): Promise<void> {
   const speaker = await randomSignalSpeaker();
   const clue = SIGNAL_CLUES[Math.floor(Math.random() * SIGNAL_CLUES.length)];
-  const id = randomUUID();
-  const trackingUrl = signalTrackingUrl(id);
-  await sendStructuredDiscordReply({
+  const avatarUrl = await resolveDiscordBotThumbnailUrl(speaker.tenantId).catch(() => '');
+  const posted = await postDiscordStreamHubSignalDrop({
+    guildId,
     channelId,
-    message: clue,
-    title: '📡 UNIDENTIFIED SIGNAL',
-    responseType: 'Signal anomaly',
-    speaker,
-    rotateSpeaker: false,
-    embedUrl: trackingUrl,
-    fields: [{ name: 'Carrier', value: `[Intercept Signal](${trackingUrl})`, inline: false }],
+    channelName,
+    clue,
+    botName: speaker.botName,
+    avatarUrl,
   });
   const records = await readJson<Record<string, SignalClickRecord>>(SIGNAL_CLICK_STATE, {});
-  records[id] = { id, createdAt: new Date().toISOString(), guildId, channelId, channelName, botName: speaker.botName, clue, clicks: 0 };
+  records[posted.dropId] = { id: posted.dropId, createdAt: new Date().toISOString(), guildId, channelId, channelName, botName: speaker.botName, clue, clicks: 0 };
   await writeJson(SIGNAL_CLICK_STATE, records);
   await sendSignalOwnerDm(`📡 Signal clue fired\nChannel: #${channelName} (${channelId})\nBot: ${speaker.botName}\nMessage: ${clue}\nClicks: 0`).catch((error) => {
     console.warn('[Signal] owner fire receipt failed', error);
