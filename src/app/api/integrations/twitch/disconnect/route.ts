@@ -6,6 +6,7 @@ import { getStoredTokens, storeTokens, type StoredTokens } from '@/lib/token-uti
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { communityBotTokensPath, isAdmin, tenantPath } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
 type Role = 'broadcaster' | 'bot' | 'community-bot';
 
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
       const wsPort = process.env.WS_PORT || '8090';
       await fetch(`http://127.0.0.1:${wsPort}/api/twitch/community-bot/disconnect`, {
         method: 'POST',
+        headers: internalServiceHeaders(),
       }).catch(() => {});
     } catch {}
 
