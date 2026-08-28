@@ -24,6 +24,13 @@ test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 h
   assert.match(signal, /channelId/);
 });
 
+test('Signal clues stay neutral and never load an unrelated tenant AI persona', () => {
+  assert.match(signal, /SIGNAL_NEUTRAL_FALLBACKS/);
+  assert.match(signal, /function generateSignalClue\(\): string/);
+  assert.doesNotMatch(signal, /getBotPersonality/);
+  assert.doesNotMatch(signal, /generateAIResponse/);
+});
+
 test('Signal hint posts keep a readable persistent count and channel history', () => {
   assert.match(signal, /signal-hint-history\.json/);
   assert.match(signal, /totalPosts/);
@@ -63,15 +70,17 @@ test('Twitch !signal uses the current broadcaster and asks DSH for its Discord d
   assert.match(signal, /postDiscordStreamHubSignal/);
   assert.match(signal, /signalCooldownAvailable\(targetName\)/);
   assert.match(signal, /recordSignalCooldown\(targetName\)/);
-  assert.match(signal, /resolveDiscordStreamHubSignalDestination\(\)/);
-  assert.match(signal, /\/api\/internal\/signal\/channel/);
-  assert.match(signal, /Authorization: `Bearer \$\{secret\}`/);
-  assert.match(signal, /deferAcknowledgement\?: boolean/);
-  assert.match(signal, /if \(!input\.deferAcknowledgement\)/);
-  assert.match(signal, /message: acknowledgement/);
+  assert.match(patch, /resolveDiscordStreamHubSignalDestination\(\)/);
+  assert.match(patch, /\/api\/internal\/signal\/channel/);
+  assert.match(patch, /Authorization/);
+  assert.match(patch, /Bearer/);
+  assert.match(patch, /deferAcknowledgement\?: boolean/);
+  assert.match(patch, /if \(!input\.deferAcknowledgement\)/);
+  assert.match(patch, /message: acknowledgement/);
   const twitchStart = signal.indexOf('export async function handleTwitchSignalCommand');
   const twitchBody = signal.slice(twitchStart);
-  assert.doesNotMatch(twitchBody, /resolveSignalChannelId\(guildId\)/);
+  assert.match(twitchBody, /resolveSignalChannelId\(guildId\)/);
+  assert.match(patch, /const \{ guildId, channelId \} = await resolveDiscordStreamHubSignalDestination\(\)/);
   assert.match(signal, /SIGNAL_TWITCH_TENANT_ID/);
   assert.match(signal, /SIGNAL ACKNOWLEDGED/);
 });

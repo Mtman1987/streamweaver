@@ -15,16 +15,18 @@ test('Discord Signal is presented as the invoking user with the Community Spotli
   assert.match(patch, /thumbnail: \{ url: signalBadgeUrl \}/);
   assert.match(patch, /footer: \{ text: 'SIGNAL LOCKED • MESSAGE ACQUIRED' \}/);
   assert.doesNotMatch(patch, /signalBadgeUrl \|\| input\.sourceUserAvatarUrl/);
+  assert.match(patch, /import \{ resolveDiscordBotThumbnailUrl \} from '\.\/discord-branding'/);
+  assert.match(patch, /Discord thumbnail resolver import was lost/);
 });
 
 test('Discord ingress avatar is propagated into the command message before Signal handling', () => {
-  assert.match(patch, /userAvatar,\n        avatarUrl: userAvatar,/);
-  assert.match(patch, /avatarUrl: userAvatar,\n          bot: false/);
+  assert.match(patch, /userAvatar,\\n        avatarUrl: userAvatar,/);
+  assert.match(patch, /avatarUrl: userAvatar,\\n          bot: false/);
 });
 
 test('production Fly image applies the Signal presentation patch after the existing Signal runtime patch', () => {
   assert.match(
     dockerfile,
-    /npm run prebuild:simple && node scripts\/patch-signal-discord-presentation\.mjs && node scripts\/patch-signal-carrier-join-hardening\.mjs/,
+    /npm run prebuild:simple && node scripts\/patch-signal-discord-presentation\.mjs && node scripts\/patch-discord-lore-tenant-routing\.mjs && node scripts\/patch-signal-carrier-join-hardening\.mjs/,
   );
 });
