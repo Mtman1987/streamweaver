@@ -59,7 +59,7 @@ function removeRepeatedExactSegment(reply: string, segment: RelayQuotedSegment):
 
   const escaped = escapeRegex(exact);
   const pattern = new RegExp(
-    `(?:"${escaped}"|'\${escaped}'|“${escaped}”|‘${escaped}’|${escaped})`,
+    `(?:"${escaped}"|'${escaped}'|“${escaped}”|‘${escaped}’|${escaped})`,
     'g',
   );
   let seen = false;
