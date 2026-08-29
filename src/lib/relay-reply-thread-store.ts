@@ -12,7 +12,6 @@ export type RelayReplyThread = {
   createdAt: string;
   expiresAt: string;
   recipientContextTenantId?: string;
-  conversationId?: string;
   recipientBot: WorldLoreCharacter;
   recipientUsername?: string;
   recipientUserId?: string;
@@ -105,6 +104,7 @@ function isIntendedRecipient(thread: RelayReplyThread, userName: string, userId?
 
 export async function recordRelayReplyThread(input: {
   recipientContextTenantId?: string;
+  conversationId?: string;
   recipientBot: WorldLoreCharacter;
   recipientUsername?: string;
   recipientUserId?: string;
