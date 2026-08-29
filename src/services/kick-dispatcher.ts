@@ -12,6 +12,7 @@ import { givePoints, stealPoints } from './points-transfer';
 import { handleOneOffTranslation } from './translation-manager';
 import type { StorageContext } from './storage';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
+import { routeBotAction, type BotActorRole } from './bot-action-runtime';
 
 /**
  * Handle an incoming Kick chat message — process commands and award points
@@ -966,6 +967,28 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
     if (triggers.some(t => t && lowerMsg2.includes(t))) {
       console.log(`[KickDispatcher] AI triggered by "${triggers.find(t => t && lowerMsg2.includes(t))}" in message from ${username}`);
       incrementMetric('athenaCommands', 1, tenantId).catch(() => {});
+      const actionRole: BotActorRole = msg.isOwner || msg.badges?.includes('broadcaster')
+        ? 'owner'
+        : msg.isModerator || msg.badges?.includes('moderator')
+          ? 'moderator'
+          : 'member';
+      const botAction = await routeBotAction(message, {
+        tenantId,
+        botName,
+        source: 'kick',
+        message,
+        requestId: msg.id ? `kick:${msg.id}` : undefined,
+        actor: {
+          username,
+          displayName,
+          role: actionRole,
+        },
+      });
+      if (botAction) {
+        await reply(botAction.response);
+        console.log(`[KickDispatcher] Bot action ${botAction.action} ${botAction.status} for tenant ${tenantId}`);
+        return;
+      }
       const PORT = process.env.PORT || 3100;
       const res = await fetch(`http://127.0.0.1:${PORT}/api/ai/chat-with-memory`, {
         method: 'POST',

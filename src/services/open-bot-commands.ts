@@ -166,10 +166,13 @@ function normalizeChatTagState(payload: any): any {
 export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchLike = fetch): Promise<string> {
   if (command === 'help') {
     return [
-      'Shared bot commands work across tenant bots:',
-      '`spmt status`, `spmt live`, `spmt current`, `spmt leaderboard`, `spmt apps`, and `spmt music`.',
-      'You can also ask naturally, such as “who is live?” or “who is IT?”.',
+      'The same commands work through every tenant persona on Discord, Twitch, Kick, MountainView, and HearMeOut.',
+      'Shared reads: `spmt status`, `spmt live`, `spmt current`, `spmt leaderboard`, `spmt apps`, and `spmt music`.',
+      'Discord Stream Hubs actions: read the shoutout/live lists; read the Admin Calendar or Captain\'s Log; claim a Captain\'s Log date; create, deploy, or refresh the Admin Calendar; read applications; and deploy the mod/partner application embeds.',
+      'HearMeOut actions: read now-playing/queue, request a named song/story/audiobook, and play, pause, skip, clear, mute, unmute, or set volume.',
       'Natural Discord requests also cover points, profiles, watchtime, leaderboards, Pokemon collections, social actions, trades, and games.',
+      'StreamWeaver voice and chat also support image generation, BRB, shoutouts, bot relays, dictation, translation, and TTS where that surface is enabled.',
+      'Writes and broadcasts require the tenant role that owns the corresponding app button; another tenant\'s shared persona does not grant its owner permissions.',
       'Ask to “show all Discord commands” for the full installed `!commands` directory.',
     ].join(' ');
   }

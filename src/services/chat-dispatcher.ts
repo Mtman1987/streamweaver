@@ -102,6 +102,7 @@ import {
 } from './mt-support-report';
 import { findDiscordLastSeenForNames } from './discord-last-seen';
 import { getInternalAppUrl } from '../lib/runtime-origin';
+import { routeBotAction, type BotActorRole } from './bot-action-runtime';
 import {
     applySayState,
     cleanSayTextForSpeech,
@@ -4980,6 +4981,41 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const leadingLoreBot = firstLoreBot && firstLoreIndex >= 0 && firstLoreIndex <= (
                     actualMessage.trim().toLowerCase().startsWith('hey ') ? 4 : 1
                 ) ? firstLoreBot : undefined;
+
+                if (responseTenantId && (addressedToResponseBot || leadingLoreBot)) {
+                    const operatesOwnTenant = responseTenantId === tenantId;
+                    const broadcasterSpeaking = Boolean(tags.badges?.broadcaster)
+                        || (hasResolvedBroadcaster && actualUsername.toLowerCase() === resolvedBroadcaster);
+                    const actionRole: BotActorRole = operatesOwnTenant && broadcasterSpeaking
+                        ? 'owner'
+                        : operatesOwnTenant && tags.mod
+                            ? 'moderator'
+                            : 'member';
+                    const botAction = await routeBotAction(actualMessage, {
+                        tenantId: responseTenantId,
+                        botName: responseBotName,
+                        source: 'twitch',
+                        message: actualMessage,
+                        requestId: tags.id ? `twitch:${tags.id}` : undefined,
+                        actor: {
+                            userId: String(tags?.['user-id'] || '').trim() || undefined,
+                            username: actualUsername,
+                            displayName,
+                            role: actionRole,
+                        },
+                    });
+                    if (botAction) {
+                        const responseChannel = await resolveTwitchReplyChannel({
+                            sourceChannel: replyChannel,
+                            sourceTenantId: tenantId,
+                            responseTenantId,
+                        });
+                        await sendChatMessage(botAction.response, 'bot', responseChannel, responseTenantId).catch(() => {});
+                        console.log(`[Dispatcher] Bot action ${botAction.action} ${botAction.status} for tenant ${responseTenantId} from Twitch`);
+                        return;
+                    }
+                }
+
                 const relayCommandBot = leadingLoreBot
                     || routedExternalBot
                     || await getLoreCharacterForTenant(responseTenantId)
