@@ -35,6 +35,16 @@ type DiscordStreamHubManualShoutoutPayload = {
   sourceMessageId?: string;
 };
 
+export type DiscordStreamHubAdminCalendarEventPayload = {
+  serverId: string;
+  userId: string;
+  missionName: string;
+  missionDescription: string;
+  missionDate: string;
+  missionTime: string;
+  missionTimeZone: 'UTC';
+};
+
 export type DiscordStreamHubCheckinMember = {
   id: string;
   discordUserId: string;
@@ -365,6 +375,23 @@ export async function checkDiscordStreamHubAdminAccess(payload: {
     console.warn('[DiscordStreamHub] Admin access check failed:', error instanceof Error ? error.message : String(error));
     return null;
   }
+}
+
+export async function createDiscordStreamHubAdminCalendarEvent(
+  payload: DiscordStreamHubAdminCalendarEventPayload,
+): Promise<{ success: true; message: string }> {
+  const data = await postDiscordStreamHub<{ success?: boolean; message?: string }>(
+    '/api/internal/calendar/add-mission',
+    payload,
+    55_000,
+  );
+  if (data.success !== true) {
+    throw new Error('DiscordStreamHub did not confirm the calendar write');
+  }
+  return {
+    success: true,
+    message: String(data.message || '').trim(),
+  };
 }
 
 export async function getDiscordStreamHubCheckinMembers(serverId: string, group?: string): Promise<DiscordStreamHubCheckinMember[]> {

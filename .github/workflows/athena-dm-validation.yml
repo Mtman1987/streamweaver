@@ -26,7 +26,7 @@ jobs:
       - name: Apply and test final Signal integration
         run: node scripts/patch-signal-system.mjs && node --import tsx --test tests/signal-system.test.ts
       - name: Run shared command and AI-provider tests
-        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/human-directed-relay.test.ts tests/relay-recipient-and-reply.test.ts tests/shared-bot-runtime-local-llm.test.ts tests/shared-ai-provider-routing.test.ts tests/admin-bot-fleet.test.ts tests/cloudflare-image-settings.test.ts
+        run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/discord-admin-calendar-command.test.ts tests/discord-admin-calendar-client.test.ts tests/human-directed-relay.test.ts tests/relay-recipient-and-reply.test.ts tests/shared-bot-runtime-local-llm.test.ts tests/shared-ai-provider-routing.test.ts tests/admin-bot-fleet.test.ts tests/cloudflare-image-settings.test.ts
       - name: Run shared workspace shell regression
         run: node --import tsx --test tests/spmt-workspace-shell.test.ts tests/internal-known-bots-contract.test.ts tests/companion-tenant-bootstrap-contract.test.mjs
       - name: Run private Qwen, personality, media, emoji-control, TTS, gallery, and model tests

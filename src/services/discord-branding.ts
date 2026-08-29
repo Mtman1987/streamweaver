@@ -304,17 +304,14 @@ export async function buildDiscordBotEmbed(input: {
         footerParts.push(deleteCountdown);
     }
     const isAiAnswer = responseType.toLowerCase() === 'ai answer';
-    const question = isAiAnswer && input.sourceMessage
-        ? truncateDiscordText(input.sourceMessage, 1024)
-        : '';
-    const fields = [
-        ...(question ? [{ name: 'Question', value: question, inline: false }] : []),
-        ...(input.fields || []).map((field) => ({
+    const fields = (input.fields || [])
+        .filter((field) => !(isAiAnswer && String(field.name || '').trim().toLowerCase() === 'question'))
+        .map((field) => ({
             name: truncateDiscordText(field.name, 256),
             value: truncateDiscordText(field.value, 1024),
             inline: field.inline,
-        })),
-    ].slice(0, 25);
+        }))
+        .slice(0, 25);
     return {
         title,
         description: input.description,
