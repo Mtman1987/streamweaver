@@ -16,7 +16,15 @@ import { buildStructuredDiscordReplyPayload, sendStructuredDiscordReply } from '
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
-import { buildDirectHumanRelayMessage, deliverBotRelay, handleDiscordMessage, isDirectHumanRelayTarget, resolveRelayTarget } from '@/services/chat-dispatcher';
+import {
+  buildDirectHumanRelayMessage,
+  deliverBotRelay,
+  handleBotRelayReply,
+  handleDiscordMessage,
+  isDirectHumanRelayTarget,
+  resolveHumanRelaySpeaker,
+  resolveRelayTarget,
+} from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
 import { registerHandledDiscordMessagePersisted } from '@/services/discord-message-dedupe';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
@@ -1004,6 +1012,69 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // A short-lived relay invitation may be answered with a bot mention or
+    // simply "reply"/"yes" plus a message (or "no") in the delivery channel.
+    if (!isDiscordBotAuthor(data) && channelId) {
+      const replyBotTenantId = botMatch?.tenantId || tenantId || undefined;
+      const replyBotName = botMatch?.botName || getBotName(replyBotTenantId);
+      const replyLore = await readWorldLore();
+      const replySpeaker = resolveDiscordRelaySpeaker({
+        characters: Object.values(replyLore?.characters || {}),
+        botName: replyBotName,
+        tenantId: replyBotTenantId,
+        trigger: botMatch?.trigger,
+      });
+      const relayReply = await handleBotRelayReply({
+        sourcePlatform: 'discord',
+        sourceChannelId: channelId,
+        sourceContextTenantId: replyBotTenantId,
+        sourceUserName: userName,
+        sourceUserId: userId,
+        speaker: replySpeaker,
+        speakerTenantId: replyBotTenantId,
+        message,
+        botNames: [
+          replyBotName,
+          botMatch?.trigger || '',
+          replySpeaker.currentName,
+          ...(replySpeaker.aliases || []),
+          ...(replySpeaker.previousNames || []),
+        ],
+      });
+
+      if (relayReply.matched) {
+        let replyText = '';
+        if (relayReply.closed) {
+          replyText = `Relay closed. I won't send anything back to ${relayReply.targetName || 'the original sender'}.`;
+        } else if (relayReply.missingMessage) {
+          replyText = 'Add your message after "reply" or "yes", or tell me "no" to close the relay.';
+        } else if (relayReply.delivered) {
+          replyText = `Your reply was sent back to ${relayReply.targetName || 'the original sender'} at the original location. They received the same reply options.`;
+        } else if (botMentioned) {
+          replyText = relayReply.error === 'no-pending-relay'
+            ? 'There is no active relay for you in this channel. Relay invitations expire after 5 minutes.'
+            : `I couldn't send that reply: ${relayReply.error || 'unknown relay error'}`;
+        }
+
+        if (replyText) {
+          await sendDiscordRouteReplyOrCollect(
+            channelId,
+            replyText,
+            replyBotName,
+            'Message Relay',
+          );
+          return apiOk({
+            success: true,
+            botResponded: true,
+            relayReply: true,
+            relayDelivered: Boolean(relayReply.delivered),
+            relayClosed: Boolean(relayReply.closed),
+            replies: relayOnly ? collectedReplies : undefined,
+          });
+        }
+      }
+    }
+
     // If bot not mentioned, just bridge and return
     if (!botMentioned) {
       // Check if user has TTS enabled via !say — queue to standalone say system
@@ -1158,9 +1229,23 @@ export async function POST(request: NextRequest) {
       });
 
       if (relayRequest.matched && relayRequest.relayMessage) {
+        const humanDirectedRelay = !isDiscordBotAuthor(data);
+        const deliverySpeaker = humanDirectedRelay
+          ? await resolveHumanRelaySpeaker({
+              sourcePlatform: 'discord',
+              sourceUserName: userName,
+              sourceUserId: userId,
+            })
+          : {
+              character: relaySpeaker,
+              tenantId: botTenantId || tenantId || undefined,
+              usesCommunityBot: false,
+            };
         console.log('[Discord Chat] Bot relay intent detected:', {
           source: relayRequest.source || 'unknown',
-          speaker: relaySpeaker.currentName,
+          commandBot: relaySpeaker.currentName,
+          deliverySpeaker: deliverySpeaker.character.currentName,
+          communityFallback: deliverySpeaker.usesCommunityBot,
           targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
           messagePreview: relayRequest.relayMessage.slice(0, 120),
         });
@@ -1182,7 +1267,12 @@ export async function POST(request: NextRequest) {
               source: relayRequest.source || 'unknown',
             });
             if (channelId) {
-              await sendDiscordRouteReplyOrCollect(channelId, directMessage);
+              await sendDiscordRouteReplyOrCollect(
+                channelId,
+                directMessage,
+                deliverySpeaker.character.currentName,
+                'Message Relay',
+              );
             }
             return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: true, relayMode: 'direct-human', replies: relayOnly ? collectedReplies : undefined });
           }
@@ -1196,13 +1286,13 @@ export async function POST(request: NextRequest) {
           return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: false, relayError: 'target-unresolved', replies: relayOnly ? collectedReplies : undefined });
         }
 
-        const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
+        const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName} through ${deliverySpeaker.character.currentName}. They'll get instructions for replying back here.`;
         if (channelId) {
           const structuredInput = {
             channelId,
             message: ackReply,
-            tenantId: botTenantId || tenantId || undefined,
-            botName,
+            tenantId: deliverySpeaker.tenantId,
+            botName: deliverySpeaker.character.currentName,
             responseType: 'Message Relay',
             sourceMessageId: normalized.messageId,
             sourceMessage: message,
@@ -1220,14 +1310,17 @@ export async function POST(request: NextRequest) {
 
         const relayResult = await deliverBotRelay({
           sourcePlatform: 'discord',
+          sourceChannelId: channelId,
+          sourceContextTenantId: tenantId || undefined,
           sourceUserName: userName,
+          sourceUserId: userId,
           triggerMessage: message,
-          speaker: relaySpeaker,
-          speakerTenantId: botTenantId || tenantId || undefined,
+          speaker: deliverySpeaker.character,
+          speakerTenantId: deliverySpeaker.tenantId,
           target: resolvedRelayTarget.character,
           targetTenantId: resolvedRelayTarget.tenantId,
           relayMessage: relayRequest.relayMessage,
-          humanDirected: !isDiscordBotAuthor(data),
+          humanDirected: humanDirectedRelay,
         });
 
         if (!relayResult.delivered && relayResult.error && channelId) {

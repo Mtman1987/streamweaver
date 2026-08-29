@@ -24,10 +24,10 @@ test('human-directed Twitch and Discord relays do not depend on botshare', () =>
   const dispatcher = read('src/services/chat-dispatcher.ts');
   const discordRoute = read('src/app/api/discord/chat/route.ts');
 
-  assert.match(dispatcher, /if \(addressedToResponseBot && !athenaDenied\)/);
+  assert.match(dispatcher, /if \(isHumanSpeaker && \(addressedToResponseBot \|\| leadingLoreBot\)\)/);
   assert.doesNotMatch(dispatcher, /addressedToResponseBot && relayMode === 'on'/);
-  assert.match(dispatcher, /humanDirected: !userIsKnownBot/);
-  assert.match(discordRoute, /humanDirected: !isDiscordBotAuthor\(data\)/);
+  assert.match(dispatcher, /humanDirected: true/);
+  assert.match(discordRoute, /humanDirected: humanDirectedRelay/);
   assert.doesNotMatch(
     discordRoute,
     /if \(await getBotShareMode\(botTenantId \|\| tenantId \|\| undefined\) === 'on'\)/,
@@ -39,7 +39,7 @@ test('autonomous relay delivery still requires both tenants to enable botshare',
 
   assert.match(
     dispatcher,
-    /if \(!input\.humanDirected && !\(await isBotRelayAllowed\(input\.speakerTenantId, targetTenantId\)\)\)/,
+    /!input\.humanDirected[\s\S]{0,180}isBotRelayAllowed\(input\.speakerTenantId, targetTenantId\)/,
   );
   assert.match(dispatcher, /getBotShareMode\(sourceTenantId\) !== 'on'/);
   assert.match(dispatcher, /getBotShareMode\(targetTenantId\) === 'on'/);

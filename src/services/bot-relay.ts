@@ -33,11 +33,6 @@ function normalizeRelayText(message: string, speakerName?: string): string {
   return normalized;
 }
 
-function extractQuotedRelayMessage(message: string): string {
-  const match = String(message || '').match(/"([^"]+)"|'([^']+)'|\u201c([^\u201d]+)\u201d|\u2018([^\u2019]+)\u2019/);
-  return String(match?.[1] || match?.[2] || match?.[3] || match?.[4] || '').trim();
-}
-
 function relationshipTarget(normalized: string, speakerName: string | undefined, targets: WorldLoreCharacter[]): WorldLoreCharacter | null {
   const speaker = String(speakerName || '').trim().toLowerCase();
   if (!speaker || !/\byour\s+sister\b|\bsister\b/i.test(normalized)) return null;
@@ -49,10 +44,9 @@ function relationshipTarget(normalized: string, speakerName: string | undefined,
 }
 
 function nestedRelayToHandle(normalized: string): BotRelayRequest | null {
-  const quoted = extractQuotedRelayMessage(normalized);
   const match = normalized.match(/\b(?:pass|send|relay)\s+(?:a\s+)?message\s+to\s+@?([a-z0-9_][a-z0-9_-]{1,49})\b(?:\s+that)?[\s,:-]*(.+)?$/i);
   const targetName = String(match?.[1] || '').trim();
-  const relayMessage = (quoted || String(match?.[2] || '').trim().replace(/^that\s+/i, '')).trim();
+  const relayMessage = String(match?.[2] || '').trim().replace(/^that\s+/i, '').trim();
   if (!targetName || !relayMessage) return null;
   return {
     matched: true,
