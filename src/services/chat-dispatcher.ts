@@ -59,6 +59,7 @@ import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES }
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
+import { extractRelayQuotedSegments, preserveRelayQuotedSegments } from './relay-message-format';
 import {
     addDiscordStreamHubPointsToAll,
     checkDiscordStreamHubAdminAccess,
@@ -413,15 +414,27 @@ export async function resolveRelayTarget(input: {
         const { listTenants } = await import('../lib/tenant');
         const { getStoredTokens } = await import('../lib/token-utils.server');
         const { getBotName, getBotAliases } = await import('../lib/bot-settings-store');
+        const discordLastSeenTarget = await findDiscordLastSeenForNames([rawTarget]).catch(() => null);
         for (const tid of await listTenants()) {
             const tokens = await getStoredTokens(tid).catch(() => null);
             const broadcasterUsername = String(tokens?.broadcasterUsername || tokens?.loginUsername || '').trim().toLowerCase();
             const discordConfig = await readDiscordConfig(tid).catch(() => null);
             const discordUsername = String(discordConfig?.discordUsername || '').trim().replace(/^@/, '').toLowerCase();
+            const discordUserId = String(discordConfig?.discordUserId || '').trim();
+            const matchesLinkedDiscordDisplayName = Boolean(
+                discordUserId
+                && discordLastSeenTarget?.userId
+                && String(discordLastSeenTarget.userId) === discordUserId
+            );
             const configuredBotName = String(getBotName(tid) || '').trim();
             const configuredAliases = String(getBotAliases(tid) || '').split(',').map((value) => value.trim()).filter(Boolean);
             const botNames = new Set([configuredBotName, ...configuredAliases].map((value) => value.toLowerCase()));
-            if (broadcasterUsername === rawTarget || discordUsername === rawTarget || botNames.has(rawTarget)) {
+            if (
+                broadcasterUsername === rawTarget
+                || discordUsername === rawTarget
+                || matchesLinkedDiscordDisplayName
+                || botNames.has(rawTarget)
+            ) {
                 const loreCharacter = await getLoreCharacterForTenant(tid);
                 return {
                     tenantId: tid,
@@ -472,15 +485,15 @@ export function isDirectHumanRelayTarget(value: unknown): boolean {
     return /^[a-zA-Z0-9_][a-zA-Z0-9_-]{1,63}$/.test(handle);
 }
 
+
 export function buildDirectHumanRelayMessage(input: {
     targetName: string;
     sourceUserName: string;
     relayMessage: string;
 }): string {
     const handle = normalizeRelayHandle(input.targetName);
-    const exactQuoted = extractQuotedRelayMessage(input.relayMessage);
-    const body = exactQuoted || String(input.relayMessage || '').trim();
-    return `@${handle}, ${input.sourceUserName} says: "${body}"`;
+    const body = String(input.relayMessage || '').trim();
+    return `${handle}, ${input.sourceUserName} says: ${body}`;
 }
 
 async function buildRelayDeliveryMessage(input: {
@@ -492,7 +505,7 @@ async function buildRelayDeliveryMessage(input: {
     targetTenantId?: string;
     deliveryMode: 'live' | 'discord' | 'dm';
 }): Promise<string> {
-    const exactRelayMessage = getExactRelayMessage(input.relayMessage);
+    const quotedSegments = extractRelayQuotedSegments(input.relayMessage);
     const targetAudienceName = String(input.targetAudienceName || input.target.currentName || 'this chat').trim();
     const deliveryInstruction = input.deliveryMode === 'live'
         ? `You are speaking in ${targetAudienceName}'s Twitch chat. Deliver the message to that chat in one short natural sentence.`
@@ -510,15 +523,28 @@ async function buildRelayDeliveryMessage(input: {
                 ? 'You are speaking in the Discord channel where your streamer was last active.'
                 : 'You are privately DMing your streamer because they are offline.',
     ].filter(Boolean).join('\n');
+    const quotePolicy = quotedSegments.length
+        ? [
+            'Text inside quote marks is immutable. Preserve the exact spelling, casing, punctuation, and word order inside every quoted span.',
+            ...quotedSegments.map((segment, index) => `Immutable quote ${index + 1}: ${segment.full}`),
+            'You may restyle only the words outside those quoted spans.',
+        ]
+        : [
+            'No text is explicitly quoted, so you may naturally restyle the wording in your own personality while preserving its meaning.',
+        ];
 
     const prompt = [
-        'Cross-bot relay delivery.',
-        `Message sender: ${input.sourceUserName}.`,
+        'Human-directed cross-bot relay delivery.',
+        `Original human sender: ${input.sourceUserName}.`,
+        `Bot instructed by the human: ${input.speaker.currentName}.`,
+        `Receiving bot speaking now: ${input.target.currentName}.`,
         `Receiving chat or streamer: ${targetAudienceName}.`,
-        `${input.sourceUserName} asked ${input.speaker.currentName} to pass along this message: "${exactRelayMessage}"`,
-        `Include this exact message once, without changing spelling, punctuation, or casing: "${exactRelayMessage}"`,
+        `Original message: ${input.relayMessage}`,
+        `Make it clear that the message originated with ${input.sourceUserName} and was handed to you through ${input.speaker.currentName}.`,
+        'Preserve the message meaning. Do not invent extra facts, promises, or actions.',
+        ...quotePolicy,
         deliveryInstruction,
-        `Do not address ${input.sourceUserName} as "you". Do not say the message is "from you"; say it is from ${input.sourceUserName} or from ${input.speaker.currentName}.`,
+        `Do not address ${input.sourceUserName} as "you".`,
         'Do not mention internal systems or say this is automated.',
     ].filter(Boolean).join('\n');
 
@@ -543,57 +569,7 @@ async function buildRelayDeliveryMessage(input: {
     const data = await aiRes.json();
     const reply = String(data.response || data.data?.response || '').trim();
     if (!reply) throw new Error('Relay AI returned an empty response');
-    return ensureRelayMessageIncludedOnce(reply, input.relayMessage);
-}
-
-function extractQuotedRelayMessage(message: string): string | null {
-    const match = String(message || '').match(/"([^"]+)"|'([^']+)'|\u201c([^\u201d]+)\u201d|\u2018([^\u2019]+)\u2019/);
-    const quoted = String(match?.[1] || match?.[2] || match?.[3] || match?.[4] || '').trim();
-    return quoted || null;
-}
-
-function getExactRelayMessage(relayMessage: string): string {
-    return extractQuotedRelayMessage(relayMessage) || String(relayMessage || '').trim();
-}
-
-function normalizeRelayMessageForCompare(value: string): string {
-    return String(value || '')
-        .replace(/[\u201c\u201d]/g, '"')
-        .replace(/[\u2018\u2019]/g, "'")
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-}
-
-function removeRepeatedExactRelayMessage(reply: string, exactRelayMessage: string): string {
-    const exact = exactRelayMessage.trim();
-    if (!exact) return reply.trim();
-
-    const escaped = exact.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`(?:"${escaped}"|'${escaped}'|\u201c${escaped}\u201d|\u2018${escaped}\u2019|${escaped})`, 'gi');
-    let seen = false;
-    return reply
-        .replace(pattern, (match) => {
-            if (!seen) {
-                seen = true;
-                return match;
-            }
-            return '';
-        })
-        .replace(/\s+([,.!?;:])/g, '$1')
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-}
-
-function ensureRelayMessageIncludedOnce(reply: string, relayMessage: string): string {
-    const exactRelayMessage = getExactRelayMessage(relayMessage);
-    if (!exactRelayMessage) return reply.trim();
-
-    const cleanedReply = removeRepeatedExactRelayMessage(reply, exactRelayMessage);
-    if (normalizeRelayMessageForCompare(cleanedReply).includes(normalizeRelayMessageForCompare(exactRelayMessage))) {
-        return cleanedReply;
-    }
-    return `${cleanedReply} "${exactRelayMessage}"`.trim();
+    return preserveRelayQuotedSegments(reply, input.relayMessage);
 }
 
 export async function deliverBotRelay(input: {
@@ -4460,13 +4436,21 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             
             const { getBotName, getBotInterests, getBotAliases } = require('../lib/bot-settings-store');
-            let botName = getBotName(tenantId);
+            const localConfiguredBotName = getBotName(tenantId);
+            let botName = localConfiguredBotName;
             let responseTenantId = tenantId;
             let responseBotName = botName;
             let athenaDenied = false;
             const explicitTwitchBotMentions = await getExplicitTwitchBotMentions(actualMessage);
             const firstLoreBot = await getFirstMentionedLoreBot(actualMessage);
             const localLoreBot = await getLoreCharacterForTenant(tenantId);
+            const localRelayTarget = localLoreBot || (tenantId
+                ? buildFallbackLoreCharacter({
+                    tenantId,
+                    name: localConfiguredBotName,
+                    aliases: String(getBotAliases(tenantId) || '').split(',').map((value) => value.trim()).filter(Boolean),
+                })
+                : undefined);
             const firstExplicitTwitchBot = explicitTwitchBotMentions[0];
             const firstLoreTenantId = firstLoreBot ? await resolveTenantForLoreBot(firstLoreBot, undefined) : undefined;
             const firstLoreIndex = getLoreCharacterFirstIndex(actualMessage, firstLoreBot);
@@ -4530,7 +4514,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const addressedToResponseBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
                 if (addressedToResponseBot && !athenaDenied) {
                     const lore = await readWorldLore();
-                    const relayTargets = Object.values(lore?.characters || {});
+                    const relayCharacters = Object.values(lore?.characters || {});
                     const relaySpeaker = routedExternalBot
                         || await getLoreCharacterForTenant(responseTenantId)
                         || localLoreBot
@@ -4539,10 +4523,27 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             name: responseBotName,
                             aliases: [botUsername, ...petNames],
                         });
+                    const relayTargets = relayCharacters.filter((target) => target.stableId !== relaySpeaker.stableId);
+                    if (localRelayTarget) {
+                        const contextualLocalTarget = {
+                            ...localRelayTarget,
+                            aliases: Array.from(new Set([
+                                'her bot',
+                                'their bot',
+                                'the streamer',
+                                'the channel owner',
+                                'her',
+                                ...(localRelayTarget.aliases || []),
+                            ])),
+                        };
+                        const existingTargetIndex = relayTargets.findIndex((target) => target.stableId === contextualLocalTarget.stableId);
+                        if (existingTargetIndex >= 0) relayTargets[existingTargetIndex] = contextualLocalTarget;
+                        else relayTargets.push(contextualLocalTarget);
+                    }
                     const relayRequest = await detectBotRelayRequestWithAi({
                         message: actualMessage,
                         speakerName: relaySpeaker.currentName,
-                        targets: relayTargets.filter((target) => target.stableId !== relaySpeaker.stableId),
+                        targets: relayTargets,
                         tenantId: responseTenantId,
                         platform: 'twitch',
                     });
