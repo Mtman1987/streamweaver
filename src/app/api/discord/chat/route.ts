@@ -1156,7 +1156,7 @@ export async function POST(request: NextRequest) {
         tenantId: botTenantId || tenantId || undefined,
         platform: 'discord',
       });
-  
+
       if (relayRequest.matched && relayRequest.relayMessage) {
         console.log('[Discord Chat] Bot relay intent detected:', {
           source: relayRequest.source || 'unknown',
@@ -1195,7 +1195,7 @@ export async function POST(request: NextRequest) {
           }
           return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: false, relayError: 'target-unresolved', replies: relayOnly ? collectedReplies : undefined });
         }
-  
+
         const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
         if (channelId) {
           const structuredInput = {
@@ -1217,7 +1217,7 @@ export async function POST(request: NextRequest) {
             await sendStructuredDiscordReply(structuredInput);
           }
         }
-  
+
         const relayResult = await deliverBotRelay({
           sourcePlatform: 'discord',
           sourceUserName: userName,
@@ -1229,15 +1229,16 @@ export async function POST(request: NextRequest) {
           relayMessage: relayRequest.relayMessage,
           humanDirected: !isDiscordBotAuthor(data),
         });
-  
+
         if (!relayResult.delivered && relayResult.error && channelId) {
           await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`);
         }
-  
+
         return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });
       }
-  
+
     }
+
     const botInteractionDecision = await decideBotInteraction({
       message,
       currentBotName: botName,
