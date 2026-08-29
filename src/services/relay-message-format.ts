@@ -96,3 +96,61 @@ export function preserveRelayQuotedSegments(reply: unknown, relayMessage: unknow
 
   return result;
 }
+
+
+export type RelayReplyCommand = {
+  matched: boolean;
+  action?: 'reply' | 'close';
+  message?: string;
+  missingMessage?: boolean;
+};
+
+function stripLeadingRelayBotName(message: string, botNames: string[]): string {
+  let normalized = message.trim();
+  const names = Array.from(new Set(botNames.map((name) => String(name || '').trim()).filter(Boolean)))
+    .sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    const escaped = escapeRegex(name);
+    const pattern = new RegExp(`^(?:hey\\s+)?@?${escaped}(?:\\s*[:,\\-])?\\s+`, 'i');
+    if (pattern.test(normalized)) return normalized.replace(pattern, '').trim();
+  }
+  return normalized;
+}
+
+/**
+ * Parse the short-lived response invitation shown by every delivered relay.
+ * Quoted message content remains untouched because only the leading command is
+ * removed.
+ */
+export function extractRelayReplyCommand(input: {
+  message: unknown;
+  botNames?: string[];
+}): RelayReplyCommand {
+  const normalized = stripLeadingRelayBotName(
+    String(input.message || ''),
+    input.botNames || [],
+  );
+  if (!normalized) return { matched: false };
+
+  if (/^(?:["“‘']?no["”’']?)(?:[.!]|\\s+(?:thanks?|thank\\s+you)[.!]?)?$/i.test(normalized)) {
+    return { matched: true, action: 'close' };
+  }
+
+  const match = normalized.match(
+    /^(?:["“‘']?(reply|yes)["”’']?)(?:\\s*[:,\\-])?(?:\\s+([\\s\\S]+))?$/i,
+  );
+  if (!match) return { matched: false };
+
+  const replyMessage = String(match[2] || '').trim();
+  return {
+    matched: true,
+    action: 'reply',
+    message: replyMessage || undefined,
+    missingMessage: !replyMessage,
+  };
+}
+
+export function buildRelayReplyInstructions(sourceUserName: unknown): string {
+  const sender = String(sourceUserName || 'the original sender').trim() || 'the original sender';
+  return `Would you like to reply back to ${sender} at the original location? Tell me "reply" (or "yes") followed by your message, or tell me "no" to close this relay. This reply option expires in 5 minutes.`;
+}
