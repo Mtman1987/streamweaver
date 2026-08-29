@@ -132,12 +132,12 @@ export function extractRelayReplyCommand(input: {
   );
   if (!normalized) return { matched: false };
 
-  if (/^(?:["“‘']?no["”’']?)(?:[.!]|\\s+(?:thanks?|thank\\s+you)[.!]?)?$/i.test(normalized)) {
+  if (/^(?:["“‘']?no["”’']?)(?:[.!]|\s+(?:thanks?|thank\s+you)[.!]?)?$/i.test(normalized)) {
     return { matched: true, action: 'close' };
   }
 
   const match = normalized.match(
-    /^(?:["“‘']?(reply|yes)["”’']?)(?:\\s*[:,\\-])?(?:\\s+([\\s\\S]+))?$/i,
+    /^(?:["“‘']?(reply|yes)["”’']?)(?:\s*[:,\-])?(?:\s+([\s\S]+))?$/i,
   );
   if (!match) return { matched: false };
 
