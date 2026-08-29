@@ -59,7 +59,17 @@ import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES }
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
-import { extractRelayQuotedSegments, preserveRelayQuotedSegments } from './relay-message-format';
+import {
+    buildRelayReplyInstructions,
+    extractRelayQuotedSegments,
+    extractRelayReplyCommand,
+    preserveRelayQuotedSegments,
+} from './relay-message-format';
+import {
+    completeRelayReplyThread,
+    getLatestRelayReplyThread,
+    recordRelayReplyThread,
+} from '../lib/relay-reply-thread-store';
 import {
     addDiscordStreamHubPointsToAll,
     checkDiscordStreamHubAdminAccess,
@@ -486,6 +496,61 @@ export function isDirectHumanRelayTarget(value: unknown): boolean {
 }
 
 
+export async function resolveHumanRelaySpeaker(input: {
+    sourcePlatform: 'twitch' | 'discord';
+    sourceUserName: string;
+    sourceUserId?: string;
+}): Promise<{ character: WorldLoreCharacter; tenantId?: string; usesCommunityBot: boolean }> {
+    const sourceName = normalizeRelayHandle(input.sourceUserName).toLowerCase();
+    const sourceUserId = String(input.sourceUserId || '').trim();
+
+    try {
+        for (const tid of await listTenants()) {
+            let matchesAccount = input.sourcePlatform === 'twitch' && Boolean(
+                (sourceUserId && sourceUserId === tid)
+                || normalizeRelayHandle(readUserConfigSync(tid).TWITCH_BROADCASTER_USERNAME).toLowerCase() === sourceName
+            );
+
+            if (input.sourcePlatform === 'discord') {
+                const discordConfig = await readDiscordConfig(tid).catch(() => null);
+                matchesAccount = Boolean(
+                    (sourceUserId && sourceUserId === String(discordConfig?.discordUserId || '').trim())
+                    || (
+                        sourceName
+                        && normalizeRelayHandle(discordConfig?.discordUsername).toLowerCase() === sourceName
+                    )
+                );
+            }
+
+            if (!matchesAccount) continue;
+            const { getBotAliases } = await import('../lib/bot-settings-store');
+            const botName = getBotName(tid);
+            return {
+                tenantId: tid,
+                usesCommunityBot: false,
+                character: await getLoreCharacterForTenant(tid) || buildFallbackLoreCharacter({
+                    tenantId: tid,
+                    name: botName,
+                    aliases: String(getBotAliases(tid) || '').split(',').map((value) => value.trim()).filter(Boolean),
+                }),
+            };
+        }
+    } catch (error) {
+        console.warn('[Dispatcher] Failed to resolve relay sender account; using community bot:', error);
+    }
+
+    const communityName = getBotName(undefined) || 'StreamWeaver87';
+    return {
+        usesCommunityBot: true,
+        character: {
+            stableId: 'community:streamweaverbot',
+            currentName: communityName,
+            aliases: Array.from(new Set([communityName, 'StreamWeaverBot', 'StreamWeaver87'])),
+        },
+    };
+}
+
+
 export function buildDirectHumanRelayMessage(input: {
     targetName: string;
     sourceUserName: string;
@@ -504,6 +569,7 @@ async function buildRelayDeliveryMessage(input: {
     targetAudienceName?: string;
     targetTenantId?: string;
     deliveryMode: 'live' | 'discord' | 'dm';
+    includeReplyInstructions?: boolean;
 }): Promise<string> {
     const quotedSegments = extractRelayQuotedSegments(input.relayMessage);
     const targetAudienceName = String(input.targetAudienceName || input.target.currentName || 'this chat').trim();
@@ -569,17 +635,28 @@ async function buildRelayDeliveryMessage(input: {
     const data = await aiRes.json();
     const reply = String(data.response || data.data?.response || '').trim();
     if (!reply) throw new Error('Relay AI returned an empty response');
-    return preserveRelayQuotedSegments(reply, input.relayMessage);
+    const personalityReply = preserveRelayQuotedSegments(reply, input.relayMessage);
+    return input.includeReplyInstructions
+        ? `${personalityReply} ${buildRelayReplyInstructions(input.sourceUserName)}`.trim()
+        : personalityReply;
 }
 
 export async function deliverBotRelay(input: {
     sourcePlatform: 'twitch' | 'discord';
+    sourceChannelId?: string;
+    sourceContextTenantId?: string;
     sourceUserName: string;
+    sourceUserId?: string;
     triggerMessage: string;
     speaker: WorldLoreCharacter;
     speakerTenantId?: string;
     target: WorldLoreCharacter;
     targetTenantId?: string;
+    targetPlatformOverride?: 'twitch' | 'discord';
+    targetChannelOverride?: string;
+    targetReplyContextTenantId?: string;
+    recipientUsername?: string;
+    recipientUserId?: string;
     relayMessage: string;
     /**
      * True only when a real person explicitly asked the speaking bot to deliver
@@ -589,20 +666,79 @@ export async function deliverBotRelay(input: {
     humanDirected?: boolean;
 }): Promise<{ delivered: boolean; mode?: 'live' | 'discord' | 'dm'; error?: string }> {
     const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, input.speakerTenantId);
-    if (!targetTenantId) {
+    const hasExactTarget = Boolean(input.targetPlatformOverride && input.targetChannelOverride);
+    if (!targetTenantId && !hasExactTarget) {
         return { delivered: false, error: `could not resolve ${input.target.currentName}` };
     }
 
-    if (!input.humanDirected && !(await isBotRelayAllowed(input.speakerTenantId, targetTenantId))) {
+    if (
+        !input.humanDirected
+        && (!targetTenantId || !(await isBotRelayAllowed(input.speakerTenantId, targetTenantId)))
+    ) {
         return { delivered: false, error: `${input.target.currentName} has not enabled bot sharing` };
     }
 
+    const recordReplyPath = async (delivery: {
+        platform: 'twitch' | 'discord';
+        channelId: string;
+        defaultRecipientUsername?: string;
+        defaultRecipientUserId?: string;
+    }) => {
+        if (!input.humanDirected || !input.sourceChannelId) return;
+        const recipientUsername = String(input.recipientUsername || delivery.defaultRecipientUsername || '').trim();
+        const recipientUserId = String(input.recipientUserId || delivery.defaultRecipientUserId || '').trim();
+        if (!recipientUsername && !recipientUserId) return;
+        await recordRelayReplyThread({
+            recipientContextTenantId: input.targetReplyContextTenantId || targetTenantId,
+            recipientBot: input.target,
+            recipientUsername: recipientUsername || undefined,
+            recipientUserId: recipientUserId || undefined,
+            deliveryPlatform: delivery.platform,
+            deliveryChannelId: delivery.channelId,
+            originPlatform: input.sourcePlatform,
+            originChannelId: input.sourceChannelId,
+            originContextTenantId: input.sourceContextTenantId,
+            originTenantId: input.speakerTenantId,
+            originBot: input.speaker,
+            originSenderUsername: input.sourceUserName,
+            originSenderUserId: input.sourceUserId,
+        });
+    };
+
     try {
-        const broadcasterChannel = await getTenantBroadcasterChannel(targetTenantId);
+        if (hasExactTarget) {
+            const targetPlatform = input.targetPlatformOverride!;
+            const targetChannel = input.targetChannelOverride!;
+            const relayText = await buildRelayDeliveryMessage({
+                sourceUserName: input.sourceUserName,
+                speaker: input.speaker,
+                target: input.target,
+                relayMessage: input.relayMessage,
+                targetAudienceName: input.recipientUsername || targetChannel,
+                targetTenantId,
+                deliveryMode: targetPlatform === 'twitch' ? 'live' : 'discord',
+                includeReplyInstructions: input.humanDirected,
+            });
+            if (targetPlatform === 'twitch') {
+                await sendChatMessage(relayText, 'bot', targetChannel, targetTenantId);
+            } else {
+                await sendDiscordMessage(targetChannel, relayText, input.target.currentName);
+            }
+            await recordReplyPath({
+                platform: targetPlatform,
+                channelId: targetChannel,
+                defaultRecipientUsername: input.recipientUsername,
+                defaultRecipientUserId: input.recipientUserId,
+            }).catch((error) => console.warn('[Dispatcher] Failed to record reverse relay reply path:', error));
+            return { delivered: true, mode: targetPlatform === 'twitch' ? 'live' : 'discord' };
+        }
+
+        const resolvedTargetTenantId = targetTenantId!;
+        const broadcasterChannel = await getTenantBroadcasterChannel(resolvedTargetTenantId);
         const liveLookup = await lookupDiscordStreamHubTwitchTarget(broadcasterChannel);
         const shouldTryDmBackup = liveLookup?.isLive !== true;
         console.log('[Dispatcher] Bot relay delivery target resolved:', {
-            targetTenantId,
+            targetTenantId: resolvedTargetTenantId,
             broadcasterChannel,
             targetBot: input.target.currentName,
             liveLookup,
@@ -615,19 +751,25 @@ export async function deliverBotRelay(input: {
             target: input.target,
             relayMessage: input.relayMessage,
             targetAudienceName: broadcasterChannel,
-            targetTenantId,
+            targetTenantId: resolvedTargetTenantId,
             deliveryMode: 'live',
+            includeReplyInstructions: input.humanDirected,
         });
 
         let chatDelivered = false;
         let chatError = '';
         try {
-            await sendChatMessage(relayText, 'bot', broadcasterChannel, targetTenantId);
+            await sendChatMessage(relayText, 'bot', broadcasterChannel, resolvedTargetTenantId);
             chatDelivered = true;
+            await recordReplyPath({
+                platform: 'twitch',
+                channelId: broadcasterChannel,
+                defaultRecipientUsername: broadcasterChannel,
+            }).catch((error) => console.warn('[Dispatcher] Failed to record Twitch relay reply path:', error));
         } catch (error: any) {
             chatError = error?.message || 'unknown Twitch chat error';
             console.warn('[Dispatcher] Bot relay Twitch chat delivery failed:', {
-                targetTenantId,
+                targetTenantId: resolvedTargetTenantId,
                 broadcasterChannel,
                 targetBot: input.target.currentName,
                 error: chatError,
@@ -641,16 +783,15 @@ export async function deliverBotRelay(input: {
                     username: input.target.currentName,
                     message: relayText,
                     timestamp: new Date().toISOString(),
-                }], 300, targetTenantId).catch(() => {});
+                }], 300, resolvedTargetTenantId).catch(() => {});
 
                 recordDashboardActivity({
                     id: `relay-${Date.now()}`,
-                    tenantId: targetTenantId,
+                    tenantId: resolvedTargetTenantId,
                     platform: 'Twitch',
                     user: input.target.currentName,
                     message: `${input.speaker.currentName} relayed: ${input.relayMessage}`,
                 });
-
                 return { delivered: true, mode: 'live' };
             }
             return { delivered: false, error: chatError || `could not send to ${broadcasterChannel}'s Twitch chat` };
@@ -673,16 +814,23 @@ export async function deliverBotRelay(input: {
                 speaker: input.speaker,
                 target: input.target,
                 relayMessage: input.relayMessage,
-                targetAudienceName: broadcasterChannel,
-                targetTenantId,
+                targetAudienceName: discordLastSeen.displayName || discordLastSeen.username || broadcasterChannel,
+                targetTenantId: resolvedTargetTenantId,
                 deliveryMode: 'discord',
+                includeReplyInstructions: input.humanDirected,
             });
             await sendDiscordMessage(discordLastSeen.channelId, discordText, input.target.currentName);
             discordDelivered = true;
+            await recordReplyPath({
+                platform: 'discord',
+                channelId: discordLastSeen.channelId,
+                defaultRecipientUsername: discordLastSeen.displayName || discordLastSeen.username || broadcasterChannel,
+                defaultRecipientUserId: discordLastSeen.userId,
+            }).catch((error) => console.warn('[Dispatcher] Failed to record Discord relay reply path:', error));
         } catch (error: any) {
             discordError = error?.message || 'unknown Discord last-seen error';
             console.warn('[Dispatcher] Bot relay Discord last-seen backup failed:', {
-                targetTenantId,
+                targetTenantId: resolvedTargetTenantId,
                 targetBot: input.target.currentName,
                 error: discordError,
             });
@@ -691,7 +839,7 @@ export async function deliverBotRelay(input: {
         let dmDelivered = false;
         let dmError = '';
         if (!discordDelivered) try {
-            const dmChannelId = await getTenantDiscordDmChannelId(targetTenantId);
+            const dmChannelId = await getTenantDiscordDmChannelId(resolvedTargetTenantId);
             if (!dmChannelId) {
                 throw new Error(`${input.target.currentName} does not have a DM channel configured`);
             }
@@ -702,16 +850,24 @@ export async function deliverBotRelay(input: {
                     target: input.target,
                     relayMessage: input.relayMessage,
                     targetAudienceName: broadcasterChannel,
-                    targetTenantId,
+                    targetTenantId: resolvedTargetTenantId,
                     deliveryMode: 'dm',
+                    includeReplyInstructions: input.humanDirected,
                 })
                 : relayText;
-            await sendDiscordMessage(dmChannelId, dmText);
+            await sendDiscordMessage(dmChannelId, dmText, input.target.currentName);
             dmDelivered = true;
+            const discordConfig = await readDiscordConfig(resolvedTargetTenantId).catch(() => null);
+            await recordReplyPath({
+                platform: 'discord',
+                channelId: dmChannelId,
+                defaultRecipientUsername: discordConfig?.discordUsername || broadcasterChannel,
+                defaultRecipientUserId: discordConfig?.discordUserId,
+            }).catch((error) => console.warn('[Dispatcher] Failed to record DM relay reply path:', error));
         } catch (error: any) {
             dmError = error?.message || 'unknown Discord DM error';
             console.warn('[Dispatcher] Bot relay DM backup failed:', {
-                targetTenantId,
+                targetTenantId: resolvedTargetTenantId,
                 targetBot: input.target.currentName,
                 error: dmError,
             });
@@ -723,11 +879,11 @@ export async function deliverBotRelay(input: {
                 username: input.target.currentName,
                 message: relayText,
                 timestamp: new Date().toISOString(),
-            }], 300, targetTenantId).catch(() => {});
+            }], 300, resolvedTargetTenantId).catch(() => {});
 
             recordDashboardActivity({
                 id: `relay-${Date.now()}`,
-                tenantId: targetTenantId,
+                tenantId: resolvedTargetTenantId,
                 platform: chatDelivered && !discordDelivered ? 'Twitch' : 'Discord',
                 user: input.target.currentName,
                 message: `${input.speaker.currentName} relayed: ${input.relayMessage}`,
@@ -741,6 +897,78 @@ export async function deliverBotRelay(input: {
         console.error('[Dispatcher] Bot relay delivery failed:', error);
         return { delivered: false, error: error?.message || 'unknown error' };
     }
+}
+
+export async function handleBotRelayReply(input: {
+    sourcePlatform: 'twitch' | 'discord';
+    sourceChannelId: string;
+    sourceContextTenantId?: string;
+    sourceUserName: string;
+    sourceUserId?: string;
+    speaker: WorldLoreCharacter;
+    speakerTenantId?: string;
+    message: string;
+    botNames?: string[];
+}): Promise<{
+    matched: boolean;
+    delivered?: boolean;
+    closed?: boolean;
+    missingMessage?: boolean;
+    targetName?: string;
+    error?: string;
+}> {
+    const command = extractRelayReplyCommand({
+        message: input.message,
+        botNames: input.botNames,
+    });
+    if (!command.matched) return { matched: false };
+
+    const thread = await getLatestRelayReplyThread({
+        recipientContextTenantId: input.sourceContextTenantId,
+        platform: input.sourcePlatform,
+        channelId: input.sourceChannelId,
+        recipientUsername: input.sourceUserName,
+        recipientUserId: input.sourceUserId,
+    });
+    if (!thread) return { matched: true, error: 'no-pending-relay' };
+
+    if (command.action === 'close') {
+        await completeRelayReplyThread(input.sourceContextTenantId, thread.id);
+        return { matched: true, closed: true, targetName: thread.origin.senderUsername };
+    }
+    if (command.missingMessage || !command.message) {
+        return { matched: true, missingMessage: true, targetName: thread.origin.senderUsername };
+    }
+
+    const result = await deliverBotRelay({
+        sourcePlatform: input.sourcePlatform,
+        sourceChannelId: input.sourceChannelId,
+        sourceContextTenantId: input.sourceContextTenantId,
+        sourceUserName: input.sourceUserName,
+        sourceUserId: input.sourceUserId,
+        triggerMessage: input.message,
+        speaker: input.speaker,
+        speakerTenantId: input.speakerTenantId,
+        target: thread.origin.bot,
+        targetTenantId: thread.origin.tenantId,
+        targetPlatformOverride: thread.origin.platform,
+        targetChannelOverride: thread.origin.channelId,
+        targetReplyContextTenantId: thread.origin.contextTenantId,
+        recipientUsername: thread.origin.senderUsername,
+        recipientUserId: thread.origin.senderUserId,
+        relayMessage: command.message,
+        humanDirected: true,
+    });
+
+    if (result.delivered) {
+        await completeRelayReplyThread(input.sourceContextTenantId, thread.id);
+    }
+    return {
+        matched: true,
+        delivered: result.delivered,
+        targetName: thread.origin.senderUsername,
+        error: result.error,
+    };
 }
 
 async function executeDiscordCommandMessage(msg: any, tenantId?: string, options: DiscordDispatchOptions = {}): Promise<boolean> {
