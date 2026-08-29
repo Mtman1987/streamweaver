@@ -56,6 +56,7 @@ import { registerPrivateImageCarousel } from '@/services/private-image-carousel'
 import { deleteMessage } from '@/services/discord-local';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
+import { detectDiscordNaturalCommand } from '@/services/discord-natural-commands';
 import { recordSharedChatDeadLetter, recordSharedChatEvent } from '@/services/shared-chat-ingestion';
 import { normalizeDiscordSharedChatEvent } from '@/services/shared-chat-normalizers';
 import {
@@ -376,6 +377,48 @@ export async function POST(request: NextRequest) {
       resolution: tenantResolution,
       guildId: guildId || null,
       channelId: channelId || null,
+    });
+
+    const dispatchNativeDiscordCommand = async (
+      commandContent: string,
+      privateLane: boolean,
+      commandTenantId = tenantId,
+    ) => handleDiscordMessage({
+      content: commandContent,
+      channelId,
+      channel_id: channelId,
+      guildId: privateLane ? undefined : guildId,
+      guild_id: privateLane ? undefined : guildId,
+      guild: !privateLane && normalized.guildName ? { name: normalized.guildName } : undefined,
+      channel: normalized.channelName ? { name: normalized.channelName, type: normalized.channelType } : undefined,
+      messageId: normalized.messageId,
+      message_id: normalized.messageId,
+      createdAt: normalized.createdAt,
+      created_at: normalized.createdAt,
+      isDM: privateLane,
+      isDirectMessage: privateLane,
+      author: {
+        id: userId,
+        username: normalized.username,
+        globalName: userName,
+        global_name: userName,
+        avatarUrl: userAvatar,
+        displayAvatarURL: userAvatar,
+        bot: false,
+      },
+      mentions: data?.mentions,
+      isAdmin: effectiveIsAdmin,
+      isMod: effectiveIsMod,
+      isOwner: effectiveIsOwner,
+      memberPermissions: normalized.memberPermissions,
+    }, commandTenantId, privateLane ? {
+      skipPublicHistory: true,
+      skipAiMentions: true,
+      skipTwitchBridge: true,
+      replyMode: 'structured' as const,
+    } : {
+      skipPublicHistory: true,
+      skipAiMentions: true,
     });
 
     if (tenantId && message) {
@@ -865,6 +908,23 @@ export async function POST(request: NextRequest) {
         return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-image', images: result.images });
       }
 
+      const privateNativeCommand = message.trim().startsWith('!')
+        ? message
+        : detectDiscordNaturalCommand(message, rawMessage);
+      if (privateNativeCommand) {
+        const dispatchResult = await dispatchNativeDiscordCommand(privateNativeCommand, true);
+        if (dispatchResult.commandHandled) {
+          await markHandled();
+          return apiOk({
+            success: true,
+            botResponded: Boolean(channelId),
+            tenantId,
+            context: message.trim().startsWith('!') ? 'private-command' : 'private-natural-command',
+            naturalCommand: message.trim().startsWith('!') ? undefined : privateNativeCommand,
+          });
+        }
+      }
+
       const openCommand = await detectOpenBotCommandWithAi(message, tenantId);
       if (openCommand) {
         const botName = getBotName(tenantId);
@@ -888,44 +948,6 @@ export async function POST(request: NextRequest) {
           return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, botName, context: `open-${openCommand}` });
         } catch (error) {
           console.warn(`[Discord Chat:${tenantId}] Open command ${openCommand} failed:`, error);
-        }
-      }
-
-      if (message.trim().startsWith('!')) {
-        const dispatchResult = await handleDiscordMessage({
-          content: message,
-          channelId,
-          channel_id: channelId,
-          messageId: normalized.messageId,
-          message_id: normalized.messageId,
-          createdAt: normalized.createdAt,
-          created_at: normalized.createdAt,
-          isDM: true,
-          isDirectMessage: true,
-          author: {
-            id: userId,
-            username: normalized.username,
-            globalName: userName,
-            global_name: userName,
-            avatarUrl: userAvatar,
-            displayAvatarURL: userAvatar,
-            bot: false,
-          },
-          mentions: data?.mentions,
-          isAdmin: effectiveIsAdmin,
-          isMod: effectiveIsMod,
-          isOwner: effectiveIsOwner,
-          memberPermissions: normalized.memberPermissions,
-        }, tenantId, {
-          skipPublicHistory: true,
-          skipAiMentions: true,
-          skipTwitchBridge: true,
-          replyMode: 'structured',
-        });
-
-        if (dispatchResult.commandHandled) {
-          await markHandled();
-          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId, context: 'private-command' });
         }
       }
 
@@ -1105,35 +1127,7 @@ export async function POST(request: NextRequest) {
     // Bridge to Twitch if enabled, dispatch is true, message is from the configured bridge channel,
     // and the bot is NOT mentioned (bot conversations stay in Discord)
     if (!isPrivateDiscordLane && message.trim().startsWith('!')) {
-      const dispatchResult = await handleDiscordMessage({
-        content: message,
-        channelId,
-        channel_id: channelId,
-        guildId,
-        guild_id: guildId,
-        guild: normalized.guildName ? { name: normalized.guildName } : undefined,
-        channel: normalized.channelName ? { name: normalized.channelName, type: normalized.channelType } : undefined,
-        messageId: normalized.messageId,
-        message_id: normalized.messageId,
-        createdAt: normalized.createdAt,
-        created_at: normalized.createdAt,
-        isDM: false,
-        author: {
-          id: userId,
-          username: normalized.username,
-          globalName: userName,
-          global_name: userName,
-          bot: false,
-        },
-        mentions: data?.mentions,
-        isAdmin: effectiveIsAdmin,
-        isMod: effectiveIsMod,
-        isOwner: effectiveIsOwner,
-        memberPermissions: normalized.memberPermissions,
-      }, tenantId, {
-        skipPublicHistory: true,
-        skipAiMentions: true,
-      });
+      const dispatchResult = await dispatchNativeDiscordCommand(message, false);
 
       if (dispatchResult.commandHandled) {
         return apiOk({ success: true, botResponded: false, commandHandled: true });
@@ -1354,6 +1348,26 @@ export async function POST(request: NextRequest) {
         calendarAdded,
         replies: relayOnly ? collectedReplies : undefined,
       });
+    }
+
+    const naturalCommand = detectDiscordNaturalCommand(message, rawMessage);
+    if (naturalCommand) {
+      const dispatchResult = await dispatchNativeDiscordCommand(naturalCommand, false, botTenantId || tenantId);
+      if (dispatchResult.commandHandled) {
+        logDiscordTrace(traceId, 'natural-command', {
+          command: naturalCommand.split(/\s+/)[0],
+          botName,
+          tenantId: botTenantId || tenantId || null,
+          delivered: Boolean(channelId),
+        });
+        return apiOk({
+          success: true,
+          botResponded: Boolean(channelId),
+          commandHandled: true,
+          naturalCommand,
+          context: 'natural-command',
+        });
+      }
     }
     console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
 
