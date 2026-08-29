@@ -670,6 +670,7 @@ export async function deliverBotRelay(input: {
 }): Promise<{ delivered: boolean; mode?: 'live' | 'discord' | 'dm'; error?: string }> {
     const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, undefined);
     const hasExactTarget = Boolean(input.targetPlatformOverride && input.targetChannelOverride);
+    const replyConversationId = `relay-conversation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (!targetTenantId && !hasExactTarget) {
         return { delivered: false, error: `could not resolve ${input.target.currentName}` };
     }
@@ -693,6 +694,7 @@ export async function deliverBotRelay(input: {
         if (!recipientUsername && !recipientUserId) return;
         await recordRelayReplyThread({
             recipientContextTenantId: input.targetReplyContextTenantId || targetTenantId,
+            conversationId: replyConversationId,
             recipientBot: input.target,
             recipientUsername: recipientUsername || undefined,
             recipientUserId: recipientUserId || undefined,
