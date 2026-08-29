@@ -4740,18 +4740,97 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 if (localLoreBot?.stableId) allowedTwitchParticipants.add(localLoreBot.stableId);
                 if (canUseAthenaInThisChat) allowedTwitchParticipants.add(ATHENA_STABLE_ID);
                 const addressedToResponseBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
-                if (addressedToResponseBot && !athenaDenied) {
+                const leadingLoreBot = firstLoreBot && firstLoreIndex >= 0 && firstLoreIndex <= (
+                    actualMessage.trim().toLowerCase().startsWith('hey ') ? 4 : 1
+                ) ? firstLoreBot : undefined;
+                const relayCommandBot = leadingLoreBot
+                    || routedExternalBot
+                    || await getLoreCharacterForTenant(responseTenantId)
+                    || localLoreBot
+                    || buildFallbackLoreCharacter({
+                        tenantId: responseTenantId,
+                        name: responseBotName,
+                        aliases: [botUsername, ...petNames],
+                    });
+                const relayCommandTenantId = await resolveTenantForLoreBot(
+                    relayCommandBot,
+                    responseTenantId,
+                ) || responseTenantId;
+                const relayBotNames = [
+                    relayCommandBot.currentName,
+                    ...(relayCommandBot.aliases || []),
+                    ...(relayCommandBot.previousNames || []),
+                    responseBotName,
+                    botUsername,
+                    ...petNames,
+                ];
+
+                if (isHumanSpeaker) {
+                    const relayReply = await handleBotRelayReply({
+                        sourcePlatform: 'twitch',
+                        sourceChannelId: replyChannel,
+                        sourceContextTenantId: relayCommandTenantId || tenantId,
+                        sourceUserName: actualUsername,
+                        sourceUserId: String(tags?.['user-id'] || '').trim() || undefined,
+                        speaker: relayCommandBot,
+                        speakerTenantId: relayCommandTenantId,
+                        message: actualMessage,
+                        botNames: relayBotNames,
+                    });
+                    if (relayReply.matched) {
+                        const explicitlyAddressed = addressedToResponseBot || Boolean(leadingLoreBot);
+                        if (relayReply.closed) {
+                            await sendChatMessage(
+                                `Relay closed. I won't send anything back to ${relayReply.targetName || 'the original sender'}.`,
+                                'bot',
+                                replyChannel,
+                                relayCommandTenantId
+                            ).catch(() => {});
+                            return;
+                        }
+                        if (relayReply.missingMessage) {
+                            await sendChatMessage(
+                                `Add your message after "reply" or "yes", or tell me "no" to close the relay.`,
+                                'bot',
+                                replyChannel,
+                                relayCommandTenantId
+                            ).catch(() => {});
+                            return;
+                        }
+                        if (relayReply.delivered) {
+                            await sendChatMessage(
+                                `Your reply was sent back to ${relayReply.targetName || 'the original sender'} at the original location. They received the same reply options.`,
+                                'bot',
+                                replyChannel,
+                                relayCommandTenantId
+                            ).catch(() => {});
+                            return;
+                        }
+                        if (explicitlyAddressed) {
+                            await sendChatMessage(
+                                relayReply.error === 'no-pending-relay'
+                                    ? 'There is no active relay for you in this channel. Relay invitations expire after 5 minutes.'
+                                    : `I couldn't send that reply: ${relayReply.error || 'unknown relay error'}`,
+                                'bot',
+                                replyChannel,
+                                relayCommandTenantId
+                            ).catch(() => {});
+                            return;
+                        }
+                    }
+                }
+
+                if (isHumanSpeaker && (addressedToResponseBot || leadingLoreBot)) {
                     const lore = await readWorldLore();
                     const relayCharacters = Object.values(lore?.characters || {});
-                    const relaySpeaker = routedExternalBot
-                        || await getLoreCharacterForTenant(responseTenantId)
-                        || localLoreBot
-                        || buildFallbackLoreCharacter({
-                            tenantId: responseTenantId,
-                            name: responseBotName,
-                            aliases: [botUsername, ...petNames],
-                        });
-                    const relayTargets = relayCharacters.filter((target) => target.stableId !== relaySpeaker.stableId);
+                    const humanRelaySpeaker = await resolveHumanRelaySpeaker({
+                        sourcePlatform: 'twitch',
+                        sourceUserName: actualUsername,
+                        sourceUserId: String(tags?.['user-id'] || '').trim() || undefined,
+                    });
+                    const relayTargets = relayCharacters.filter(
+                        (target) => target.stableId !== humanRelaySpeaker.character.stableId,
+                    );
                     if (localRelayTarget) {
                         const contextualLocalTarget = {
                             ...localRelayTarget,
@@ -4770,22 +4849,24 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     }
                     const relayRequest = await detectBotRelayRequestWithAi({
                         message: actualMessage,
-                        speakerName: relaySpeaker.currentName,
+                        speakerName: relayCommandBot.currentName,
                         targets: relayTargets,
-                        tenantId: responseTenantId,
+                        tenantId: relayCommandTenantId,
                         platform: 'twitch',
                     });
                     if (relayRequest.matched && relayRequest.relayMessage) {
-                        console.log('[Dispatcher] Bot relay intent detected:', {
+                        console.log('[Dispatcher] Human relay intent detected:', {
                             source: relayRequest.source || 'unknown',
-                            speaker: relaySpeaker.currentName,
+                            commandBot: relayCommandBot.currentName,
+                            deliverySpeaker: humanRelaySpeaker.character.currentName,
+                            communityFallback: humanRelaySpeaker.usesCommunityBot,
                             targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
                             messagePreview: relayRequest.relayMessage.slice(0, 120),
                         });
                         const resolvedRelayTarget = await resolveRelayTarget({
                             namedTarget: relayRequest.targetName,
                             structuredTarget: relayRequest.target,
-                            fallbackTenantId: responseTenantId,
+                            fallbackTenantId: relayCommandTenantId,
                         });
                         if (!resolvedRelayTarget) {
                             if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
@@ -4794,7 +4875,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     sourceUserName: actualUsername,
                                     relayMessage: relayRequest.relayMessage,
                                 });
-                                console.log('[Dispatcher] Bot relay delivered directly to human target in current Twitch chat:', {
+                                console.log('[Dispatcher] Relay delivered directly to human target in current Twitch chat:', {
                                     targetName: relayRequest.targetName,
                                     replyChannel,
                                     source: relayRequest.source || 'unknown',
@@ -4803,11 +4884,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     directMessage,
                                     'bot',
                                     replyChannel,
-                                    responseTenantId
+                                    humanRelaySpeaker.tenantId
                                 ).catch(() => {});
                                 return;
                             }
-                            console.warn('[Dispatcher] Bot relay target unresolved:', {
+                            console.warn('[Dispatcher] Human relay target unresolved:', {
                                 targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
                                 triggerMessage: actualMessage,
                             });
@@ -4815,34 +4896,37 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 `I couldn't figure out which bot or streamer to pass that to.`,
                                 'bot',
                                 replyChannel,
-                                responseTenantId
+                                humanRelaySpeaker.tenantId
                             ).catch(() => {});
                             return;
                         }
 
                         await sendChatMessage(
-                            `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`,
+                            `I'll pass that along to ${resolvedRelayTarget.character.currentName} through ${humanRelaySpeaker.character.currentName}. They'll get instructions for replying back here.`,
                             'bot',
                             replyChannel,
-                            responseTenantId
+                            humanRelaySpeaker.tenantId
                         ).catch(() => {});
                         const relayResult = await deliverBotRelay({
                             sourcePlatform: 'twitch',
+                            sourceChannelId: replyChannel,
+                            sourceContextTenantId: tenantId,
                             sourceUserName: actualUsername,
+                            sourceUserId: String(tags?.['user-id'] || '').trim() || undefined,
                             triggerMessage: actualMessage,
-                            speaker: relaySpeaker,
-                            speakerTenantId: responseTenantId,
+                            speaker: humanRelaySpeaker.character,
+                            speakerTenantId: humanRelaySpeaker.tenantId,
                             target: resolvedRelayTarget.character,
                             targetTenantId: resolvedRelayTarget.tenantId,
                             relayMessage: relayRequest.relayMessage,
-                            humanDirected: !userIsKnownBot,
+                            humanDirected: true,
                         });
                         if (!relayResult.delivered && relayResult.error) {
                             await sendChatMessage(
                                 `I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`,
                                 'bot',
                                 replyChannel,
-                                responseTenantId
+                                humanRelaySpeaker.tenantId
                             ).catch(() => {});
                         }
                         return;
