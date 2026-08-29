@@ -416,10 +416,12 @@ export async function resolveRelayTarget(input: {
         for (const tid of await listTenants()) {
             const tokens = await getStoredTokens(tid).catch(() => null);
             const broadcasterUsername = String(tokens?.broadcasterUsername || tokens?.loginUsername || '').trim().toLowerCase();
+            const discordConfig = await readDiscordConfig(tid).catch(() => null);
+            const discordUsername = String(discordConfig?.discordUsername || '').trim().replace(/^@/, '').toLowerCase();
             const configuredBotName = String(getBotName(tid) || '').trim();
             const configuredAliases = String(getBotAliases(tid) || '').split(',').map((value) => value.trim()).filter(Boolean);
             const botNames = new Set([configuredBotName, ...configuredAliases].map((value) => value.toLowerCase()));
-            if (broadcasterUsername === rawTarget || botNames.has(rawTarget)) {
+            if (broadcasterUsername === rawTarget || discordUsername === rawTarget || botNames.has(rawTarget)) {
                 const loreCharacter = await getLoreCharacterForTenant(tid);
                 return {
                     tenantId: tid,
@@ -603,13 +605,19 @@ export async function deliverBotRelay(input: {
     target: WorldLoreCharacter;
     targetTenantId?: string;
     relayMessage: string;
+    /**
+     * True only when a real person explicitly asked the speaking bot to deliver
+     * this message. Bot-share consent governs autonomous bot conversation, not
+     * a human-issued relay command.
+     */
+    humanDirected?: boolean;
 }): Promise<{ delivered: boolean; mode?: 'live' | 'discord' | 'dm'; error?: string }> {
     const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, input.speakerTenantId);
     if (!targetTenantId) {
         return { delivered: false, error: `could not resolve ${input.target.currentName}` };
     }
 
-    if (!(await isBotRelayAllowed(input.speakerTenantId, targetTenantId))) {
+    if (!input.humanDirected && !(await isBotRelayAllowed(input.speakerTenantId, targetTenantId))) {
         return { delivered: false, error: `${input.target.currentName} has not enabled bot sharing` };
     }
 
@@ -4510,7 +4518,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             console.log(`[Dispatcher] mentionTriggers for tenant ${tenantId}:`, mentionTriggers.join(', '));
 
             try {
-                const { decideBotInteraction, appendBotInteraction, getBotShareMode } = await import('../lib/bot-interactions-store');
+                const { decideBotInteraction, appendBotInteraction } = await import('../lib/bot-interactions-store');
                 const canUseAthenaInThisChat = await getAthenaEverywhereMode() === 'on'
                     && await canRouteAthenaForUser({
                         username: actualUsername,
@@ -4520,8 +4528,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 if (localLoreBot?.stableId) allowedTwitchParticipants.add(localLoreBot.stableId);
                 if (canUseAthenaInThisChat) allowedTwitchParticipants.add(ATHENA_STABLE_ID);
                 const addressedToResponseBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
-                const relayMode = await getBotShareMode(responseTenantId);
-                if (addressedToResponseBot && relayMode === 'on' && !athenaDenied) {
+                if (addressedToResponseBot && !athenaDenied) {
                     const lore = await readWorldLore();
                     const relayTargets = Object.values(lore?.characters || {});
                     const relaySpeaker = routedExternalBot
@@ -4599,6 +4606,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             target: resolvedRelayTarget.character,
                             targetTenantId: resolvedRelayTarget.tenantId,
                             relayMessage: relayRequest.relayMessage,
+                            humanDirected: !userIsKnownBot,
                         });
                         if (!relayResult.delivered && relayResult.error) {
                             await sendChatMessage(
@@ -4656,6 +4664,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     target: resolvedRelayTarget.character,
                                     targetTenantId: resolvedRelayTarget.tenantId,
                                     relayMessage: relayRequest.relayMessage,
+                                    humanDirected: !userIsKnownBot,
                                 });
                                 if (!relayResult.delivered && relayResult.error) {
                                     await sendChatMessage(

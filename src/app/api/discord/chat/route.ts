@@ -1140,7 +1140,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (await getBotShareMode(botTenantId || tenantId || undefined) === 'on') {
+    if (!isDiscordBotAuthor(data) || await getBotShareMode(botTenantId || tenantId || undefined) === 'on') {
       const lore = await readWorldLore();
       const characters = Object.values(lore?.characters || {});
       const relaySpeaker = resolveDiscordRelaySpeaker({
@@ -1227,6 +1227,7 @@ export async function POST(request: NextRequest) {
           target: resolvedRelayTarget.character,
           targetTenantId: resolvedRelayTarget.tenantId,
           relayMessage: relayRequest.relayMessage,
+          humanDirected: !isDiscordBotAuthor(data),
         });
 
         if (!relayResult.delivered && relayResult.error && channelId) {
@@ -1235,6 +1236,7 @@ export async function POST(request: NextRequest) {
 
         return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });
       }
+
     }
 
     const botInteractionDecision = await decideBotInteraction({
@@ -1289,6 +1291,7 @@ export async function POST(request: NextRequest) {
           target: resolvedRelayTarget.character,
           targetTenantId: resolvedRelayTarget.tenantId,
           relayMessage: relayRequest.relayMessage,
+          humanDirected: !isDiscordBotAuthor(data),
         });
 
         if (!relayResult.delivered && relayResult.error && channelId) {
