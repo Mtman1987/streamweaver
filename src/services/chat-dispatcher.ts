@@ -4995,6 +4995,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         tenantId: responseTenantId,
                         botName: responseBotName,
                         source: 'twitch',
+                        visibility: 'public',
                         message: actualMessage,
                         requestId: tags.id ? `twitch:${tags.id}` : undefined,
                         actor: {

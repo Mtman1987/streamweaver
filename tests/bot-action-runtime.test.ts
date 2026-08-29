@@ -11,12 +11,46 @@ import {
   type BotActionRuntimeDependencies,
 } from '../src/services/bot-action-runtime';
 
-test('publishes a persona-neutral DSH action catalog', () => {
-  assert.equal(BOT_ACTION_CATALOG.length, 13);
+test('publishes a persona-neutral suite action catalog', () => {
+  assert.equal(BOT_ACTION_CATALOG.length, 20);
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'dsh.calendar.deploy'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'dsh.applications.deploy'));
+  assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'dsh.applications.decide'));
+  assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'hmo.bot.control'));
+  assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'hmo.voice.bridge.control'));
+  assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'sw.image.generate'));
+  assert.equal(BOT_ACTION_CATALOG.find((entry) => entry.id === 'hmo.bot.control')?.minimumRole, 'member');
+  assert.equal(BOT_ACTION_CATALOG.find((entry) => entry.id === 'hmo.voice.bridge.control')?.minimumRole, 'member');
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Athena'), false);
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Moonbeam'), false);
+});
+
+test('detects remaining button-equivalent actions before conversational AI', async () => {
+  assert.deepEqual(await detectBotAction("approve Jordan's moderator application"), {
+    action: 'dsh.applications.decide',
+    args: { decision: 'approved', type: 'mod', application: 'Jordan' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('post a DSH shoutout for @creator in #shoutouts'), {
+    action: 'dsh.shoutouts.post',
+    args: { target: 'creator', channel: 'shoutouts' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('tell Moonbeam to join my Hear Me Out chat'), {
+    action: 'hmo.bot.control',
+    args: { control: 'join', bot: 'Moonbeam', room: '' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('bridge HearMeOut to Discord VC General'), {
+    action: 'hmo.voice.bridge.control',
+    args: { control: 'start', audioProfile: '', voiceChannel: 'General', room: '' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('generate an image of a rocket flying past Saturn'), {
+    action: 'sw.image.generate',
+    args: { prompt: 'a rocket flying past Saturn' },
+    detection: 'explicit',
+  });
 });
 
 test('detects button-equivalent broadcasts only from explicit language', async () => {
@@ -234,6 +268,150 @@ test('outside-room media requests never leak into the global HearMeOut queue', a
   assert.equal(outcome.status, 'needs_input');
   assert.equal(executed, false);
   assert.match(outcome.response, /did not put this in a public HearMeOut queue/);
+});
+
+test('invites the resolved tenant persona through the HearMeOut action adapter', async () => {
+  const calls: any[] = [];
+  const request = await detectBotAction('tell Moonbeam to join my HearMeOut chat');
+  const outcome = await executeBotAction(request!, {
+    tenantId: 'mamafeisty',
+    botName: 'Moonbeam',
+    source: 'discord',
+    visibility: 'private',
+    message: 'tell Moonbeam to join my HearMeOut chat',
+    actor: { userId: 'discord-mama', username: 'mamafeisty', role: 'owner' },
+  }, {
+    readDiscordConfig: async () => ({ guildId: 'guild-mama' }) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    resolveBotPersonaForAction: async (selector, tenantId) => ({
+      id: tenantId,
+      name: selector,
+      ownerName: 'mamafeisty',
+      ownerTenantId: tenantId,
+      aliases: [], wakeNames: [selector], interests: [], voice: '', livekitTtsDescriptor: '',
+      avatar: '', idleAvatar: '', talkingAvatar: '', canInvite: true,
+    }),
+    executeHearMeOutBotAction: async (payload) => {
+      calls.push(payload);
+      return { success: true, control: 'join', room: { id: 'mama-room', name: 'Mama Room' }, bot: payload.bot };
+    },
+  });
+  assert.equal(outcome.status, 'completed');
+  assert.match(outcome.response, /Moonbeam joined Mama Room/);
+  assert.equal(calls[0].tenantId, 'mamafeisty');
+  assert.equal(calls[0].actorRole, 'owner');
+  assert.equal(calls[0].bot.ownerTenantId, 'mamafeisty');
+});
+
+test('my bot resolves to the active tenant persona while an unspecified bot asks for a name', async () => {
+  const ownBot = await detectBotAction('tell my bot to join my HearMeOut chat');
+  let resolvedSelector = '';
+  const outcome = await executeBotAction(ownBot!, {
+    tenantId: 'mamafeisty',
+    botName: 'Moonbeam',
+    source: 'discord',
+    message: 'tell my bot to join my HearMeOut chat',
+    actor: { userId: 'discord-mama', username: 'mamafeisty', role: 'owner' },
+  }, {
+    readDiscordConfig: async () => ({ guildId: 'guild-mama' }) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    resolveBotPersonaForAction: async (selector, tenantId) => {
+      resolvedSelector = selector;
+      return {
+        id: tenantId, name: selector, ownerName: 'mamafeisty', ownerTenantId: tenantId,
+        aliases: [], wakeNames: [selector], interests: [], voice: '', livekitTtsDescriptor: '',
+        avatar: '', idleAvatar: '', talkingAvatar: '', canInvite: true,
+      };
+    },
+    executeHearMeOutBotAction: async (payload) => ({
+      success: true, control: 'join', room: { id: 'studio', name: 'Studio' }, bot: payload.bot,
+    }),
+  });
+  assert.equal(outcome.status, 'completed');
+  assert.equal(resolvedSelector, 'Moonbeam');
+
+  const ambiguous = await detectBotAction('tell a bot to join my HearMeOut chat');
+  const needsName = await executeBotAction(ambiguous!, {
+    tenantId: 'mamafeisty',
+    botName: 'Moonbeam',
+    source: 'discord',
+    message: 'tell a bot to join my HearMeOut chat',
+    actor: { userId: 'discord-mama', username: 'mamafeisty', role: 'owner' },
+  });
+  assert.equal(needsName.status, 'needs_input');
+  assert.match(needsName.response, /Name the tenant bot/i);
+});
+
+test('routes voice bridge controls with the tenant Discord guild', async () => {
+  const calls: any[] = [];
+  const request = await detectBotAction('bridge HearMeOut to Discord VC General');
+  const outcome = await executeBotAction(request!, {
+    tenantId: 'mamafeisty',
+    botName: 'Moonbeam',
+    source: 'mountainview',
+    visibility: 'private',
+    message: 'bridge HearMeOut to Discord VC General',
+    actor: { userId: 'discord-mama', username: 'mamafeisty', role: 'owner' },
+  }, {
+    readDiscordConfig: async () => ({ guildId: 'guild-mama' }) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    executeHearMeOutBotAction: async (payload) => {
+      calls.push(payload);
+      return { success: true, control: 'start', room: { name: 'Mama Room' }, channel: { name: 'General' } };
+    },
+  });
+  assert.equal(outcome.status, 'completed');
+  assert.equal(calls[0].guildId, 'guild-mama');
+  assert.equal(calls[0].voiceChannel, 'General');
+});
+
+test('generates images through StreamWeaver while honoring public tenant access', async () => {
+  let generated = false;
+  const request = await detectBotAction('generate an image of a blue moon over a mountain');
+  const outcome = await executeBotAction(request!, {
+    tenantId: 'mamafeisty',
+    botName: 'Moonbeam',
+    source: 'kick',
+    visibility: 'public',
+    message: 'generate an image of a blue moon over a mountain',
+    actor: { username: 'viewer', role: 'member' },
+  }, {
+    readDiscordConfig: async () => ({}) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    executeHearMeOutBotAction: async () => { throw new Error('wrong adapter'); },
+    readGenerationSettings: async () => ({ publicImageAccess: 'everyone' }) as any,
+    runImageCommand: async () => ({
+      prompt: 'a blue moon over a mountain', originalPrompt: 'a blue moon over a mountain', optimizedPrompt: null,
+      provider: 'test', images: ['https://example.com/moon.png'],
+    }),
+  });
+  generated = outcome.status === 'completed';
+  assert.equal(generated, true);
+  assert.match(outcome.response, /moon\.png/);
+});
+
+test('application decisions remain owner-only and call the DSH adapter', async () => {
+  const request = await detectBotAction("approve Jordan's moderator application");
+  let payload: any;
+  const outcome = await executeBotAction(request!, {
+    tenantId: 'mt', botName: 'Athena', source: 'discord', message: 'approve application',
+    actor: { userId: 'owner-id', username: 'mtman1987', role: 'owner' },
+  }, {
+    readDiscordConfig: async () => ({ guildId: 'guild', discordUserId: 'owner-id' }) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async (value) => {
+      payload = value;
+      return { success: true, application: { username: 'Jordan', type: 'mod', status: 'approved' }, notification: { success: true } };
+    },
+    executeHearMeOutBotAction: async () => { throw new Error('wrong adapter'); },
+  });
+  assert.equal(outcome.status, 'completed');
+  assert.equal(payload.application, 'Jordan');
+  assert.equal(payload.decision, 'approved');
 });
 
 test('MountainView grants privileged actions only with enforced scoped-secret authentication', () => {

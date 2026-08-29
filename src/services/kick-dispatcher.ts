@@ -976,6 +976,7 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         tenantId,
         botName,
         source: 'kick',
+        visibility: 'public',
         message,
         requestId: msg.id ? `kick:${msg.id}` : undefined,
         actor: {

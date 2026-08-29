@@ -2,18 +2,33 @@ const HEARMEOUT_URL = String(
   process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev',
 ).replace(/\/+$/, '');
 
-export type HearMeOutBotAction = 'hmo.media.state.read' | 'hmo.media.request' | 'hmo.media.control';
+import type { ActionBotPersona } from '@/services/bot-persona-catalog';
+
+export type HearMeOutBotAction =
+  | 'hmo.media.state.read'
+  | 'hmo.media.request'
+  | 'hmo.media.control'
+  | 'hmo.rooms.read'
+  | 'hmo.bot.control'
+  | 'hmo.voice.bridge.state'
+  | 'hmo.voice.bridge.control';
 
 export type HearMeOutBotActionPayload = {
   action: HearMeOutBotAction;
   tenantId: string;
   roomId?: string;
+  room?: string;
   sessionId?: string;
   actorUserId?: string;
   actorName?: string;
+  actorRole?: string;
   query?: string;
   control?: string;
   value?: number;
+  bot?: ActionBotPersona;
+  guildId?: string;
+  voiceChannel?: string;
+  audioProfile?: string;
   idempotencyKey?: string;
 };
 
