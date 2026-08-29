@@ -5,6 +5,7 @@ import { serializeSessionCookie } from '@/lib/session-cookie';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { getBotName } from '@/lib/bot-settings-store';
 import { getBotShareMode } from '@/lib/bot-interactions-store';
+import { routeBotAction, type BotActionSource } from '@/services/bot-action-runtime';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -32,6 +33,14 @@ function firstString(...values: unknown[]): string {
     if (normalized) return normalized;
   }
   return '';
+}
+
+function botActionSource(value: unknown): BotActionSource {
+  const source = firstString(value).toLowerCase();
+  if (source === 'discord' || source === 'twitch' || source === 'kick' || source === 'mountainview' || source === 'hearmeout') {
+    return source;
+  }
+  return 'spmt';
 }
 
 async function resolveSpmtUser(token: string): Promise<SpmtUser | null> {
@@ -151,6 +160,48 @@ export async function POST(request: NextRequest) {
 
   const session = internalSessionCookie(user, targetTenantId);
   const botName = getBotName(targetTenantId);
+
+  // Persona is presentation only. Every owner talks to the same tenant-aware
+  // action runtime, which scopes credentials and app data to targetTenantId.
+  // Shared guest bots remain conversational and cannot inherit owner actions.
+  const actionOutcome = isGuestBot ? null : await routeBotAction(command, {
+    tenantId: targetTenantId,
+    botName,
+    source: botActionSource(body?.source || body?.sourceApp),
+    message: command,
+    requestId: firstString(body?.requestId, body?.messageId),
+    guildId: firstString(body?.guildId, body?.serverId),
+    roomId: firstString(body?.roomId),
+    actor: {
+      userId: user.id,
+      username: caller.username,
+      displayName: caller.displayName,
+      role: 'owner',
+    },
+  });
+  if (actionOutcome) {
+    const tts = await maybeGenerateTts(request, session.header, token, targetTenantId, actionOutcome.response, body);
+    return apiOk({
+      accepted: true,
+      routed: true,
+      handled: true,
+      status: actionOutcome.status,
+      command,
+      commandType: actionOutcome.action,
+      response: actionOutcome.response,
+      result: actionOutcome.result,
+      bot: { name: botName, tenantId: targetTenantId },
+      tts,
+      identity: {
+        spmtUserId: user.id,
+        tenantId: caller.tenantId,
+        username: caller.username,
+        displayName: caller.displayName,
+      },
+      source: firstString(body?.source, body?.sourceApp) || 'spmt-bot',
+      roomId: firstString(body?.roomId) || undefined,
+    });
+  }
 
   // Owner/open commands are intentionally disabled when speaking through
   // another tenant's shared bot. Guest bots expose conversation only here;

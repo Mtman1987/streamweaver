@@ -45,6 +45,35 @@ export type DiscordStreamHubAdminCalendarEventPayload = {
   missionTimeZone: 'UTC';
 };
 
+export type DiscordStreamHubBotAction =
+  | 'dsh.shoutouts.active.read'
+  | 'dsh.shoutouts.live.read'
+  | 'dsh.calendar.read'
+  | 'dsh.calendar.captain.read'
+  | 'dsh.calendar.captain.create'
+  | 'dsh.calendar.event.create'
+  | 'dsh.calendar.deploy'
+  | 'dsh.calendar.refresh'
+  | 'dsh.applications.read'
+  | 'dsh.applications.deploy';
+
+export type DiscordStreamHubBotActionPayload = {
+  action: DiscordStreamHubBotAction;
+  serverId: string;
+  actorUserId?: string;
+  channel?: string;
+  channelId?: string;
+  selectedDate?: string;
+  missionName?: string;
+  missionDescription?: string;
+  missionDate?: string;
+  missionTime?: string;
+  missionTimeZone?: string;
+  status?: string;
+  type?: string;
+  idempotencyKey?: string;
+};
+
 export type DiscordStreamHubCheckinMember = {
   id: string;
   discordUserId: string;
@@ -392,6 +421,20 @@ export async function createDiscordStreamHubAdminCalendarEvent(
     success: true,
     message: String(data.message || '').trim(),
   };
+}
+
+export async function executeDiscordStreamHubBotAction(
+  payload: DiscordStreamHubBotActionPayload,
+): Promise<Record<string, unknown>> {
+  const data = await postDiscordStreamHub<Record<string, unknown>>(
+    '/api/internal/bot/actions',
+    payload,
+    55_000,
+  );
+  if (data.success !== true) {
+    throw new Error(`DiscordStreamHub did not confirm ${payload.action}`);
+  }
+  return data;
 }
 
 export async function getDiscordStreamHubCheckinMembers(serverId: string, group?: string): Promise<DiscordStreamHubCheckinMember[]> {

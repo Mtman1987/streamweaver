@@ -12,10 +12,16 @@ import { runImageCommand } from '@/services/image-command';
 import { tenantPath, globalPath } from '@/lib/tenant';
 import { readDiscordConfig } from '@/lib/discord-config';
 import { publishSpmtEvent } from '@/lib/spmt-client';
-import { hasMountainViewBridgeAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
+import {
+  hasMountainViewBridgeAccess,
+  internalServiceHeaders,
+  isMountainViewBridgeSecretEnforced,
+} from '@/lib/internal-service-auth';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
 import { z } from 'zod';
+import { getBotName } from '@/lib/bot-settings-store';
+import { routeBotAction } from '@/services/bot-action-runtime';
 
 const mountainViewVoiceSchema = z.object({
   transcript: z.string().trim().min(1).max(5000).optional(),
@@ -317,6 +323,50 @@ export async function POST(request: NextRequest) {
         transcript,
         response: builtIn.response,
         command: builtIn.type,
+        memory: { saved: true, id: transcriptRecord.id },
+      });
+    }
+
+    const botAction = await routeBotAction(transcript, {
+      tenantId,
+      botName: getBotName(tenantId),
+      source: 'mountainview',
+      message: transcript,
+      requestId: firstString(payload.requestId, nestedPayload.requestId),
+      guildId: firstString(payload.guildId, payload.serverId, nestedPayload.guildId, nestedPayload.serverId),
+      roomId: firstString(payload.roomId, nestedPayload.roomId),
+      actor: {
+        username,
+        displayName: username,
+        // A bare bridge marker is legacy-compatible but is not proof of owner
+        // authority. Privileged app actions require the scoped MountainView
+        // bearer to be explicitly enforced and already validated above.
+        role: isMountainViewBridgeSecretEnforced() ? 'owner' : 'member',
+      },
+    });
+    if (botAction) {
+      const tts = await queueTts(baseUrl, botAction.response, tenantId);
+      publishMountainViewVoiceEvent('voice.command.completed', {
+        transcript,
+        tenantId,
+        username,
+        destination: command.destination,
+        voiceMode,
+        summary: botAction.response,
+        payload: { command: botAction.action, status: botAction.status },
+      });
+      return apiOk({
+        routed: true,
+        handled: true,
+        source: 'mountainview-ai',
+        destination: command.destination,
+        voiceMode,
+        transcript,
+        response: botAction.response,
+        command: botAction.action,
+        status: botAction.status,
+        result: botAction.result,
+        tts,
         memory: { saved: true, id: transcriptRecord.id },
       });
     }

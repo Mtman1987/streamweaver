@@ -57,6 +57,7 @@ import { deleteMessage } from '@/services/discord-local';
 import { replaceDiscordUserMentions, resolveDiscordUserMention } from '@/services/discord-mentions';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { detectDiscordNaturalCommand } from '@/services/discord-natural-commands';
+import { routeBotAction, type BotActorRole } from '@/services/bot-action-runtime';
 import { recordSharedChatDeadLetter, recordSharedChatEvent } from '@/services/shared-chat-ingestion';
 import { normalizeDiscordSharedChatEvent } from '@/services/shared-chat-normalizers';
 import {
@@ -771,6 +772,44 @@ export async function POST(request: NextRequest) {
       }
       const markHandled = () => markDmMessageHandled(tenantId!, normalized.messageId);
 
+      const privateDiscordConfig = await readDiscordConfig(tenantId).catch(() => null);
+      const privateActionRole: BotActorRole = permanentOwner || effectiveIsOwner || privateDiscordConfig?.discordUserId === userId
+        ? 'owner'
+        : effectiveIsAdmin
+          ? 'admin'
+          : effectiveIsMod
+            ? 'moderator'
+            : 'member';
+      const privateAction = await routeBotAction(message, {
+        tenantId,
+        botName: getBotName(tenantId),
+        source: 'discord',
+        message,
+        requestId: normalized.messageId ? `discord:${normalized.messageId}` : undefined,
+        guildId: guildId || privateDiscordConfig?.guildId,
+        actor: {
+          userId,
+          username: normalized.username,
+          displayName: userName,
+          role: privateActionRole,
+        },
+      });
+      if (privateAction) {
+        if (channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, privateAction.response, getBotName(tenantId), 'Bot Action');
+        }
+        await markHandled();
+        return apiOk({
+          success: true,
+          botResponded: Boolean(channelId),
+          tenantId,
+          context: 'private-bot-action',
+          action: privateAction.action,
+          actionStatus: privateAction.status,
+          result: privateAction.result,
+        });
+      }
+
       const imgMatch = message.trim().match(/^!img(?:\s+(.+))?$/i);
       const gifMatch = message.trim().match(/^!gif(?:\s+(.+))?$/i);
       const genModeMatch = message.trim().match(/^!genmode(?:\s+(eden|seaart|perchance|pollinations|status))?$/i);
@@ -1294,6 +1333,52 @@ export async function POST(request: NextRequest) {
         botName,
       });
       return apiOk({ success: true, botResponded: false, ignored: true, botName });
+    }
+
+    const addressedTenantId = botTenantId || tenantId;
+    if (addressedTenantId) {
+      const addressedDiscordConfig = await readDiscordConfig(addressedTenantId).catch(() => null);
+      const publicActionRole: BotActorRole = permanentOwner || effectiveIsOwner || addressedDiscordConfig?.discordUserId === userId
+        ? 'owner'
+        : effectiveIsAdmin
+          ? 'admin'
+          : effectiveIsMod
+            ? 'moderator'
+            : 'member';
+      const botAction = await routeBotAction(message, {
+        tenantId: addressedTenantId,
+        botName,
+        source: 'discord',
+        message,
+        requestId: normalized.messageId ? `discord:${normalized.messageId}` : undefined,
+        guildId,
+        actor: {
+          userId,
+          username: normalized.username,
+          displayName: userName,
+          role: publicActionRole,
+        },
+      });
+      if (botAction) {
+        if (channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, botAction.response, botName, 'Bot Action');
+        }
+        logDiscordTrace(traceId, 'bot-action', {
+          action: botAction.action,
+          status: botAction.status,
+          botName,
+          tenantId: addressedTenantId,
+          delivered: Boolean(channelId),
+        });
+        return apiOk({
+          success: true,
+          botResponded: Boolean(channelId),
+          action: botAction.action,
+          actionStatus: botAction.status,
+          result: botAction.result,
+          replies: relayOnly ? collectedReplies : undefined,
+        });
+      }
     }
 
     const calendarCommand = detectDiscordAdminCalendarCommand(message);
