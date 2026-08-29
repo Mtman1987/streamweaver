@@ -126,10 +126,14 @@ export async function recordDiscordMessageCleanup(input: DiscordCleanupInput): P
   const queue = await readQueue();
   const existing = triggerMessageId
     ? queue.find((entry) => entry.channelId === input.channelId && entry.triggerMessageId === triggerMessageId)
-    : undefined;
+    : queue.find((entry) =>
+        entry.channelId === input.channelId
+        && replyMessageIds.some((messageId) => entry.replyMessageIds.includes(messageId))
+      );
 
   const entry: PendingDiscordCleanup = existing ? {
     ...existing,
+    deleteAt,
     replyMessageIds: unique([...existing.replyMessageIds, ...replyMessageIds]),
     botName: input.botName || existing.botName,
   } : {

@@ -86,6 +86,16 @@ export async function editWebhookMessage(
   return response.ok;
 }
 
+export async function deleteWebhookMessage(channelId: string, messageId: string): Promise<boolean> {
+  const webhook = await getWebhookForChannel(channelId);
+  if (!webhook) return false;
+
+  const response = await fetch(`${webhook.url}/messages/${messageId}`, {
+    method: 'DELETE',
+  });
+  return response.ok || response.status === 404;
+}
+
 export async function sendWebhookMessage(channelId: string, message: string, username?: string, avatarUrl?: string, embeds?: Record<string, unknown>[]): Promise<SentWebhookMessage | null> {
   let webhook = await getWebhookForChannel(channelId);
   
@@ -101,13 +111,11 @@ export async function sendWebhookMessage(channelId: string, message: string, use
 
   const body: Record<string, unknown> = {
     username: username || webhook.username,
-    avatar_url: avatarUrl || webhook.avatarUrl
+    avatar_url: avatarUrl || webhook.avatarUrl,
+    content: message,
   };
   if (embeds?.length) {
-    body.content = '';
     body.embeds = embeds;
-  } else {
-    body.content = message;
   }
 
   const separator = webhook.url.includes('?') ? '&' : '?';

@@ -152,5 +152,5 @@ export function extractRelayReplyCommand(input: {
 
 export function buildRelayReplyInstructions(sourceUserName: unknown): string {
   const sender = String(sourceUserName || 'the original sender').trim() || 'the original sender';
-  return `Would you like to reply back to ${sender} at the original location? Tell me "reply" (or "yes") followed by your message, or tell me "no" to close this relay. This reply option expires in 5 minutes.`;
+  return `Would you like to reply back to ${sender} at the original location? Tell me "reply" (or "yes") followed by your message, or tell me "no" to close this relay. This reply option expires in 10 minutes.`;
 }
