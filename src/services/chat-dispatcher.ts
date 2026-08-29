@@ -508,7 +508,10 @@ export async function resolveHumanRelaySpeaker(input: {
         for (const tid of await listTenants()) {
             let matchesAccount = input.sourcePlatform === 'twitch' && Boolean(
                 (sourceUserId && sourceUserId === tid)
-                || normalizeRelayHandle(readUserConfigSync(tid).TWITCH_BROADCASTER_USERNAME).toLowerCase() === sourceName
+                || (
+                    sourceName
+                    && normalizeRelayHandle(readUserConfigSync(tid).TWITCH_BROADCASTER_USERNAME).toLowerCase() === sourceName
+                )
             );
 
             if (input.sourcePlatform === 'discord') {
@@ -665,7 +668,7 @@ export async function deliverBotRelay(input: {
      */
     humanDirected?: boolean;
 }): Promise<{ delivered: boolean; mode?: 'live' | 'discord' | 'dm'; error?: string }> {
-    const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, input.speakerTenantId);
+    const targetTenantId = input.targetTenantId || await resolveTenantForLoreBot(input.target, undefined);
     const hasExactTarget = Boolean(input.targetPlatformOverride && input.targetChannelOverride);
     if (!targetTenantId && !hasExactTarget) {
         return { delivered: false, error: `could not resolve ${input.target.currentName}` };
@@ -2010,6 +2013,7 @@ function firstNameIndex(messageLower: string, names: string[]): number {
 async function resolveTenantForLoreBot(character: any, fallbackTenantId?: string): Promise<string | undefined> {
     const stableId = String(character?.stableId || '');
     const [stableTenant] = stableId.split(':');
+    if (stableTenant === 'community') return fallbackTenantId;
     if (stableTenant && stableTenant !== 'unknown' && stableTenant !== 'discordUserId' && stableTenant !== 'twitchUserId') {
         return stableTenant;
     }
