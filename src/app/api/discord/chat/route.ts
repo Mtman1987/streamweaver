@@ -1140,101 +1140,100 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (await getBotShareMode(botTenantId || tenantId || undefined) === 'on') {
-      const lore = await readWorldLore();
-      const characters = Object.values(lore?.characters || {});
-      const relaySpeaker = resolveDiscordRelaySpeaker({
-        characters,
-        botName,
-        tenantId: botTenantId || tenantId || undefined,
-        trigger: botMatch?.trigger,
-      });
-      const relayRequest = await detectBotRelayRequestWithAi({
-        message,
-        speakerName: relaySpeaker.currentName,
-        targets: characters.filter((character) => character.stableId !== relaySpeaker.stableId),
-        tenantId: botTenantId || tenantId || undefined,
-        platform: 'discord',
-      });
+    const lore = await readWorldLore();
+    const characters = Object.values(lore?.characters || {});
+    const relaySpeaker = resolveDiscordRelaySpeaker({
+      characters,
+      botName,
+      tenantId: botTenantId || tenantId || undefined,
+      trigger: botMatch?.trigger,
+    });
+    const relayRequest = await detectBotRelayRequestWithAi({
+      message,
+      speakerName: relaySpeaker.currentName,
+      targets: characters.filter((character) => character.stableId !== relaySpeaker.stableId),
+      tenantId: botTenantId || tenantId || undefined,
+      platform: 'discord',
+    });
 
-      if (relayRequest.matched && relayRequest.relayMessage) {
-        console.log('[Discord Chat] Bot relay intent detected:', {
-          source: relayRequest.source || 'unknown',
-          speaker: relaySpeaker.currentName,
-          targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
-          messagePreview: relayRequest.relayMessage.slice(0, 120),
-        });
-        const resolvedRelayTarget = await resolveRelayTarget({
-          namedTarget: relayRequest.targetName,
-          structuredTarget: relayRequest.target,
-          fallbackTenantId: botTenantId || tenantId || undefined,
-        });
-        if (!resolvedRelayTarget) {
-          if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
-            const directMessage = buildDirectHumanRelayMessage({
-              targetName: relayRequest.targetName,
-              sourceUserName: userName,
-              relayMessage: relayRequest.relayMessage,
-            });
-            console.log('[Discord Chat] Bot relay delivered directly to human target in current Discord channel:', {
-              targetName: relayRequest.targetName,
-              channelId,
-              source: relayRequest.source || 'unknown',
-            });
-            if (channelId) {
-              await sendDiscordRouteReplyOrCollect(channelId, directMessage);
-            }
-            return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: true, relayMode: 'direct-human', replies: relayOnly ? collectedReplies : undefined });
-          }
-          console.warn('[Discord Chat] Bot relay target unresolved:', {
-            targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
-            triggerMessage: message,
+    if (relayRequest.matched && relayRequest.relayMessage) {
+      console.log('[Discord Chat] Bot relay intent detected:', {
+        source: relayRequest.source || 'unknown',
+        speaker: relaySpeaker.currentName,
+        targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
+        messagePreview: relayRequest.relayMessage.slice(0, 120),
+      });
+      const resolvedRelayTarget = await resolveRelayTarget({
+        namedTarget: relayRequest.targetName,
+        structuredTarget: relayRequest.target,
+        fallbackTenantId: botTenantId || tenantId || undefined,
+      });
+      if (!resolvedRelayTarget) {
+        if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
+          const directMessage = buildDirectHumanRelayMessage({
+            targetName: relayRequest.targetName,
+            sourceUserName: userName,
+            relayMessage: relayRequest.relayMessage,
+          });
+          console.log('[Discord Chat] Bot relay delivered directly to human target in current Discord channel:', {
+            targetName: relayRequest.targetName,
+            channelId,
+            source: relayRequest.source || 'unknown',
           });
           if (channelId) {
-            await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't figure out which bot or streamer to pass that to.`);
+            await sendDiscordRouteReplyOrCollect(channelId, directMessage);
           }
-          return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: false, relayError: 'target-unresolved', replies: relayOnly ? collectedReplies : undefined });
+          return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: true, relayMode: 'direct-human', replies: relayOnly ? collectedReplies : undefined });
         }
-
-        const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
-        if (channelId) {
-          const structuredInput = {
-            channelId,
-            message: ackReply,
-            tenantId: botTenantId || tenantId || undefined,
-            botName,
-            responseType: 'Message Relay',
-            sourceMessageId: normalized.messageId,
-            sourceMessage: message,
-            sourceUser: userName,
-            sourceUserAvatarUrl: userAvatar,
-            isPrivate: isDirectMessage,
-          };
-          if (relayOnly) {
-            const payload = await buildStructuredDiscordReplyPayload(structuredInput);
-            collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
-          } else {
-            await sendStructuredDiscordReply(structuredInput);
-          }
-        }
-
-        const relayResult = await deliverBotRelay({
-          sourcePlatform: 'discord',
-          sourceUserName: userName,
+        console.warn('[Discord Chat] Bot relay target unresolved:', {
+          targetName: relayRequest.targetName || relayRequest.target?.currentName || null,
           triggerMessage: message,
-          speaker: relaySpeaker,
-          speakerTenantId: botTenantId || tenantId || undefined,
-          target: resolvedRelayTarget.character,
-          targetTenantId: resolvedRelayTarget.tenantId,
-          relayMessage: relayRequest.relayMessage,
         });
-
-        if (!relayResult.delivered && relayResult.error && channelId) {
-          await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`);
+        if (channelId) {
+          await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't figure out which bot or streamer to pass that to.`);
         }
-
-        return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });
+        return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: false, relayError: 'target-unresolved', replies: relayOnly ? collectedReplies : undefined });
       }
+
+      const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
+      if (channelId) {
+        const structuredInput = {
+          channelId,
+          message: ackReply,
+          tenantId: botTenantId || tenantId || undefined,
+          botName,
+          responseType: 'Message Relay',
+          sourceMessageId: normalized.messageId,
+          sourceMessage: message,
+          sourceUser: userName,
+          sourceUserAvatarUrl: userAvatar,
+          isPrivate: isDirectMessage,
+        };
+        if (relayOnly) {
+          const payload = await buildStructuredDiscordReplyPayload(structuredInput);
+          collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
+        } else {
+          await sendStructuredDiscordReply(structuredInput);
+        }
+      }
+
+      const relayResult = await deliverBotRelay({
+        sourcePlatform: 'discord',
+        sourceUserName: userName,
+        triggerMessage: message,
+        speaker: relaySpeaker,
+        speakerTenantId: botTenantId || tenantId || undefined,
+        target: resolvedRelayTarget.character,
+        targetTenantId: resolvedRelayTarget.tenantId,
+        relayMessage: relayRequest.relayMessage,
+        humanDirected: !isDiscordBotAuthor(data),
+      });
+
+      if (!relayResult.delivered && relayResult.error && channelId) {
+        await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`);
+      }
+
+      return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });
     }
 
     const botInteractionDecision = await decideBotInteraction({
@@ -1289,6 +1288,7 @@ export async function POST(request: NextRequest) {
           target: resolvedRelayTarget.character,
           targetTenantId: resolvedRelayTarget.tenantId,
           relayMessage: relayRequest.relayMessage,
+          humanDirected: !isDiscordBotAuthor(data),
         });
 
         if (!relayResult.delivered && relayResult.error && channelId) {
