@@ -6,6 +6,13 @@ import type { WorldLoreCharacter } from '@/lib/world-lore-store';
 
 export type RelayThreadPlatform = 'twitch' | 'discord';
 
+export type RelayConversationTurn = {
+  senderUsername: string;
+  botName: string;
+  message: string;
+  createdAt: string;
+};
+
 export type RelayReplyThread = {
   id: string;
   conversationId: string;
@@ -18,7 +25,10 @@ export type RelayReplyThread = {
   delivery: {
     platform: RelayThreadPlatform;
     channelId: string;
+    messageId?: string;
+    isPrivate?: boolean;
   };
+  history: RelayConversationTurn[];
   origin: {
     platform: RelayThreadPlatform;
     channelId: string;
@@ -27,12 +37,14 @@ export type RelayReplyThread = {
     bot: WorldLoreCharacter;
     senderUsername: string;
     senderUserId?: string;
+    messageId?: string;
+    isPrivate?: boolean;
   };
 };
 
 const THREAD_FILE = 'data/relay-reply-threads.json';
 const MAX_THREADS = 100;
-export const RELAY_REPLY_TTL_MS = 5 * 60 * 1000;
+export const RELAY_REPLY_TTL_MS = 10 * 60 * 1000;
 const writeLocks = new Map<string, Promise<void>>();
 
 function contextKey(tenantId?: string): string {
@@ -110,6 +122,9 @@ export async function recordRelayReplyThread(input: {
   recipientUserId?: string;
   deliveryPlatform: RelayThreadPlatform;
   deliveryChannelId: string;
+  deliveryMessageId?: string;
+  deliveryIsPrivate?: boolean;
+  history?: RelayConversationTurn[];
   originPlatform: RelayThreadPlatform;
   originChannelId: string;
   originContextTenantId?: string;
@@ -117,6 +132,8 @@ export async function recordRelayReplyThread(input: {
   originBot: WorldLoreCharacter;
   originSenderUsername: string;
   originSenderUserId?: string;
+  originMessageId?: string;
+  originIsPrivate?: boolean;
 }): Promise<RelayReplyThread> {
   const now = Date.now();
   const thread: RelayReplyThread = {
@@ -131,7 +148,10 @@ export async function recordRelayReplyThread(input: {
     delivery: {
       platform: input.deliveryPlatform,
       channelId: String(input.deliveryChannelId || '').trim(),
+      messageId: String(input.deliveryMessageId || '').trim() || undefined,
+      isPrivate: input.deliveryIsPrivate || undefined,
     },
+    history: (input.history || []).slice(-12),
     origin: {
       platform: input.originPlatform,
       channelId: String(input.originChannelId || '').trim(),
@@ -140,6 +160,8 @@ export async function recordRelayReplyThread(input: {
       bot: input.originBot,
       senderUsername: String(input.originSenderUsername || '').trim(),
       senderUserId: String(input.originSenderUserId || '').trim() || undefined,
+      messageId: String(input.originMessageId || '').trim() || undefined,
+      isPrivate: input.originIsPrivate || undefined,
     },
   };
 

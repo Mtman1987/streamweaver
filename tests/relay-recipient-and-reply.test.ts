@@ -59,7 +59,7 @@ test('delivery instructions explain reply, close, and expiry behavior', () => {
   assert.match(instructions, /"reply"/);
   assert.match(instructions, /"yes"/);
   assert.match(instructions, /"no"/);
-  assert.match(instructions, /5 minutes/);
+  assert.match(instructions, /10 minutes/);
   assert.match(instructions, /original location/);
 });
 
@@ -83,8 +83,22 @@ test('community fallback and reply routing are wired independently of botshare',
   assert.match(dispatcher, /stableId: 'community:streamweaverbot'/);
   assert.match(dispatcher, /targetPlatformOverride/);
   assert.match(dispatcher, /sourceChannelId: replyChannel/);
-  assert.match(dispatcher, /They'll get instructions for replying back here/);
-  assert.match(store, /RELAY_REPLY_TTL_MS = 5 \* 60 \* 1000/);
+  assert.match(dispatcher, /recipientUserId \? `<@\$\{input\.recipientUserId\}>`/);
+  assert.match(dispatcher, /replaceTargetDiscordMessageId/);
+  assert.match(dispatcher, /editStructuredDiscordReply/);
+  assert.match(store, /RELAY_REPLY_TTL_MS = 10 \* 60 \* 1000/);
+  assert.match(store, /messageId\?: string/);
   assert.match(store, /thread\.delivery\.channelId === input\.channelId/);
   assert.match(store, /isIntendedRecipient/);
+});
+
+test('Discord DM relays are matched before the ordinary private AI response', () => {
+  const route = read('src/app/api/discord/chat/route.ts');
+  const relayMarker = route.indexOf('DMs use the same relay protocol as guild channels');
+  const privateLane = route.indexOf('if (isPrivateDiscordLane) {', relayMarker);
+
+  assert.ok(relayMarker > 0);
+  assert.ok(privateLane > relayMarker);
+  assert.match(route, /sourceDiscordIsPrivate: true/);
+  assert.match(route, /sourceDiscordRelayMessageId: acknowledgement\.messageId/);
 });

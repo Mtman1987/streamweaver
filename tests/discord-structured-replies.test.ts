@@ -38,7 +38,7 @@ test('structured Discord replies post the embed before deleting the triggering m
       if (url.startsWith('https://discord.test/webhook')) {
         calls.push('reply');
         const body = JSON.parse(String(init?.body || '{}'));
-        assert.equal(body.content, '');
+        assert.equal(body.content, '<@recipient-1>');
         assert.match(body.avatar_url, /\/assets\/space-logo-main\.png$/);
         assert.equal(body.embeds[0].author.name, 'Bot owned by SpaceMountain.live');
         assert.equal(body.embeds[0].title, 'Moonbeam • AI Answer');
@@ -59,6 +59,7 @@ test('structured Discord replies post the embed before deleting the triggering m
     const result = await sendStructuredDiscordReply({
       channelId: 'channel-1',
       message: 'The bot is online now.',
+      content: '<@recipient-1>',
       tenantId: 'tenant-1',
       botName: 'Moonbeam',
       responseType: 'AI Answer',

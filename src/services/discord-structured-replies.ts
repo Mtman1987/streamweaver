@@ -9,7 +9,7 @@ import {
 } from './discord-branding';
 import { getAvatarUrlForTenant } from './discord-webhook-avatar';
 import { recordDiscordMessageCleanup, getDiscordMessageCleanupDeleteAt } from './discord-message-cleanup';
-import { editWebhookMessage, sendWebhookMessage } from './discord-webhooks';
+import { deleteWebhookMessage, editWebhookMessage, sendWebhookMessage } from './discord-webhooks';
 import { getTwitchUser } from './twitch';
 import { attachPrivateDmControls, attachPublicDiscordControls } from './private-dm-controls';
 import { listPrivateGeneratedImageUrls } from './private-image-library';
@@ -27,6 +27,7 @@ export type DiscordReplySpeaker = {
 export type StructuredDiscordReplyInput = {
   channelId: string;
   message: string;
+  content?: string;
   tenantId?: string;
   botName?: string;
   title?: string;
@@ -49,6 +50,8 @@ export type StructuredDiscordReplyInput = {
   components?: Record<string, unknown>[];
   extraEmbeds?: Record<string, unknown>[];
   embedUrl?: string;
+  footerText?: string;
+  forceCleanup?: boolean;
 };
 
 let rotatingSpeakerIndex = 0;
@@ -201,7 +204,9 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     rotateSpeaker: effectiveInput.isPrivate ? false : effectiveInput.rotateSpeaker,
     isPrivate: effectiveInput.isPrivate,
   });
-  const deleteAt = effectiveInput.isPrivate ? '' : getDiscordMessageCleanupDeleteAt();
+  const deleteAt = effectiveInput.isPrivate && !effectiveInput.forceCleanup
+    ? ''
+    : getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const botAvatar = firstUrl(
     webhookIdentity.avatarUrl,
@@ -228,6 +233,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     thumbnailUrl: firstUrl(effectiveInput.thumbnailUrl, botAvatar),
     color: effectiveInput.color,
     fields: effectiveInput.fields,
+    footerText: effectiveInput.footerText,
   });
 
   embed.author = {
@@ -239,7 +245,7 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
   embed.footer = { ...embed.footer, icon_url: requesterLogo };
 
   return {
-    content: '',
+    content: effectiveInput.content || '',
     embeds: [
       effectiveInput.embedUrl ? { ...embed, url: effectiveInput.embedUrl } : embed,
       ...(effectiveInput.extraEmbeds || []),
@@ -306,7 +312,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   );
 
   const botTokenPayload = {
-    content: '',
+    content: payload.content,
     embeds: payload.embeds,
     ...(replyInput.components?.length ? { components: replyInput.components } : {}),
   };
@@ -315,7 +321,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   try {
     sent = replyInput.isPrivate || replyInput.components?.length || (!speaker.tenantId && !replyInput.tenantId)
       ? await sendDiscordEmbed(replyInput.channelId, botTokenPayload)
-      : await sendWebhookMessage(replyInput.channelId, replyInput.message, webhookIdentity.username, avatarUrl, payload.embeds);
+      : await sendWebhookMessage(replyInput.channelId, payload.content, webhookIdentity.username, avatarUrl, payload.embeds);
   } catch (error) {
     console.warn('[Discord Reply] Webhook reply failed; retrying through the bot-token embed route:', error);
     sent = await sendDiscordEmbed(replyInput.channelId, botTokenPayload);
@@ -369,7 +375,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
     await deleteMessage(replyInput.channelId, replyInput.sourceMessageId).catch(() => {});
   }
 
-  if (!replyInput.isPrivate) {
+  if (!replyInput.isPrivate || replyInput.forceCleanup) {
     await recordDiscordMessageCleanup({
       tenantId: speaker.tenantId || replyInput.tenantId,
       channelId: replyInput.channelId,
@@ -387,4 +393,75 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
     deleteAt,
     speaker,
   };
+}
+
+export async function editStructuredDiscordReply(
+  messageId: string,
+  input: StructuredDiscordReplyInput,
+): Promise<{ edited: boolean; deleteAt: string; speaker: DiscordReplySpeaker }> {
+  const effectiveInput = await resolveStructuredDiscordReplyInput(input);
+  const payload = await buildStructuredDiscordReplyPayload(effectiveInput);
+  let embeds = payload.embeds;
+  try {
+    if (effectiveInput.isPrivate) {
+      embeds = attachPrivateDmControls(embeds, {
+        channelId: effectiveInput.channelId,
+        messageId,
+        gifEnabled: effectiveInput.gifEnabled !== false,
+        ttsEnabled: effectiveInput.ttsEnabled === true,
+        adultMode: effectiveInput.adultMode === true,
+      });
+    } else {
+      const controlTenantId = payload.speaker.tenantId || effectiveInput.tenantId;
+      if (controlTenantId) {
+        embeds = attachPublicDiscordControls(embeds, {
+          channelId: effectiveInput.channelId,
+          messageId,
+          tenantId: controlTenantId,
+          gifVisible: false,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('[Discord Reply] Failed to preserve emoji controls while editing:', error);
+  }
+  const body = {
+    content: payload.content,
+    embeds,
+    ...(effectiveInput.components?.length ? { components: effectiveInput.components } : {}),
+  };
+
+  let edited = false;
+  try {
+    await editDiscordMessage(effectiveInput.channelId, messageId, body);
+    edited = true;
+  } catch {
+    edited = await editWebhookMessage(effectiveInput.channelId, messageId, body);
+  }
+
+  if (edited && effectiveInput.sourceMessageId && !effectiveInput.isPrivate) {
+    await deleteMessage(effectiveInput.channelId, effectiveInput.sourceMessageId).catch(() => {});
+  }
+  if (edited && (!effectiveInput.isPrivate || effectiveInput.forceCleanup)) {
+    await recordDiscordMessageCleanup({
+      tenantId: payload.speaker.tenantId || effectiveInput.tenantId,
+      channelId: effectiveInput.channelId,
+      replyMessageIds: [messageId],
+      replyMessages: [effectiveInput.message],
+      sourceUser: effectiveInput.sourceUser,
+      botName: payload.speaker.botName,
+      triggerMessage: effectiveInput.sourceMessage,
+    }).catch(() => {});
+  }
+
+  return { edited, deleteAt: payload.deleteAt, speaker: payload.speaker };
+}
+
+export async function deleteStructuredDiscordReply(channelId: string, messageId: string): Promise<boolean> {
+  try {
+    await deleteMessage(channelId, messageId);
+    return true;
+  } catch {
+    return deleteWebhookMessage(channelId, messageId).catch(() => false);
+  }
 }

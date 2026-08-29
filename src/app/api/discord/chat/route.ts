@@ -576,6 +576,145 @@ export async function POST(request: NextRequest) {
       return apiOk({ success: true, botResponded: Boolean(replyChannelId), ignored: result.ignored, target: result.label, replies: relayOnly ? collectedReplies : undefined });
     }
 
+    // DMs use the same relay protocol as guild channels. Handle replies and
+    // new human-issued relay requests before the ordinary private AI lane.
+    if (isPrivateDiscordLane && !isDiscordBotAuthor(data) && channelId && tenantId) {
+      const dmBotName = botMatch?.botName || getBotName(tenantId);
+      const dmLore = await readWorldLore();
+      const dmCharacters = Object.values(dmLore?.characters || {});
+      const dmSpeaker = resolveDiscordRelaySpeaker({
+        characters: dmCharacters,
+        botName: dmBotName,
+        tenantId,
+        trigger: botMatch?.trigger,
+      });
+      const relayReply = await handleBotRelayReply({
+        sourcePlatform: 'discord',
+        sourceChannelId: channelId,
+        sourceContextTenantId: tenantId,
+        sourceUserName: userName,
+        sourceUserId: userId,
+        sourceMessageId: normalized.messageId,
+        sourceDiscordIsPrivate: true,
+        speaker: dmSpeaker,
+        speakerTenantId: tenantId,
+        message,
+        botNames: [
+          dmBotName,
+          botMatch?.trigger || '',
+          dmSpeaker.currentName,
+          ...(dmSpeaker.aliases || []),
+          ...(dmSpeaker.previousNames || []),
+        ],
+      });
+      if (relayReply.matched) {
+        await markDmMessageHandled(tenantId, normalized.messageId);
+        if (relayReply.closed || relayReply.missingMessage || relayReply.delivered) {
+          return apiOk({
+            success: true,
+            botResponded: true,
+            relayReply: true,
+            relayDelivered: Boolean(relayReply.delivered),
+            relayClosed: Boolean(relayReply.closed),
+          });
+        }
+        await sendStructuredDiscordReply({
+          channelId,
+          message: relayReply.error === 'no-pending-relay'
+            ? 'There is no active relay for you in this DM. Relay invitations expire after 10 minutes.'
+            : `I couldn't send that reply: ${relayReply.error || 'unknown relay error'}`,
+          tenantId,
+          botName: dmBotName,
+          responseType: 'Message Relay',
+          isPrivate: true,
+          forceCleanup: true,
+        });
+        return apiOk({ success: true, botResponded: true, relayReply: true });
+      }
+
+      const dmRelayRequest = await detectBotRelayRequestWithAi({
+        message,
+        speakerName: dmSpeaker.currentName,
+        targets: dmCharacters.filter((character) => character.stableId !== dmSpeaker.stableId),
+        tenantId,
+        platform: 'discord',
+      });
+      if (dmRelayRequest.matched && dmRelayRequest.relayMessage) {
+        const deliverySpeaker = await resolveHumanRelaySpeaker({
+          sourcePlatform: 'discord',
+          sourceUserName: userName,
+          sourceUserId: userId,
+        });
+        const resolvedRelayTarget = await resolveRelayTarget({
+          namedTarget: dmRelayRequest.targetName,
+          structuredTarget: dmRelayRequest.target,
+          fallbackTenantId: tenantId,
+        });
+        if (!resolvedRelayTarget) {
+          await sendStructuredDiscordReply({
+            channelId,
+            message: `I couldn't figure out which bot or streamer to pass that to.`,
+            tenantId: deliverySpeaker.tenantId,
+            botName: deliverySpeaker.character.currentName,
+            responseType: 'Message Relay',
+            isPrivate: true,
+            forceCleanup: true,
+          });
+          await markDmMessageHandled(tenantId, normalized.messageId);
+          return apiOk({ success: true, botResponded: true, relayDelivered: false, relayError: 'target-unresolved' });
+        }
+
+        const acknowledgement = await sendStructuredDiscordReply({
+          channelId,
+          message: `I'll pass that along to ${resolvedRelayTarget.character.currentName} through ${deliverySpeaker.character.currentName}.`,
+          tenantId: deliverySpeaker.tenantId,
+          botName: deliverySpeaker.character.currentName,
+          responseType: 'Message Relay',
+          sourceMessage: message,
+          sourceUser: userName,
+          sourceUserAvatarUrl: userAvatar,
+          isPrivate: true,
+          forceCleanup: true,
+          footerText: 'Waiting for a reply • deletes 10m after last activity',
+        });
+        const relayResult = await deliverBotRelay({
+          sourcePlatform: 'discord',
+          sourceChannelId: channelId,
+          sourceContextTenantId: tenantId,
+          sourceDiscordIsPrivate: true,
+          sourceDiscordRelayMessageId: acknowledgement.messageId,
+          sourceUserName: userName,
+          sourceUserId: userId,
+          triggerMessage: message,
+          speaker: deliverySpeaker.character,
+          speakerTenantId: deliverySpeaker.tenantId,
+          target: resolvedRelayTarget.character,
+          targetTenantId: resolvedRelayTarget.tenantId,
+          relayMessage: dmRelayRequest.relayMessage,
+          humanDirected: true,
+        });
+        if (!relayResult.delivered && relayResult.error) {
+          await sendStructuredDiscordReply({
+            channelId,
+            message: `I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`,
+            tenantId: deliverySpeaker.tenantId,
+            botName: deliverySpeaker.character.currentName,
+            responseType: 'Message Relay',
+            isPrivate: true,
+            forceCleanup: true,
+          });
+        }
+        await markDmMessageHandled(tenantId, normalized.messageId);
+        return apiOk({
+          success: true,
+          botResponded: true,
+          relayDelivered: relayResult.delivered,
+          relayMode: relayResult.mode || null,
+          context: 'private-relay',
+        });
+      }
+    }
+
     if (isPrivateDiscordLane) {
       if (!tenantId) {
         return apiOk({ success: true, botResponded: false, error: 'tenant-not-found' });
@@ -1030,6 +1169,8 @@ export async function POST(request: NextRequest) {
         sourceContextTenantId: replyBotTenantId,
         sourceUserName: userName,
         sourceUserId: userId,
+        sourceMessageId: normalized.messageId,
+        sourceDiscordIsPrivate: isDirectMessage,
         speaker: replySpeaker,
         speakerTenantId: replyBotTenantId,
         message,
@@ -1043,26 +1184,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (relayReply.matched) {
-        let replyText = '';
-        if (relayReply.closed) {
-          replyText = `Relay closed. I won't send anything back to ${relayReply.targetName || 'the original sender'}.`;
-        } else if (relayReply.missingMessage) {
-          replyText = 'Add your message after "reply" or "yes", or tell me "no" to close the relay.';
-        } else if (relayReply.delivered) {
-          replyText = `Your reply was sent back to ${relayReply.targetName || 'the original sender'} at the original location. They received the same reply options.`;
-        } else if (botMentioned) {
-          replyText = relayReply.error === 'no-pending-relay'
-            ? 'There is no active relay for you in this channel. Relay invitations expire after 5 minutes.'
-            : `I couldn't send that reply: ${relayReply.error || 'unknown relay error'}`;
-        }
-
-        if (replyText) {
-          await sendDiscordRouteReplyOrCollect(
-            channelId,
-            replyText,
-            replyBotName,
-            'Message Relay',
-          );
+        if (relayReply.closed || relayReply.missingMessage || relayReply.delivered) {
           return apiOk({
             success: true,
             botResponded: true,
@@ -1071,6 +1193,13 @@ export async function POST(request: NextRequest) {
             relayClosed: Boolean(relayReply.closed),
             replies: relayOnly ? collectedReplies : undefined,
           });
+        }
+        if (botMentioned) {
+          const replyText = relayReply.error === 'no-pending-relay'
+            ? 'There is no active relay for you in this channel. Relay invitations expire after 10 minutes.'
+            : `I couldn't send that reply: ${relayReply.error || 'unknown relay error'}`;
+          await sendDiscordRouteReplyOrCollect(channelId, replyText, replyBotName, 'Message Relay');
+          return apiOk({ success: true, botResponded: true, relayReply: true });
         }
       }
     }
@@ -1287,6 +1416,7 @@ export async function POST(request: NextRequest) {
         }
 
         const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName} through ${deliverySpeaker.character.currentName}. They'll get instructions for replying back here.`;
+        let sourceDiscordRelayMessageId: string | undefined;
         if (channelId) {
           const structuredInput = {
             channelId,
@@ -1299,12 +1429,15 @@ export async function POST(request: NextRequest) {
             sourceUser: userName,
             sourceUserAvatarUrl: userAvatar,
             isPrivate: isDirectMessage,
+            forceCleanup: true,
+            footerText: 'Waiting for a reply • deletes 10m after last activity',
           };
           if (relayOnly) {
             const payload = await buildStructuredDiscordReplyPayload(structuredInput);
             collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
           } else {
-            await sendStructuredDiscordReply(structuredInput);
+            const sent = await sendStructuredDiscordReply(structuredInput);
+            sourceDiscordRelayMessageId = sent.messageId;
           }
         }
 
@@ -1312,6 +1445,8 @@ export async function POST(request: NextRequest) {
           sourcePlatform: 'discord',
           sourceChannelId: channelId,
           sourceContextTenantId: tenantId || undefined,
+          sourceDiscordIsPrivate: isDirectMessage,
+          sourceDiscordRelayMessageId,
           sourceUserName: userName,
           sourceUserId: userId,
           triggerMessage: message,
@@ -1354,6 +1489,7 @@ export async function POST(request: NextRequest) {
       });
       if (resolvedRelayTarget) {
         const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
+        let sourceDiscordRelayMessageId: string | undefined;
         if (channelId) {
           const structuredInput = {
             channelId,
@@ -1366,18 +1502,26 @@ export async function POST(request: NextRequest) {
             sourceUser: userName,
             sourceUserAvatarUrl: userAvatar,
             isPrivate: isDirectMessage,
+            forceCleanup: true,
+            footerText: 'Waiting for a reply • deletes 10m after last activity',
           };
           if (relayOnly) {
             const payload = await buildStructuredDiscordReplyPayload(structuredInput);
             collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
           } else {
-            await sendStructuredDiscordReply(structuredInput);
+            const sent = await sendStructuredDiscordReply(structuredInput);
+            sourceDiscordRelayMessageId = sent.messageId;
           }
         }
 
         const relayResult = await deliverBotRelay({
           sourcePlatform: 'discord',
+          sourceChannelId: channelId,
+          sourceContextTenantId: tenantId || undefined,
+          sourceDiscordIsPrivate: isDirectMessage,
+          sourceDiscordRelayMessageId,
           sourceUserName: userName,
+          sourceUserId: userId,
           triggerMessage: message,
           speaker: botInteractionDecision.speaker,
           speakerTenantId: botTenantId || tenantId || undefined,
