@@ -40,6 +40,7 @@ test('Discord embeds use responder branding, requester footer, and explicit medi
       sourceUser: 'TestUser',
       sourceUserAvatarUrl: 'https://cdn.test/user.png',
       deleteAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      fields: [{ name: 'Question', value: 'This must not be duplicated.', inline: false }],
     });
     const imageEmbed = await buildDiscordBotEmbed({
       description: 'image prompt',
@@ -64,11 +65,7 @@ test('Discord embeds use responder branding, requester footer, and explicit medi
     assert.equal(privateEmbed.author.name, 'MediaBot');
     assert.match(privateEmbed.author.icon_url || '', /\/api\/discord-avatar\/idle\.gif\?tenant=tenant-media&v=/);
     assert.equal(privateEmbed.title, 'MediaBot • AI Answer');
-    assert.deepEqual(privateEmbed.fields, [{
-      name: 'Question',
-      value: 'Why is the bot offline?',
-      inline: false,
-    }]);
+    assert.equal(privateEmbed.fields, undefined);
     assert.match(privateEmbed.footer.text, /^Requested by TestUser • Why is the bot offline\? • deletes in 10m$/);
     assert.equal(privateEmbed.footer.icon_url, 'https://cdn.test/user.png');
     assert.ok(Number.isFinite(Date.parse(privateEmbed.timestamp)));

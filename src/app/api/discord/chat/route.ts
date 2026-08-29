@@ -28,7 +28,14 @@ import {
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
 import { registerHandledDiscordMessagePersisted } from '@/services/discord-message-dedupe';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
-import { checkDiscordStreamHubAdminAccess } from '@/services/discord-stream-hub';
+import {
+  checkDiscordStreamHubAdminAccess,
+  createDiscordStreamHubAdminCalendarEvent,
+} from '@/services/discord-stream-hub';
+import {
+  detectDiscordAdminCalendarCommand,
+  formatDiscordAdminCalendarEvent,
+} from '@/services/discord-admin-calendar-command';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/bot-relay';
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import { parseDiscordChatPayload } from '@/lib/discord-chat-payload';
@@ -1293,6 +1300,60 @@ export async function POST(request: NextRequest) {
         botName,
       });
       return apiOk({ success: true, botResponded: false, ignored: true, botName });
+    }
+
+    const calendarCommand = detectDiscordAdminCalendarCommand(message);
+    if (calendarCommand.matched) {
+      let calendarReply = calendarCommand.error || '';
+      let calendarAdded = false;
+      const canManageAdminCalendar = Boolean(permanentOwner || effectiveIsOwner || effectiveIsAdmin);
+
+      if (!calendarReply && !canManageAdminCalendar) {
+        calendarReply = `@${userName}, only a Discord Stream Hubs admin or the server owner can add Admin Calendar events.`;
+      } else if (!calendarReply && (!guildId || !userId || !calendarCommand.event)) {
+        calendarReply = 'I could not identify the Discord server, requester, or complete event details, so nothing was added.';
+      } else if (!calendarReply && calendarCommand.event) {
+        try {
+          await createDiscordStreamHubAdminCalendarEvent({
+            serverId: guildId,
+            userId,
+            missionName: calendarCommand.event.missionName,
+            missionDescription: calendarCommand.event.missionDescription || `Added through Discord by ${userName}.`,
+            missionDate: calendarCommand.event.missionDate,
+            missionTime: calendarCommand.event.missionTime,
+            missionTimeZone: calendarCommand.event.missionTimeZone,
+          });
+          calendarAdded = true;
+          calendarReply = `✅ Added **${calendarCommand.event.missionName}** to the Discord Stream Hubs Admin Calendar for **${formatDiscordAdminCalendarEvent(calendarCommand.event)}**.`;
+        } catch (error) {
+          console.error('[Discord Chat] Admin Calendar write failed:', error);
+          calendarReply = `⚠️ I could not add **${calendarCommand.event.missionName}** to the Discord Stream Hubs Admin Calendar. Nothing was added; please try again in a moment.`;
+        }
+      }
+
+      if (channelId) {
+        await sendDiscordRouteReplyOrCollect(
+          channelId,
+          calendarReply,
+          botName,
+          calendarAdded ? 'Calendar Event Added' : 'Calendar Command',
+        );
+      }
+      logDiscordTrace(traceId, 'admin-calendar-command', {
+        botName,
+        guildId: guildId || null,
+        userId: userId || null,
+        authorized: canManageAdminCalendar,
+        added: calendarAdded,
+        parseError: calendarCommand.error || null,
+      });
+      return apiOk({
+        success: true,
+        botResponded: Boolean(channelId),
+        calendarCommand: true,
+        calendarAdded,
+        replies: relayOnly ? collectedReplies : undefined,
+      });
     }
     console.log(`[Discord Chat] ${botName} mentioned by ${userName}, generating response for tenant ${botTenantId || 'global'}...`);
 

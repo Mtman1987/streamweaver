@@ -32,16 +32,12 @@ type PrivateTtsItem = {
 function buildSyntheticPreview(input: {
   botName: string;
   text: string;
-  question?: string;
   mediaUrl?: string;
 }): PreviewEmbed {
   return {
     author: { name: input.botName || 'Athena' },
     description: input.text,
     ...(input.mediaUrl ? { image: { url: input.mediaUrl } } : {}),
-    fields: input.question
-      ? [{ name: 'Question', value: input.question, inline: false }]
-      : [],
   };
 }
 
@@ -219,7 +215,6 @@ export default function PrivateDmTtsPlayer() {
             setPreview(buildSyntheticPreview({
               botName: String(data.botName || botName || 'Athena'),
               text: String(item.text || ''),
-              question: String(item.question || ''),
               mediaUrl: String(data.mediaUrl || mediaUrl || ''),
             }));
             enqueueAudio(item.audioDataUris);
