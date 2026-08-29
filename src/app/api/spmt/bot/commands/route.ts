@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
   const requestedTargetTenantId = firstString(body?.targetTenantId).slice(0, 128);
   const targetTenantId = requestedTargetTenantId || caller.tenantId;
   const isGuestBot = targetTenantId !== caller.tenantId;
+  const actionSource = botActionSource(body?.source || body?.sourceApp);
 
   if (isGuestBot && await getBotShareMode(targetTenantId) !== 'on') {
     return apiError('That bot is not shared for public room use', {
@@ -167,7 +168,8 @@ export async function POST(request: NextRequest) {
   const actionOutcome = isGuestBot ? null : await routeBotAction(command, {
     tenantId: targetTenantId,
     botName,
-    source: botActionSource(body?.source || body?.sourceApp),
+    source: actionSource,
+    visibility: actionSource === 'hearmeout' ? 'public' : 'private',
     message: command,
     requestId: firstString(body?.requestId, body?.messageId),
     guildId: firstString(body?.guildId, body?.serverId),

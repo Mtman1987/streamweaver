@@ -48,6 +48,7 @@ export type DiscordStreamHubAdminCalendarEventPayload = {
 export type DiscordStreamHubBotAction =
   | 'dsh.shoutouts.active.read'
   | 'dsh.shoutouts.live.read'
+  | 'dsh.shoutouts.post'
   | 'dsh.calendar.read'
   | 'dsh.calendar.captain.read'
   | 'dsh.calendar.captain.create'
@@ -55,7 +56,8 @@ export type DiscordStreamHubBotAction =
   | 'dsh.calendar.deploy'
   | 'dsh.calendar.refresh'
   | 'dsh.applications.read'
-  | 'dsh.applications.deploy';
+  | 'dsh.applications.deploy'
+  | 'dsh.applications.decide';
 
 export type DiscordStreamHubBotActionPayload = {
   action: DiscordStreamHubBotAction;
@@ -71,6 +73,10 @@ export type DiscordStreamHubBotActionPayload = {
   missionTimeZone?: string;
   status?: string;
   type?: string;
+  target?: string;
+  application?: string;
+  decision?: string;
+  requesterName?: string;
   idempotencyKey?: string;
 };
 

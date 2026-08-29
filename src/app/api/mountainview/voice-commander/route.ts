@@ -331,6 +331,7 @@ export async function POST(request: NextRequest) {
       tenantId,
       botName: getBotName(tenantId),
       source: 'mountainview',
+      visibility: command.destination === 'private' ? 'private' : 'public',
       message: transcript,
       requestId: firstString(payload.requestId, nestedPayload.requestId),
       guildId: firstString(payload.guildId, payload.serverId, nestedPayload.guildId, nestedPayload.serverId),
