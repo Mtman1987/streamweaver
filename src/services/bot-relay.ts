@@ -44,9 +44,9 @@ function relationshipTarget(normalized: string, speakerName: string | undefined,
 }
 
 function nestedRelayToHandle(normalized: string): BotRelayRequest | null {
-  const match = normalized.match(/\\b(?:pass|send|relay)\\s+(?:a\\s+)?message\\s+to\\s+@?([a-z0-9_][a-z0-9_-]{1,49})\\b(?:\\s+that)?[\\s,:-]*(.+)?$/i);
+  const match = normalized.match(/\b(?:pass|send|relay)\s+(?:a\s+)?message\s+to\s+@?([a-z0-9_][a-z0-9_-]{1,49})\b(?:\s+that)?[\s,:-]*(.+)?$/i);
   const targetName = String(match?.[1] || '').trim();
-  const relayMessage = String(match?.[2] || '').trim().replace(/^that\\s+/i, '').trim();
+  const relayMessage = String(match?.[2] || '').trim().replace(/^that\s+/i, '').trim();
   if (!targetName || !relayMessage) return null;
   return {
     matched: true,
