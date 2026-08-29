@@ -8,9 +8,11 @@ export type RelayThreadPlatform = 'twitch' | 'discord';
 
 export type RelayReplyThread = {
   id: string;
+  conversationId: string;
   createdAt: string;
   expiresAt: string;
   recipientContextTenantId?: string;
+  conversationId?: string;
   recipientBot: WorldLoreCharacter;
   recipientUsername?: string;
   recipientUserId?: string;
@@ -119,6 +121,7 @@ export async function recordRelayReplyThread(input: {
   const now = Date.now();
   const thread: RelayReplyThread = {
     id: `relay-thread-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    conversationId: String(input.conversationId || '').trim() || `relay-conversation-${now}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + RELAY_REPLY_TTL_MS).toISOString(),
     recipientContextTenantId: String(input.recipientContextTenantId || '').trim() || undefined,
@@ -179,9 +182,13 @@ export async function completeRelayReplyThread(
 ): Promise<void> {
   await withThreadWriteLock(recipientContextTenantId, async () => {
     const existing = await readThreads(recipientContextTenantId);
+    const selected = existing.find((entry) => entry.id === threadId);
     await writeThreads(
       recipientContextTenantId,
-      existing.filter((entry) => entry.id !== threadId),
+      existing.filter((entry) =>
+        entry.id !== threadId
+        && (!selected?.conversationId || entry.conversationId !== selected.conversationId)
+      ),
     );
   });
 }
