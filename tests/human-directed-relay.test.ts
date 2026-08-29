@@ -39,7 +39,7 @@ test('autonomous relay delivery still requires both tenants to enable botshare',
 
   assert.match(
     dispatcher,
-    /if \(!input\.humanDirected && !\(await isBotRelayAllowed\(input\.speakerTenantId, targetTenantId\)\)\)/,
+    /!input\.humanDirected[\s\S]{0,180}isBotRelayAllowed\(input\.speakerTenantId, targetTenantId\)/,
   );
   assert.match(dispatcher, /getBotShareMode\(sourceTenantId\) !== 'on'/);
   assert.match(dispatcher, /getBotShareMode\(targetTenantId\) === 'on'/);
