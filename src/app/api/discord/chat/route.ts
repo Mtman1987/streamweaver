@@ -16,7 +16,15 @@ import { buildStructuredDiscordReplyPayload, sendStructuredDiscordReply } from '
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
-import { buildDirectHumanRelayMessage, deliverBotRelay, handleDiscordMessage, isDirectHumanRelayTarget, resolveRelayTarget } from '@/services/chat-dispatcher';
+import {
+  buildDirectHumanRelayMessage,
+  deliverBotRelay,
+  handleBotRelayReply,
+  handleDiscordMessage,
+  isDirectHumanRelayTarget,
+  resolveHumanRelaySpeaker,
+  resolveRelayTarget,
+} from '@/services/chat-dispatcher';
 import { markDmMessageHandled } from '@/services/discord-dm-sweep-state';
 import { registerHandledDiscordMessagePersisted } from '@/services/discord-message-dedupe';
 import { hasDiscordModAccess } from '@/services/discord-permissions';
@@ -1001,6 +1009,69 @@ export async function POST(request: NextRequest) {
         }
       } catch (e) {
         console.warn('[Discord Chat] Twitch bridge failed:', e);
+      }
+    }
+
+    // A short-lived relay invitation may be answered with a bot mention or
+    // simply "reply"/"yes" plus a message (or "no") in the delivery channel.
+    if (!isDiscordBotAuthor(data) && channelId) {
+      const replyBotTenantId = botMatch?.tenantId || tenantId || undefined;
+      const replyBotName = botMatch?.botName || getBotName(replyBotTenantId);
+      const replyLore = await readWorldLore();
+      const replySpeaker = resolveDiscordRelaySpeaker({
+        characters: Object.values(replyLore?.characters || {}),
+        botName: replyBotName,
+        tenantId: replyBotTenantId,
+        trigger: botMatch?.trigger,
+      });
+      const relayReply = await handleBotRelayReply({
+        sourcePlatform: 'discord',
+        sourceChannelId: channelId,
+        sourceContextTenantId: replyBotTenantId,
+        sourceUserName: userName,
+        sourceUserId: userId,
+        speaker: replySpeaker,
+        speakerTenantId: replyBotTenantId,
+        message,
+        botNames: [
+          replyBotName,
+          botMatch?.trigger || '',
+          replySpeaker.currentName,
+          ...(replySpeaker.aliases || []),
+          ...(replySpeaker.previousNames || []),
+        ],
+      });
+
+      if (relayReply.matched) {
+        let replyText = '';
+        if (relayReply.closed) {
+          replyText = `Relay closed. I won't send anything back to ${relayReply.targetName || 'the original sender'}.`;
+        } else if (relayReply.missingMessage) {
+          replyText = 'Add your message after "reply" or "yes", or tell me "no" to close the relay.';
+        } else if (relayReply.delivered) {
+          replyText = `Your reply was sent back to ${relayReply.targetName || 'the original sender'} at the original location. They received the same reply options.`;
+        } else if (botMentioned) {
+          replyText = relayReply.error === 'no-pending-relay'
+            ? 'There is no active relay for you in this channel. Relay invitations expire after 5 minutes.'
+            : `I couldn't send that reply: ${relayReply.error || 'unknown relay error'}`;
+        }
+
+        if (replyText) {
+          await sendDiscordRouteReplyOrCollect(
+            channelId,
+            replyText,
+            replyBotName,
+            'Message Relay',
+          );
+          return apiOk({
+            success: true,
+            botResponded: true,
+            relayReply: true,
+            relayDelivered: Boolean(relayReply.delivered),
+            relayClosed: Boolean(relayReply.closed),
+            replies: relayOnly ? collectedReplies : undefined,
+          });
+        }
       }
     }
 
