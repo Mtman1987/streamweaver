@@ -169,7 +169,8 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
       'Shared bot commands work across tenant bots:',
       '`spmt status`, `spmt live`, `spmt current`, `spmt leaderboard`, `spmt apps`, and `spmt music`.',
       'You can also ask naturally, such as “who is live?” or “who is IT?”.',
-      'Installed `!commands` continue to use the normal StreamWeaver command dispatcher.',
+      'Natural Discord requests also cover points, profiles, watchtime, leaderboards, Pokemon collections, social actions, trades, and games.',
+      'Ask to “show all Discord commands” for the full installed `!commands` directory.',
     ].join(' ');
   }
 
