@@ -17,11 +17,11 @@ const PUBLIC_PATHS = [
 
 const MACHINE_PATHS = [
   '/api/discord/chat', '/api/integrations/social-stream', '/api/ai/shoutout',
+  '/api/ai/image',
   '/api/kick/chat-tag-broadcast', '/api/quackverse/pack-overlay',
   '/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator',
-  // This route performs its own service-auth check. Do not force a human SPMT
-  // session in middleware before DiscordStreamHub's machine credential can be
-  // evaluated by the route itself.
+  // These routes perform their own service-auth checks. Do not force a human SPMT
+  // session in middleware before machine credentials can be evaluated by the route itself.
   '/api/internal/known-bots',
 ];
 
