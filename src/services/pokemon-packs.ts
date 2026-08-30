@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { addCardsToUser } from './pokemon-collection';
+import { normalizeCardPackEvent } from '@/lib/card-pack-event';
 
 const CARDS_DB_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
 const SETS_FILE = path.join(process.cwd(), 'pokemon-tcg-data-master', 'sets', 'en.json');
@@ -19,7 +20,6 @@ function loadAllSets(): { id: string; name: string }[] {
   }
 }
 
-/** Build the numbered set menu from enabledSets config. Returns map of 1-based index to {code, name}. */
 export function getEnabledSetMap(enabledSets: string[]): Record<number, { code: string; name: string }> {
   const all = loadAllSets();
   const map: Record<number, { code: string; name: string }> = {};
@@ -33,7 +33,6 @@ export function getEnabledSetMap(enabledSets: string[]): Record<number, { code: 
   return map;
 }
 
-/** Format the set list string for chat. */
 export function formatSetList(setMap: Record<number, { code: string; name: string }>): string {
   const entries = Object.entries(setMap).map(([n, s]) => `${n}.${s.name}`);
   return `PokePacks: ${entries.join(' ')}`;
@@ -49,8 +48,24 @@ function normalizeTenantId(tenantId?: string): string | undefined {
   return tenantId;
 }
 
+function broadcastPack(pack: any[], setName: string, username: string, tenantId?: string, eventId?: string) {
+  const canonical = normalizeCardPackEvent({
+    eventId: eventId || `pokemon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    game: 'pokemon',
+    pack,
+    setName,
+    username,
+  });
+  if (typeof (global as any).broadcast === 'function') {
+    const broadcastTenantId = normalizeTenantId(tenantId);
+    const legacyPayload = { eventId: canonical.eventId, pack, setName, username, game: 'pokemon' };
+    (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, broadcastTenantId);
+    (global as any).broadcast({ type: 'pokemon-pack-opened', payload: legacyPayload }, broadcastTenantId);
+  }
+  return canonical.eventId;
+}
+
 export async function openPack(setNumber: number, username: string, enabledSets?: string[], tenantId?: string) {
-  // Load enabled sets from config if not provided
   let sets = enabledSets;
   if (!sets) {
     try {
@@ -70,7 +85,6 @@ export async function openPack(setNumber: number, username: string, enabledSets?
   if (!fs.existsSync(filePath)) return null;
 
   const cardData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-
   const common = cardData.filter((c: any) => c.rarity === 'Common');
   const uncommon = cardData.filter((c: any) => c.rarity === 'Uncommon');
   const rare = cardData.filter((c: any) => c.rarity === 'Rare' || c.rarity === 'Rare Holo');
@@ -80,7 +94,6 @@ export async function openPack(setNumber: number, username: string, enabledSets?
   if (common.length >= 4 && uncommon.length >= 3 && rare.length >= 1 && other.length >= 1) {
     picked = [...pickRandom(common, 4), ...pickRandom(uncommon, 3), ...pickRandom(rare, 1), ...pickRandom(other, 1)];
   } else if (cardData.length >= POKEMON_PACK_SIZE) {
-    // Promo or non-standard sets use the same nine-card pack contract.
     picked = pickRandom(cardData, POKEMON_PACK_SIZE);
     console.log(`[Pokemon] ${setInfo.name} uses fallback pack (non-standard rarities)`);
   } else {
@@ -93,25 +106,16 @@ export async function openPack(setNumber: number, username: string, enabledSets?
     number: card.number,
     setCode: setInfo.code,
     rarity: card.rarity || 'Common',
-    imageUrl: card.images?.large || `https://images.pokemontcg.io/${setInfo.code}/${card.number}.png`
+    imageUrl: card.images?.large || `https://images.pokemontcg.io/${setInfo.code}/${card.number}.png`,
   }));
 
   console.log(`[Pokemon] ${username} opened ${setInfo.name} pack`);
   await addCardsToUser(username, pack);
-
-  if (typeof (global as any).broadcast === 'function') {
-    const payload = { pack, setName: setInfo.name, username };
-    const broadcastTenantId = normalizeTenantId(tenantId);
-    (global as any).broadcast({ type: 'pokemon-pack-open', payload }, broadcastTenantId);
-    (global as any).broadcast({ type: 'pokemon-pack-opened', payload }, broadcastTenantId);
-  }
-
-  return { pack, setName: setInfo.name, setCode: setInfo.code, username };
+  const eventId = broadcastPack(pack, setInfo.name, username, tenantId);
+  return { pack, setName: setInfo.name, setCode: setInfo.code, username, eventId };
 }
 
-// Eevee family national dex numbers
 const EEVEE_DEX = new Set([133, 134, 135, 136, 196, 197, 470, 471, 700]);
-
 let eeveePoolCache: any[] | null = null;
 
 function loadEeveePool(): any[] {
@@ -136,7 +140,7 @@ export async function openEeveePack(username: string, tenantId?: string) {
 
   const common = pool.filter(c => c.rarity === 'Common');
   const uncommon = pool.filter(c => c.rarity === 'Uncommon');
-  const rare = pool.filter(c => c.rarity && (c.rarity.includes('Rare')));
+  const rare = pool.filter(c => c.rarity && c.rarity.includes('Rare'));
   const any = pool;
 
   let picked: any[];
@@ -151,18 +155,11 @@ export async function openEeveePack(username: string, tenantId?: string) {
     number: card.number,
     setCode: card._setCode,
     rarity: card.rarity || 'Common',
-    imageUrl: card.images?.large || `https://images.pokemontcg.io/${card._setCode}/${card.number}.png`
+    imageUrl: card.images?.large || `https://images.pokemontcg.io/${card._setCode}/${card.number}.png`,
   }));
 
   console.log(`[Pokemon] ${username} opened an Eevee booster pack`);
   await addCardsToUser(username, pack);
-
-  if (typeof (global as any).broadcast === 'function') {
-    const payload = { pack, setName: 'Eevee Booster', username };
-    const broadcastTenantId = normalizeTenantId(tenantId);
-    (global as any).broadcast({ type: 'pokemon-pack-open', payload }, broadcastTenantId);
-    (global as any).broadcast({ type: 'pokemon-pack-opened', payload }, broadcastTenantId);
-  }
-
-  return { pack, setName: 'Eevee Booster', username };
+  const eventId = broadcastPack(pack, 'Eevee Booster', username, tenantId);
+  return { pack, setName: 'Eevee Booster', username, eventId };
 }
