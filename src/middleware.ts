@@ -20,9 +20,8 @@ const MACHINE_PATHS = [
   '/api/ai/image',
   '/api/kick/chat-tag-broadcast', '/api/quackverse/pack-overlay',
   '/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator',
-  // These routes perform their own service-auth checks. Do not force a human
-  // SPMT session in middleware before machine credentials can be evaluated by
-  // the route itself.
+  // These routes perform their own service-auth checks. Do not force a human SPMT
+  // session in middleware before machine credentials can be evaluated by the route itself.
   '/api/internal/known-bots',
 ];
 
