@@ -5,6 +5,7 @@ const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').r
 export type SpmtDiscordIdentity = {
   discordUserId: string;
   discordUsername: string;
+  isAdmin: boolean;
 };
 
 function firstString(...values: unknown[]): string {
@@ -13,6 +14,16 @@ function firstString(...values: unknown[]): string {
     if (normalized) return normalized;
   }
   return '';
+}
+
+function spmtIdentityIsAdmin(user: any): boolean {
+  if (user?.isAdmin === true || user?.is_admin === true || user?.is_admin === 1) return true;
+  const role = firstString(user?.role).toLowerCase();
+  if (role === 'admin' || role === 'owner') return true;
+  const roles = Array.isArray(user?.roles)
+    ? user.roles.map((value: unknown) => firstString(value).toLowerCase())
+    : [];
+  return roles.includes('admin') || roles.includes('owner');
 }
 
 export async function getSpmtDiscordIdentity(request: NextRequest): Promise<SpmtDiscordIdentity | null> {
@@ -25,7 +36,8 @@ export async function getSpmtDiscordIdentity(request: NextRequest): Promise<Spmt
   });
   if (!response.ok) return null;
 
-  const user = await response.json().catch(() => null) as any;
+  const payload = await response.json().catch(() => null) as any;
+  const user = payload?.user || payload?.profile || payload;
   const discord = user?.discord || user?.identities?.discord || {};
   const discordUserId = firstString(
     user?.discordUserId,
@@ -47,5 +59,6 @@ export async function getSpmtDiscordIdentity(request: NextRequest): Promise<Spmt
       discord?.display_name,
       discord?.username,
     ),
+    isAdmin: spmtIdentityIsAdmin(user),
   };
 }
