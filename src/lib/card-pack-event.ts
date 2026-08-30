@@ -68,5 +68,5 @@ export function encodeCardPackEvent(event: CardPackOpenedEvent): string {
 
 export function buildCardPackRenderUrl(event: CardPackOpenedEvent): string {
   const base = String(process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || process.env.STREAMWEAVER_URL || 'https://streamweaver-new.fly.dev').replace(/\/$/, '');
-  return `${base}/card-pack-overlay?event=${encodeURIComponent(encodeCardPackEvent(event))}&capture=1`;
+  return `${base}/overlay/card-pack?event=${encodeURIComponent(encodeCardPackEvent(event))}&capture=1`;
 }
