@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { getSpmtDiscordIdentity } from '@/lib/spmt-userinfo';
 import { deleteMessage, editDiscordMessage, getDiscordMessage } from '@/services/discord-local';
 import { editWebhookMessage } from '@/services/discord-webhooks';
 import {
@@ -67,6 +68,12 @@ function requireOwningTenant(request: NextRequest, tenantId: string) {
   return session?.tenantId === tenantId ? session : null;
 }
 
+async function canDeletePublicReply(request: NextRequest, tenantId: string): Promise<boolean> {
+  if (requireOwningTenant(request, tenantId)) return true;
+  const spmtIdentity = await getSpmtDiscordIdentity(request).catch(() => null);
+  return spmtIdentity?.isAdmin === true;
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as PublicControlBody | null;
   const token = String(body?.token || '').trim();
@@ -80,10 +87,18 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // The strip is intentionally visible on public bot replies, but actions are
-  // owner controls. Without this gate any viewer could mutate the shared GIF,
-  // delete a reply, or repeatedly trigger paid TTS synthesis from a public link.
-  if (!requireOwningTenant(request, control.tenantId)) {
+  // Public AI replies keep their existing owner-only controls for GIF, TTS and
+  // settings so random viewers cannot mutate shared GIFs or repeatedly trigger paid TTS synthesis.
+  // Delete is the one moderator-style action: either the owning tenant or an
+  // SPMT/DSH administrator may remove a public reply.
+  if (action === 'delete') {
+    if (!await canDeletePublicReply(request, control.tenantId)) {
+      return apiError('Only the bot owner or an approved SpaceMountain administrator can delete this public reply.', {
+        status: 403,
+        code: 'PUBLIC_DELETE_FORBIDDEN',
+      });
+    }
+  } else if (!requireOwningTenant(request, control.tenantId)) {
     return apiError('Sign in to the StreamWeaver account that owns this bot to use its public reply controls.', {
       status: 401,
       code: 'TENANT_AUTH_REQUIRED',
