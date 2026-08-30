@@ -88,8 +88,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Public AI replies keep their existing owner-only controls for GIF, TTS and
-  // settings. Delete is the one moderator-style action: either the owning tenant
-  // or an SPMT/DSH administrator may remove a public reply.
+  // settings so random viewers cannot mutate shared GIFs or repeatedly trigger paid TTS synthesis.
+  // Delete is the one moderator-style action: either the owning tenant or an
+  // SPMT/DSH administrator may remove a public reply.
   if (action === 'delete') {
     if (!await canDeletePublicReply(request, control.tenantId)) {
       return apiError('Only the bot owner or an approved SpaceMountain administrator can delete this public reply.', {
