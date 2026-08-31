@@ -57,10 +57,14 @@ jobs:
     needs: branch-housekeeping
     name: Deploy app
     runs-on: ubuntu-latest
-    concurrency: deploy-group    # optional: ensure only one action runs at a time
+    concurrency:
+      group: deploy-group
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v5
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only --no-cache --lease-timeout 2m --deploy-retries 3 --build-arg BUILD_SHA=${{ github.sha }} --build-arg GITHUB_SHA=${{ github.sha }} --build-arg GH_SHA=${{ github.sha }}
+      - name: Deploy app from GitHub runner
+        run: flyctl deploy --local-only --no-cache --lease-timeout 2m --deploy-retries 3 --build-arg BUILD_SHA=${{ github.sha }} --build-arg GITHUB_SHA=${{ github.sha }} --build-arg GH_SHA=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          NO_COLOR: "1"
