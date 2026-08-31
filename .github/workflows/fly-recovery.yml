@@ -1,0 +1,65 @@
+name: Fly Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Recovery mode
+        required: true
+        default: diagnose
+        type: choice
+        options:
+          - diagnose
+          - restart
+          - replace
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Inspect StreamWeaver state
+        shell: bash
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo '=== app status ==='
+          flyctl status --app streamweaver-new || true
+          echo '=== machine list ==='
+          flyctl machine list --app streamweaver-new || true
+          echo '=== volume list ==='
+          flyctl volumes list --app streamweaver-new || true
+          echo '=== releases ==='
+          flyctl releases --app streamweaver-new || true
+          echo '=== checks ==='
+          flyctl checks list --app streamweaver-new || true
+
+      - name: Restart unhealthy app machines
+        if: ${{ inputs.mode == 'restart' }}
+        shell: bash
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          ids=$(flyctl machine list --app streamweaver-new --json | jq -r '.[] | select(.state != "destroyed") | .id')
+          test -n "$ids"
+          for id in $ids; do
+            echo "Restarting machine $id"
+            flyctl machine restart "$id" --app streamweaver-new --yes
+          done
+          flyctl status --app streamweaver-new
+
+      - name: Replace app machine while preserving volume
+        if: ${{ inputs.mode == 'replace' }}
+        shell: bash
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo 'A replace is intentionally not automated blindly.'
+          echo 'The diagnostic output above must identify the target machine and attached volume first.'
+          exit 2
