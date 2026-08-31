@@ -18,6 +18,25 @@ export type ImageGenerationOptions = {
   providerParams?: Record<string, unknown>;
 };
 
+export const EDEN_IMAGE_PROMPT_MAX_LENGTH = 1500;
+
+export function compactImagePrompt(prompt: string, maxLength: number): string {
+  const normalized = String(prompt || '').replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+
+  const clipped = normalized.slice(0, maxLength);
+  const lastBoundary = Math.max(
+    clipped.lastIndexOf('. '),
+    clipped.lastIndexOf('; '),
+    clipped.lastIndexOf(', '),
+    clipped.lastIndexOf(' '),
+  );
+  return (lastBoundary >= Math.floor(maxLength * 0.8)
+    ? clipped.slice(0, lastBoundary + (clipped[lastBoundary] === ' ' ? 0 : 1))
+    : clipped
+  ).trim();
+}
+
 function readResponseBody(response: Response): Promise<unknown> {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   if (contentType.includes('application/json')) {
@@ -236,7 +255,7 @@ export function buildEdenAIImagePayload(options: ImageGenerationOptions, default
   return {
     model: normalizeEdenImageModel(options.model || defaultModel),
     input: {
-      text: options.prompt,
+      text: compactImagePrompt(options.prompt, EDEN_IMAGE_PROMPT_MAX_LENGTH),
       ...(options.resolution ? { resolution: options.resolution } : {}),
       ...(options.numImages ? { num_images: options.numImages } : {}),
     },
