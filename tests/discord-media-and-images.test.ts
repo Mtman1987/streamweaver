@@ -176,6 +176,22 @@ test('Perchance preserves every generated output up to the requested count', asy
   }
 });
 
+test('EdenAI compacts provider payload prompts to Leonardo limit', async () => {
+  const {
+    buildEdenAIImagePayload,
+    compactImagePrompt,
+    DEFAULT_EDEN_IMAGE_MODEL,
+    EDEN_IMAGE_PROMPT_MAX_LENGTH,
+  } = await import('../src/services/image-provider');
+  const longPrompt = Array.from({ length: 400 }, (_, index) => `detail-${index}`).join('  \n');
+  const payload = buildEdenAIImagePayload({ prompt: longPrompt }, DEFAULT_EDEN_IMAGE_MODEL);
+
+  assert.equal(payload.input.text, compactImagePrompt(longPrompt, EDEN_IMAGE_PROMPT_MAX_LENGTH));
+  assert.ok(payload.input.text.length <= 1500);
+  assert.equal(/\s{2,}/.test(payload.input.text), false);
+  assert.match(payload.input.text, /^detail-0 detail-1/);
+});
+
 test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
   const { buildEdenAIImagePayload, DEFAULT_EDEN_IMAGE_MODEL } = await import('../src/services/image-provider');
   const payload = buildEdenAIImagePayload({
