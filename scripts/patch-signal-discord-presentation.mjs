@@ -55,15 +55,18 @@ patch('src/services/signal-system.ts', (source) => {
 });
 
 patch('src/app/api/discord/chat/route.ts', (source) => {
-  const oldAuthor = `        author: {\n          id: userId,\n          username: normalized.username,\n          globalName: userName,\n          global_name: userName,\n          bot: false,\n        },`;
-  const newAuthor = `        userAvatar,\n        avatarUrl: userAvatar,\n        author: {\n          id: userId,\n          username: normalized.username,\n          globalName: userName,\n          global_name: userName,\n          avatarUrl: userAvatar,\n          bot: false,\n        },`;
+  // Whitespace/indentation-tolerant check: the author object already carries
+  // an avatarUrl field (regardless of surrounding fields or exact indentation).
+  const authorHasAvatarUrl = /author:\s*\{[^}]*avatarUrl:\s*userAvatar,/;
 
-  if (!source.includes('          avatarUrl: userAvatar,\n          bot: false,')) {
+  if (!authorHasAvatarUrl.test(source)) {
+    const oldAuthor = `        author: {\n          id: userId,\n          username: normalized.username,\n          globalName: userName,\n          global_name: userName,\n          bot: false,\n        },`;
+    const newAuthor = `        userAvatar,\n        avatarUrl: userAvatar,\n        author: {\n          id: userId,\n          username: normalized.username,\n          globalName: userName,\n          global_name: userName,\n          avatarUrl: userAvatar,\n          bot: false,\n        },`;
     if (!source.includes(oldAuthor)) throw new Error('Signal presentation patch: Discord command author marker missing');
     source = source.replace(oldAuthor, newAuthor);
   }
 
-  if (!source.includes('        userAvatar,\n        avatarUrl: userAvatar,\n        author: {')) {
+  if (!authorHasAvatarUrl.test(source)) {
     throw new Error('Signal presentation patch: Discord avatar propagation postcondition failed');
   }
   return source;
