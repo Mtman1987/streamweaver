@@ -39,7 +39,8 @@ function firstString(...values: unknown[]): string {
 
 function botActionSource(value: unknown): BotActionSource {
   const source = firstString(value).toLowerCase();
-  if (source === 'discord' || source === 'twitch' || source === 'kick' || source === 'mountainview' || source === 'hearmeout') {
+  if (source === 'hearmeout' || source.startsWith('hearmeout-')) return 'hearmeout';
+  if (source === 'discord' || source === 'twitch' || source === 'kick' || source === 'mountainview') {
     return source;
   }
   return 'spmt';
@@ -209,9 +210,6 @@ export async function POST(request: NextRequest) {
   const session = internalSessionCookie(user, targetTenantId);
   const botName = getBotName(targetTenantId);
 
-  // Persona is presentation only. Every owner talks to the same tenant-aware
-  // action runtime, which scopes credentials and app data to targetTenantId.
-  // Shared guest bots remain conversational and cannot inherit owner actions.
   const actionOutcome = isGuestBot ? null : await routeBotAction(command, {
     tenantId: targetTenantId,
     botName,
@@ -252,9 +250,6 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Owner/open commands are intentionally disabled when speaking through
-  // another tenant's shared bot. Guest bots expose conversation only here;
-  // private configuration and owner actions stay in their owner's tenant.
   const openCommand = isGuestBot ? null : await detectOpenBotCommandWithAi(command, targetTenantId);
   if (openCommand) {
     try {
@@ -284,8 +279,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Prefix cross-tenant usernames so private Commander recognition cannot be
-  // inherited merely because a public-room caller happens to share that name.
   const aiUsername = isGuestBot ? `hmo:${caller.username}` : caller.username;
   const ai = await postInternal(request, '/api/ai/chat-with-memory', session.header, token, {
     username: aiUsername,
