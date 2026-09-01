@@ -50,7 +50,7 @@ async function conversationalReply(input: { tenantId: string; roomId: string; co
 
 export async function POST(request: NextRequest) {
   // PUBLIC CHATBOT INVARIANT: a human talking to a room persona never requires
-  // STREAMWEAVER_SECRET, SPMT auth, or Bot Share. This endpoint is intentionally
+  // a service secret, SPMT auth, or Bot Share. This endpoint is intentionally
   // public for normal chatbot conversation. Public callers never receive owner,
   // admin, or moderator authority from request data.
   const body = await request.json().catch(() => null) as any;
