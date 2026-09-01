@@ -33,6 +33,20 @@ test('HearMeOut persona source variants converge on Say TTS', async () => {
   assert.match(serviceRoute, /source:\s*['"]say['"]/);
 });
 
+test('HearMeOut public persona routes never require a service secret or SPMT login', async () => {
+  const galleryRoute = await source('src/app/api/internal/hearmeout/bots/route.ts');
+  const serviceRoute = await source('src/app/api/internal/hearmeout/persona-command/route.ts');
+
+  for (const route of [galleryRoute, serviceRoute]) {
+    assert.doesNotMatch(route, /hasInternalServiceAccess/);
+    assert.doesNotMatch(route, /STREAMWEAVER_SECRET/);
+    assert.doesNotMatch(route, /SPMT_AUTH_REQUIRED/);
+    assert.doesNotMatch(route, /getBotShareMode/);
+  }
+  assert.match(serviceRoute, /role:\s*['"]guest['"]/);
+  assert.doesNotMatch(serviceRoute, /actorRole\(body\?\.actorRole\)/);
+});
+
 test('HearMeOut public persona gallery lists every configured tenant without bot-share gating', async () => {
   const galleryRoute = await source('src/app/api/internal/hearmeout/bots/route.ts');
 
