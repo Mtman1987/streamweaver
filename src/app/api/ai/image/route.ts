@@ -153,14 +153,18 @@ export async function POST(request: NextRequest) {
       result = await generator(generationOptions);
     } catch (error) {
       if (genMode === 'cloudflare' && error instanceof CloudflareWorkersAIUnavailableError) {
-        console.warn('[AI Image] Cloudflare credentials are not configured; falling back to Pollinations until they are added.');
-        result = await generateImageWithPollinations(generationOptions);
-        effectiveGenMode = 'pollinations';
+        console.warn('[AI Image] Cloudflare credentials are not configured; falling back to EdenAI ByteDance.');
+        result = await generateImageWithEdenAI({
+          ...generationOptions,
+          model: 'image/generation/bytedance',
+          providerParams: undefined,
+        });
+        effectiveGenMode = 'eden';
       } else if (genMode === 'seaart' && isSeaArtModelMismatchError(error)) {
         console.warn('[AI Image] SeaArt rejected the saved model version after preset fallback; generating with EdenAI.');
         result = await generateImageWithEdenAI({
           ...generationOptions,
-          model: undefined,
+          model: 'image/generation/bytedance',
           providerParams: undefined,
         });
         effectiveGenMode = 'eden';
@@ -189,6 +193,14 @@ export async function POST(request: NextRequest) {
 
     const imageUrls = persistedImageUrls.length ? persistedImageUrls : sources;
     const firstImage = imageUrls[0] || result.imageResourceUrl || result.image || '';
+    const remoteResourceUrls = [
+      result.imageResourceUrl,
+      ...(Array.isArray(result.imageResourceUrls) ? result.imageResourceUrls : []),
+    ]
+      .map((value) => String(value || '').trim())
+      .filter((value) => /^https?:\/\//i.test(value))
+      .filter((value, index, all) => all.indexOf(value) === index);
+
     void publishSpmtEvent({
       type: 'image.generation.completed',
       visibility: scope === 'private' ? 'private' : 'creator',
@@ -213,8 +225,8 @@ export async function POST(request: NextRequest) {
     return apiOk({
       image: firstImage,
       images: imageUrls,
-      imageResourceUrl: result.imageResourceUrl,
-      imageResourceUrls: result.imageResourceUrls,
+      imageResourceUrl: remoteResourceUrls[0] || null,
+      imageResourceUrls: remoteResourceUrls,
       persistedImageUrl: persistedImageUrls[0] || null,
       persistedImageUrls,
       provider: effectiveGenMode,
