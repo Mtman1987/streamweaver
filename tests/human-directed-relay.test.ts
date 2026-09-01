@@ -7,6 +7,15 @@ import { detectBotRelayRequest } from '../src/services/bot-relay';
 const root = path.resolve(process.cwd());
 const read = (relativePath: string) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
+function sourceFiles(dir: string): string[] {
+  const absolute = path.join(root, dir);
+  return fs.readdirSync(absolute, { withFileTypes: true }).flatMap((entry) => {
+    const relative = path.join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(relative);
+    return /\.(?:ts|tsx)$/.test(entry.name) ? [relative.replaceAll('\\', '/')] : [];
+  });
+}
+
 test('a named human relay command is parsed before normal AI chat', () => {
   const request = detectBotRelayRequest({
     message: 'Athena tell mamafeisty I sent her a message in Discord for after stream or when she has time',
@@ -50,4 +59,34 @@ test('relay targets resolve through linked Discord usernames as well as Twitch a
 
   assert.match(dispatcher, /const discordConfig = await readDiscordConfig\(tid\)\.catch\(\(\) => null\)/);
   assert.match(dispatcher, /discordUsername === rawTarget/);
+});
+
+test('GLOBAL INVARIANT: bot-share is only allowed to gate autonomous bot-to-bot behavior', () => {
+  const allowedGetModeCallSites = new Set([
+    'src/lib/bot-interactions-store.ts',
+    'src/services/chat-dispatcher.ts',
+    'src/app/api/discord/chat/route.ts',
+  ]);
+  const offenders = sourceFiles('src')
+    .filter((file) => read(file).includes('getBotShareMode'))
+    .filter((file) => !allowedGetModeCallSites.has(file));
+
+  assert.deepEqual(offenders, [], `Human-facing code must never gate on Bot Share: ${offenders.join(', ')}`);
+
+  const policy = read('src/lib/bot-share-policy.ts');
+  assert.match(policy, /autonomous-bot-to-bot-only/);
+  assert.match(policy, /human-chat/);
+  assert.match(policy, /human-command/);
+  assert.match(policy, /human-trigger/);
+  assert.match(policy, /human-directed-relay/);
+  assert.match(policy, /persona-conversation/);
+  assert.match(policy, /Discord, Twitch, Kick, TikTok, HearMeOut, SPMT/);
+
+  const personaCatalog = read('src/services/bot-persona-catalog.ts');
+  const spmtCatalog = read('src/app/api/spmt/bots/route.ts');
+  const humanCommandRoute = read('src/app/api/spmt/bot/commands/route.ts');
+  assert.doesNotMatch(personaCatalog, /getBotShareMode|shareMode/);
+  assert.doesNotMatch(spmtCatalog, /getBotShareMode|shareMode/);
+  assert.doesNotMatch(humanCommandRoute, /getBotShareMode|BOT_NOT_SHARED/);
+  assert.match(humanCommandRoute, /role:\s*isGuestBot \? 'member' : 'owner'/);
 });
