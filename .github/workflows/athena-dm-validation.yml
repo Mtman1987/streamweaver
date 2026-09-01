@@ -25,6 +25,8 @@ jobs:
         run: node scripts/patch-the-count-easter-egg.mjs && node --import tsx --test tests/the-count-easter-egg.test.ts
       - name: Apply and test final Signal integration
         run: node scripts/patch-signal-system.mjs && node --import tsx --test tests/signal-system.test.ts
+      - name: Remove chat dispatcher bot-name shadow
+        run: node scripts/patch-chat-dispatcher-bot-name-shadow.mjs
       - name: Run shared command and AI-provider tests
         run: node --import tsx --test tests/open-bot-commands.test.ts tests/open-bot-bang-command-routing.test.ts tests/discord-admin-calendar-command.test.ts tests/discord-admin-calendar-client.test.ts tests/discord-natural-commands.test.ts tests/human-directed-relay.test.ts tests/relay-recipient-and-reply.test.ts tests/shared-bot-runtime-local-llm.test.ts tests/shared-ai-provider-routing.test.ts tests/admin-bot-fleet.test.ts tests/cloudflare-image-settings.test.ts
       - name: Run HearMeOut LiveKit speech regression
