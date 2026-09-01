@@ -20,6 +20,11 @@ const MACHINE_PATHS = [
   '/api/ai/image',
   '/api/kick/chat-tag-broadcast', '/api/quackverse/pack-overlay',
   '/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator',
+  // Public HearMeOut chatbot/STT ingress. These requests must never require a
+  // human SPMT session; the routes themselves constrain what public callers can do.
+  '/api/internal/hearmeout/bots',
+  '/api/internal/hearmeout/persona-command',
+  '/api/speech/transcribe',
   // These routes perform their own service-auth checks. Do not force a human SPMT
   // session in middleware before machine credentials can be evaluated by the route itself.
   '/api/internal/known-bots',
