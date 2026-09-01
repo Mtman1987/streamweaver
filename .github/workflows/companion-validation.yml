@@ -1,0 +1,48 @@
+name: Companion Windows Validation
+
+on:
+  pull_request:
+    paths:
+      - "companion/**"
+      - "scripts/patch-companion-presence-always-on-top.mjs"
+      - "scripts/patch-companion-local-athena-wake.mjs"
+      - "scripts/package-companion-runtime.mjs"
+      - "scripts/smoke-companion-runtime.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/companion-validation.yml"
+      - ".github/workflows/companion-release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Test and build Windows Companion
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Install Companion dependencies
+        run: npm ci
+        working-directory: companion
+      - name: Run Companion source and local-wake tests
+        run: npm run companion:check
+      - name: Package Companion managed runtime
+        run: npm run package:companion-runtime
+      - name: Smoke-test Companion managed runtime
+        run: npm run smoke:companion-runtime
+      - name: Build Windows installer
+        run: npm run dist:win
+        working-directory: companion
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          $artifact = Get-Item "dist/companion/SpaceMountain-Companion-Setup.exe"
+          if ($artifact.Length -lt 1MB) { throw "Companion installer is unexpectedly small" }
+          Write-Host "Built $($artifact.Name): $([math]::Round($artifact.Length / 1MB, 2)) MB"

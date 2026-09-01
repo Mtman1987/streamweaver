@@ -1,17 +1,17 @@
 {
   "name": "@spmt/companion",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
   "author": "Mtman1987",
   "license": "MIT",
   "main": "main.cjs",
   "scripts": {
-    "prestart": "node ../scripts/patch-companion-presence-always-on-top.mjs",
+    "prestart": "node ../scripts/patch-companion-presence-always-on-top.mjs && cd .. && node scripts/patch-companion-local-athena-wake.mjs",
     "start": "electron .",
-    "precheck": "node ../scripts/patch-companion-presence-always-on-top.mjs",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/diagnostics-store.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/spmt-surfaces.cjs && node --check lib/tenant-bootstrap.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
-    "predist:win": "node ../scripts/patch-companion-presence-always-on-top.mjs",
+    "precheck": "node ../scripts/patch-companion-presence-always-on-top.mjs && cd .. && node scripts/patch-companion-local-athena-wake.mjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/diagnostics-store.cjs && node --check lib/local-athena-wake.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/spmt-surfaces.cjs && node --check lib/tenant-bootstrap.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
+    "predist:win": "node ../scripts/patch-companion-presence-always-on-top.mjs && cd .. && node scripts/patch-companion-local-athena-wake.mjs",
     "dist:win": "electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never"
   },
   "build": {

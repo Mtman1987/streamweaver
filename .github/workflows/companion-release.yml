@@ -9,6 +9,7 @@ on:
     paths:
       - "companion/**"
       - "scripts/patch-companion-presence-always-on-top.mjs"
+      - "scripts/patch-companion-local-athena-wake.mjs"
       - "scripts/package-companion-runtime.mjs"
       - "scripts/smoke-companion-runtime.mjs"
       - "package.json"
