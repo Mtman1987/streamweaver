@@ -6,6 +6,7 @@ import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-b
 import { routeBotAction } from '@/services/bot-action-runtime';
 import { generateTTS } from '@/services/tts-provider';
 import { DEFAULT_TTS_VOICE } from '@/lib/tts-voices';
+import { isTheCountName, isTheCountTwitchLogin } from '@/lib/the-count';
 
 function text(value: unknown, max = 5000) {
   return String(value || '').trim().slice(0, max);
@@ -67,6 +68,13 @@ export async function POST(request: NextRequest) {
   }
 
   const botName = getBotName(tenantId);
+  if (isTheCountTwitchLogin(tenantId) || isTheCountName(botName)) {
+    return apiError('The Count does not participate in public persona conversations', {
+      status: 403,
+      code: 'THE_COUNT_CHAT_DISABLED',
+    });
+  }
+
   const actorUserId = text(body?.actorUserId, 160) || `hearmeout-room-${roomId}`;
   const actorUsername = text(body?.actorUsername, 100) || 'HearMeOut room';
   const actorDisplayName = text(body?.actorDisplayName, 100) || actorUsername;

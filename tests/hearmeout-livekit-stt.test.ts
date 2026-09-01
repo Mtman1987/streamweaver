@@ -32,3 +32,27 @@ test('HearMeOut persona source variants converge on Say TTS', async () => {
   assert.match(serviceRoute, /generateTTS\([\s\S]*DEFAULT_TTS_VOICE[\s\S]*sayStreamKey/);
   assert.match(serviceRoute, /source:\s*['"]say['"]/);
 });
+
+test('HearMeOut public persona gallery lists every configured tenant without bot-share gating', async () => {
+  const galleryRoute = await source('src/app/api/internal/hearmeout/bots/route.ts');
+
+  assert.match(galleryRoute, /listTenants\(\)/);
+  assert.match(galleryRoute, /getBotSettings\(tenantId\)/);
+  assert.doesNotMatch(galleryRoute, /getBotShareMode/);
+  assert.doesNotMatch(galleryRoute, /shareMode/);
+  assert.match(galleryRoute, /ownerName/);
+  assert.match(galleryRoute, /interests/);
+  assert.match(galleryRoute, /canInvite:\s*!countBlocked/);
+  assert.match(galleryRoute, /canTalk:\s*!countBlocked/);
+});
+
+test('The Count is the only explicitly blocked public HearMeOut persona conversation', async () => {
+  const galleryRoute = await source('src/app/api/internal/hearmeout/bots/route.ts');
+  const serviceRoute = await source('src/app/api/internal/hearmeout/persona-command/route.ts');
+
+  assert.match(galleryRoute, /isTheCountName/);
+  assert.match(galleryRoute, /isTheCountTwitchLogin/);
+  assert.match(galleryRoute, /The Count is not available for public conversation/);
+  assert.match(serviceRoute, /THE_COUNT_CHAT_DISABLED/);
+  assert.match(serviceRoute, /The Count does not participate in public persona conversations/);
+});
