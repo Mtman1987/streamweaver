@@ -1,9 +1,7 @@
-import { NextRequest } from 'next/server';
-import { apiError, apiOk } from '@/lib/api-response';
+import { apiOk } from '@/lib/api-response';
 import { listTenants } from '@/lib/tenant';
 import { getBotSettings } from '@/lib/bot-settings-store';
 import { readUserConfigSync } from '@/lib/user-config';
-import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 import { ATHENA_CANONICAL_TTS_VOICE, ATHENA_TENANT_ID, getTtsVoiceOption } from '@/lib/tts-voices';
 import {
   THE_COUNT_NAME,
@@ -55,11 +53,9 @@ type PublicHearMeOutBot = {
   blockedReason?: string;
 };
 
-export async function GET(request: NextRequest) {
-  if (!hasInternalServiceAccess(request)) {
-    return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
-  }
-
+export async function GET() {
+  // PUBLIC CHATBOT INVARIANT: this catalog is public persona metadata. It must
+  // never require STREAMWEAVER_SECRET, SPMT auth, or Bot Share to be visible.
   const tenantIds = Array.from(new Set(await listTenants()));
   const bots: PublicHearMeOutBot[] = [];
 
