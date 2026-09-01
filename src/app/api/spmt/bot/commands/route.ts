@@ -6,6 +6,7 @@ import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-b
 import { getBotName } from '@/lib/bot-settings-store';
 import { getBotShareMode } from '@/lib/bot-interactions-store';
 import { routeBotAction, type BotActionSource } from '@/services/bot-action-runtime';
+import { generateTTS } from '@/services/tts-provider';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -105,26 +106,26 @@ async function postInternal(_request: NextRequest, path: string, cookie: string,
 }
 
 async function maybeGenerateTts(
-  request: NextRequest,
-  cookie: string,
-  token: string,
   tenantId: string,
   responseText: string,
   body: any,
 ) {
   if (!responseText || body?.speak === false) return null;
-  const ttsResult = await postInternal(request, '/api/tts', cookie, token, {
-    text: responseText,
-    voice: firstString(body?.voice) || undefined,
-    tenantId,
-  });
-  return ttsResult.ok
-    ? { ok: true, audioDataUri: firstString(ttsResult.data?.audioDataUri, ttsResult.data?.data?.audioDataUri) }
-    : {
-        ok: false,
-        status: ttsResult.status,
-        error: firstString(ttsResult.data?.error?.message, ttsResult.data?.error, ttsResult.text),
-      };
+  try {
+    const audioDataUri = await generateTTS(
+      responseText.slice(0, 2000),
+      firstString(body?.voice) || undefined,
+      tenantId,
+    );
+    if (!audioDataUri) {
+      return { ok: false, error: 'TTS returned no audio payload', source: 'direct' };
+    }
+    return { ok: true, audioDataUri, source: 'direct' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[SPMT Bot:${tenantId}] Direct TTS generation failed:`, message);
+    return { ok: false, error: message, source: 'direct' };
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest) {
     },
   });
   if (actionOutcome) {
-    const tts = await maybeGenerateTts(request, session.header, token, targetTenantId, actionOutcome.response, body);
+    const tts = await maybeGenerateTts(targetTenantId, actionOutcome.response, body);
     return apiOk({
       accepted: true,
       routed: true,
@@ -212,7 +213,7 @@ export async function POST(request: NextRequest) {
   if (openCommand) {
     try {
       const responseText = await runOpenBotCommand(openCommand);
-      const tts = await maybeGenerateTts(request, session.header, token, targetTenantId, responseText, body);
+      const tts = await maybeGenerateTts(targetTenantId, responseText, body);
       return apiOk({
         accepted: true,
         routed: true,
@@ -257,7 +258,7 @@ export async function POST(request: NextRequest) {
   }
 
   const responseText = firstString(ai.data?.response, ai.data?.data?.response);
-  const tts = await maybeGenerateTts(request, session.header, token, targetTenantId, responseText, body);
+  const tts = await maybeGenerateTts(targetTenantId, responseText, body);
 
   return apiOk({
     accepted: true,
