@@ -55,7 +55,7 @@ type PublicHearMeOutBot = {
 
 export async function GET() {
   // PUBLIC CHATBOT INVARIANT: this catalog is public persona metadata. It must
-  // never require STREAMWEAVER_SECRET, SPMT auth, or Bot Share to be visible.
+  // never require a service secret, SPMT auth, or Bot Share to be visible.
   const tenantIds = Array.from(new Set(await listTenants()));
   const bots: PublicHearMeOutBot[] = [];
 
