@@ -96,6 +96,15 @@ patchFile('src/services/chat-dispatcher.ts', (source) => {
     source = source.replace(importMarker, `${importMarker}\n${countImports}`);
   }
 
+  // A legacy command branch appears before a later block-scoped getBotName
+  // destructure. Resolve this one lookup directly from the module so TypeScript
+  // never treats it as a temporal-dead-zone access to that later declaration.
+  const earlyBotNameMarker = "                    botName: getBotName(tenantId),";
+  const earlyBotNameReplacement = "                    botName: require('../lib/bot-settings-store').getBotName(tenantId),";
+  if (source.includes(earlyBotNameMarker)) {
+    source = source.replace(earlyBotNameMarker, earlyBotNameReplacement);
+  }
+
   const botMarker = "    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();\n    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase();\n";
   const botReplacement = "    const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername);\n    const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;\n    const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;\n";
   if (!source.includes('const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername)')) {
