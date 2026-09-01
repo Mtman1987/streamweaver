@@ -47,6 +47,21 @@ test('HearMeOut public persona routes never require a service secret or SPMT log
   assert.doesNotMatch(serviceRoute, /actorRole\(body\?\.actorRole\)/);
 });
 
+test('StreamWeaver middleware cannot demand an SPMT session from HearMeOut persona or STT ingress', async () => {
+  const middleware = await source('src/middleware.ts');
+  for (const route of [
+    '/api/internal/hearmeout/bots',
+    '/api/internal/hearmeout/persona-command',
+    '/api/speech/transcribe',
+  ]) {
+    assert.ok(middleware.includes(`'${route}'`), `${route} must bypass SPMT user-session middleware`);
+  }
+  assert.ok(
+    middleware.indexOf('MACHINE_PATHS.includes(pathname)') < middleware.indexOf('resolveSpmtIdentity(request)'),
+    'HearMeOut ingress bypass must run before SPMT identity lookup',
+  );
+});
+
 test('HearMeOut public persona gallery lists every configured tenant without bot-share gating', async () => {
   const galleryRoute = await source('src/app/api/internal/hearmeout/bots/route.ts');
 
