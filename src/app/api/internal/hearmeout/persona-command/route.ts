@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
-import { hasInternalServiceAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
 import { getBotName } from '@/lib/bot-settings-store';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { routeBotAction } from '@/services/bot-action-runtime';
@@ -15,13 +15,6 @@ function text(value: unknown, max = 5000) {
 function internalBaseUrl() {
   const port = String(process.env.PORT || '3000').trim() || '3000';
   return `http://127.0.0.1:${port}`;
-}
-
-function actorRole(value: unknown) {
-  const role = text(value, 20).toLowerCase();
-  return ['guest', 'member', 'moderator', 'admin', 'owner'].includes(role)
-    ? role as 'guest' | 'member' | 'moderator' | 'admin' | 'owner'
-    : 'member';
 }
 
 function hearMeOutSayStreamKey(roomId: unknown, personaTenantId: unknown): string {
@@ -56,9 +49,10 @@ async function conversationalReply(input: { tenantId: string; roomId: string; co
 }
 
 export async function POST(request: NextRequest) {
-  if (!hasInternalServiceAccess(request)) {
-    return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
-  }
+  // PUBLIC CHATBOT INVARIANT: a human talking to a room persona never requires
+  // STREAMWEAVER_SECRET, SPMT auth, or Bot Share. This endpoint is intentionally
+  // public for normal chatbot conversation. Public callers never receive owner,
+  // admin, or moderator authority from request data.
   const body = await request.json().catch(() => null) as any;
   const command = text(body?.command || body?.transcript, 5000);
   const tenantId = text(body?.targetTenantId || body?.tenantId, 128);
@@ -90,7 +84,7 @@ export async function POST(request: NextRequest) {
       userId: actorUserId,
       username: actorUsername,
       displayName: actorDisplayName,
-      role: actorRole(body?.actorRole),
+      role: 'guest',
     },
   });
 
