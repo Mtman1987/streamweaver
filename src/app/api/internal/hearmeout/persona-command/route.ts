@@ -5,6 +5,7 @@ import { getBotName } from '@/lib/bot-settings-store';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { routeBotAction } from '@/services/bot-action-runtime';
 import { generateTTS } from '@/services/tts-provider';
+import { DEFAULT_TTS_VOICE } from '@/lib/tts-voices';
 
 function text(value: unknown, max = 5000) {
   return String(value || '').trim().slice(0, max);
@@ -20,6 +21,17 @@ function actorRole(value: unknown) {
   return ['guest', 'member', 'moderator', 'admin', 'owner'].includes(role)
     ? role as 'guest' | 'member' | 'moderator' | 'admin' | 'owner'
     : 'member';
+}
+
+function hearMeOutSayStreamKey(roomId: unknown, personaTenantId: unknown): string {
+  const clean = (value: unknown, fallback: string) => (
+    text(value, 96)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || fallback
+  );
+  return `hmo-say-${clean(roomId, 'room')}-${clean(personaTenantId, 'persona')}`.slice(0, 128);
 }
 
 async function conversationalReply(input: { tenantId: string; roomId: string; command: string }) {
@@ -86,11 +98,16 @@ export async function POST(request: NextRequest) {
   if (!responseText) responseText = await conversationalReply({ tenantId, roomId, command });
   if (!responseText) responseText = 'I could not form a response. Please try that again.';
 
-  const voice = text(body?.voice, 128) || undefined;
-  const audioDataUri = await generateTTS(responseText.slice(0, 2000), voice, tenantId).catch((error) => {
-    console.warn(`[HearMeOutPersona:${tenantId}] TTS failed:`, error);
+  const sayStreamKey = hearMeOutSayStreamKey(roomId, tenantId);
+  const audioDataUri = await generateTTS(
+    responseText.slice(0, 2000),
+    DEFAULT_TTS_VOICE,
+    sayStreamKey,
+  ).catch((error) => {
+    console.warn(`[HearMeOutPersona:${tenantId}] Say TTS failed:`, error);
     return '';
   });
+
   return apiOk({
     accepted: true,
     handled: Boolean(action || commandType),
@@ -98,7 +115,9 @@ export async function POST(request: NextRequest) {
     commandType,
     response: responseText,
     bot: { name: botName, tenantId },
-    tts: audioDataUri ? { ok: true, audioDataUri } : { ok: false },
+    tts: audioDataUri
+      ? { ok: true, audioDataUri, source: 'say', streamKey: sayStreamKey, voice: DEFAULT_TTS_VOICE }
+      : { ok: false, source: 'say', streamKey: sayStreamKey, voice: DEFAULT_TTS_VOICE },
     roomId,
   });
 }
