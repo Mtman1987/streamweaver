@@ -83,8 +83,11 @@ test('Companion tracks canonical surfaces directly and keeps StreamWeaver on the
 
   assert.doesNotMatch(ui, /id="overlay-url"/);
   assert.match(ui, /overlay-source-status/);
+  assert.match(ui, /id="wake-enabled"/);
   assert.doesNotMatch(renderer, /byId\('overlay-url'\)/);
-  assert.match(config, /schemaVersion: 6/);
+  assert.match(renderer, /byId\('wake-enabled'\)/);
+  assert.match(config, /schemaVersion: 7/);
+  assert.match(config, /wake:\s*\{\s*enabled:\s*false,\s*phrase:\s*'hey athena',\s*localOnly:\s*true\s*\}/);
   assert.match(config, /overlay:\s*\{[\s\S]*?url: ''/);
   assert.match(config, /includes\('desktopOverlay=1'\)[\s\S]*?stored\.windows\.overlay\.url = ''/);
   assert.doesNotMatch(config, /url:\s*'https:\/\/spacemountain\.live\/\?desktopOverlay=1'/);
