@@ -46,12 +46,16 @@ test('HearMeOut public persona gallery lists every configured tenant without bot
   assert.match(galleryRoute, /canTalk:\s*!countBlocked/);
 });
 
-test('The Count is the only explicitly blocked public HearMeOut persona conversation', async () => {
+test('The Count is always visible and is the only explicitly blocked public HearMeOut persona conversation', async () => {
   const galleryRoute = await source('src/app/api/internal/hearmeout/bots/route.ts');
   const serviceRoute = await source('src/app/api/internal/hearmeout/persona-command/route.ts');
 
-  assert.match(galleryRoute, /isTheCountName/);
-  assert.match(galleryRoute, /isTheCountTwitchLogin/);
+  assert.match(galleryRoute, /THE_COUNT_NAME/);
+  assert.match(galleryRoute, /THE_COUNT_TWITCH_LOGIN/);
+  assert.match(galleryRoute, /The Count is a system persona, not necessarily a normal tenant/);
+  assert.match(galleryRoute, /id:\s*THE_COUNT_TWITCH_LOGIN/);
+  assert.match(galleryRoute, /canInvite:\s*false/);
+  assert.match(galleryRoute, /canTalk:\s*false/);
   assert.match(galleryRoute, /The Count is not available for public conversation/);
   assert.match(serviceRoute, /THE_COUNT_CHAT_DISABLED/);
   assert.match(serviceRoute, /The Count does not participate in public persona conversations/);
