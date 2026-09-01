@@ -90,3 +90,29 @@ test('GLOBAL INVARIANT: bot-share is only allowed to gate autonomous bot-to-bot 
   assert.doesNotMatch(humanCommandRoute, /getBotShareMode|BOT_NOT_SHARED/);
   assert.match(humanCommandRoute, /role:\s*isGuestBot \? 'member' : 'owner'/);
 });
+
+test('GLOBAL INVARIANT: public/platform chatbot conversation never routes through the SPMT account adapter', () => {
+  const spmtAccountAdapter = 'src/app/api/spmt/bot/commands/route.ts';
+  const callers = sourceFiles('src')
+    .filter((file) => file !== spmtAccountAdapter)
+    .filter((file) => read(file).includes('/api/spmt/bot/commands'));
+
+  assert.deepEqual(
+    callers,
+    [],
+    `Public/platform chat must use platform or trusted service context, never SPMT-login adapter: ${callers.join(', ')}`,
+  );
+
+  const authMarkers = sourceFiles('src')
+    .filter((file) => read(file).includes('SPMT_AUTH_REQUIRED'));
+  assert.deepEqual(
+    authMarkers.sort(),
+    ['src/app/api/spmt/bot/commands/route.ts', 'src/app/api/spmt/bots/route.ts'].sort(),
+    'SPMT login requirements must stay confined to SPMT account adapters, not chatbot ingress',
+  );
+
+  const docs = read('docs/BOT_SHARE_POLICY.md');
+  assert.match(docs, /A human must not be required to sign into SPMT merely to talk to a public chatbot/);
+  assert.match(docs, /Discord, Twitch, Kick, TikTok, HearMeOut/);
+  assert.match(docs, /must not call `\/api\/spmt\/bot\/commands`/);
+});

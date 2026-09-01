@@ -5,7 +5,12 @@ import { getBotSettings } from '@/lib/bot-settings-store';
 import { readUserConfigSync } from '@/lib/user-config';
 import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 import { ATHENA_CANONICAL_TTS_VOICE, ATHENA_TENANT_ID, getTtsVoiceOption } from '@/lib/tts-voices';
-import { isTheCountName, isTheCountTwitchLogin } from '@/lib/the-count';
+import {
+  THE_COUNT_NAME,
+  THE_COUNT_TWITCH_LOGIN,
+  isTheCountName,
+  isTheCountTwitchLogin,
+} from '@/lib/the-count';
 
 function text(value: unknown) {
   return String(value || '').trim();
@@ -32,29 +37,31 @@ function isCountPersona(input: {
     || input.aliases.some((alias) => isTheCountName(alias) || isTheCountTwitchLogin(alias));
 }
 
+type PublicHearMeOutBot = {
+  id: string;
+  name: string;
+  ownerName: string;
+  ownerTenantId: string;
+  aliases: string[];
+  wakeNames: string[];
+  interests: string[];
+  voice: string;
+  livekitTtsDescriptor: string;
+  avatar: string;
+  idleAvatar: string;
+  talkingAvatar: string;
+  canInvite: boolean;
+  canTalk: boolean;
+  blockedReason?: string;
+};
+
 export async function GET(request: NextRequest) {
   if (!hasInternalServiceAccess(request)) {
     return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
   }
 
   const tenantIds = Array.from(new Set(await listTenants()));
-  const bots = [] as Array<{
-    id: string;
-    name: string;
-    ownerName: string;
-    ownerTenantId: string;
-    aliases: string[];
-    wakeNames: string[];
-    interests: string[];
-    voice: string;
-    livekitTtsDescriptor: string;
-    avatar: string;
-    idleAvatar: string;
-    talkingAvatar: string;
-    canInvite: boolean;
-    canTalk: boolean;
-    blockedReason?: string;
-  }>;
+  const bots: PublicHearMeOutBot[] = [];
 
   for (const tenantId of tenantIds) {
     const settings = getBotSettings(tenantId);
@@ -88,6 +95,34 @@ export async function GET(request: NextRequest) {
       canInvite: !countBlocked,
       canTalk: !countBlocked,
       blockedReason: countBlocked ? 'The Count is not available for public conversation.' : undefined,
+    });
+  }
+
+  // The Count is a system persona, not necessarily a normal tenant. The public
+  // gallery promises every SPMT bot plus this one explicit non-conversational
+  // exception, so keep it visible even when no tenant record exists for it.
+  if (!bots.some((bot) => isCountPersona({
+    tenantId: bot.ownerTenantId,
+    name: bot.name,
+    ownerName: bot.ownerName,
+    aliases: bot.aliases,
+  }))) {
+    bots.push({
+      id: THE_COUNT_TWITCH_LOGIN,
+      name: THE_COUNT_NAME,
+      ownerName: THE_COUNT_TWITCH_LOGIN,
+      ownerTenantId: THE_COUNT_TWITCH_LOGIN,
+      aliases: ['Count', 'TheCountSPMT'],
+      wakeNames: [THE_COUNT_NAME, 'Count', 'TheCountSPMT'],
+      interests: [],
+      voice: '',
+      livekitTtsDescriptor: '',
+      avatar: '',
+      idleAvatar: '',
+      talkingAvatar: '',
+      canInvite: false,
+      canTalk: false,
+      blockedReason: 'The Count is not available for public conversation.',
     });
   }
 
