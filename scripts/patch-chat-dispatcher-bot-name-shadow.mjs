@@ -18,12 +18,12 @@ if (!source.includes(topLevelImport)) {
 if (source.includes(shadowed)) {
   source = source.replace(shadowed, corrected);
 } else if (!source.includes(corrected)) {
-  throw new Error('chat-dispatcher bot-name shadow patch: local settings declaration marker is missing');
+  throw new Error('chat-dispatcher bot-name shadow patch: local Twitch settings declaration marker is missing');
 }
 
-if (/const\s*\{[^}]*\bgetBotName\b[^}]*\}\s*=\s*require\('\.\.\/lib\/bot-settings-store'\)/.test(source)) {
-  throw new Error('chat-dispatcher bot-name shadow patch: a block-scoped getBotName declaration still exists');
+if (source.includes(shadowed)) {
+  throw new Error('chat-dispatcher bot-name shadow patch: Twitch dispatch still shadows getBotName');
 }
 
 if (source !== raw) fs.writeFileSync(file, source, 'utf8');
-console.log('[ChatDispatcherPatch] getBotName uses the top-level import; no block-scoped shadow remains');
+console.log('[ChatDispatcherPatch] Twitch dispatch now uses the top-level getBotName import');
