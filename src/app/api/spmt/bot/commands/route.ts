@@ -7,6 +7,7 @@ import { getBotName } from '@/lib/bot-settings-store';
 import { getBotShareMode } from '@/lib/bot-interactions-store';
 import { routeBotAction, type BotActionSource } from '@/services/bot-action-runtime';
 import { generateTTS } from '@/services/tts-provider';
+import { DEFAULT_TTS_VOICE } from '@/lib/tts-voices';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -42,6 +43,19 @@ function botActionSource(value: unknown): BotActionSource {
     return source;
   }
   return 'spmt';
+}
+
+function hearMeOutSayStreamKey(roomId: unknown, personaTenantId: unknown): string {
+  const clean = (value: unknown, fallback: string) => (
+    firstString(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || fallback
+  );
+  const room = clean(roomId, 'room');
+  const persona = clean(personaTenantId, 'persona');
+  return `hmo-say-${room}-${persona}`.slice(0, 128);
 }
 
 async function resolveSpmtUser(token: string): Promise<SpmtUser | null> {
@@ -111,20 +125,52 @@ async function maybeGenerateTts(
   body: any,
 ) {
   if (!responseText || body?.speak === false) return null;
+
+  const source = botActionSource(body?.source || body?.sourceApp);
+  const useHearMeOutSay = source === 'hearmeout';
+  const sayStreamKey = useHearMeOutSay
+    ? hearMeOutSayStreamKey(body?.roomId, tenantId)
+    : '';
+  const synthesisTenantId = useHearMeOutSay ? sayStreamKey : tenantId;
+  const synthesisVoice = useHearMeOutSay
+    ? DEFAULT_TTS_VOICE
+    : firstString(body?.voice) || undefined;
+
   try {
     const audioDataUri = await generateTTS(
       responseText.slice(0, 2000),
-      firstString(body?.voice) || undefined,
-      tenantId,
+      synthesisVoice,
+      synthesisTenantId,
     );
     if (!audioDataUri) {
-      return { ok: false, error: 'TTS returned no audio payload', source: 'direct' };
+      return {
+        ok: false,
+        error: 'TTS returned no audio payload',
+        source: useHearMeOutSay ? 'say' : 'direct',
+        streamKey: sayStreamKey || undefined,
+        voice: synthesisVoice,
+      };
     }
-    return { ok: true, audioDataUri, source: 'direct' };
+    return {
+      ok: true,
+      audioDataUri,
+      source: useHearMeOutSay ? 'say' : 'direct',
+      streamKey: sayStreamKey || undefined,
+      voice: synthesisVoice,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[SPMT Bot:${tenantId}] Direct TTS generation failed:`, message);
-    return { ok: false, error: message, source: 'direct' };
+    console.warn(
+      `[SPMT Bot:${tenantId}] ${useHearMeOutSay ? 'HearMeOut Say' : 'Direct'} TTS generation failed:`,
+      message,
+    );
+    return {
+      ok: false,
+      error: message,
+      source: useHearMeOutSay ? 'say' : 'direct',
+      streamKey: sayStreamKey || undefined,
+      voice: synthesisVoice,
+    };
   }
 }
 
