@@ -2,9 +2,9 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { bootstrapTenant, listTenants } from '@/lib/tenant';
 import { getBotSettings } from '@/lib/bot-settings-store';
-import { getBotShareMode } from '@/lib/bot-interactions-store';
 import { readUserConfigSync } from '@/lib/user-config';
 import { ATHENA_CANONICAL_TTS_VOICE, ATHENA_TENANT_ID, getTtsVoiceOption } from '@/lib/tts-voices';
+import { isTheCountName, isTheCountTwitchLogin } from '@/lib/the-count';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -42,6 +42,13 @@ function splitAliases(value: string): string[] {
 }
 
 const splitInterests = splitAliases;
+
+function isCountPersona(tenantId: string, name: string, ownerName: string, aliases: string[]) {
+  return isTheCountTwitchLogin(tenantId)
+    || isTheCountTwitchLogin(ownerName)
+    || isTheCountName(name)
+    || aliases.some((alias) => isTheCountName(alias) || isTheCountTwitchLogin(alias));
+}
 
 async function resolveSpmtUser(token: string): Promise<SpmtUser | null> {
   const response = await fetch(`${SPMT_BASE_URL}/api/oauth/userinfo`, {
@@ -85,22 +92,30 @@ export async function GET(request: NextRequest) {
     avatar: string;
     idleAvatar: string;
     talkingAvatar: string;
-    shareMode: 'off' | 'on';
     isOwner: boolean;
     canInvite: boolean;
+    canTalk: boolean;
+    blockedReason?: string;
   }>;
 
   for (const tenantId of tenantIds) {
+    // BOT SHARE DOES NOT APPLY HERE. A human is browsing/chatting with bots.
+    // Bot Share only controls autonomous bot-to-bot conversation.
     const isOwner = tenantId === callerTenantId;
-    const shareMode = await getBotShareMode(tenantId);
-    if (!isOwner && shareMode !== 'on') continue;
-
     const settings = getBotSettings(tenantId);
     const config = readUserConfigSync(tenantId);
     const name = firstString(settings.name);
     if (!name) continue;
 
     const aliases = splitAliases(settings.aliases);
+    const ownerName = firstString(
+      config.TWITCH_BROADCASTER_USERNAME,
+      isOwner ? user.displayName : '',
+      isOwner ? user.display_name : '',
+      isOwner ? callerUsername : '',
+      tenantId,
+    );
+    const countBlocked = isCountPersona(tenantId, name, ownerName, aliases);
     const avatar = firstString(config.AI_BOT_AVATAR_URL, config.PUBLIC_DISCORD_GIF_URL);
     const idleAvatar = firstString(config.AI_BOT_IDLE_AVATAR_URL, avatar);
     const talkingAvatar = firstString(config.AI_BOT_TALKING_AVATAR_URL, config.PUBLIC_DISCORD_GIF_URL, idleAvatar);
@@ -109,13 +124,7 @@ export async function GET(request: NextRequest) {
     bots.push({
       id: tenantId,
       name,
-      ownerName: firstString(
-        config.TWITCH_BROADCASTER_USERNAME,
-        isOwner ? user.displayName : '',
-        isOwner ? user.display_name : '',
-        isOwner ? callerUsername : '',
-        'StreamWeaver user',
-      ),
+      ownerName,
       ownerTenantId: tenantId,
       aliases,
       wakeNames: Array.from(new Set([name, ...aliases])),
@@ -125,9 +134,10 @@ export async function GET(request: NextRequest) {
       avatar,
       idleAvatar,
       talkingAvatar,
-      shareMode,
       isOwner,
-      canInvite: isOwner || shareMode === 'on',
+      canInvite: !countBlocked,
+      canTalk: !countBlocked,
+      blockedReason: countBlocked ? 'The Count is not available for public conversation.' : undefined,
     });
   }
 
