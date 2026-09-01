@@ -1,9 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 async function patch(path, transform) {
-  const before = await readFile(path, 'utf8');
+  const raw = await readFile(path, 'utf8');
+  // Windows Git checkouts may use CRLF while Linux uses LF. Build patches must
+  // be deterministic on both platforms, so match and write a normalized form.
+  const before = raw.replace(/\r\n/g, '\n');
   const after = transform(before);
-  if (after === before) {
+  if (after === before && raw === before) {
     console.log(`local Athena wake already patched: ${path}`);
     return;
   }
