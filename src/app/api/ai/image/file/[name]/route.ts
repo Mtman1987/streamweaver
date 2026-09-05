@@ -28,7 +28,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ? 'image/webp'
           : 'image/png';
     return new NextResponse(data, { headers: { 'Content-Type': ct, 'Cache-Control': 'public, max-age=31536000, immutable' } });
-  } catch {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') {
+      return NextResponse.json({ error: 'not found' }, { status: 404 });
+    }
+    console.error('[Image File] Read failed', {
+      tenantId: tenantId || null,
+      scope,
+      name,
+      filePath,
+      code: error?.code,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json({ error: 'image read failed' }, { status: 500 });
   }
 }
