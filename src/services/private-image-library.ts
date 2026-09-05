@@ -45,8 +45,15 @@ export async function listPrivateGeneratedImages(tenantId: string): Promise<Priv
   let names: string[];
   try {
     names = (await fs.readdir(dir)).filter((name) => IMAGE_FILE_PATTERN.test(name));
-  } catch {
-    return [];
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return [];
+    console.error('[Private Image Library] Directory read failed', {
+      tenantId: normalizedTenantId,
+      dir,
+      code: error?.code,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 
   const entries = await Promise.all(names.map(async (filename) => {
@@ -63,8 +70,16 @@ export async function listPrivateGeneratedImages(tenantId: string): Promise<Priv
         url: base ? `${base}${relativeUrl}` : relativeUrl,
         modifiedAtMs: stat.mtimeMs,
       } satisfies PrivateGeneratedImage;
-    } catch {
-      return null;
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return null;
+      console.error('[Private Image Library] Image stat failed', {
+        tenantId: normalizedTenantId,
+        dir,
+        filename,
+        code: error?.code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }));
 
