@@ -13,6 +13,8 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - name: Apply the Deepgram secret already staged in Fly
+        run: flyctl secrets deploy --app streamweaver-new
       - name: Install audio decoder
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Verify direct Athena and forced same-voice failover
