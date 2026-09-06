@@ -1,0 +1,20 @@
+name: Configure direct Athena speech
+on:
+  push:
+    branches: [codex/athena-direct-key]
+    paths: [.github/workflows/athena-key-install.yml]
+permissions:
+  contents: read
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - name: Prepare encrypted credential transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          flyctl ssh console --app streamweaver-new --command 'node -e '\''const fs=require("fs");const crypto=require("crypto");const p="/data/runtime/.athena-key-install-20260906.pem";fs.mkdirSync("/data/runtime",{recursive:true});if(!fs.existsSync(p)){const pair=crypto.generateKeyPairSync("rsa",{modulusLength:3072,privateKeyEncoding:{type:"pkcs8",format:"pem"},publicKeyEncoding:{type:"spki",format:"pem"}});fs.writeFileSync(p,pair.privateKey,{mode:0o600,flag:"wx"});}console.log("ATHENA_IMPORT_PUBLIC_KEY:"+crypto.createPublicKey(fs.readFileSync(p)).export({type:"spki",format:"der"}).toString("base64"));'\'''
