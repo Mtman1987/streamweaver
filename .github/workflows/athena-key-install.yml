@@ -14,7 +14,9 @@ jobs:
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@v1
       - name: Remove unused transfer material
-        run: 'flyctl ssh console --app streamweaver-new --command '\''node -e '\''\'\'''\''require("fs").rmSync("/data/runtime/.athena-key-install-20260906.pem",{force:true});console.log("Unused temporary transfer key removed.");'\''\'\'''\'''\'''
+        shell: bash
+        run: |
+          flyctl ssh console --app streamweaver-new --command 'node -e '\''require("fs").rmSync("/data/runtime/.athena-key-install-20260906.pem",{force:true});console.log("Unused temporary transfer key removed.");'\'''
       - name: Install audio decoder
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Verify canonical Athena synthesis and decoded audio
