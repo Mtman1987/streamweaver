@@ -1,4 +1,4 @@
-name: Verify deployed Athena speech
+name: Verify both Athena speech routes
 on:
   push:
     branches: [codex/athena-direct-key]
@@ -13,42 +13,50 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@v1
-      - name: Remove unused transfer material
-        shell: bash
-        run: |
-          flyctl ssh console --app streamweaver-new --command 'node -e '\''require("fs").rmSync("/data/runtime/.athena-key-install-20260906.pem",{force:true});console.log("Unused temporary transfer key removed.");'\'''
       - name: Install audio decoder
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
-      - name: Verify canonical Athena synthesis and decoded audio
+      - name: Verify direct Athena and forced same-voice failover
         shell: bash
         run: |
           set -euo pipefail
-          # One fixed 29-character sample; no private conversations or credentials are logged.
           flyctl ssh console --app streamweaver-new --command 'node --import tsx -e '\''const {generateTTS,getTTSConfig}=require("./src/services/tts-provider.ts");
           (async()=>{
            const config=getTTSConfig("94371378");
-           if(config.voice!=="deepgram:aura-2:athena") throw new Error("Athena voice identity changed");
+           if(config.voice!=="deepgram:aura-2:athena"||!config.deepgramApiKey||!config.apiKey)throw new Error("Expected both providers with canonical Athena");
            const originalFetch=globalThis.fetch;
+           let mode="direct",route="";
            globalThis.fetch=async(...args)=>{
-            const response=await originalFetch(...args);
-            if(String(args[0])==="https://api.edenai.run/v3/universal-ai"){
-             const result=await response.clone().json();
-             console.error(JSON.stringify({speechProvider:result.provider,status:result.status,costUsd:typeof result.cost==="number"?result.cost:null}));
+            const url=String(args[0]);
+            if(url.startsWith("https://api.deepgram.com/v1/speak")){
+             if(!url.endsWith("model=aura-2-athena-en"))throw new Error("Direct voice changed");
+             if(mode==="fallback")return new Response(null,{status:402});
+             route="direct-deepgram";
+            }else if(url==="https://api.edenai.run/v3/universal-ai"){
+             const body=JSON.parse(args[1].body);
+             if(body.model!=="audio/tts/deepgram/aura-2"||body.input.voice!=="aura-2-athena-en")throw new Error("Fallback voice changed");
+             route="edenai-deepgram";
             }
-            return response;
+            return originalFetch(...args);
            };
-           const audio=await generateTTS("This is an Athena voice check.",undefined,"94371378");
-           if(!audio.startsWith("data:audio/mpeg;base64,")) throw new Error("Expected MP3 audio");
-           console.log("ATHENA_AUDIO:"+audio.slice("data:audio/mpeg;base64,".length));
-          })().catch(()=>{console.error("Canonical Athena speech check failed");process.exitCode=1});'\''' | python3 -c 'import sys,base64; line=next((s.strip() for s in sys.stdin if s.startswith("ATHENA_AUDIO:")), ""); assert line, "No Athena audio returned"; sys.stdout.buffer.write(base64.b64decode(line.split(":",1)[1],validate=True))' > "$RUNNER_TEMP/athena.mp3"
-          ffmpeg -v error -i "$RUNNER_TEMP/athena.mp3" -ac 1 -ar 16000 -f s16le "$RUNNER_TEMP/athena.pcm"
-          python3 - "$RUNNER_TEMP/athena.pcm" <<'PY'
-          import array, json, math, sys
-          samples = array.array("h")
-          with open(sys.argv[1], "rb") as source:
-              samples.frombytes(source.read())
-          assert len(samples) > 1600, "Athena audio is too short"
-          rms = math.sqrt(sum((s / 32768) ** 2 for s in samples) / len(samples))
-          assert rms > 0.001, "Athena audio is silent"
-          print(json.dumps({"voice": "aura-2-athena-en", "seconds": round(len(samples) / 16000, 2), "rms": round(rms, 4), "decoded": True}))
-          PY
+           for(const check of ["direct","fallback"]){
+            mode=check;route="";
+            const audio=await generateTTS("This is an Athena voice check.",undefined,"94371378");
+            if(route!==(mode==="direct"?"direct-deepgram":"edenai-deepgram"))throw new Error("Unexpected speech route");
+            if(!audio.startsWith("data:audio/mpeg;base64,"))throw new Error("Expected MP3");
+            console.log("ATHENA_CHECK:"+JSON.stringify({mode,route,voice:"aura-2-athena-en",audio:audio.split(",")[1]}));
+           }
+          })().catch(e=>{console.error("Athena check failed: "+e.message);process.exitCode=1});'\''' | python3 -c 'import sys,json,base64,subprocess,array,math
+          seen=set()
+          for line in sys.stdin:
+           if not line.startswith("ATHENA_CHECK:"): continue
+           d=json.loads(line.split(":",1)[1]); audio=base64.b64decode(d.pop("audio"),validate=True)
+           r=subprocess.run(["ffmpeg","-v","error","-i","pipe:0","-ac","1","-ar","16000","-f","s16le","pipe:1"],input=audio,capture_output=True)
+           assert r.returncode==0,"MP3 decoding failed"
+           samples=array.array("h"); samples.frombytes(r.stdout)
+           assert len(samples)>1600,"Audio too short"
+           rms=math.sqrt(sum((v/32768)**2 for v in samples)/len(samples))
+           assert rms>0.001,"Audio is silent"
+           seen.add(d["mode"]);d.update(decoded=True,seconds=round(len(samples)/16000,3),rms=round(rms,4))
+           print(json.dumps(d),flush=True)
+          assert seen=={"direct","fallback"},"Both voice routes must pass"
+          '
