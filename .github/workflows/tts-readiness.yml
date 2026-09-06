@@ -14,11 +14,8 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@v1
-      - name: Report existing speech configuration without credential values
+      - name: Compare saved and effective public voice IDs
         shell: bash
         run: |
           set -euo pipefail
-          for app in streamweaver-new hearmeout-main hmo-dj-worker; do
-            echo "Speech configuration: $app"
-            flyctl ssh console --app "$app" --command 'node -e "const keys=[\"DEEPGRAM_API_KEY\",\"EDENAI_API_KEY\",\"LIVEKIT_API_KEY\",\"LIVEKIT_API_SECRET\",\"LIVEKIT_URL\",\"NEXT_PUBLIC_LIVEKIT_URL\"];console.log(JSON.stringify({app:process.env.FLY_APP_NAME,configured:Object.fromEntries(keys.map(k=>[k,Boolean(process.env[k]?.trim())]))}))"' || true
-          done
+          flyctl ssh console --app streamweaver-new --command 'node --import tsx -e "const {getBotVoice}=require(\"./src/lib/bot-settings-store.ts\");const {getTTSConfig}=require(\"./src/services/tts-provider.ts\");const {getTtsVoiceOption}=require(\"./src/lib/tts-voices.ts\");const tenantId=\"94371378\";const saved=getTtsVoiceOption(getBotVoice(tenantId));const effective=getTTSConfig(tenantId);console.log(JSON.stringify({savedVoice:saved.id,savedProvider:saved.provider,effectiveVoice:effective.voice,effectiveProvider:effective.provider,edenaiConfigured:Boolean(effective.apiKey),deepgramConfigured:Boolean(effective.deepgramApiKey)}))"'
