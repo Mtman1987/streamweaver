@@ -1,4 +1,4 @@
-name: Configure direct Athena speech
+name: Verify deployed Athena speech
 on:
   push:
     branches: [codex/athena-direct-key]
@@ -6,15 +6,47 @@ on:
 permissions:
   contents: read
 jobs:
-  configure:
+  inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@v1
-      - name: Prepare encrypted credential transfer
+      - name: Remove unused transfer material
+        run: 'flyctl ssh console --app streamweaver-new --command '\''node -e '\''\'\'''\''require("fs").rmSync("/data/runtime/.athena-key-install-20260906.pem",{force:true});console.log("Unused temporary transfer key removed.");'\''\'\'''\'''\'''
+      - name: Install audio decoder
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Verify canonical Athena synthesis and decoded audio
         shell: bash
         run: |
           set -euo pipefail
-          flyctl ssh console --app streamweaver-new --command 'node -e '\''const fs=require("fs");const crypto=require("crypto");const p="/data/runtime/.athena-key-install-20260906.pem";fs.mkdirSync("/data/runtime",{recursive:true});if(!fs.existsSync(p)){const pair=crypto.generateKeyPairSync("rsa",{modulusLength:3072,privateKeyEncoding:{type:"pkcs8",format:"pem"},publicKeyEncoding:{type:"spki",format:"pem"}});fs.writeFileSync(p,pair.privateKey,{mode:0o600,flag:"wx"});}console.log("ATHENA_IMPORT_PUBLIC_KEY:"+crypto.createPublicKey(fs.readFileSync(p)).export({type:"spki",format:"der"}).toString("base64"));'\'''
+          # One fixed 29-character sample; no private conversations or credentials are logged.
+          flyctl ssh console --app streamweaver-new --command 'node --import tsx -e '\''const {generateTTS,getTTSConfig}=require("./src/services/tts-provider.ts");
+          (async()=>{
+           const config=getTTSConfig("94371378");
+           if(config.voice!=="deepgram:aura-2:athena") throw new Error("Athena voice identity changed");
+           const originalFetch=globalThis.fetch;
+           globalThis.fetch=async(...args)=>{
+            const response=await originalFetch(...args);
+            if(String(args[0])==="https://api.edenai.run/v3/universal-ai"){
+             const result=await response.clone().json();
+             console.error(JSON.stringify({speechProvider:result.provider,status:result.status,costUsd:typeof result.cost==="number"?result.cost:null}));
+            }
+            return response;
+           };
+           const audio=await generateTTS("This is an Athena voice check.",undefined,"94371378");
+           if(!audio.startsWith("data:audio/mpeg;base64,")) throw new Error("Expected MP3 audio");
+           console.log("ATHENA_AUDIO:"+audio.slice("data:audio/mpeg;base64,".length));
+          })().catch(()=>{console.error("Canonical Athena speech check failed");process.exitCode=1});'\''' | python3 -c 'import sys,base64; line=next((s.strip() for s in sys.stdin if s.startswith("ATHENA_AUDIO:")), ""); assert line, "No Athena audio returned"; sys.stdout.buffer.write(base64.b64decode(line.split(":",1)[1],validate=True))' > "$RUNNER_TEMP/athena.mp3"
+          ffmpeg -v error -i "$RUNNER_TEMP/athena.mp3" -ac 1 -ar 16000 -f s16le "$RUNNER_TEMP/athena.pcm"
+          python3 - "$RUNNER_TEMP/athena.pcm" <<'PY'
+          import array, json, math, sys
+          samples = array.array("h")
+          with open(sys.argv[1], "rb") as source:
+              samples.frombytes(source.read())
+          assert len(samples) > 1600, "Athena audio is too short"
+          rms = math.sqrt(sum((s / 32768) ** 2 for s in samples) / len(samples))
+          assert rms > 0.001, "Athena audio is silent"
+          print(json.dumps({"voice": "aura-2-athena-en", "seconds": round(len(samples) / 16000, 2), "rms": round(rms, 4), "decoded": True}))
+          PY
