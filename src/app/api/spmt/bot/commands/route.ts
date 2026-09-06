@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { bootstrapTenant } from '@/lib/tenant';
-import { serializeSessionCookie } from '@/lib/session-cookie';
+import { bearerToken, firstString, resolveSpmtUser, internalSessionCookie } from '@/lib/spmt-request-identity';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { getBotName } from '@/lib/bot-settings-store';
 import { routeBotAction, type BotActionSource } from '@/services/bot-action-runtime';
@@ -9,33 +9,6 @@ import { generateTTS } from '@/services/tts-provider';
 import { DEFAULT_TTS_VOICE } from '@/lib/tts-voices';
 import { isTheCountName, isTheCountTwitchLogin } from '@/lib/the-count';
 
-const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
-
-type SpmtUser = {
-  id: string;
-  username: string;
-  displayName?: string;
-  display_name?: string;
-  avatarUrl?: string;
-  avatar_url?: string;
-  twitchId?: string;
-  twitch_id?: string;
-  twitchUsername?: string;
-  twitch_username?: string;
-};
-
-function bearerToken(request: NextRequest): string {
-  const header = String(request.headers.get('authorization') || '').trim();
-  return /^Bearer\s+/i.test(header) ? header.replace(/^Bearer\s+/i, '').trim() : '';
-}
-
-function firstString(...values: unknown[]): string {
-  for (const value of values) {
-    const normalized = String(value || '').trim();
-    if (normalized) return normalized;
-  }
-  return '';
-}
 
 function botActionSource(value: unknown): BotActionSource {
   const source = firstString(value).toLowerCase();
@@ -57,43 +30,6 @@ function hearMeOutSayStreamKey(roomId: unknown, personaTenantId: unknown): strin
   const room = clean(roomId, 'room');
   const persona = clean(personaTenantId, 'persona');
   return `hmo-say-${room}-${persona}`.slice(0, 128);
-}
-
-async function resolveSpmtUser(token: string): Promise<SpmtUser | null> {
-  const response = await fetch(`${SPMT_BASE_URL}/api/oauth/userinfo`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    cache: 'no-store',
-    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8000) : undefined,
-  }).catch(() => null);
-  if (!response?.ok) return null;
-  const payload = await response.json().catch(() => null) as any;
-  const user = payload?.user || payload?.profile || payload;
-  if (!user?.id || !user?.username) return null;
-  return user as SpmtUser;
-}
-
-function internalSessionCookie(user: SpmtUser, tenantOverride?: string) {
-  const ownerTenantId = firstString(user.twitchId, user.twitch_id, user.id);
-  const tenantId = firstString(tenantOverride, ownerTenantId);
-  const username = firstString(user.twitchUsername, user.twitch_username, user.username);
-  const displayName = firstString(user.displayName, user.display_name, username);
-  const avatar = firstString(user.avatarUrl, user.avatar_url);
-  const value = serializeSessionCookie({
-    id: tenantId,
-    spmtUserId: user.id,
-    identityProvider: 'spmt',
-    username,
-    displayName,
-    avatar,
-    loginTime: Date.now(),
-  });
-  return {
-    tenantId,
-    ownerTenantId,
-    username,
-    displayName,
-    header: `streamweaver-session=${encodeURIComponent(value)}`,
-  };
 }
 
 function internalBaseUrl(): string {
@@ -181,7 +117,8 @@ export async function POST(request: NextRequest) {
     return apiError('SPMT authentication required', { status: 401, code: 'SPMT_AUTH_REQUIRED' });
   }
 
-  const user = await resolveSpmtUser(token);
+  const user = await resolveSpmtUser(token).catch(() => undefined);
+  if (user === undefined) return apiError('SPMT identity service is temporarily unavailable', { status: 503 });
   if (!user) {
     return apiError('SPMT session is invalid or expired', { status: 401, code: 'SPMT_AUTH_INVALID' });
   }

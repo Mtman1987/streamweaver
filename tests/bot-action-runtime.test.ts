@@ -421,3 +421,25 @@ test('MountainView grants privileged actions only with enforced scoped-secret au
   assert.ok(authIndex >= 0 && actionIndex > authIndex);
   assert.match(route, /role: isMountainViewBridgeSecretEnforced\(\) \? 'owner' : 'member'/);
 });
+
+
+test('plays the requested Prof song in the authenticated companion session without a room', async () => {
+  const request = await detectBotAction('play squad goals by prof');
+  assert.equal(request?.action, 'hmo.media.request');
+  assert.equal(request?.args.query, 'squad goals by prof');
+  const calls: any[] = [];
+  const outcome = await executeBotAction(request!, {
+    tenantId: 'owner', botName: 'Athena', source: 'mountainview',
+    visibility: 'private', playbackSessionId: 'watch-companion-owned-session',
+    message: 'play squad goals by prof', actor: { userId: 'owner', username: 'owner', role: 'owner' },
+  }, {
+    readDiscordConfig: async () => ({}) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    executeHearMeOutBotAction: async payload => { calls.push(payload); return { success: true, message: 'Queued Squad Goals' }; },
+  });
+  assert.equal(outcome.status, 'completed');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].sessionId, 'watch-companion-owned-session');
+  assert.equal(calls[0].roomId, undefined);
+});

@@ -47,6 +47,8 @@ export type BotActionContext = {
   requestId?: string;
   guildId?: string;
   roomId?: string;
+  /** Derived by an authenticated server for local companion playback only. */
+  playbackSessionId?: string;
   visibility?: 'public' | 'private';
   actor: {
     userId?: string;
@@ -367,7 +369,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   }
   const volume = value.match(/\b(?:set|change|turn)\b.*\b(?:hearmeout|hear\s+me\s+out|music|audio)?\s*volume\b.*?\b(\d{1,3})\b/);
   if (volume) return { action: 'hmo.media.control', args: { control: 'volume', value: volume[1] }, detection: 'explicit' };
-  if (/\b(?:play|queue|request|put\s+on|add)\b.*\b(?:song|track|music|story|audiobook|audio|hearmeout|hear\s+me\s+out)\b/.test(value)) {
+  if (/\b(?:play|queue|request|put\s+on|add)\b.*\b(?:song|track|music|story|audiobook|audio|hearmeout|hear\s+me\s+out)\b/.test(value) || /\b(?:play|queue|put\s+on)\s+.+?\s+by\s+\S/.test(value) || /\b(?:play|queue|put\s+on)\s+["“][^"”]+["”]/.test(value)) {
     return { action: 'hmo.media.request', args: { query: extractMediaQuery(message) }, detection: 'explicit' };
   }
   if (/\b(?:what(?:'s| is)|read|show|list|check)\b.*\b(?:playing|queued?|hearmeout|hear\s+me\s+out)\b/.test(value)) {
@@ -599,7 +601,7 @@ export async function executeBotAction(
   if (request.action === 'hmo.media.request' && !request.args.query) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me which song, story, audiobook, or audio you want HearMeOut to play.' };
   }
-  if (request.action === 'hmo.media.request' && !context.roomId) {
+  if (request.action === 'hmo.media.request' && !context.roomId && !context.playbackSessionId) {
     return {
       handled: true,
       action: request.action,
@@ -651,6 +653,7 @@ export async function executeBotAction(
         action: request.action as HearMeOutBotAction,
         tenantId: context.tenantId,
         roomId: context.roomId,
+        ...(request.action.startsWith('hmo.media.') && context.playbackSessionId ? { sessionId: context.playbackSessionId } : {}),
         actorUserId: context.actor.userId,
         actorName: context.actor.displayName || context.actor.username,
         query: request.args.query,
@@ -710,6 +713,16 @@ export async function executeBotAction(
 }
 
 export async function routeBotAction(message: string, context: BotActionContext): Promise<BotActionOutcome | null> {
-  const request = await detectBotAction(message, context.tenantId);
+  let request = await detectBotAction(message, context.tenantId);
+  if (!request && context.playbackSessionId) {
+    let value = message.trim().replace(/^hey\s+/i, '');
+    if (value.toLowerCase().startsWith(context.botName.toLowerCase() + ' ') || value.toLowerCase().startsWith(context.botName.toLowerCase() + ',')) value = value.slice(context.botName.length).replace(/^[, ]+/, '');
+    const controls: Record<string, string> = { pause: 'pause', stop: 'pause', resume: 'play', continue: 'play', skip: 'next', next: 'next', mute: 'mute', unmute: 'unmute' };
+    const control = controls[value.toLowerCase().replace(/[.!]$/, '')];
+    if (control) request = { action: 'hmo.media.control', args: { control }, detection: 'explicit' };
+    else if (/^(?:(?:please|can you|could you)\s+)?(?:play|put on|queue)\s+/i.test(value) && !/\b(?:game|chess|checkers|poker|roleplay)\b/i.test(value)) {
+      request = { action: 'hmo.media.request', args: { query: extractMediaQuery(value) }, detection: 'explicit' };
+    }
+  }
   return request ? executeBotAction(request, context) : null;
 }

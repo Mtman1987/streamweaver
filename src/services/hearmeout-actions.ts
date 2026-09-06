@@ -32,22 +32,28 @@ export type HearMeOutBotActionPayload = {
   idempotencyKey?: string;
 };
 
-function getHearMeOutServiceSecret(): string {
-  return String(
-    process.env.HEARMEOUT_SERVICE_SECRET || process.env.STREAMWEAVER_SECRET || process.env.BOT_SECRET_KEY || '',
-  ).trim();
+function getHearMeOutServiceSecrets(): string[] {
+  // HearMeOut accepts these two existing credentials, never STREAMWEAVER_SECRET.
+  return [...new Set([process.env.HEARMEOUT_SERVICE_SECRET, process.env.BOT_SECRET_KEY]
+    .map(value => String(value || '').trim()).filter(Boolean))];
 }
 
 export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPayload): Promise<Record<string, unknown>> {
-  const secret = getHearMeOutServiceSecret();
-  if (!secret) throw new Error('HEARMEOUT_SERVICE_SECRET is not configured');
-  const response = await fetch(`${HEARMEOUT_URL}/api/internal/bot/actions`, {
+  const secrets = getHearMeOutServiceSecrets();
+  if (!secrets.length) throw new Error('HearMeOut shared service credential is not configured');
+  const send = (secret: string) => fetch(`${HEARMEOUT_URL}/api/internal/bot/actions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store',
     signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(55_000) : undefined,
   });
+  let response = await send(secrets[0]);
+  // Retry only a rejected, unexecuted request with the other existing key.
+  if (response.status === 401 && secrets[1]) {
+    await response.body?.cancel();
+    response = await send(secrets[1]);
+  }
   const raw = await response.text();
   let data: any = {};
   try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: raw }; }
