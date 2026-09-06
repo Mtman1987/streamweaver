@@ -1,0 +1,24 @@
+name: Inspect approved live music authorization
+on:
+  push:
+    branches: [codex/music-auth-repair]
+    paths: [.github/workflows/music-auth-repair.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - name: Test existing credentials only against the owned HearMeOut music endpoint
+        shell: python
+        run: |
+          import subprocess,json,shlex
+          code="(async()=>{\n const configured=String(process.env.HEARMEOUT_BASE_URL||process.env.NEXT_PUBLIC_HEARMEOUT_URL||\"https://hearmeout-main.fly.dev\").replace(/\\/+$/,\"\");\n const allowed=configured===\"https://hearmeout-main.fly.dev\";\n const keys=[\"HEARMEOUT_SERVICE_SECRET\",\"BOT_SECRET_KEY\"].filter(k=>String(process.env[k]||\"\").trim());\n console.log(\"MUSIC_DIAGNOSTIC:\"+JSON.stringify({app:\"streamweaver-new\",knownDestination:allowed,configuredCredentialNames:keys}));\n if(!allowed) throw new Error(\"Configured HearMeOut destination differs from its owned Fly app\");\n for(const name of keys){\n  const response=await fetch(configured+\"/api/internal/bot/actions\",{method:\"POST\",headers:{Authorization:\"Bearer \"+process.env[name].trim(),\"Content-Type\":\"application/json\"},body:JSON.stringify({action:\"hmo.media.state.read\",sessionId:\"watch-companion-diagnostic-auth-20260906\",tenantId:\"companion-diagnostic\",actorUserId:\"companion-diagnostic\",actorName:\"Companion diagnostic\"}),signal:AbortSignal.timeout(55000)});\n  const result=await response.json().catch(()=>({}));\n  console.log(\"MUSIC_DIAGNOSTIC:\"+JSON.stringify({credentialName:name,status:response.status,accepted:response.ok&&result.success===true,isolatedSession:result.session?.id===\"watch-companion-diagnostic-auth-20260906\"}));\n }\n})().catch(e=>{console.log(\"MUSIC_DIAGNOSTIC:\"+JSON.stringify({failed:true,error:e.name}));process.exitCode=1});"
+          r=subprocess.run(["flyctl","ssh","console","--app","streamweaver-new","--command","node -e "+shlex.quote(code)],capture_output=True,text=True,timeout=140)
+          for line in r.stdout.splitlines():
+           if line.startswith("MUSIC_DIAGNOSTIC:"): print(line)
+          if r.returncode: raise SystemExit("Deployed music diagnostic failed; no credentials were logged")
