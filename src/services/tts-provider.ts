@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
 import { normalizeTextForTTS } from '@/lib/tts-text';
 import {
@@ -57,13 +58,14 @@ const TTS_DOWNLOAD_TIMEOUT_MS = 30_000;
 const TTS_AUTH_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const TTS_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
 const voiceCooldowns = new Map<string, number>();
+const speechRouteCooldowns = new Map<string, number>();
 
 export function getTTSProviderCooldownMs(error: unknown): number {
   const message = String((error as Error)?.message || error || '').toLowerCase();
   if (/\b(?:401|403)\b|api key not valid|key was reported as leaked|permission_denied/.test(message)) {
     return TTS_AUTH_COOLDOWN_MS;
   }
-  if (/\b429\b|resource_exhausted|quota|insufficient_credit/.test(message)) {
+  if (/\b(?:402|429)\b|resource_exhausted|quota|insufficient_credit/.test(message)) {
     return TTS_QUOTA_COOLDOWN_MS;
   }
   return 0;
@@ -78,7 +80,8 @@ export function getLifelikeFallbackVoices(selectedVoice: string): string[] {
 
   return preferredProviders
     .map((provider) => TTS_VOICE_OPTIONS.find((voice) => (
-      voice.gender === selected.gender
+      voice.provider === 'edenai'
+      && voice.gender === selected.gender
       && voice.edenaiProvider === provider
       && voice.id !== selected.id
     )))
@@ -142,19 +145,18 @@ export async function generateTTS(
   const errors: string[] = [];
 
   for (const voiceId of attempts) {
+    const voice = getTtsVoiceOption(voiceId);
     const cooldownKey = `${tenantId || 'global'}:${voiceId}`;
-    if ((voiceCooldowns.get(cooldownKey) || 0) > Date.now()) continue;
+    if (voice.provider !== 'deepgram' && (voiceCooldowns.get(cooldownKey) || 0) > Date.now()) continue;
     try {
-      const voice = getTtsVoiceOption(voiceId);
       if (voice.provider === 'deepgram') {
-        if (!config.deepgramApiKey) throw new Error('Deepgram TTS is not configured');
-        return await generateDeepgramTTS(normalizedText, config.deepgramApiKey, voice.deepgramModel);
+        return await generatePortableDeepgramTTS(normalizedText, voice, config, tenantId);
       }
       if (!config.apiKey) throw new Error('Eden AI TTS is not configured');
       return await generateEdenAITTS(normalizedText, voice, config.apiKey);
     } catch (error) {
       const cooldownMs = getTTSProviderCooldownMs(error);
-      if (cooldownMs) voiceCooldowns.set(cooldownKey, Date.now() + cooldownMs);
+      if (cooldownMs && voice.provider !== 'deepgram') voiceCooldowns.set(cooldownKey, Date.now() + cooldownMs);
       const message = (error as Error).message;
       errors.push(`${voiceId}: ${message}`);
       console.warn(`[TTS] Voice ${voiceId} failed${attempts.length > 1 ? '; trying the next same-gender named voice' : ''}:`, message);
@@ -162,6 +164,38 @@ export async function generateTTS(
   }
 
   throw new Error(`Lifelike TTS failed; cross-voice fallback is disabled for pinned voices. ${errors.join(' | ')}`);
+}
+
+async function generatePortableDeepgramTTS(text: string, voice: TTSVoiceOption, config: TTSConfig, tenantId?: string): Promise<string> {
+  // Provider failover preserves the exact model/speaker. Direct Deepgram uses
+  // the account's credits first; Eden AI supplies that same voice on failure.
+  const routes = [
+    { name: 'Deepgram', key: config.deepgramApiKey, synthesize: () => generateDeepgramTTS(text, config.deepgramApiKey, voice.deepgramModel) },
+    { name: 'Eden AI', key: config.apiKey, synthesize: () => generateEdenAIDeepgramTTS(text, voice, config.apiKey) },
+  ];
+  const failures: string[] = [];
+  for (const route of routes) {
+    if (!route.key) continue;
+    // A replacement credential can recover immediately. Never store or log the
+    // credential itself, and never let one provider's outage disable the other.
+    const revision = createHash('sha256').update(route.key).digest('hex');
+    const cooldownKey = `${tenantId || 'global'}:${voice.id}:${route.name}:${revision}`;
+    if ((speechRouteCooldowns.get(cooldownKey) || 0) > Date.now()) {
+      failures.push(`${route.name} is temporarily cooling down`);
+      continue;
+    }
+    speechRouteCooldowns.delete(cooldownKey);
+    try {
+      return await route.synthesize();
+    } catch (error) {
+      const cooldownMs = getTTSProviderCooldownMs(error) || 30_000;
+      speechRouteCooldowns.set(cooldownKey, Date.now() + cooldownMs);
+      const message = error instanceof Error ? error.message : 'Speech request failed';
+      failures.push(`${route.name}: ${message}`);
+      console.warn(`[TTS] ${route.name} failed for ${voice.id}; retaining the same voice: ${message}`);
+    }
+  }
+  throw new Error(failures.join(' | ') || 'No Deepgram or Eden AI speech credential is configured');
 }
 
 export async function generateDeepgramTTS(text: string, apiKey: string, model = ATHENA_DEEPGRAM_TTS_MODEL): Promise<string> {
@@ -176,13 +210,48 @@ export async function generateDeepgramTTS(text: string, apiKey: string, model = 
       },
       body: JSON.stringify({ text }),
     },
+    { attempts: 1 },
   );
   if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`Deepgram TTS failed: ${response.status} ${detail}`);
+    throw new Error(`Deepgram TTS failed: ${response.status}`);
+  }
+  const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (contentType && !contentType.startsWith('audio/') && !['application/octet-stream', 'binary/octet-stream'].includes(contentType)) {
+    throw new Error('Deepgram TTS returned non-audio content');
   }
   const audioBuffer = await response.arrayBuffer();
   if (!audioBuffer.byteLength) throw new Error('Deepgram TTS returned empty audio');
+  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
+}
+
+async function generateEdenAIDeepgramTTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
+  if (!voice.deepgramModel?.startsWith('aura-2-')) {
+    throw new Error(`Unsupported Eden AI Deepgram voice: ${voice.id}`);
+  }
+  const response = await fetchWithRetry('https://api.edenai.run/v3/universal-ai', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'audio/tts/deepgram/aura-2',
+      input: { text, voice: voice.deepgramModel, audio_format: 'mp3' },
+    }),
+  });
+  if (!response.ok) throw new Error(`Eden AI Deepgram TTS failed: ${response.status}`);
+
+  const result = await response.json();
+  if (result?.status !== 'success' || result?.provider !== 'deepgram') {
+    throw new Error(`Eden AI did not generate the selected Deepgram voice: ${voice.id}`);
+  }
+  const audioUrl = result?.output?.audio_resource_url;
+  if (typeof audioUrl !== 'string' || !audioUrl) throw new Error(`Eden AI returned no audio for ${voice.id}`);
+  const audioResponse = await fetchWithRetry(audioUrl, {}, { timeoutMs: TTS_DOWNLOAD_TIMEOUT_MS });
+  if (!audioResponse.ok) throw new Error(`Eden AI audio download failed: ${audioResponse.status}`);
+  const contentType = (audioResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (contentType && !contentType.startsWith('audio/') && !['application/octet-stream', 'binary/octet-stream'].includes(contentType)) {
+    throw new Error('Eden AI returned a non-audio download');
+  }
+  const audioBuffer = await audioResponse.arrayBuffer();
+  if (!audioBuffer.byteLength) throw new Error('Eden AI returned empty audio');
   return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
