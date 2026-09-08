@@ -61,3 +61,80 @@ patchFile('src/services/chat-monitor.ts', (source) => {
   }
   return source;
 });
+
+patchFile('src/services/chat-dispatcher.ts', (source) => {
+  if (source.includes('Relay routed to active Discord presence')) return source;
+
+  const unsafe = /if \(relayRequest\.targetName && isDirectHumanRelayTarget\(relayRequest\.targetName\)\) \{\s*const directMessage = buildDirectHumanRelayMessage\(\{[\s\S]*?\}\);\s*console\.log\('\[Dispatcher\] Relay delivered directly to human target in current Twitch chat:'[\s\S]*?await sendChatMessage\([\s\S]*?\)\.catch\(\(\) => \{\}\);\s*return;\s*\}/;
+  if (!unsafe.test(source)) throw new Error('Human relay routing patch: unsafe Twitch fallback marker missing');
+
+  const safe = `if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
+                                const directMessage = buildDirectHumanRelayMessage({
+                                    targetName: relayRequest.targetName,
+                                    sourceUserName: actualUsername,
+                                    relayMessage: relayRequest.relayMessage,
+                                });
+                                const targetHandle = String(relayRequest.targetName || '').replace(/^@/, '').toLowerCase();
+                                const [{ lookupDiscordRelayPresenceByName }, { readPublicChatMessages }] = await Promise.all([
+                                    import('./discord-relay-presence'),
+                                    import('../lib/public-chat-store'),
+                                ]);
+                                const [discordPresence, recentPublicChat] = await Promise.all([
+                                    lookupDiscordRelayPresenceByName(targetHandle).catch(() => null),
+                                    readPublicChatMessages(300, tenantId).catch(() => []),
+                                ]);
+                                const twitchSeen = [...recentPublicChat].reverse().find((entry) =>
+                                    String(entry.username || '').replace(/^@/, '').toLowerCase() === targetHandle
+                                );
+                                const twitchSeenAt = twitchSeen?.timestamp ? Date.parse(twitchSeen.timestamp) : 0;
+                                const discordSeenAt = Math.max(
+                                    discordPresence?.voiceObservedAt ? Date.parse(discordPresence.voiceObservedAt) : 0,
+                                    discordPresence?.lastChatAt ? Date.parse(discordPresence.lastChatAt) : 0,
+                                );
+                                const twitchIsRecent = twitchSeenAt > 0 && Date.now() - twitchSeenAt <= 10 * 60 * 1000;
+
+                                if (discordPresence?.userId && (!twitchIsRecent || discordSeenAt >= twitchSeenAt)) {
+                                    const { createDiscordDmChannel, sendDiscordMessage: sendDiscordDirectMessage } = await import('./discord-local');
+                                    let targetChannelId = String(discordPresence.preferredChannelId || '').trim();
+                                    let deliveryKind = discordPresence.preferredKind || 'dm';
+                                    try {
+                                        if (!targetChannelId) throw new Error('no active Discord channel');
+                                        await sendDiscordDirectMessage(targetChannelId, \`<@\${discordPresence.userId}> \${directMessage}\`);
+                                    } catch {
+                                        const dm = await createDiscordDmChannel(discordPresence.userId);
+                                        targetChannelId = dm.id;
+                                        deliveryKind = 'dm';
+                                        await sendDiscordDirectMessage(targetChannelId, directMessage);
+                                    }
+                                    console.log('[Dispatcher] Relay routed to active Discord presence:', {
+                                        targetName: relayRequest.targetName,
+                                        discordUserId: discordPresence.userId,
+                                        deliveryKind,
+                                        targetChannelId,
+                                    });
+                                    return;
+                                }
+
+                                if (twitchIsRecent) {
+                                    console.log('[Dispatcher] Relay routed to recently active target in current Twitch chat:', {
+                                        targetName: relayRequest.targetName,
+                                        replyChannel,
+                                        twitchSeenAt: twitchSeen?.timestamp,
+                                    });
+                                    await sendChatMessage(directMessage, 'bot', replyChannel, humanRelaySpeaker.tenantId).catch(() => {});
+                                    return;
+                                }
+
+                                console.warn('[Dispatcher] Human relay target has no recent resolvable destination:', {
+                                    targetName: relayRequest.targetName,
+                                    source: relayRequest.source || 'unknown',
+                                });
+                                await replyMaybeKick(\`@\${actualUsername}, I couldn't find a recent Twitch or Discord destination for @\${relayRequest.targetName}; relay not sent.\`, 'bot').catch(() => {});
+                                return;
+                            }`;
+
+  source = source.replace(unsafe, safe);
+  if (!source.includes('Relay routed to active Discord presence')) throw new Error('Human relay routing patch did not apply');
+  if (source.includes('Relay delivered directly to human target in current Twitch chat')) throw new Error('Human relay routing patch left unsafe Twitch fallback');
+  return source;
+});
