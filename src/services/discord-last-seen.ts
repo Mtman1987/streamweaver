@@ -89,6 +89,18 @@ export async function recordDiscordLastSeen(input: {
   await writeState(state);
 }
 
+export async function findDiscordLastSeenForUserId(userIdInput: string): Promise<DiscordLastSeenEntry | null> {
+  const userId = String(userIdInput || '').trim();
+  if (!userId) return null;
+  const state = await readState();
+  const direct = state[`id:${userId}`];
+  if (direct) return direct;
+  const scanned = Object.values(state)
+    .filter((entry) => String(entry.userId || '').trim() === userId)
+    .sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime())[0];
+  return scanned || null;
+}
+
 export async function findDiscordLastSeenForNames(names: string[]): Promise<DiscordLastSeenEntry | null> {
   const state = await readState();
   const keys = names.map((name) => `name:${normalizeKey(name)}`).filter((key) => key !== 'name:');
