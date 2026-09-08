@@ -2,7 +2,8 @@ name: Relay hardening once
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/relay-hardening-once.yml']
+    paths:
+      - .github/workflows/relay-hardening-once.yml
 permissions:
   contents: write
 jobs:
@@ -18,8 +19,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Patch relay routing
-        shell: python
+        shell: bash
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           p=Path('src/services/chat-dispatcher.ts')
           s=p.read_text()
@@ -163,6 +165,7 @@ jobs:
           assert old in s, 'relay discord lookup block not found'
           s=s.replace(old,new,1)
           p.write_text(s)
+          PY
       - name: Typecheck
         run: npm run typecheck
       - name: Commit hardened relay routing
