@@ -74,7 +74,7 @@ async function performDiscordRequest(endpoint: string, options: RequestInit = {}
         ...options,
         headers: {
             'Authorization': `Bot ${token}`,
-            'Content-Type': 'application/json',
+            ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
             ...options.headers,
         },
     });
@@ -138,10 +138,25 @@ export async function createDiscordDmChannel(recipientId: string): Promise<{ id:
     return { id, raw: data };
 }
 
-export async function sendDiscordEmbed(channelId: string, options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[] }): Promise<Record<string, unknown>> {
+export type DiscordTextAttachment = { name: string; content: string; contentType?: string };
+
+function discordMultipartBody(payload: Record<string, unknown>, files: DiscordTextAttachment[]): FormData {
+    const formData = new FormData();
+    const attachments = files.map((file, index) => ({ id: index, filename: file.name }));
+    formData.append('payload_json', JSON.stringify({ ...payload, attachments }));
+    files.forEach((file, index) => {
+        formData.append(`files[${index}]`, new Blob([file.content], { type: file.contentType || 'text/plain; charset=utf-8' }), file.name);
+    });
+    return formData;
+}
+
+export async function sendDiscordEmbed(channelId: string, options: { content?: string; embeds: Record<string, unknown>[]; components?: Record<string, unknown>[]; files?: DiscordTextAttachment[] }): Promise<Record<string, unknown>> {
+    const { files = [], ...payload } = options;
     return await discordRequest(`/channels/${channelId}/messages`, {
         method: 'POST',
-        body: JSON.stringify(options),
+        ...(files.length
+            ? { body: discordMultipartBody(payload, files), headers: {} }
+            : { body: JSON.stringify(payload) }),
     });
 }
 
@@ -207,12 +222,15 @@ export async function getDiscordMessage(channelId: string, messageId: string): P
 export async function editDiscordMessage(
     channelId: string,
     messageId: string,
-    payload: string | { content?: string; embeds?: Record<string, unknown>[]; components?: Record<string, unknown>[] },
+    payload: string | { content?: string; embeds?: Record<string, unknown>[]; components?: Record<string, unknown>[]; files?: DiscordTextAttachment[] },
 ): Promise<void> {
     const body = typeof payload === 'string' ? { content: payload } : payload;
+    const { files = [], ...rest } = body as Exclude<typeof body, string> & { files?: DiscordTextAttachment[] };
     await discordRequest(`/channels/${channelId}/messages/${messageId}`, {
         method: 'PATCH',
-        body: JSON.stringify(body),
+        ...(files.length
+            ? { body: discordMultipartBody(rest, files), headers: {} }
+            : { body: JSON.stringify(rest) }),
     });
 }
 

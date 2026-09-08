@@ -2,7 +2,7 @@ import { listTenants } from '@/lib/tenant';
 import { readWorldLore } from '@/lib/world-lore-store';
 import { getBotName } from '@/lib/bot-settings-store';
 import { getStoredTokens } from '@/lib/token-utils.server';
-import { deleteMessage, editDiscordMessage, sendDiscordEmbed } from './discord-local';
+import { deleteMessage, editDiscordMessage, sendDiscordEmbed, type DiscordTextAttachment } from './discord-local';
 import {
   buildDiscordBotEmbed,
   getDiscordBotWebhookIdentity,
@@ -52,6 +52,7 @@ export type StructuredDiscordReplyInput = {
   embedUrl?: string;
   footerText?: string;
   forceCleanup?: boolean;
+  files?: DiscordTextAttachment[];
 };
 
 let rotatingSpeakerIndex = 0;
@@ -315,11 +316,12 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
     content: payload.content,
     embeds: payload.embeds,
     ...(replyInput.components?.length ? { components: replyInput.components } : {}),
+    ...(replyInput.files?.length ? { files: replyInput.files } : {}),
   };
 
   let sent: any;
   try {
-    sent = replyInput.isPrivate || replyInput.components?.length || (!speaker.tenantId && !replyInput.tenantId)
+    sent = replyInput.isPrivate || replyInput.components?.length || replyInput.files?.length || (!speaker.tenantId && !replyInput.tenantId)
       ? await sendDiscordEmbed(replyInput.channelId, botTokenPayload)
       : await sendWebhookMessage(replyInput.channelId, payload.content, webhookIdentity.username, avatarUrl, payload.embeds);
   } catch (error) {
@@ -429,6 +431,7 @@ export async function editStructuredDiscordReply(
     content: payload.content,
     embeds,
     ...(effectiveInput.components?.length ? { components: effectiveInput.components } : {}),
+    ...(effectiveInput.files?.length ? { files: effectiveInput.files } : {}),
   };
 
   let edited = false;

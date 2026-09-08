@@ -585,16 +585,20 @@ function appendRelayHistory(
 }
 
 function buildDiscordRelayTranscript(history: RelayConversationTurn[]): string {
-    let turns = history.slice(-12);
-    const render = () => turns.map((turn) =>
+    const turns = history.slice(-2);
+    return turns.map((turn) =>
         `**${turn.senderUsername} via ${turn.botName}:** ${turn.message}`
     ).join('\n\n');
-    let transcript = render();
-    while (transcript.length > 3900 && turns.length > 1) {
-        turns = turns.slice(1);
-        transcript = render();
-    }
-    return transcript.length <= 3900 ? transcript : `${transcript.slice(0, 3897)}…`;
+}
+
+function buildDiscordRelayHistoryFile(history: RelayConversationTurn[]) {
+    if (history.length <= 2) return [];
+    const archived = history.slice(0, -2);
+    const body = archived.map((turn) => {
+        const when = turn.createdAt ? new Date(turn.createdAt).toISOString() : '';
+        return `${when ? `[${when}] ` : ''}${turn.senderUsername} via ${turn.botName}: ${turn.message}`;
+    }).join('\n\n');
+    return [{ name: 'relay-history.txt', content: body || 'No archived relay messages.' }];
 }
 
 async function sendDiscordRelayCard(input: {
@@ -616,6 +620,7 @@ async function sendDiscordRelayCard(input: {
         isPrivate: input.isPrivate,
         forceCleanup: true,
         includeConfiguredMedia: false,
+        files: buildDiscordRelayHistoryFile(input.history),
     });
     return sent.messageId;
 }
@@ -645,6 +650,7 @@ async function updateDiscordRelayCard(input: {
         isPrivate: input.isPrivate,
         forceCleanup: true,
         includeConfiguredMedia: false,
+        files: buildDiscordRelayHistoryFile(input.history),
     });
     return result.edited;
 }
