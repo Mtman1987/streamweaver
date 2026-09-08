@@ -25,14 +25,16 @@ function getDshSecret(): string {
   return String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();
 }
 
-export async function lookupDiscordRelayPresence(userIdInput: string, guildIdInput?: string): Promise<DiscordRelayPresence | null> {
-  const userId = String(userIdInput || '').trim();
-  const guildId = String(guildIdInput || '').trim();
+async function lookupDiscordRelayPresenceQuery(input: { userId?: string; username?: string; guildId?: string }): Promise<DiscordRelayPresence | null> {
+  const userId = String(input.userId || '').trim();
+  const username = String(input.username || '').trim().replace(/^@/, '');
+  const guildId = String(input.guildId || '').trim();
   const secret = getDshSecret();
-  if (!userId || !secret) return null;
+  if ((!userId && !username) || !secret) return null;
 
   const url = new URL(`${getDshUrl()}/api/discord/relay-presence`);
-  url.searchParams.set('userId', userId);
+  if (userId) url.searchParams.set('userId', userId);
+  else url.searchParams.set('username', username);
   if (guildId) url.searchParams.set('guildId', guildId);
 
   try {
@@ -44,7 +46,7 @@ export async function lookupDiscordRelayPresence(userIdInput: string, guildIdInp
         : undefined,
     });
     if (!response.ok) {
-      console.warn(`[RelayPresence] DSH lookup failed ${response.status} for Discord user ${userId}`);
+      console.warn(`[RelayPresence] DSH lookup failed ${response.status} for Discord ${userId ? `user ${userId}` : `name ${username}`}`);
       return null;
     }
     const value = await response.json().catch(() => null) as any;
@@ -52,9 +54,9 @@ export async function lookupDiscordRelayPresence(userIdInput: string, guildIdInp
     const preferredChannelId = String(value.preferredChannelId || '').trim() || null;
     return {
       found: true,
-      userId: String(value.userId || userId).trim(),
+      userId: String(value.userId || userId).trim() || undefined,
       guildId: String(value.guildId || guildId).trim() || undefined,
-      username: String(value.username || '').trim() || undefined,
+      username: String(value.username || username).trim() || undefined,
       displayName: String(value.displayName || '').trim() || undefined,
       inVoice: value.inVoice === true,
       recentlyChatting: value.recentlyChatting === true,
@@ -68,4 +70,12 @@ export async function lookupDiscordRelayPresence(userIdInput: string, guildIdInp
     console.warn('[RelayPresence] DSH lookup unavailable:', error instanceof Error ? error.message : String(error));
     return null;
   }
+}
+
+export async function lookupDiscordRelayPresence(userIdInput: string, guildIdInput?: string): Promise<DiscordRelayPresence | null> {
+  return lookupDiscordRelayPresenceQuery({ userId: userIdInput, guildId: guildIdInput });
+}
+
+export async function lookupDiscordRelayPresenceByName(usernameInput: string, guildIdInput?: string): Promise<DiscordRelayPresence | null> {
+  return lookupDiscordRelayPresenceQuery({ username: usernameInput, guildId: guildIdInput });
 }
