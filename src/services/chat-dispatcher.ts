@@ -100,7 +100,8 @@ import {
     getMtSupportPrompt,
     submitMtSupportReport,
 } from './mt-support-report';
-import { findDiscordLastSeenForNames } from './discord-last-seen';
+import { findDiscordLastSeenForNames, findDiscordLastSeenForUserId } from './discord-last-seen';
+import { lookupDiscordRelayPresence } from './discord-relay-presence';
 import { getInternalAppUrl } from '../lib/runtime-origin';
 import { routeBotAction, type BotActorRole } from './bot-action-runtime';
 import {
@@ -875,15 +876,28 @@ export async function deliverBotRelay(input: {
 
         const resolvedTargetTenantId = targetTenantId!;
         const broadcasterChannel = await getTenantBroadcasterChannel(resolvedTargetTenantId);
-        const liveLookup = await lookupDiscordStreamHubTwitchTarget(broadcasterChannel);
-        const shouldTryDmBackup = liveLookup?.isLive !== true;
+        const liveLookup = await lookupDiscordStreamHubTwitchTarget(broadcasterChannel).catch(() => null);
+        const twitchIsLive = liveLookup?.isLive === true;
+        const targetDiscordConfig = await readDiscordConfig(resolvedTargetTenantId).catch(() => null);
+        const linkedDiscordUserId = String(targetDiscordConfig?.discordUserId || '').trim();
+        const linkedDiscordGuildId = String(targetDiscordConfig?.guildId || '').trim();
+        const discordPresence = linkedDiscordUserId
+            ? await lookupDiscordRelayPresence(linkedDiscordUserId, linkedDiscordGuildId || undefined).catch(() => null)
+            : null;
         console.log('[Dispatcher] Bot relay delivery target resolved:', {
             targetTenantId: resolvedTargetTenantId,
             broadcasterChannel,
             targetBot: input.target.currentName,
             liveLookup,
-            firstDelivery: 'twitch-chat',
-            shouldTryDmBackup,
+            twitchIsLive,
+            linkedDiscordUserId: linkedDiscordUserId || null,
+            discordPresence: discordPresence ? {
+                inVoice: discordPresence.inVoice,
+                recentlyChatting: discordPresence.recentlyChatting,
+                preferredKind: discordPresence.preferredKind,
+                preferredChannelId: discordPresence.preferredChannelId,
+            } : null,
+            firstDelivery: twitchIsLive ? 'twitch-chat' : (discordPresence?.preferredChannelId ? `discord-${discordPresence.preferredKind || 'active'}` : 'discord-dm'),
         });
         const relayText = await buildRelayDeliveryMessage({
             sourceUserName: input.sourceUserName,
@@ -906,26 +920,28 @@ export async function deliverBotRelay(input: {
 
         let chatDelivered = false;
         let chatError = '';
-        try {
-            await sendChatMessage(twitchRelayText, 'bot', broadcasterChannel, resolvedTargetTenantId);
-            chatDelivered = true;
-            await recordReplyPath({
-                platform: 'twitch',
-                channelId: broadcasterChannel,
-                defaultRecipientUsername: broadcasterChannel,
-                history: relayHistory,
-            }).catch((error) => console.warn('[Dispatcher] Failed to record Twitch relay reply path:', error));
-        } catch (error: any) {
-            chatError = error?.message || 'unknown Twitch chat error';
-            console.warn('[Dispatcher] Bot relay Twitch chat delivery failed:', {
-                targetTenantId: resolvedTargetTenantId,
-                broadcasterChannel,
-                targetBot: input.target.currentName,
-                error: chatError,
-            });
+        if (twitchIsLive) {
+            try {
+                await sendChatMessage(twitchRelayText, 'bot', broadcasterChannel, resolvedTargetTenantId);
+                chatDelivered = true;
+                await recordReplyPath({
+                    platform: 'twitch',
+                    channelId: broadcasterChannel,
+                    defaultRecipientUsername: broadcasterChannel,
+                    history: relayHistory,
+                }).catch((error) => console.warn('[Dispatcher] Failed to record Twitch relay reply path:', error));
+            } catch (error: any) {
+                chatError = error?.message || 'unknown Twitch chat error';
+                console.warn('[Dispatcher] Bot relay live Twitch delivery failed; continuing to Discord fallbacks:', {
+                    targetTenantId: resolvedTargetTenantId,
+                    broadcasterChannel,
+                    targetBot: input.target.currentName,
+                    error: chatError,
+                });
+            }
         }
 
-        if (!shouldTryDmBackup) {
+        if (twitchIsLive && chatDelivered) {
             if (chatDelivered) {
                 await appendPublicChatMessages([{
                     type: 'ai',
@@ -949,14 +965,39 @@ export async function deliverBotRelay(input: {
         let discordDelivered = false;
         let discordError = '';
         try {
-            const discordLastSeen = await findDiscordLastSeenForNames([
-                broadcasterChannel,
-                input.target.currentName,
-                ...(input.target.aliases || []),
-                ...(input.target.previousNames || []),
-            ]);
+            const presenceChannelId = String(discordPresence?.preferredChannelId || '').trim();
+            const idLastSeen = linkedDiscordUserId
+                ? await findDiscordLastSeenForUserId(linkedDiscordUserId).catch(() => null)
+                : null;
+            const nameLastSeen = !idLastSeen
+                ? await findDiscordLastSeenForNames([
+                    broadcasterChannel,
+                    input.target.currentName,
+                    ...(input.target.aliases || []),
+                    ...(input.target.previousNames || []),
+                ]).catch(() => null)
+                : null;
+            const fallbackLastSeen = idLastSeen || nameLastSeen;
+            const fallbackAgeMs = fallbackLastSeen?.lastSeenAt
+                ? Date.now() - new Date(fallbackLastSeen.lastSeenAt).getTime()
+                : Number.POSITIVE_INFINITY;
+            const recentFallback = fallbackLastSeen && fallbackAgeMs >= 0 && fallbackAgeMs <= 10 * 60 * 1000
+                ? fallbackLastSeen
+                : null;
+            const discordLastSeen = presenceChannelId
+                ? {
+                    userId: linkedDiscordUserId || discordPresence?.userId,
+                    username: discordPresence?.username || targetDiscordConfig?.discordUsername,
+                    displayName: discordPresence?.displayName || targetDiscordConfig?.discordUsername,
+                    guildId: discordPresence?.guildId || linkedDiscordGuildId,
+                    channelId: presenceChannelId,
+                    channelName: discordPresence?.preferredChannelName || undefined,
+                    tenantId: resolvedTargetTenantId,
+                    lastSeenAt: discordPresence?.voiceObservedAt || discordPresence?.lastChatAt || new Date().toISOString(),
+                }
+                : recentFallback;
             if (!discordLastSeen?.channelId) {
-                throw new Error(`${input.target.currentName} has no Discord last-seen channel`);
+                throw new Error(`${input.target.currentName} is not currently active in Discord`);
             }
             const discordText = await buildRelayDeliveryMessage({
                 sourceUserName: input.sourceUserName,
