@@ -25,20 +25,20 @@ jobs:
           path = Path('src/services/bot-relay.ts')
           text = path.read_text(encoding='utf-8')
 
-          old_stop = """  'this',\n  'that',\n]);"""
-          new_stop = """  'this',\n  'that',\n  // Pronouns are conversational recipients, not relay destinations.\n  'me',\n  'us',\n  'you',\n  'him',\n  'her',\n  'them',\n  'someone',\n  'somebody',\n]);"""
+          old_stop = "  'this',\n  'that',\n]);"
+          new_stop = "  'this',\n  'that',\n  // Pronouns are conversational recipients, not relay destinations.\n  'me',\n  'us',\n  'you',\n  'him',\n  'her',\n  'them',\n  'someone',\n  'somebody',\n]);"
           if old_stop not in text:
               raise SystemExit('stop-word anchor not found')
           text = text.replace(old_stop, new_stop, 1)
 
-          old_generic = """  const genericPattern = new RegExp(`\\\\b(?:can you|could you|would you|please)?\\\\s*(?:tell|ask|message|dm|relay|notify|send\\\\s+(?:a\\\\s+)?message\\\\s+to)\\\\s+@?([a-z0-9_][a-z0-9_-]{1,49})\\\\b${genericTargetSuffix}(?:\\\\s+that)?[\\\\s,:-]*(.+)$`, 'i');"""
-          new_generic = """  // Generic parser only handles explicit transport language. Ambiguous natural-language\n  // phrases such as \"tell mamafeisty ...\" are classified by the AI intent pass below.\n  const genericPattern = new RegExp(`\\\\b(?:can you|could you|would you|please)?\\\\s*(?:dm|relay|notify|send\\\\s+(?:a\\\\s+)?message\\\\s+to)\\\\s+@?([a-z0-9_][a-z0-9_-]{1,49})\\\\b${genericTargetSuffix}(?:\\\\s+that)?[\\\\s,:-]*(.+)$`, 'i');"""
+          old_generic = "  const genericPattern = new RegExp(`\\\\b(?:can you|could you|would you|please)?\\\\s*(?:tell|ask|message|dm|relay|notify|send\\\\s+(?:a\\\\s+)?message\\\\s+to)\\\\s+@?([a-z0-9_][a-z0-9_-]{1,49})\\\\b${genericTargetSuffix}(?:\\\\s+that)?[\\\\s,:-]*(.+)$`, 'i');"
+          new_generic = "  // Generic parser only handles explicit transport language. Ambiguous natural-language\n  // phrases such as \"tell mamafeisty ...\" are classified by the AI intent pass below.\n  const genericPattern = new RegExp(`\\\\b(?:can you|could you|would you|please)?\\\\s*(?:dm|relay|notify|send\\\\s+(?:a\\\\s+)?message\\\\s+to)\\\\s+@?([a-z0-9_][a-z0-9_-]{1,49})\\\\b${genericTargetSuffix}(?:\\\\s+that)?[\\\\s,:-]*(.+)$`, 'i');"
           if old_generic not in text:
               raise SystemExit('generic-pattern anchor not found')
           text = text.replace(old_generic, new_generic, 1)
 
-          old_prompt = """        'Do not classify normal chat, translation requests, shoutout requests, or questions about how to use relays as relay=true.',\n        'Return JSON only. No prose.',"""
-          new_prompt = """        'Do not classify normal chat, translation requests, shoutout requests, or questions about how to use relays as relay=true.',\n        'Requests where the bot itself is the recipient are normal chat, not relays: \"tell me a joke\", \"tell us a story\", \"tell me about X\", \"ask me a question\", and similar phrasing must return relay=false.',\n        'The verb tell by itself is never enough. Relay intent requires a distinct external destination plus content the user wants delivered there.',\n        'Return JSON only. No prose.',"""
+          old_prompt = "        'Do not classify normal chat, translation requests, shoutout requests, or questions about how to use relays as relay=true.',\n        'Return JSON only. No prose.',"
+          new_prompt = "        'Do not classify normal chat, translation requests, shoutout requests, or questions about how to use relays as relay=true.',\n        'Requests where the bot itself is the recipient are normal chat, not relays: \"tell me a joke\", \"tell us a story\", \"tell me about X\", \"ask me a question\", and similar phrasing must return relay=false.',\n        'The verb tell by itself is never enough. Relay intent requires a distinct external destination plus content the user wants delivered there.',\n        'Return JSON only. No prose.',"
           if old_prompt not in text:
               raise SystemExit('AI prompt anchor not found')
           text = text.replace(old_prompt, new_prompt, 1)
@@ -46,41 +46,8 @@ jobs:
 
           test_path = Path('tests/bot-relay.test.ts')
           tests = test_path.read_text(encoding='utf-8')
-          addition = r'''
-
-test('does not treat tell me as a relay', () => {
-  const result = detectBotRelayRequest({
-    message: 'Reaper tell me a joke',
-    speakerName: 'Reaper',
-    targets: [],
-  });
-
-  assert.equal(result.matched, false);
-});
-
-test('does not treat tell us as a relay', () => {
-  const result = detectBotRelayRequest({
-    message: 'Reaper, tell us a story about space pirates',
-    speakerName: 'Reaper',
-    targets: [],
-  });
-
-  assert.equal(result.matched, false);
-});
-
-test('explicit relay transport still parses without AI', () => {
-  const result = detectBotRelayRequest({
-    message: 'Reaper send a message to mtman1987 that dinner is ready',
-    speakerName: 'Reaper',
-    targets: [],
-  });
-
-  assert.equal(result.matched, true);
-  assert.equal(result.targetName, 'mtman1987');
-  assert.equal(result.relayMessage, 'dinner is ready');
-});
-'''
-          if "does not treat tell me as a relay" not in tests:
+          addition = "\n\ntest('does not treat tell me as a relay', () => {\n  const result = detectBotRelayRequest({\n    message: 'Reaper tell me a joke',\n    speakerName: 'Reaper',\n    targets: [],\n  });\n\n  assert.equal(result.matched, false);\n});\n\ntest('does not treat tell us as a relay', () => {\n  const result = detectBotRelayRequest({\n    message: 'Reaper, tell us a story about space pirates',\n    speakerName: 'Reaper',\n    targets: [],\n  });\n\n  assert.equal(result.matched, false);\n});\n\ntest('explicit relay transport still parses without AI', () => {\n  const result = detectBotRelayRequest({\n    message: 'Reaper send a message to mtman1987 that dinner is ready',\n    speakerName: 'Reaper',\n    targets: [],\n  });\n\n  assert.equal(result.matched, true);\n  assert.equal(result.targetName, 'mtman1987');\n  assert.equal(result.relayMessage, 'dinner is ready');\n});\n"
+          if 'does not treat tell me as a relay' not in tests:
               test_path.write_text(tests.rstrip() + addition + '\n', encoding='utf-8')
 
       - name: Run relay regression tests
