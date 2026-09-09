@@ -11,7 +11,8 @@ export type HearMeOutBotAction =
   | 'hmo.rooms.read'
   | 'hmo.bot.control'
   | 'hmo.voice.bridge.state'
-  | 'hmo.voice.bridge.control';
+  | 'hmo.voice.bridge.control'
+  | 'hmo.tts.speak';
 
 export type HearMeOutBotActionPayload = {
   action: HearMeOutBotAction;
@@ -29,6 +30,7 @@ export type HearMeOutBotActionPayload = {
   guildId?: string;
   voiceChannel?: string;
   audioProfile?: string;
+  audioDataUri?: string;
   idempotencyKey?: string;
 };
 
@@ -60,4 +62,23 @@ export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPaylo
   if (!response.ok) throw new Error(String(data?.error || `HearMeOut action failed (${response.status})`));
   if (data?.success !== true) throw new Error(`HearMeOut did not confirm ${payload.action}`);
   return data;
+}
+
+export async function speakInHearMeOutRoom(input: {
+  audioDataUri: string;
+  roomId?: string;
+  tenantId?: string;
+  actorUserId?: string;
+  actorName?: string;
+}): Promise<Record<string, unknown>> {
+  const audioDataUri = String(input.audioDataUri || '').trim();
+  if (!audioDataUri.startsWith('data:audio')) throw new Error('Room TTS requires an audio data URI');
+  return executeHearMeOutBotAction({
+    action: 'hmo.tts.speak',
+    tenantId: String(input.tenantId || 'public-tts').trim() || 'public-tts',
+    roomId: String(input.roomId || process.env.HEARMEOUT_PUBLIC_TTS_ROOM_ID || 'discord-activity').trim() || 'discord-activity',
+    actorUserId: input.actorUserId,
+    actorName: input.actorName,
+    audioDataUri,
+  });
 }
