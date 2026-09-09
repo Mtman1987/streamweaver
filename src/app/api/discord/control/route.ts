@@ -14,6 +14,7 @@ import {
   verifyDiscordMessageControlToken,
 } from '@/services/private-dm-controls';
 import { generateTTS } from '@/services/tts-provider';
+import { speakInHearMeOutRoom } from '@/services/hearmeout-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,12 +155,37 @@ export async function POST(request: NextRequest) {
       });
     }
     const audioDataUris = await generatePublicAudio(text, control.tenantId, voiceOverride(body?.voice));
-    return apiOk({
-      action,
-      audioDataUris,
-      chunkCount: audioDataUris.length,
-      message: audioDataUris.length ? 'Public bot reply audio is ready.' : 'TTS returned no audio.',
-    });
+    if (!audioDataUris.length) {
+      return apiOk({ action, audioDataUris: [], chunkCount: 0, message: 'TTS returned no audio.' });
+    }
+
+    try {
+      let roomId = process.env.HEARMEOUT_PUBLIC_TTS_ROOM_ID || 'discord-activity';
+      for (const audioDataUri of audioDataUris) {
+        const delivery = await speakInHearMeOutRoom({
+          audioDataUri,
+          tenantId: control.tenantId,
+        });
+        roomId = String(delivery.roomId || roomId);
+      }
+      return apiOk({
+        action,
+        delivered: 'hearmeout-room',
+        roomId,
+        chunkCount: audioDataUris.length,
+        audioDataUris: [],
+        message: 'Playing this bot reply through the shared HearMeOut room TTS.',
+      });
+    } catch (roomError) {
+      console.warn('[Public Discord Control] Shared HearMeOut TTS unavailable; returning local fallback:', roomError);
+      return apiOk({
+        action,
+        delivered: 'local-fallback',
+        audioDataUris,
+        chunkCount: audioDataUris.length,
+        message: 'Shared room TTS is unavailable. Local playback is ready as a fallback.',
+      });
+    }
   } catch (error) {
     console.error('[Public Discord Control] Action failed:', action, error);
     return apiError(safeError(error), {
