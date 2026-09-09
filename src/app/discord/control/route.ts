@@ -34,14 +34,12 @@ function renderError(message: string): string {
 </html>`;
 }
 
-function renderControlPage(token: string, action: 'gif' | 'tts' | 'delete'): string {
-  const icon = action === 'gif' ? '🖼️' : action === 'tts' ? '🔊' : '🗑️';
-  const title = action === 'gif' ? 'Public GIF' : action === 'tts' ? 'Public TTS' : 'Delete public reply';
+function renderControlPage(token: string, action: 'gif' | 'delete'): string {
+  const icon = action === 'gif' ? '🖼️' : '🗑️';
+  const title = action === 'gif' ? 'Public GIF' : 'Delete public reply';
   const initialStatus = action === 'delete'
     ? 'Only the signed-in owner of this bot can delete this public reply. Tap the trash can again to continue.'
-    : action === 'tts'
-      ? 'Generating audio…'
-      : 'Updating Discord…';
+    : 'Updating Discord…';
   const tokenLiteral = JSON.stringify(token);
   const actionLiteral = JSON.stringify(action);
 
@@ -68,17 +66,6 @@ function renderControlPage(token: string, action: 'gif' | 'tts' | 'delete'): str
       status.textContent = String(message || 'Done. Return to Discord.');
     }
 
-    async function playAll(items) {
-      for (const item of Array.isArray(items) ? items : []) {
-        await new Promise((resolve, reject) => {
-          const audio = new Audio(item);
-          audio.addEventListener('ended', resolve, { once: true });
-          audio.addEventListener('error', reject, { once: true });
-          audio.play().catch(reject);
-        });
-      }
-    }
-
     async function run() {
       try {
         const response = await fetch('/api/discord/control', {
@@ -91,10 +78,7 @@ function renderControlPage(token: string, action: 'gif' | 'tts' | 'delete'): str
         const payload = data.data || data;
         if (!response.ok || data.ok === false) throw new Error(data.error || payload.error || 'The Discord action failed.');
         setStatus(payload.message || 'Done. Return to Discord.');
-        if (action === 'tts' && Array.isArray(payload.audioDataUris) && payload.audioDataUris.length) {
-          await playAll(payload.audioDataUris);
-        }
-        if (action !== 'tts') window.setTimeout(() => { try { window.close(); } catch {} }, 900);
+        if (action !== 'delete') window.setTimeout(() => { try { window.close(); } catch {} }, 900);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : String(error));
       }
@@ -126,6 +110,13 @@ export async function GET(request: NextRequest) {
 
   if (action === 'settings') {
     return NextResponse.redirect(new URL('/bot-functions', getConfiguredAppUrl()));
+  }
+
+  if (action === 'tts') {
+    const playerUrl = new URL('/say-player', getConfiguredAppUrl());
+    playerUrl.searchParams.set('controlToken', token);
+    playerUrl.searchParams.set('publicReply', '1');
+    return NextResponse.redirect(playerUrl);
   }
 
   return htmlResponse(renderControlPage(token, action));
