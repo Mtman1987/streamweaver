@@ -82,7 +82,7 @@
     "clsx": "^2.1.1",
     "concurrently": "^8.2.2",
     "cowsay": "^1.6.0",
-    "date-fns": "^3.6.1",
+    "date-fns": "^3.6.0",
     "dotenv": "^16.6.1",
     "embla-carousel-react": "^8.6.0",
     "figlet": "^1.10.0",
