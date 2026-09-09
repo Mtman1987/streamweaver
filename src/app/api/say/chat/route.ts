@@ -8,7 +8,6 @@ import { buildSayChatSpeech, resolveSayChatIdentity } from '@/services/say-chat'
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { generateTTS } from '@/services/tts-provider';
 import { touchTtsConsumer } from '@/services/tts-consumer-presence';
-import { speakInHearMeOutRoom } from '@/services/hearmeout-actions';
 
 const sayChatSchema = z.object({
   text: z.string().trim().min(1, 'Message required').max(500, 'Message too long'),
@@ -24,23 +23,16 @@ function authenticatedIdentity(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const authenticated = authenticatedIdentity(request);
-  if (!authenticated) {
-    return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
-  }
-
+  if (!authenticated) return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
   return apiOk({ identity: authenticated.identity });
 }
 
 export async function POST(request: NextRequest) {
   const authenticated = authenticatedIdentity(request);
-  if (!authenticated) {
-    return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
-  }
+  if (!authenticated) return apiError('Unauthorized', { status: 401, code: 'UNAUTHORIZED' });
 
   const parsed = sayChatSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return apiError('Invalid speech-to-chat request', { status: 400, code: 'INVALID_BODY' });
-  }
+  if (!parsed.success) return apiError('Invalid speech-to-chat request', { status: 400, code: 'INVALID_BODY' });
 
   const { session, identity } = authenticated;
   const { text, voice } = parsed.data;
@@ -49,24 +41,15 @@ export async function POST(request: NextRequest) {
   try {
     if (streamKey.startsWith('discord:')) {
       const channelId = streamKey.slice('discord:'.length);
-      if (!/^\d{16,20}$/.test(channelId)) {
-        return apiError('Invalid Discord room', { status: 400, code: 'INVALID_DISCORD_ROOM' });
-      }
+      if (!/^\d{16,20}$/.test(channelId)) return apiError('Invalid Discord room', { status: 400, code: 'INVALID_DISCORD_ROOM' });
       await sendWebhookMessage(channelId, text, identity.username, identity.avatarUrl);
     } else {
-      const targetChannel = streamKey.startsWith('twitch:')
-        ? streamKey.slice('twitch:'.length)
-        : undefined;
+      const targetChannel = streamKey.startsWith('twitch:') ? streamKey.slice('twitch:'.length) : undefined;
       const wsPort = process.env.WS_PORT || '8090';
       const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/send-message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          as: 'broadcaster',
-          tenantId: session.tenantId,
-          targetChannel,
-        }),
+        body: JSON.stringify({ message: text, as: 'broadcaster', tenantId: session.tenantId, targetChannel }),
       });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
@@ -75,46 +58,16 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('[Say Chat] Chat post failed:', error);
-    return apiError(error instanceof Error ? error.message : 'Chat post failed', {
-      status: 502,
-      code: 'CHAT_POST_FAILED',
-    });
+    return apiError(error instanceof Error ? error.message : 'Chat post failed', { status: 502, code: 'CHAT_POST_FAILED' });
   }
 
   try {
     const spokenText = buildSayChatSpeech(identity, text);
     const voiceOverride = voice || undefined;
 
-    if (streamKey.startsWith('discord:')) {
-      const audioDataUri = await generateTTS(spokenText, voiceOverride, streamKey);
-      if (!audioDataUri) {
-        return apiOk({
-          posted: true,
-          queued: false,
-          skipped: true,
-          reason: 'tts-returned-empty-audio',
-          tenantId: streamKey,
-          identity,
-        });
-      }
-      const delivery = await speakInHearMeOutRoom({
-        audioDataUri,
-        tenantId: streamKey,
-        actorName: identity.username,
-      });
-      return apiOk({
-        posted: true,
-        queued: true,
-        delivered: 'hearmeout-room',
-        roomId: delivery.roomId || process.env.HEARMEOUT_PUBLIC_TTS_ROOM_ID || 'discord-activity',
-        tenantId: streamKey,
-        identity,
-        spokenText,
-      });
-    }
-
-    // Legacy Twitch/standalone Say Player behavior remains local and still
-    // requires a live playback consumer so paid TTS is never generated to nobody.
+    // This request originates from the public Say Player, so refresh the same
+    // browser-source consumer lease and always use that shared queue regardless
+    // of whether the chat destination is Discord, Twitch, Kick, or another adapter.
     touchTtsConsumer(streamKey, 'say', 'say');
     const audioDataUri = await generateTTS(
       spokenText,
@@ -132,6 +85,7 @@ export async function POST(request: NextRequest) {
         identity,
       });
     }
+
     const item = addSayQueueItem(streamKey, audioDataUri);
     return apiOk({
       posted: true,

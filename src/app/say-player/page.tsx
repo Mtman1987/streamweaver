@@ -1,78 +1,59 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS } from '@/lib/tts-voices';
 
 const VOICE_OPTIONS = [
-  { id: '', label: 'Default voice (Nova)' },
-  ...TTS_VOICE_OPTIONS.map((voice) => ({
-    id: voice.id,
-    label: `${voice.label} — ${voice.providerLabel}`,
-  })),
+  { id: '', label: 'Default voice' },
+  ...TTS_VOICE_OPTIONS.map((voice) => ({ id: voice.id, label: `${voice.label} — ${voice.providerLabel}` })),
 ];
 
-type VoiceIdentity = {
-  discordUserId: string;
-  discordUsername: string;
-};
+type VoiceIdentity = { discordUserId: string; discordUsername: string };
 
 export default function SayPlayer() {
+  const playing = useRef(false);
+  const queue = useRef<Array<{ id: number; audioUrl: string }>>([]);
+  const knownIds = useRef<Set<number>>(new Set());
+  const lastSeenId = useRef(0);
+  const ready = useRef(false);
+  const needsLiveResync = useRef(false);
   const recognitionRef = useRef<any>(null);
-  const fallbackAudioRef = useRef<HTMLAudioElement | null>(null);
-  const fallbackQueueRef = useRef<string[]>([]);
-  const controlStartedRef = useRef(false);
-
+  const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
-  const [status, setStatus] = useState('Opening shared room TTS controls…');
+  const [volume, setVolume] = useState(0.6);
   const [voice, setVoice] = useState('');
   const [identity, setIdentity] = useState<VoiceIdentity | null>(null);
   const [voiceSaving, setVoiceSaving] = useState(false);
-  const [preferenceReady, setPreferenceReady] = useState(false);
-  const [sharedRoom, setSharedRoom] = useState('discord-activity');
-  const [fallbackVolume, setFallbackVolume] = useState(0.6);
-  const [fallbackReady, setFallbackReady] = useState(false);
+  const [status, setStatus] = useState('Activate this public TTS browser source to hear shared chat audio.');
   const [micActive, setMicActive] = useState(false);
   const [micTranscript, setMicTranscript] = useState('');
   const [postingAs, setPostingAs] = useState('');
-  const [publicReplyControl, setPublicReplyControl] = useState(false);
+  const [botTtsEnabled, setBotTtsEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const streamKey = params.get('tenantId') || '';
+    const nextTenantId = params.get('tenantId') || '';
     const controlToken = params.get('controlToken') || '';
-    setTenantId(streamKey);
-    setPublicReplyControl(Boolean(controlToken));
-
+    setTenantId(nextTenantId);
     try {
-      const savedVolume = Number(localStorage.getItem('streamweaver-public-tts-fallback-volume') || '');
-      if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) setFallbackVolume(savedVolume);
+      lastSeenId.current = Number(localStorage.getItem(`streamweaver-say-last-${nextTenantId || 'global'}`) || 0);
+      const savedVolume = Number(localStorage.getItem('streamweaver-say-volume') || '');
+      if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1) setVolume(savedVolume);
     } catch {}
 
     fetch('/api/say/preferences', { cache: 'no-store' })
       .then(async (response) => {
         const result = await response.json().catch(() => null);
         const payload = result?.data || result || {};
-        if (!response.ok || result?.ok === false) {
-          setPreferenceReady(true);
-          setStatus('Shared room TTS is ready. Sign in with your linked SPMT/Discord account to choose your own voice.');
-          return;
-        }
+        if (!response.ok || result?.ok === false) return;
         setIdentity(payload.identity || null);
         setPostingAs(String(payload.identity?.discordUsername || ''));
         setVoice(String(payload.voice || ''));
-        setPreferenceReady(true);
-        setStatus(payload.voice
-          ? `Your public TTS voice is ${voiceLabel(String(payload.voice))}. New Discord messages will use it.`
-          : 'Shared room TTS is ready. Your messages use the default voice until you choose one.');
       })
-      .catch(() => {
-        setPreferenceReady(true);
-        setStatus('Shared room TTS is ready. Voice preferences could not be loaded right now.');
-      });
+      .catch(() => {});
 
-    if (controlToken && !controlStartedRef.current) {
-      controlStartedRef.current = true;
-      setStatus('Sending this bot reply to the shared HearMeOut room TTS…');
+    if (controlToken) {
+      setStatus('Updating this bot speaker…');
       fetch('/api/discord/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,21 +62,11 @@ export default function SayPlayer() {
       }).then(async (response) => {
         const result = await response.json().catch(() => null);
         const payload = result?.data || result || {};
-        if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Public TTS failed');
-        if (payload.delivered === 'hearmeout-room') {
-          setSharedRoom(String(payload.roomId || 'discord-activity'));
-          setStatus('Bot reply sent to the shared HearMeOut room TTS. Everyone in the room hears the same playback.');
-          return;
-        }
-        const localFallback = Array.isArray(payload.audioDataUris)
-          ? payload.audioDataUris.filter((item: unknown) => typeof item === 'string' && item.startsWith('data:audio'))
-          : [];
-        fallbackQueueRef.current = localFallback;
-        setFallbackReady(localFallback.length > 0);
-        setStatus(payload.message || 'Shared room TTS is unavailable. Local fallback is ready.');
-      }).catch((error) => {
-        setStatus(error instanceof Error ? error.message : String(error));
-      });
+        if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Bot TTS control failed');
+        if (typeof payload.enabled === 'boolean') setBotTtsEnabled(payload.enabled);
+        if (payload.streamKey) setTenantId(String(payload.streamKey));
+        setStatus(payload.message || 'Bot TTS updated.');
+      }).catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
     }
   }, []);
 
@@ -109,16 +80,29 @@ export default function SayPlayer() {
       .catch(() => {});
   }, []);
 
-  function voiceLabel(id: string) {
-    return TTS_VOICE_OPTIONS.find((option) => option.id === id)?.label || id || 'Default voice';
+  useEffect(() => {
+    if (!active) return;
+    const streamKey = tenantId || 'global';
+    const heartbeat = () => fetch('/api/tts/presence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId: streamKey, kind: 'say', scope: 'say' }),
+      keepalive: true,
+    }).catch(() => {});
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 10_000);
+    return () => window.clearInterval(interval);
+  }, [active, tenantId]);
+
+  function updateVolume(next: number) {
+    const value = Math.max(0, Math.min(1, next));
+    setVolume(value);
+    try { localStorage.setItem('streamweaver-say-volume', String(value)); } catch {}
   }
 
   async function updateVoice(nextVoice: string) {
     setVoice(nextVoice);
-    if (!identity) {
-      setStatus('Sign in with your linked SPMT/Discord account before saving a personal TTS voice.');
-      return;
-    }
+    if (!identity) return setStatus('Sign in with your linked SPMT/Discord identity to save your personal voice.');
     setVoiceSaving(true);
     try {
       const response = await fetch('/api/say/preferences', {
@@ -130,9 +114,8 @@ export default function SayPlayer() {
       const payload = result?.data || result || {};
       if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Could not save voice');
       setVoice(String(payload.voice || ''));
-      setStatus(payload.voice
-        ? `Saved. Your public Discord TTS now uses ${voiceLabel(String(payload.voice))}, and everyone hears that voice in the room.`
-        : 'Saved. Your public Discord TTS now uses the channel default voice.');
+      const label = TTS_VOICE_OPTIONS.find((item) => item.id === payload.voice)?.label || 'default voice';
+      setStatus(`Saved. Your public messages will be spoken with ${label}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -140,207 +123,134 @@ export default function SayPlayer() {
     }
   }
 
-  function updateFallbackVolume(nextVolume: number) {
-    const clamped = Math.max(0, Math.min(1, nextVolume));
-    setFallbackVolume(clamped);
-    if (fallbackAudioRef.current) fallbackAudioRef.current.volume = clamped;
-    try { localStorage.setItem('streamweaver-public-tts-fallback-volume', String(clamped)); } catch {}
-  }
+  const syncToLatest = useCallback(async (message = 'Listening for new public TTS…') => {
+    queue.current = [];
+    knownIds.current.clear();
+    ready.current = false;
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenantId', tenantId);
+    params.set('latest', '1');
+    const response = await fetch(`/api/say/next?${params.toString()}`, { cache: 'no-store' });
+    const result = await response.json();
+    lastSeenId.current = Math.max(0, Number(result.latestId || 0));
+    try { localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current)); } catch {}
+    ready.current = true;
+    needsLiveResync.current = false;
+    setStatus(message);
+  }, [tenantId]);
 
-  function playFallbackNext() {
-    if (fallbackAudioRef.current && !fallbackAudioRef.current.ended && !fallbackAudioRef.current.paused) {
-      void fallbackAudioRef.current.play();
-      return;
-    }
-    const audioUrl = fallbackQueueRef.current.shift();
-    if (!audioUrl) {
-      setFallbackReady(false);
-      setStatus('Local fallback finished. Shared HearMeOut room TTS remains the normal public path.');
-      return;
-    }
-    const audio = new Audio(audioUrl);
-    fallbackAudioRef.current = audio;
-    audio.volume = fallbackVolume;
-    audio.onended = () => {
-      fallbackAudioRef.current = null;
-      playFallbackNext();
-    };
-    audio.onerror = () => {
-      fallbackAudioRef.current = null;
-      playFallbackNext();
-    };
-    void audio.play().catch((error) => {
-      fallbackQueueRef.current.unshift(audioUrl);
-      fallbackAudioRef.current = null;
-      setStatus(`Browser blocked local fallback playback: ${error?.message || 'tap Play local fallback again'}`);
-    });
-  }
+  const resetCursor = useCallback(() => void syncToLatest('Skipped old audio. Listening live from now…'), [syncToLatest]);
+
+  useEffect(() => {
+    if (!active) return;
+    void syncToLatest();
+  }, [active, syncToLatest]);
+
+  useEffect(() => {
+    if (!active) return;
+    const poll = window.setInterval(async () => {
+      try {
+        if (!ready.current) return;
+        if (needsLiveResync.current) return void await syncToLatest('Reconnected. Listening live…');
+        const params = new URLSearchParams();
+        if (tenantId) params.set('tenantId', tenantId);
+        params.set('after', String(lastSeenId.current));
+        const result = await (await fetch(`/api/say/next?${params.toString()}`, { cache: 'no-store' })).json();
+        if (!result?.items?.length && Number(result?.latestId || 0) > 0 && Number(result.latestId) < lastSeenId.current) return resetCursor();
+        if (Array.isArray(result?.items)) for (const item of result.items) {
+          const id = Number(item?.id || 0);
+          if (id && item?.audioUrl && !knownIds.current.has(id)) {
+            knownIds.current.add(id);
+            queue.current.push(item);
+          }
+        }
+        if (playing.current || !queue.current.length) return;
+        const next = queue.current.shift();
+        if (!next) return;
+        playing.current = true;
+        const audio = new Audio(next.audioUrl);
+        audio.volume = volume;
+        const finish = (message: string) => {
+          lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
+          try { localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current)); } catch {}
+          playing.current = false;
+          setStatus(message);
+        };
+        audio.onended = () => finish('Listening for new public TTS…');
+        audio.onerror = () => finish('That audio failed. Listening for the next message…');
+        setStatus('Speaking…');
+        void audio.play().catch((error) => {
+          playing.current = false;
+          knownIds.current.delete(Number(next.id || 0));
+          queue.current.unshift(next);
+          setStatus(`Browser blocked audio: ${error?.message || 'activate audio and try again'}`);
+        });
+      } catch {
+        needsLiveResync.current = true;
+        setStatus('Connection interrupted. Reconnecting…');
+      }
+    }, 500);
+    return () => window.clearInterval(poll);
+  }, [active, resetCursor, syncToLatest, tenantId, volume]);
 
   function toggleMic() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setStatus('Push-to-talk speech recognition is not supported in this browser.');
-      return;
-    }
+    if (!SpeechRecognition) return setStatus('Speech recognition is not supported in this browser.');
     if (micActive) {
       recognitionRef.current?.stop();
-      setMicActive(false);
-      return;
+      return setMicActive(false);
     }
-
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
     recognitionRef.current = recognition;
-
     recognition.onresult = async (event: any) => {
       const transcript = String(event.results?.[0]?.[0]?.transcript || '').trim();
-      setMicActive(false);
       if (!transcript) return;
       setMicTranscript(transcript);
-      setStatus(`Posting “${transcript}” to chat and sending the same speech through room TTS…`);
       try {
         const response = await fetch('/api/say/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: transcript,
-            streamKey: tenantId || undefined,
-            voice: voice || undefined,
-          }),
+          body: JSON.stringify({ text: transcript, streamKey: tenantId || undefined, voice: voice || undefined }),
         });
         const result = await response.json().catch(() => null);
         const payload = result?.data || result || {};
-        const verifiedName = payload?.identity?.username || payload?.details?.identity?.username;
-        if (verifiedName) setPostingAs(verifiedName);
-        if (!response.ok || result?.ok === false) {
-          if (payload?.details?.posted || payload?.posted) {
-            throw new Error(result?.error || 'Message posted, but TTS could not read it');
-          }
-          throw new Error(result?.error || payload?.error || 'Chat post failed');
-        }
-        setStatus(`Posted as ${verifiedName || postingAs || 'your signed-in profile'}. Shared room TTS is handling the audio.`);
+        if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Chat post failed');
+        if (payload?.identity?.username) setPostingAs(payload.identity.username);
+        setStatus('Posted to chat and queued on this same public TTS browser source.');
       } catch (error) {
-        setStatus(`Could not finish speech-to-chat: ${error instanceof Error ? error.message : String(error)}`);
+        setStatus(error instanceof Error ? error.message : String(error));
       }
     };
-    recognition.onerror = () => {
-      setMicActive(false);
-      setStatus('Push-to-talk mic error. Try again.');
-    };
+    recognition.onerror = () => { setMicActive(false); setStatus('Mic error. Try again.'); };
     recognition.onend = () => setMicActive(false);
     recognition.start();
     setMicActive(true);
-    setStatus('Push-to-talk is listening…');
+    setStatus('Listening to your mic…');
   }
 
-  const roomLabel = sharedRoom === 'discord-activity' ? 'Discord Activities' : sharedRoom;
-  const publicChannel = tenantId.startsWith('discord:') ? tenantId.slice('discord:'.length) : tenantId;
-
+  const sourceLabel = tenantId || 'global public TTS';
   return (
-    <main style={{ minHeight: '100vh', background: '#090b12', color: '#f4f6ff', fontFamily: 'system-ui, sans-serif', padding: 20 }}>
-      <div style={{ width: 'min(900px, 100%)', margin: '0 auto', display: 'grid', gap: 18 }}>
-        <section style={{ border: '1px solid #292f43', borderRadius: 16, background: '#111522', padding: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 22 }}>🔊 Public Room TTS</h1>
-              <p style={{ margin: '6px 0 0', color: '#b7bdd1' }}>
-                One shared voice lane for Discord chat and public bot-reply playback. Private bot TTS stays separate.
-              </p>
-            </div>
-            <div style={{ fontWeight: 800, color: '#8ef0b1' }}>● ROOM LIVE</div>
-          </div>
-
-          <p style={{ minHeight: 24, color: '#c8cee0' }}>{status}</p>
-
-          <div style={{ display: 'grid', gap: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 10 }}>
-              <div style={{ background: '#0b0e17', border: '1px solid #292f43', borderRadius: 10, padding: 12 }}>
-                <div style={{ fontSize: 12, color: '#8f98ae', textTransform: 'uppercase', letterSpacing: '.08em' }}>HearMeOut output</div>
-                <strong>{roomLabel}</strong>
-              </div>
-              <div style={{ background: '#0b0e17', border: '1px solid #292f43', borderRadius: 10, padding: 12 }}>
-                <div style={{ fontSize: 12, color: '#8f98ae', textTransform: 'uppercase', letterSpacing: '.08em' }}>Discord stream</div>
-                <strong>{publicChannel || 'Open from a !say / !listen link'}</strong>
-              </div>
-            </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <strong style={{ width: 90 }}>My voice</strong>
-              <select
-                value={voice}
-                disabled={!identity || voiceSaving || !preferenceReady}
-                onChange={(event) => void updateVoice(event.target.value)}
-                style={{ flex: '1 1 360px', background: '#0b0e17', color: '#f4f6ff', border: '1px solid #3a4259', borderRadius: 8, padding: '9px 10px', opacity: !identity ? 0.65 : 1 }}
-              >
-                {VOICE_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </select>
-            </label>
-            <p style={{ margin: '-6px 0 0 102px', color: '#8f98ae', fontSize: 13 }}>
-              {identity
-                ? `Linked Discord user: ${identity.discordUsername || identity.discordUserId}. This choice follows your public !say messages.`
-                : `Sign in with your linked SPMT/Discord account to choose a voice. Until then the default is ${voiceLabel(DEFAULT_TTS_VOICE)}.`}
-            </p>
-
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={toggleMic}
-                style={{ border: '1px solid #3c8d63', background: micActive ? '#4a1717' : '#153424', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}
-              >
-                {micActive ? '🔴 Listening…' : '🎤 Speak to Chat'}
-              </button>
-              {fallbackReady ? (
-                <button
-                  type="button"
-                  onClick={playFallbackNext}
-                  style={{ border: '1px solid #a77945', background: '#3c2814', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}
-                >
-                  ▶ Play local fallback
-                </button>
-              ) : null}
-            </div>
-
-            {fallbackReady ? (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <strong style={{ width: 90 }}>Fallback</strong>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={Math.round(fallbackVolume * 100)}
-                  onChange={(event) => updateFallbackVolume(Number(event.target.value) / 100)}
-                  style={{ flex: '1 1 260px' }}
-                />
-                <span>{Math.round(fallbackVolume * 100)}%</span>
-              </label>
-            ) : null}
-
-            <p style={{ margin: 0, color: '#8f98ae', fontSize: 13 }}>
-              Bot replies are not auto-read. Clicking 🔊 on a public bot embed sends that reply into this same shared room lane. The bot keeps its configured voice; your selected voice applies to your own chat TTS.
-            </p>
-            {publicReplyControl ? (
-              <p style={{ margin: 0, color: '#aeb9db', fontSize: 13 }}>
-                This panel was opened from a public bot reply. It has already attempted to send that reply to the room.
-              </p>
-            ) : null}
-            {postingAs ? <p style={{ margin: 0, color: '#8ef0b1', fontSize: 13 }}>Posting as verified user: {postingAs}</p> : null}
-            {micTranscript ? (
-              <div style={{ background: '#0b0e17', border: '1px solid #292f43', borderRadius: 9, padding: 10 }}>
-                <strong>Last mic transcript:</strong> {micTranscript}
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section style={{ border: '1px solid #292f43', borderRadius: 16, background: '#111522', padding: 18 }}>
-          <h2 style={{ margin: '0 0 8px', fontSize: 17 }}>How public TTS behaves</h2>
-          <p style={{ margin: 0, color: '#b7bdd1', lineHeight: 1.55 }}>
-            Your Discord <strong>!say</strong> setting decides whether your human messages are spoken. Talking directly to a bot no longer bypasses that setting just because the original Discord message is folded into the bot embed. Playback is shared through HearMeOut, so people in the room hear the same voice instead of each opening an independent player.
-          </p>
-        </section>
-      </div>
+    <main style={{ minHeight: '100vh', background: '#090b12', color: '#f4f6ff', fontFamily: 'system-ui,sans-serif', padding: 20 }}>
+      <section style={{ width: 'min(880px,100%)', margin: '0 auto', border: '1px solid #293148', borderRadius: 18, background: '#111522', padding: 20, display: 'grid', gap: 16 }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div><h1 style={{ margin: 0, fontSize: 23 }}>🔊 Public TTS</h1><p style={{ color: '#aeb7ce', margin: '6px 0 0' }}>One browser-source voice lane for Discord, Twitch, Kick and other public chat adapters. Private TTS stays separate.</p></div>
+          <strong style={{ color: active ? '#8ef0b1' : '#ffd28a' }}>{active ? '● LISTENING' : '○ AUDIO READY'}</strong>
+        </header>
+        <div style={{ padding: 12, borderRadius: 11, background: '#0b0e17', border: '1px solid #293148' }}><small style={{ color: '#8590aa' }}>PUBLIC STREAM</small><div style={{ fontWeight: 800, marginTop: 4 }}>{sourceLabel}</div></div>
+        {botTtsEnabled !== null ? <div style={{ padding: 12, borderRadius: 11, background: '#0b0e17', border: '1px solid #293148' }}><strong>Bot TTS: {botTtsEnabled ? 'ON' : 'OFF'}</strong><div style={{ color: '#aeb7ce', marginTop: 4 }}>{botTtsEnabled ? 'Future public replies from this bot will speak through this same TTS stream.' : 'Future replies from this bot stay silent.'}</div></div> : null}
+        <p style={{ margin: 0, minHeight: 24, color: '#cbd2e4' }}>{status}</p>
+        {!active ? <button onClick={() => setActive(true)} style={{ padding: '13px 18px', borderRadius: 10, border: '1px solid #4fa476', background: '#153424', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>▶ Activate public TTS audio</button> : null}
+        <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>Volume</strong><input type="range" min="0" max="100" value={Math.round(volume * 100)} onChange={(event) => updateVolume(Number(event.target.value) / 100)} style={{ flex: '1 1 260px' }} /><span>{Math.round(volume * 100)}%</span></label>
+        <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>My voice</strong><select value={voice} disabled={!identity || voiceSaving} onChange={(event) => void updateVoice(event.target.value)} style={{ flex: '1 1 360px', padding: 9, borderRadius: 8, border: '1px solid #3a4259', background: '#0b0e17', color: '#fff' }}>{VOICE_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+        <p style={{ margin: '-8px 0 0 102px', color: '#8791aa', fontSize: 13 }}>{identity ? `Saved for ${identity.discordUsername || identity.discordUserId}. Everyone hears your selected voice when your public TTS is triggered.` : `Sign in with your linked identity to choose a voice. Unset users use ${TTS_VOICE_OPTIONS.find((item) => item.id === DEFAULT_TTS_VOICE)?.label || 'the default voice'}.`}</p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button type="button" onClick={toggleMic} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: micActive ? '#4a1717' : '#153424', color: '#fff', cursor: 'pointer' }}>{micActive ? '🔴 Listening…' : '🎤 Speak to Chat'}</button><button type="button" onClick={resetCursor} disabled={!active} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: active ? 'pointer' : 'default' }}>Reset listener</button></div>
+        {postingAs ? <p style={{ margin: 0, color: '#8ef0b1', fontSize: 13 }}>Posting as verified user: {postingAs}</p> : null}
+        {micTranscript ? <p style={{ margin: 0, color: '#aeb7ce', fontSize: 13 }}>Last voice input: “{micTranscript}”</p> : null}
+        <p style={{ margin: 0, color: '#8791aa', fontSize: 13 }}>HearMeOut/LiveKit is optional. This public TTS page does not create or join a LiveKit room; an active HearMeOut room may consume TTS separately when explicitly configured.</p>
+      </section>
     </main>
   );
 }

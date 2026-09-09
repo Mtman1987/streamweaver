@@ -14,15 +14,13 @@ import {
   verifyDiscordMessageControlToken,
 } from '@/services/private-dm-controls';
 import { generateTTS } from '@/services/tts-provider';
-import { speakInHearMeOutRoom } from '@/services/hearmeout-actions';
+import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
+import { addSayQueueItem, getSayQueue } from '@/app/api/say/_store';
+import { togglePublicBotTtsEnabled } from '@/services/public-bot-tts';
 
 export const dynamic = 'force-dynamic';
 
-type PublicControlBody = {
-  token?: unknown;
-  action?: unknown;
-  voice?: unknown;
-};
+type PublicControlBody = { token?: unknown; action?: unknown; voice?: unknown };
 
 function safeError(error: unknown): string {
   return String(error instanceof Error ? error.message : error || 'Control action failed')
@@ -33,35 +31,16 @@ function safeError(error: unknown): string {
     .slice(0, 300);
 }
 
-function voiceOverride(value: unknown): string | undefined {
-  const normalized = String(value || '').trim();
-  return normalized ? normalized.slice(0, 128) : undefined;
-}
-
-async function editControlledMessage(
-  channelId: string,
-  messageId: string,
-  embeds: Record<string, unknown>[],
-): Promise<void> {
+async function editControlledMessage(channelId: string, messageId: string, embeds: Record<string, unknown>[]): Promise<void> {
   try {
     await editDiscordMessage(channelId, messageId, { embeds });
     return;
   } catch {
-    // Public tenant-branded replies are commonly webhook messages. Fall back to
-    // the channel webhook so the control strip does not force generic bot branding.
+    // Tenant-branded public replies are commonly webhook messages.
   }
   if (!await editWebhookMessage(channelId, messageId, { embeds })) {
     throw new Error('Discord would not allow this public reply to be edited.');
   }
-}
-
-async function generatePublicAudio(text: string, tenantId: string, voice?: string): Promise<string[]> {
-  const audioDataUris: string[] = [];
-  for (const chunk of splitDiscordTtsText(text)) {
-    const audioDataUri = await generateTTS(chunk, voice, tenantId);
-    if (audioDataUri) audioDataUris.push(audioDataUri);
-  }
-  return audioDataUris;
 }
 
 function requireOwningTenant(request: NextRequest, tenantId: string) {
@@ -82,42 +61,23 @@ export async function POST(request: NextRequest) {
   const control = verifyDiscordMessageControlToken(token);
 
   if (!control || control.scope !== 'public' || !action || action === 'adult') {
-    return apiError('This public Discord control link is invalid or expired.', {
-      status: 401,
-      code: 'INVALID_PUBLIC_CONTROL',
-    });
+    return apiError('This public Discord control link is invalid or expired.', { status: 401, code: 'INVALID_PUBLIC_CONTROL' });
   }
 
-  // Public AI replies keep their existing owner-only controls for GIF, TTS and
-  // settings so random viewers cannot mutate shared GIFs or repeatedly trigger paid TTS synthesis.
-  // Delete is the one moderator-style action: either the owning tenant or an
-  // SPMT/DSH administrator may remove a public reply.
   if (action === 'delete') {
     if (!await canDeletePublicReply(request, control.tenantId)) {
-      return apiError('Only the bot owner or an approved SpaceMountain administrator can delete this public reply.', {
-        status: 403,
-        code: 'PUBLIC_DELETE_FORBIDDEN',
-      });
+      return apiError('Only the bot owner or an approved SpaceMountain administrator can delete this public reply.', { status: 403, code: 'PUBLIC_DELETE_FORBIDDEN' });
     }
   } else if (!requireOwningTenant(request, control.tenantId)) {
-    return apiError('Sign in to the StreamWeaver account that owns this bot to use its public reply controls.', {
-      status: 401,
-      code: 'TENANT_AUTH_REQUIRED',
-    });
+    return apiError('Sign in to the StreamWeaver account that owns this bot to use its public reply controls.', { status: 401, code: 'TENANT_AUTH_REQUIRED' });
   }
 
   try {
-    if (action === 'settings') {
-      return apiOk({ action, redirectUrl: '/bot-functions' });
-    }
+    if (action === 'settings') return apiOk({ action, redirectUrl: '/bot-functions' });
 
     if (action === 'delete') {
       await deleteMessage(control.channelId, control.messageId);
-      return apiOk({
-        action,
-        deleted: true,
-        message: 'Public bot reply deleted from Discord. No private memory was touched.',
-      });
+      return apiOk({ action, deleted: true, message: 'Public bot reply deleted from Discord. No private memory was touched.' });
     }
 
     const message = await getDiscordMessage(control.channelId, control.messageId) as any;
@@ -125,13 +85,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'gif') {
       const mediaUrl = resolvePublicDiscordMediaUrl(control.tenantId);
-      if (!mediaUrl) {
-        return apiOk({
-          action,
-          visible: false,
-          message: 'This bot does not have a public Discord GIF configured.',
-        });
-      }
+      if (!mediaUrl) return apiOk({ action, visible: false, message: 'This bot does not have a public Discord GIF configured.' });
       const toggled = toggleConfiguredDiscordGif(currentEmbeds, mediaUrl);
       const embeds = attachPublicDiscordControls(toggled.embeds, {
         channelId: control.channelId,
@@ -140,57 +94,62 @@ export async function POST(request: NextRequest) {
         gifVisible: toggled.visible,
       });
       await editControlledMessage(control.channelId, control.messageId, embeds);
+      return apiOk({ action, visible: toggled.visible, message: `Public bot GIF is now ${toggled.visible ? 'visible' : 'hidden'}.` });
+    }
+
+    // The public speaker button is a persistent bot toggle. Audio is queued on
+    // the same Say Player/browser-source stream as human chat TTS; HearMeOut is
+    // not opened or joined by this path.
+    const enabled = await togglePublicBotTtsEnabled(control.channelId, control.tenantId);
+    const streamKey = `discord:${control.channelId}`;
+    if (!enabled) {
       return apiOk({
         action,
-        visible: toggled.visible,
-        message: `Public bot GIF is now ${toggled.visible ? 'visible' : 'hidden'}.`,
+        enabled: false,
+        delivered: 'say-player',
+        streamKey,
+        queued: 0,
+        message: 'Bot TTS is OFF. Future replies from this bot stay silent until you click the speaker again.',
+      });
+    }
+
+    if (!hasActiveTtsConsumer(streamKey, 'say')) {
+      return apiOk({
+        action,
+        enabled: true,
+        delivered: 'say-player',
+        streamKey,
+        queued: 0,
+        skipped: true,
+        reason: 'no-active-say-listener',
+        message: 'Bot TTS is ON. Open or activate the public TTS browser source to hear this and future replies.',
       });
     }
 
     const text = discordMessageText(message);
-    if (!text) {
-      return apiError('This public reply has no text to read aloud.', {
-        status: 400,
-        code: 'NO_TTS_TEXT',
-      });
-    }
-    const audioDataUris = await generatePublicAudio(text, control.tenantId, voiceOverride(body?.voice));
-    if (!audioDataUris.length) {
-      return apiOk({ action, audioDataUris: [], chunkCount: 0, message: 'TTS returned no audio.' });
+    if (!text) return apiOk({ action, enabled: true, streamKey, queued: 0, message: 'Bot TTS is ON. This reply had no text to read.' });
+
+    let queued = 0;
+    for (const chunk of splitDiscordTtsText(text)) {
+      const audioDataUri = await generateTTS(chunk, undefined, streamKey, { requireActiveConsumer: true, consumerScope: 'say' });
+      if (!audioDataUri) continue;
+      addSayQueueItem(streamKey, audioDataUri);
+      queued += 1;
     }
 
-    try {
-      let roomId = process.env.HEARMEOUT_PUBLIC_TTS_ROOM_ID || 'discord-activity';
-      for (const audioDataUri of audioDataUris) {
-        const delivery = await speakInHearMeOutRoom({
-          audioDataUri,
-          tenantId: control.tenantId,
-        });
-        roomId = String(delivery.roomId || roomId);
-      }
-      return apiOk({
-        action,
-        delivered: 'hearmeout-room',
-        roomId,
-        chunkCount: audioDataUris.length,
-        audioDataUris: [],
-        message: 'Playing this bot reply through the shared HearMeOut room TTS.',
-      });
-    } catch (roomError) {
-      console.warn('[Public Discord Control] Shared HearMeOut TTS unavailable; returning local fallback:', roomError);
-      return apiOk({
-        action,
-        delivered: 'local-fallback',
-        audioDataUris,
-        chunkCount: audioDataUris.length,
-        message: 'Shared room TTS is unavailable. Local playback is ready as a fallback.',
-      });
-    }
+    return apiOk({
+      action,
+      enabled: true,
+      delivered: 'say-player',
+      streamKey,
+      queued,
+      queueLength: getSayQueue(streamKey).length,
+      message: queued
+        ? 'Bot TTS is ON. This reply was added to the shared public TTS browser source; future replies will speak automatically.'
+        : 'Bot TTS is ON, but TTS returned no audio for this reply.',
+    });
   } catch (error) {
     console.error('[Public Discord Control] Action failed:', action, error);
-    return apiError(safeError(error), {
-      status: 500,
-      code: 'PUBLIC_CONTROL_FAILED',
-    });
+    return apiError(safeError(error), { status: 500, code: 'PUBLIC_CONTROL_FAILED' });
   }
 }

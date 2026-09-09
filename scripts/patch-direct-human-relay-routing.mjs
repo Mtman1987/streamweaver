@@ -37,3 +37,8 @@ if (!source.includes('deliverDirectHumanRelay({')) throw new Error('Direct human
 
 fs.writeFileSync(filePath, source, 'utf8');
 console.log('Direct human relay routing patch applied');
+
+// This is deliberately chained here because direct-human relay is already the
+// final patch in every StreamWeaver build/dev preflight. Keeping public bot TTS
+// last prevents earlier Discord compatibility patches from overwriting it.
+await import('./patch-public-bot-tts-routing.mjs');
