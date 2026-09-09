@@ -8,6 +8,7 @@ import { buildSayChatSpeech, resolveSayChatIdentity } from '@/services/say-chat'
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { generateTTS } from '@/services/tts-provider';
 import { touchTtsConsumer } from '@/services/tts-consumer-presence';
+import { speakInHearMeOutRoom } from '@/services/hearmeout-actions';
 
 const sayChatSchema = z.object({
   text: z.string().trim().min(1, 'Message required').max(500, 'Message too long'),
@@ -83,9 +84,37 @@ export async function POST(request: NextRequest) {
   try {
     const spokenText = buildSayChatSpeech(identity, text);
     const voiceOverride = voice || undefined;
-    // This request originates from the active Say Player itself, so it is
-    // authoritative proof of a live playback consumer even if the tab was
-    // opened before a deploy and missed the new heartbeat code.
+
+    if (streamKey.startsWith('discord:')) {
+      const audioDataUri = await generateTTS(spokenText, voiceOverride, streamKey);
+      if (!audioDataUri) {
+        return apiOk({
+          posted: true,
+          queued: false,
+          skipped: true,
+          reason: 'tts-returned-empty-audio',
+          tenantId: streamKey,
+          identity,
+        });
+      }
+      const delivery = await speakInHearMeOutRoom({
+        audioDataUri,
+        tenantId: streamKey,
+        actorName: identity.username,
+      });
+      return apiOk({
+        posted: true,
+        queued: true,
+        delivered: 'hearmeout-room',
+        roomId: delivery.roomId || process.env.HEARMEOUT_PUBLIC_TTS_ROOM_ID || 'discord-activity',
+        tenantId: streamKey,
+        identity,
+        spokenText,
+      });
+    }
+
+    // Legacy Twitch/standalone Say Player behavior remains local and still
+    // requires a live playback consumer so paid TTS is never generated to nobody.
     touchTtsConsumer(streamKey, 'say', 'say');
     const audioDataUri = await generateTTS(
       spokenText,
@@ -107,6 +136,7 @@ export async function POST(request: NextRequest) {
     return apiOk({
       posted: true,
       queued: true,
+      delivered: 'say-player',
       tenantId: streamKey,
       queueLength: getSayQueue(streamKey).length,
       id: item.id,
