@@ -1,9 +1,13 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
+import { TTS_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
 
 export const SAY_USERS_FILE_PATH = 'data/runtime/say-users.json';
+export const SAY_VOICE_PREFERENCES_FILE_PATH = 'data/runtime/say-voice-preferences.json';
 
 export type SayState = 'on' | 'off';
 type TwitchEmoteRanges = Record<string, Array<string | [number, number]> | null | undefined>;
+
+type SayVoicePreferences = Record<string, string>;
 
 const saySpeakerState = new Map<string, { speaker: string; lastAt: number }>();
 const saySuppressionState = new Map<string, { until: number; reason: string }>();
@@ -25,6 +29,56 @@ export async function readSayUsers(): Promise<Set<string>> {
 export async function writeSayUsers(users: Set<string>): Promise<void> {
   await mkdir('data/runtime', { recursive: true });
   await writeFile(SAY_USERS_FILE_PATH, JSON.stringify(Array.from(users).sort()));
+}
+
+function sayVoicePreferenceKey(user: unknown, platform = 'discord'): string {
+  const normalizedPlatform = String(platform || 'discord').trim().toLowerCase() || 'discord';
+  const normalizedUser = normalizeSayUser(user);
+  return normalizedUser ? `${normalizedPlatform}:${normalizedUser}` : '';
+}
+
+export async function readSayVoicePreferences(): Promise<SayVoicePreferences> {
+  try {
+    const parsed = JSON.parse(await readFile(SAY_VOICE_PREFERENCES_FILE_PATH, 'utf-8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const preferences: SayVoicePreferences = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const voice = String(value || '').trim();
+      if (!key || !voice) continue;
+      if (!TTS_VOICE_OPTIONS.some((option) => option.id === voice)) continue;
+      preferences[key] = voice;
+    }
+    return preferences;
+  } catch {
+    return {};
+  }
+}
+
+export async function getSayVoicePreference(user: unknown, platform = 'discord'): Promise<string | undefined> {
+  const key = sayVoicePreferenceKey(user, platform);
+  if (!key) return undefined;
+  const preferences = await readSayVoicePreferences();
+  return preferences[key];
+}
+
+export async function setSayVoicePreference(
+  user: unknown,
+  voice: unknown,
+  platform = 'discord',
+): Promise<string | undefined> {
+  const key = sayVoicePreferenceKey(user, platform);
+  if (!key) throw new Error('A linked user identity is required to save a TTS voice');
+  const requested = String(voice || '').trim();
+  if (requested && !TTS_VOICE_OPTIONS.some((option) => option.id === requested)) {
+    throw new Error('Choose a supported TTS voice');
+  }
+
+  const preferences = await readSayVoicePreferences();
+  if (requested) preferences[key] = normalizeTtsVoice(requested);
+  else delete preferences[key];
+  await mkdir('data/runtime', { recursive: true });
+  await writeFile(SAY_VOICE_PREFERENCES_FILE_PATH, JSON.stringify(preferences, null, 2));
+  return requested ? preferences[key] : undefined;
 }
 
 export function normalizeSayChannel(channelId: unknown): string {
