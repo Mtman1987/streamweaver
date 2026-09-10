@@ -24,7 +24,7 @@ export async function requestOpenAiFallback(input: {
 }): Promise<{ text: string; model: string }> {
   const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) throw new Error('OpenAI API key is not configured.');
-  const model = String(input.options?.model || process.env.OPENAI_CHAT_MODEL || 'gpt-5.6-luna').trim();
+  const model = String(input.options?.model || process.env.OPENAI_CHAT_MODEL || 'gpt-5-mini').trim();
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: \`Bearer \${apiKey}\`, 'Content-Type': 'application/json' },
@@ -119,7 +119,7 @@ patchFile('src/app/api/private-chat/respond/route.ts', (source) => {
         const completion = await requestOpenAiFallback({
           instructions: input.systemPrompt,
           messages: [...historyMessages, { role: 'user', content: input.message }],
-          options: { maxTokens: 900, model: process.env.PRIVATE_OPENAI_MODEL || process.env.OPENAI_CHAT_MODEL || 'gpt-5.6-luna' },
+          options: { maxTokens: 900, model: process.env.PRIVATE_OPENAI_MODEL || process.env.OPENAI_CHAT_MODEL || 'gpt-5-mini' },
         });
         const text = sanitizeQwenReply({ text: completion.text, username: input.username, botName: input.botName, latestUserMessage: input.message }).trim();
         if (!text) throw new Error('OpenAI returned no usable private reply.');
