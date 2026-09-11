@@ -1,0 +1,28 @@
+name: Speech chat validation
+on:
+  pull_request:
+    paths:
+      - 'src/app/say-player/**'
+      - 'src/app/tts-mixer/**'
+      - 'src/app/api/say/chat/**'
+      - 'src/services/speech-chat-capture.ts'
+      - 'src/services/speech-transcript.ts'
+      - 'src/services/say-chat*.ts'
+      - 'tests/speech-chat*.test.ts'
+      - 'tests/say-chat.test.ts'
+      - 'package*.json'
+      - '.github/workflows/speech-chat-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run test:speech-chat

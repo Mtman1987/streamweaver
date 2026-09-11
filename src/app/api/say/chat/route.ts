@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { runSayChatRequest } from '@/services/say-chat-request';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiOk } from '@/lib/api-response';
@@ -11,6 +13,7 @@ import { touchTtsConsumer } from '@/services/tts-consumer-presence';
 
 const sayChatSchema = z.object({
   text: z.string().trim().min(1, 'Message required').max(500, 'Message too long'),
+  captureId: z.string().uuid().optional(),
   streamKey: z.string().trim().max(128).optional(),
   voice: z.string().trim().max(128).optional(),
 });
@@ -35,74 +38,80 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return apiError('Invalid speech-to-chat request', { status: 400, code: 'INVALID_BODY' });
 
   const { session, identity } = authenticated;
-  const { text, voice } = parsed.data;
+  const { text, voice, captureId } = parsed.data;
   const streamKey = await resolveSayQueueStreamKey(parsed.data.streamKey || session.tenantId);
 
-  try {
-    if (streamKey.startsWith('discord:')) {
-      const channelId = streamKey.slice('discord:'.length);
-      if (!/^\d{16,20}$/.test(channelId)) return apiError('Invalid Discord room', { status: 400, code: 'INVALID_DISCORD_ROOM' });
-      await sendWebhookMessage(channelId, text, identity.username, identity.avatarUrl);
-    } else {
-      const targetChannel = streamKey.startsWith('twitch:') ? streamKey.slice('twitch:'.length) : undefined;
-      const wsPort = process.env.WS_PORT || '8090';
-      const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/send-message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, as: 'broadcaster', tenantId: session.tenantId, targetChannel }),
-      });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result?.error || 'Twitch chat post failed');
+  const deliver = async () => {
+    try {
+      if (streamKey.startsWith('discord:')) {
+        const channelId = streamKey.slice('discord:'.length);
+        if (!/^\d{16,20}$/.test(channelId)) return apiError('Invalid Discord room', { status: 400, code: 'INVALID_DISCORD_ROOM' });
+        await sendWebhookMessage(channelId, text, identity.username, identity.avatarUrl);
+      } else {
+        const targetChannel = streamKey.startsWith('twitch:') ? streamKey.slice('twitch:'.length) : undefined;
+        const wsPort = process.env.WS_PORT || '8090';
+        const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/send-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, as: 'broadcaster', tenantId: session.tenantId, targetChannel }),
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result?.error || 'Twitch chat post failed');
+        }
       }
+    } catch (error) {
+      console.error('[Say Chat] Chat post failed:', error);
+      return apiError(error instanceof Error ? error.message : 'Chat post failed', { status: 502, code: 'CHAT_POST_FAILED' });
     }
-  } catch (error) {
-    console.error('[Say Chat] Chat post failed:', error);
-    return apiError(error instanceof Error ? error.message : 'Chat post failed', { status: 502, code: 'CHAT_POST_FAILED' });
-  }
 
-  try {
-    const spokenText = buildSayChatSpeech(identity, text);
-    const voiceOverride = voice || undefined;
+    try {
+      const spokenText = buildSayChatSpeech(identity, text);
+      const voiceOverride = voice || undefined;
 
-    // This request originates from the public Say Player, so refresh the same
-    // browser-source consumer lease and always use that shared queue regardless
-    // of whether the chat destination is Discord, Twitch, Kick, or another adapter.
-    touchTtsConsumer(streamKey, 'say', 'say');
-    const audioDataUri = await generateTTS(
-      spokenText,
-      voiceOverride,
-      streamKey,
-      { requireActiveConsumer: true, consumerScope: 'say' },
-    );
-    if (!audioDataUri) {
+      // This request originates from the public Say Player, so refresh the same
+      // browser-source consumer lease and always use that shared queue regardless
+      // of whether the chat destination is Discord, Twitch, Kick, or another adapter.
+      touchTtsConsumer(streamKey, 'say', 'say');
+      const audioDataUri = await generateTTS(
+        spokenText,
+        voiceOverride,
+        streamKey,
+        { requireActiveConsumer: true, consumerScope: 'say' },
+      );
+      if (!audioDataUri) {
+        return apiOk({
+          posted: true,
+          queued: false,
+          skipped: true,
+          reason: 'no-active-say-listener',
+          tenantId: streamKey,
+          identity,
+        });
+      }
+
+      const item = addSayQueueItem(streamKey, audioDataUri);
       return apiOk({
         posted: true,
-        queued: false,
-        skipped: true,
-        reason: 'no-active-say-listener',
+        queued: true,
+        delivered: 'say-player',
         tenantId: streamKey,
+        queueLength: getSayQueue(streamKey).length,
+        id: item.id,
         identity,
+        spokenText,
+      });
+    } catch (error) {
+      console.error('[Say Chat] TTS queue failed after chat post:', error);
+      return apiError('Posted in chat, but TTS could not read it', {
+        status: 502,
+        code: 'TTS_QUEUE_FAILED',
+        details: { posted: true, queued: false, identity },
       });
     }
-
-    const item = addSayQueueItem(streamKey, audioDataUri);
-    return apiOk({
-      posted: true,
-      queued: true,
-      delivered: 'say-player',
-      tenantId: streamKey,
-      queueLength: getSayQueue(streamKey).length,
-      id: item.id,
-      identity,
-      spokenText,
-    });
-  } catch (error) {
-    console.error('[Say Chat] TTS queue failed after chat post:', error);
-    return apiError('Posted in chat, but TTS could not read it', {
-      status: 502,
-      code: 'TTS_QUEUE_FAILED',
-      details: { posted: true, queued: false, identity },
-    });
-  }
+  };
+  if (!captureId) return deliver();
+  const key = JSON.stringify([session.tenantId, streamKey, captureId]);
+  const fingerprint = createHash('sha256').update(JSON.stringify([text, voice || ''])).digest('hex');
+  return runSayChatRequest(key, fingerprint, deliver);
 }

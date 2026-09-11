@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TTS_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
+import { captureSpeechChat } from '@/services/speech-chat-capture';
 
 type StreamInfo = {
   tenantId: string;
@@ -95,7 +96,7 @@ export default function TtsMixerPage() {
   const [micActive, setMicActive] = useState(false);
   const [micTranscript, setMicTranscript] = useState('');
   const [postingAs, setPostingAs] = useState('');
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<ReturnType<typeof captureSpeechChat> | null>(null);
   const cursors = useRef<Record<string, string>>({});
   const queued = useRef<Set<string>>(new Set());
   const pending = useRef<PendingAudio[]>([]);
@@ -328,13 +329,23 @@ export default function TtsMixerPage() {
     });
   };
 
+
+  useEffect(() => {
+    recognitionRef.current?.cancel();
+    recognitionRef.current = null;
+    setMicActive(false);
+    return () => {
+      recognitionRef.current?.cancel();
+      recognitionRef.current = null;
+    };
+  }, [preferences.selected]);
+
   const stopMic = useCallback(() => {
     recognitionRef.current?.stop();
-    setMicActive(false);
   }, []);
 
   const startMic = useCallback(() => {
-    if (micActive) return;
+    if (recognitionRef.current) return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setStatus('Speech recognition is not supported in this browser.');
@@ -346,44 +357,50 @@ export default function TtsMixerPage() {
       return;
     }
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-    recognitionRef.current = recognition;
-    recognition.onresult = async (event: any) => {
-      const transcript = event.results[0]?.[0]?.transcript?.trim() || '';
-      if (!transcript) return;
-      setMicTranscript(transcript);
-      setStatus(`Sending to ${targetTenant}: "${transcript}"`);
-      try {
-        const response = await fetch('/api/say/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: transcript,
-            streamKey: targetTenant,
-            voice: preferences.voice || undefined,
-          }),
-        });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.ok) {
-          throw new Error(response.status === 401 ? 'Open this mixer in a popout and sign in to StreamWeaver' : (data?.error || 'PTT post failed'));
+    const captureId = crypto.randomUUID();
+    const capture = captureSpeechChat(recognition, {
+      preview: setMicTranscript,
+      complete: async (transcript) => {
+        recognitionRef.current = null;
+        setMicActive(false);
+        if (!transcript) { setStatus('No completed speech heard. Try again.'); return; }
+        try {
+          const response = await fetch('/api/say/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: transcript, captureId,
+              streamKey: targetTenant,
+              voice: preferences.voice || undefined,
+            }),
+          });
+          const data = await response.json().catch(() => null);
+          if (!response.ok || !data?.ok) {
+            throw new Error(response.status === 401 ? 'Open this mixer in a popout and sign in to StreamWeaver' : (data?.error || 'PTT post failed'));
+          }
+          if (data?.identity?.username) setPostingAs(data.identity.username);
+          setStatus(`PTT sent to ${targetTenant}. Listening for TTS...`);
+        } catch (error: any) {
+          setStatus(error?.message || 'PTT post failed.');
         }
-        if (data?.identity?.username) setPostingAs(data.identity.username);
-        setStatus(`PTT sent to ${targetTenant}. Listening for TTS...`);
-      } catch (error: any) {
-        setStatus(error?.message || 'PTT post failed.');
-      }
-    };
-    recognition.onerror = () => {
+      },
+      error: () => {
+        recognitionRef.current = null;
+        setMicActive(false);
+        setStatus('Microphone recognition failed. Check browser microphone permission.');
+      },
+    });
+    recognitionRef.current = capture;
+    try { recognition.start(); } catch {
+      capture.cancel();
+      recognitionRef.current = null;
       setMicActive(false);
-      setStatus('Microphone recognition failed. Check browser microphone permission.');
-    };
-    recognition.onend = () => setMicActive(false);
-    recognition.start();
+      setStatus('Could not start microphone recognition. Try again.');
+      return;
+    }
     setMicActive(true);
     setStatus(`PTT listening for ${targetTenant}...`);
-  }, [micActive, preferences.selected, preferences.voice]);
+  }, [preferences.selected, preferences.voice]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
