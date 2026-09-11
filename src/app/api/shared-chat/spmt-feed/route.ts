@@ -8,6 +8,7 @@ import { getPoints } from '@/services/points';
 import { readSharedChatReplay } from '@/services/shared-chat-ingestion';
 import { getTwitchStatus } from '@/services/twitch-client';
 import { getUser } from '@/services/user-stats';
+import { listCommlinkCommunityChats, readCommlinkCommunityMessages } from '@/services/commlink-community-chats';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,7 +94,10 @@ export async function GET(request: NextRequest) {
   const platformFilter = String(request.nextUrl.searchParams.get('platform') || '').trim().toLowerCase();
   const since = timestampMs(request.nextUrl.searchParams.get('since') || undefined);
   const before = timestampMs(request.nextUrl.searchParams.get('before') || undefined);
-  const replay = dedupeEvents(await readSharedChatReplay(tenantId, { limit: 500 }));
+  const communityChats = await listCommlinkCommunityChats();
+  const ownReplay = await readSharedChatReplay(tenantId, { limit: 500 });
+  const publicMessages = await readCommlinkCommunityMessages(communityChats, tenantId);
+  const replay = dedupeEvents([...ownReplay, ...publicMessages]);
   const filtered = replay.filter((event) => {
     const platform = canonicalPlatform(event);
     const eventTime = timestampMs(event.originalTimestamp);
@@ -117,6 +121,7 @@ export async function GET(request: NextRequest) {
     .slice(0, 250);
   const enrichmentCache = new Map<string, Record<string, unknown>>();
   const events = await Promise.all(filtered.slice(-limit).map(async (event) => {
+    if (event.meta?.publicCommunityChat) return event;
     const username = String(event.sender.login || event.sender.displayName || '').trim().replace(/^@/, '').toLowerCase();
     const storageUsername = String(event.channelName || event.sourceName || event.channelId || 'default').trim().replace(/^#/, '').toLowerCase();
     const enrichmentKey = `${storageUsername}:${username}`;
@@ -196,6 +201,11 @@ export async function GET(request: NextRequest) {
     }];
   })).values());
 
+  for (const chat of communityChats) {
+    if (channels.some(channel => channel.platform === 'twitch' && channel.channelName === chat.channelName)) continue;
+    channels.push({ id: `twitch:${chat.channelId}`, platform: 'twitch', sourceId: `twitch:${chat.channelName}`, sourceName: chat.channelName, channelId: chat.channelId, channelName: chat.channelName, lastEventAt: '', readOnly: false });
+  }
+
   return NextResponse.json({
     schemaVersion: 1,
     tenantId,
@@ -207,7 +217,11 @@ export async function GET(request: NextRequest) {
     nextSince: events.at(-1)?.originalTimestamp || request.nextUrl.searchParams.get('since') || null,
     commands,
     sources,
-    channels,
+    channels: channels.map(channel => ({
+      ...channel,
+      ...(communityChats.some(chat => chat.tenantId !== tenantId && chat.channelName === channel.channelName && channel.platform === 'twitch')
+        ? { capabilities: { compose: true, reply: false, timeout: false, delete: false }, publicCommunityChat: true } : {}),
+    })),
     events,
   }, {
     headers: {

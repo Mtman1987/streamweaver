@@ -72,7 +72,7 @@ patchFile('src/app/api/shared-chat/spmt-feed/route.ts', (source) => {
   }
 
   if (!source.includes('const filteredAll = replay.filter')) {
-    const pattern = /(  const replay = dedupeEvents\(await readSharedChatReplay\(tenantId, \{ limit: 500 \}\)\);\n)  const filtered = replay\.filter\(\(event\) => \{([\s\S]*?)\n  \}\);/;
+    const pattern = /(  const replay = dedupeEvents\([^\n]+\);\n)  const filtered = replay\.filter\(\(event\) => \{([\s\S]*?)\n  \}\);/;
     const match = source.match(pattern);
     if (!match) throw new Error('Rich Discord chat patch: feed filtering marker missing');
     source = source.replace(pattern, `$1  const filteredAll = replay.filter((event) => {$2\n  });\n  // Hydrate only the bounded visible window. Discord channel/message lookups are\n  // cached, so Commlink gets names, avatars, mentions and rich media without\n  // turning a 500-event replay into hundreds of provider requests.\n  const filtered = await enrichDiscordSharedChatEvents(filteredAll.slice(-limit));`);

@@ -269,7 +269,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             if (tid) client = getTc(clientType, tid);
                         }
 
-                        if (!client && !isCountSend) {
+                        if (!client && !isCountSend && !requestedTenantId) {
                             const ownerTenantId = getAdminTwitchId();
                             if (ownerTenantId) {
                                 tid = ownerTenantId;
@@ -284,7 +284,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             }
                         }
 
-                        if (!client && !isCountSend) {
+                        if (!client && !isCountSend && !requestedTenantId) {
                             const tenantIds = getActiveTenantIds();
                             if (tenantIds.length === 1) {
                                 tid = tenantIds[0];

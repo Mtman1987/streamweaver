@@ -6,6 +6,7 @@ import { sendDiscordMessage, deleteMessage as deleteDiscordMessage } from '@/ser
 import { getKickService } from '@/services/kick';
 import { readSharedChatReplay } from '@/services/shared-chat-ingestion';
 import { timeoutUser as timeoutTwitchUser } from '@/services/twitch';
+import { listCommlinkCommunityChats, isCommunityComposeDestination } from '@/services/commlink-community-chats';
 
 const DestinationSchema = z.object({
   platform: z.enum(['twitch', 'discord', 'kick', 'youtube']),
@@ -71,7 +72,8 @@ export async function POST(request: NextRequest) {
 
   const replay = await readSharedChatReplay(tenantId, { limit: 500 });
   const matchingEvents = replay.filter((event) => destinationMatchesEvent(event, input.destination));
-  if (!matchingEvents.length) {
+  const communityCompose = input.action === 'compose' && isCommunityComposeDestination(input.destination, await listCommlinkCommunityChats());
+  if (!matchingEvents.length && !communityCompose) {
     return apiError('Destination is not present in this tenant replay window', {
       status: 409,
       code: 'DESTINATION_NOT_VERIFIED',
