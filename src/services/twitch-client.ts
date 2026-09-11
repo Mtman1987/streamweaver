@@ -1,5 +1,5 @@
 import * as tmi from 'tmi.js';
-import { getStoredTokens, ensureValidToken, isTwitchAuthFailure } from '../lib/token-utils.server';
+import { getStoredTokens, ensureValidToken, isTwitchAuthFailure, ProactiveTwitchRefreshGate } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
 import { listTenants, communityBotTokensPath, getAdminTwitchId } from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
@@ -40,6 +40,7 @@ let theCountTwitchClient: tmi.Client | null = null;
 let theCountConnectPromise: Promise<tmi.Client | null> | null = null;
 const theCountChannels = new Set<string>();
 const tenantsNeedingReauth = new Set<string>();
+const reconnectRefreshGate = new ProactiveTwitchRefreshGate();
 const lastReauthNotice = new Map<string, number>();
 const REAUTH_NOTICE_INTERVAL_MS = 60_000;
 
@@ -221,11 +222,6 @@ async function ensureCommunityBotForChannel(
           if (!tenantId) return;
           const tenant = tenantClients.get(tenantId);
           if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {
-            return;
-          }
-
-          if (!self && tenantsNeedingReauth.has(tenantId) && String(message || '').startsWith('!')) {
-            await sendReauthNotice(client, channelName, tenantId, tags?.username || tags?.['display-name']);
             return;
           }
 
@@ -476,14 +472,26 @@ export async function setupTwitchClient(tenantId: string) {
     return;
   }
 
+  let attemptedTokens: StoredTokens | null = null;
   try {
     const tokens = await getStoredTokens(tenantId);
-    if (!tokens?.broadcasterToken || !tokens?.broadcasterRefreshToken) {
+    attemptedTokens = tokens;
+    // Keep registered channel routing available even when Twitch rejects a
+    // broadcaster refresh. Shared-bot commands use the bot's own credential.
+    if (tokens?.broadcasterUsername && !tenantClients.has(tenantId)) {
+      channelToTenant.set(tokens.broadcasterUsername.toLowerCase(), tenantId);
+      tenantClients.set(tenantId, {
+        broadcasterClient: null, botClient: null, status: 'disconnected',
+        broadcasterUsername: tokens.broadcasterUsername, botUsername: tokens.botUsername || '', retryCount: 0,
+      });
+    }
+    if (!tokens?.broadcasterToken && !tokens?.broadcasterRefreshToken) {
       console.error(`[Twitch:${tenantId}] No tokens available.`);
       if (tokens?.broadcasterUsername) {
         channelToTenant.set(tokens.broadcasterUsername.toLowerCase(), tenantId);
         void ensureTheCountForChannel(tokens.broadcasterUsername, clientId, clientSecret);
         tenantsNeedingReauth.add(tenantId);
+        reconnectRefreshGate.markReauthorizationRequired(tenantId, tokens);
         const tenant = tenantClients.get(tenantId) || {
           broadcasterClient: null,
           botClient: null,
@@ -512,6 +520,7 @@ export async function setupTwitchClient(tenantId: string) {
         `[Twitch:${tenantId}] Broadcaster token belongs to ${broadcasterIdentity.login || broadcasterIdentity.userId}; refusing to connect as the wrong account.`
       );
       tenantsNeedingReauth.add(tenantId);
+      reconnectRefreshGate.markReauthorizationRequired(tenantId, tokens);
       broadcasterTokenMismatch = true;
     }
 
@@ -519,7 +528,7 @@ export async function setupTwitchClient(tenantId: string) {
       ? (tokens.loginUsername || '')
       : (broadcasterIdentity?.login || tokens.broadcasterUsername || tokens.loginUsername || '');
     const botUsername = tokens.botUsername || '';
-    const hasBotToken = tokens.botToken && tokens.botRefreshToken;
+    const hasBotToken = tokens.botToken || tokens.botRefreshToken;
 
     console.log(`[Twitch:${tenantId}] Broadcaster: ${broadcasterUsername}, Bot: ${botUsername || 'none'}`);
 
@@ -541,6 +550,7 @@ export async function setupTwitchClient(tenantId: string) {
 
     if (!broadcasterTokenMismatch) {
       tenantsNeedingReauth.delete(tenantId);
+      reconnectRefreshGate.markSuccessful(tenantId);
     }
 
     // Disconnect existing clients for this tenant
@@ -569,42 +579,56 @@ export async function setupTwitchClient(tenantId: string) {
       channelToTenant.set(broadcasterUsername.toLowerCase(), tenantId);
     }
 
-    // Setup bot client
-    if (botUsername && hasBotToken) {
-      console.log(`[Twitch:${tenantId}] Connecting bot as '${botUsername}'...`);
-      const botOauthToken = await ensureValidToken(clientId, clientSecret, 'bot', tokens, tenantId);
+    // An optional personal bot failure must not disable the broadcaster.
+    try {
+      // Setup bot client
+      if (botUsername && hasBotToken) {
+        console.log(`[Twitch:${tenantId}] Connecting bot as '${botUsername}'...`);
+        const botOauthToken = await ensureValidToken(clientId, clientSecret, 'bot', tokens, tenantId);
 
-      tenant.botClient = new tmi.Client({
-        options: { debug: false },
-        identity: {
-          username: botUsername,
-          password: `oauth:${botOauthToken.replace('oauth:', '')}`,
-        },
-        channels: [broadcasterUsername],
+        tenant.botClient = new tmi.Client({
+          options: { debug: false },
+          identity: {
+            username: botUsername,
+            password: `oauth:${botOauthToken.replace('oauth:', '')}`,
+          },
+          channels: [broadcasterUsername],
+        });
+
+        tenant.botClient.on('connected', () => {
+          console.log(`[Twitch:${tenantId}] Bot connected as ${botUsername}`);
+          if (broadcasterTokenMismatch) {
+            tenant.status = 'connected';
+          }
+        });
+
+        tenant.botClient.on('disconnected', (reason) => {
+          console.log(`[Twitch:${tenantId}] Bot disconnected: ${reason}`);
+          if (tenant.botClient && !isSharedCommunityBotClient(tenant.botClient)) {
+            tenant.botClient = null;
+          }
+          if (!isClientUsable(tenant.broadcasterClient)) {
+            tenant.status = 'disconnected';
+            tenant.retryCount++;
+            if (!isAuthFailure(reason)) scheduleRetry(tenantId);
+          }
+        });
+
+        await tenant.botClient.connect();
+      }
+    } catch (error) {
+      console.warn(`[Twitch:${tenantId}] Personal bot unavailable; continuing with shared bot:`, error);
+      if (tenant.botClient && !isSharedCommunityBotClient(tenant.botClient)) {
+        tenant.botClient.removeAllListeners();
+        await disconnectIfOpen(tenant.botClient).catch(() => {});
+      }
+      tenant.botClient = null;
+    }
+    if (!tenant.botClient) {
+      const sharedBot = await ensureCommunityBotForChannel(broadcasterUsername, clientId, clientSecret).catch((error) => {
+        console.warn(`[Twitch:${tenantId}] Shared bot unavailable; continuing broadcaster setup:`, error);
+        return null;
       });
-
-      tenant.botClient.on('connected', () => {
-        console.log(`[Twitch:${tenantId}] Bot connected as ${botUsername}`);
-        if (broadcasterTokenMismatch) {
-          tenant.status = 'connected';
-        }
-      });
-
-      tenant.botClient.on('disconnected', (reason) => {
-        console.log(`[Twitch:${tenantId}] Bot disconnected: ${reason}`);
-        if (tenant.botClient && !isSharedCommunityBotClient(tenant.botClient)) {
-          tenant.botClient = null;
-        }
-        if (!isClientUsable(tenant.broadcasterClient)) {
-          tenant.status = 'disconnected';
-          tenant.retryCount++;
-          if (!isAuthFailure(reason)) scheduleRetry(tenantId);
-        }
-      });
-
-      await tenant.botClient.connect();
-    } else {
-      const sharedBot = await ensureCommunityBotForChannel(broadcasterUsername, clientId, clientSecret);
       if (sharedBot) {
         tenant.botClient = sharedBot;
         tenant.botUsername = communityBotUsername || 'community-bot';
@@ -671,6 +695,7 @@ export async function setupTwitchClient(tenantId: string) {
     if (isAuthFailure(error)) {
       console.error(`[Twitch:${tenantId}] Authentication failed; reconnect retries paused until the Twitch account is re-authorized.`);
       tenantsNeedingReauth.add(tenantId);
+      if (attemptedTokens) reconnectRefreshGate.markReauthorizationRequired(tenantId, attemptedTokens);
       if (tenant?.broadcasterUsername && clientId && clientSecret) {
         const sharedBot = await ensureCommunityBotForChannel(tenant.broadcasterUsername, clientId, clientSecret);
         if (sharedBot) {
@@ -821,7 +846,10 @@ export async function reconnectDisconnectedTenants(): Promise<void> {
 
   for (const [tenantId, tenant] of tenantClients) {
     if (tenantsNeedingReauth.has(tenantId)) {
-      continue;
+      const current = await getStoredTokens(tenantId);
+      if (!current || !reconnectRefreshGate.shouldAttempt(tenantId, current)) continue;
+      tenantsNeedingReauth.delete(tenantId);
+      tenant.status = 'disconnected';
     }
     if (tenant.status === 'disconnected' && !setupInProgress.has(tenantId)) {
       console.log(`[Twitch:${tenantId}] Health check: disconnected, reconnecting...`);

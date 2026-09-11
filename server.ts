@@ -441,8 +441,8 @@ async function startServer() {
                 // Start EventSub for each tenant
                 for (const tenantId of tenants) {
                     try {
-                        await startEventSub(tenantId);
-                        console.log(`[STEP 4] ✅ EventSub ready for tenant ${tenantId}`);
+                        const started = await startEventSub(tenantId);
+                        console.log(`[STEP 4] EventSub ${started ? 'connection initiated' : 'not started (see reason above)'} for tenant ${tenantId}`);
                     } catch (e) {
                         console.warn(`[STEP 4] ⚠️ EventSub failed for tenant ${tenantId}:`, e);
                     }

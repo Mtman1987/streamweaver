@@ -195,7 +195,7 @@ export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void
     }
 }
 
-export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss.twitch.tv/ws'): Promise<void> {
+export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss.twitch.tv/ws'): Promise<boolean> {
     const tKey = tenantKey(tenantId);
     const existingSocket = eventSubSockets.get(tKey);
     if (existingSocket) {
@@ -204,18 +204,18 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
     }
 
     const auth = await getBroadcasterAuth(tenantId);
-    if (!auth) return;
+    if (!auth) return false;
 
     const scopes = await getBroadcasterTokenScopes(auth);
     if (!scopes) {
         console.warn('[EventSub] Cannot validate broadcaster token');
-        return;
+        return false;
     }
     
     const hasRedemptionsScope = scopes.includes('channel:read:redemptions') || scopes.includes('channel:manage:redemptions');
     if (!hasRedemptionsScope) {
         console.warn('[EventSub] Missing channel point scope');
-        return;
+        return false;
     }
 
     console.log(`[EventSub:${tKey}] Connecting:`, url);
@@ -450,6 +450,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
             console.warn('[EventSub] Failed to process message:', error);
         }
     });
+    return true;
 }
 
 function scheduleEventSubReconnect(url: string, delayMs = 2000, tenantId?: string) {
