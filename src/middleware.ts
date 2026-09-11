@@ -158,7 +158,9 @@ export async function middleware(request: NextRequest) {
   headers.set('x-spmt-is-admin', admin ? '1' : '0');
   const response = NextResponse.next({ request: { headers } });
   if (restoredLocalSession) applySpmtLocalSession(response, restoredLocalSession);
-  return withRefreshedCookies(response, refreshed);
+  withRefreshedCookies(response, refreshed);
+  if (restoredLocalSession && !refreshed) response.headers.append('set-cookie', 'streamweaver-session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None');
+  return response;
 }
 
 export const config = {

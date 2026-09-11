@@ -58,4 +58,5 @@ test('a still-valid SPMT access token restores an expired local session without 
   assert.equal(res.status, 200);
   assert.equal(parseSessionCookie(req.cookies.get('streamweaver-session')?.value)?.id, '12345');
   assert.ok(res.cookies.get('streamweaver-session')?.value);
+  assert.ok(res.headers.getSetCookie().some(c => c.startsWith('streamweaver-session=;') && !c.includes('Partitioned')));
 });
