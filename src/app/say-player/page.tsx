@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS } from '@/lib/tts-voices';
+import { captureSpeechChat } from '@/services/speech-chat-capture';
 
 const VOICE_OPTIONS = [
   { id: '', label: 'Default voice' },
@@ -17,7 +18,7 @@ export default function SayPlayer() {
   const lastSeenId = useRef(0);
   const ready = useRef(false);
   const needsLiveResync = useRef(false);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<ReturnType<typeof captureSpeechChat> | null>(null);
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [volume, setVolume] = useState(0.6);
@@ -193,40 +194,61 @@ export default function SayPlayer() {
     return () => window.clearInterval(poll);
   }, [active, resetCursor, syncToLatest, tenantId, volume]);
 
+
+  useEffect(() => {
+    recognitionRef.current?.cancel();
+    recognitionRef.current = null;
+    setMicActive(false);
+    return () => {
+      recognitionRef.current?.cancel();
+      recognitionRef.current = null;
+    };
+  }, [tenantId]);
+
   function toggleMic() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return setStatus('Speech recognition is not supported in this browser.');
-    if (micActive) {
-      recognitionRef.current?.stop();
-      return setMicActive(false);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
     }
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-    recognitionRef.current = recognition;
-    recognition.onresult = async (event: any) => {
-      const transcript = String(event.results?.[0]?.[0]?.transcript || '').trim();
-      if (!transcript) return;
-      setMicTranscript(transcript);
-      try {
-        const response = await fetch('/api/say/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: transcript, streamKey: tenantId || undefined, voice: voice || undefined }),
-        });
-        const result = await response.json().catch(() => null);
-        const payload = result?.data || result || {};
-        if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Chat post failed');
-        if (payload?.identity?.username) setPostingAs(payload.identity.username);
-        setStatus('Posted to chat and queued on this same public TTS browser source.');
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : String(error));
-      }
-    };
-    recognition.onerror = () => { setMicActive(false); setStatus('Mic error. Try again.'); };
-    recognition.onend = () => setMicActive(false);
-    recognition.start();
+    const captureId = crypto.randomUUID();
+    const capture = captureSpeechChat(recognition, {
+      preview: setMicTranscript,
+      complete: async (transcript) => {
+        recognitionRef.current = null;
+        setMicActive(false);
+        if (!transcript) { setStatus('No completed speech heard. Try again.'); return; }
+        try {
+          const response = await fetch('/api/say/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: transcript, captureId, streamKey: tenantId || undefined, voice: voice || undefined }),
+          });
+          const result = await response.json().catch(() => null);
+          const payload = result?.data || result || {};
+          if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Chat post failed');
+          if (payload?.identity?.username) setPostingAs(payload.identity.username);
+          setStatus('Posted to chat and queued on this same public TTS browser source.');
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : String(error));
+        }
+      },
+      error: () => {
+        recognitionRef.current = null;
+        setMicActive(false);
+        setStatus('Microphone recognition failed. Check browser microphone permission.');
+      },
+    });
+    recognitionRef.current = capture;
+    try { recognition.start(); } catch {
+      capture.cancel();
+      recognitionRef.current = null;
+      setMicActive(false);
+      setStatus('Could not start microphone recognition. Try again.');
+      return;
+    }
     setMicActive(true);
     setStatus('Listening to your mic…');
   }
