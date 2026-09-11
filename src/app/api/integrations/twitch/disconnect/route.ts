@@ -1,10 +1,9 @@
 import { NextRequest } from 'next/server';
-import { promises as fs } from 'fs';
 import { z } from 'zod';
 
-import { getStoredTokens, storeTokens, type StoredTokens } from '@/lib/token-utils.server';
+import { getStoredTokens, updateStoredTokens, type StoredTokens } from '@/lib/token-utils.server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { communityBotTokensPath, isAdmin, tenantPath } from '@/lib/tenant';
+import { isAdmin } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
 
@@ -22,6 +21,9 @@ function stripRole(tokens: StoredTokens, role: Exclude<Role, 'community-bot'>): 
     delete next.broadcasterRefreshToken;
     delete next.broadcasterTokenExpiry;
     delete next.broadcasterUsername;
+    delete next.loginToken;
+    delete next.loginRefreshToken;
+    delete next.loginTokenExpiry;
   } else {
     delete next.botToken;
     delete next.botRefreshToken;
@@ -31,15 +33,6 @@ function stripRole(tokens: StoredTokens, role: Exclude<Role, 'community-bot'>): 
 
   next.lastUpdated = new Date().toISOString();
   return next;
-}
-
-function hasAnyTwitchTokens(tokens: StoredTokens): boolean {
-  return Boolean(
-    tokens.broadcasterToken ||
-      tokens.broadcasterRefreshToken ||
-      tokens.botToken ||
-      tokens.botRefreshToken
-  );
 }
 
 export async function POST(request: NextRequest) {
@@ -60,9 +53,7 @@ export async function POST(request: NextRequest) {
       return apiError('Owner authorization required', { status: 403, code: 'OWNER_REQUIRED' });
     }
 
-    try {
-      await fs.unlink(communityBotTokensPath());
-    } catch {}
+    await updateStoredTokens(() => ({}), undefined, true);
 
     try {
       const wsPort = process.env.WS_PORT || '8090';
@@ -80,7 +71,6 @@ export async function POST(request: NextRequest) {
     return apiOk({ ok: true });
   }
 
-  const updated = stripRole(tokens, role);
 
   if (role === 'broadcaster') {
     try {
@@ -98,13 +88,6 @@ export async function POST(request: NextRequest) {
     } catch {}
   }
 
-  if (!hasAnyTwitchTokens(updated)) {
-    try {
-      await fs.unlink(tenantPath(tenantId, 'tokens/twitch-tokens.json'));
-    } catch {}
-    return apiOk({ ok: true });
-  }
-
-  await storeTokens(updated, tenantId);
+  await updateStoredTokens(current => stripRole(current, role), tenantId);
   return apiOk({ ok: true });
 }

@@ -1,3 +1,4 @@
+import { updateStoredTokens } from '@/lib/token-utils.server';
 import { NextRequest } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -64,11 +65,19 @@ export async function POST(request: NextRequest) {
       },
     });
     let username = '';
+    let twitchUserId = '';
     let profileImageUrl = '';
     if (userResponse.ok) {
       const userData = await userResponse.json();
       username = userData.data[0]?.login || '';
+      twitchUserId = String(userData.data[0]?.id || '');
       profileImageUrl = userData.data[0]?.profile_image_url || '';
+    }
+    if (!twitchUserId || !username) {
+      return apiError('Twitch profile lookup failed; saved credentials were retained', { status: 502, code: 'PROFILE_LOOKUP_FAILED' });
+    }
+    if ((state === 'broadcaster' || state === 'login') && tenantId && twitchUserId !== tenantId) {
+      return apiError('Authorize the Twitch account linked to this StreamWeaver tenant', { status: 403, code: 'WRONG_BROADCASTER' });
     }
 
     // Community bot — admin-only, global storage
@@ -80,14 +89,13 @@ export async function POST(request: NextRequest) {
       await fs.mkdir(path.dirname(cbPath), { recursive: true });
       let existing: Record<string, any> = {};
       try { existing = JSON.parse(await fs.readFile(cbPath, 'utf-8')); } catch {}
-      await fs.writeFile(cbPath, JSON.stringify({
-        ...existing,
+      await updateStoredTokens({
         communityBotToken: tokenData.access_token,
         communityBotRefreshToken: tokenData.refresh_token,
         communityBotTokenExpiry: tokenExpiry,
         communityBotUsername: username,
         lastUpdated: new Date().toISOString(),
-      }, null, 2));
+      }, undefined, true);
       return apiOk({ success: true, username, role: state });
     }
 
@@ -102,11 +110,10 @@ export async function POST(request: NextRequest) {
     let existingTokens: Record<string, any> = {};
     try { existingTokens = JSON.parse(await fs.readFile(tokensFile, 'utf-8')); } catch {}
 
-    const isBroadcaster = state === 'broadcaster';
+    const isBroadcaster = state === 'broadcaster' || state === 'login';
     const isBot = state === 'bot';
 
     const tokenStorage = {
-      ...existingTokens,
       ...(isBroadcaster ? {
         broadcasterToken: tokenData.access_token,
         broadcasterRefreshToken: tokenData.refresh_token,
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     };
 
-    await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
+    await updateStoredTokens(tokenStorage, tenantId);
     return apiOk({ success: true, username, role: state });
   } catch (error) {
     console.error('Manual token exchange error:', error);

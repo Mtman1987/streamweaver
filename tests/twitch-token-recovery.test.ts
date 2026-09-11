@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import ts from 'typescript';
 const nativeRequire = createRequire(import.meta.url);
 function load(file: string, mocks: Record<string, any>, globals: Record<string, any> = {}) {
   const source = process.env.TEST_BASELINE ? execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8' }) : readFileSync(file, 'utf8');
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} as any };
   vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : nativeRequire(id), process, Buffer, URLSearchParams, AbortSignal, console: { log() {}, warn() {}, error() {} }, setTimeout: () => ({ unref() {} }), clearTimeout() {}, global: {}, ...globals }, { filename: file });
   return module.exports;
@@ -19,7 +19,11 @@ function load(file: string, mocks: Record<string, any>, globals: Record<string, 
 async function fixture(t: any, fetch: typeof globalThis.fetch) {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'twitch-refresh-test-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  return load('src/lib/token-utils.server.ts', { './tenant': { tenantPath: (id: string) => path.join(root, id, 'tokens.json'), communityBotTokensPath: () => path.join(root, 'community.json') } }, { fetch });
+  const mocks = { './tenant': { tenantPath: (id: string) => path.join(root, id, 'tokens.json'), communityBotTokensPath: () => path.join(root, 'community.json') } };
+  const api = load('src/lib/token-utils.server.ts', mocks, { fetch });
+  api.root = root;
+  api.fork = () => load('src/lib/token-utils.server.ts', mocks, { fetch });
+  return api;
 }
 const tokens = { broadcasterToken: 'test-old-access', broadcasterRefreshToken: 'test-old-refresh', broadcasterTokenExpiry: Date.now() + 3600000, broadcasterUsername: 'registered', botUsername: 'personal' };
 const refreshed = (role: string) => Response.json({ access_token: `test-new-${role}`, refresh_token: `test-refresh-${role}`, expires_in: 3600, token_type: 'bearer' });
@@ -125,4 +129,100 @@ test('shared bot runs registered tenant commands while broadcaster grant needs r
   assert.ok(bot);
   for (const listener of bot.listeners('message')) await listener('#registered', { username: 'viewer' }, '!points', false);
   assert.deepEqual(dispatched, ['!points']);
+});
+
+test('independent Next and bot module instances serialize updates to the same file', async t => {
+  const api = await fixture(t, async (_url: any, init: any) => {
+    if (init.method !== 'POST') return Response.json({});
+    await new Promise(resolve => setTimeout(resolve, 25));
+    return refreshed(new URLSearchParams(init.body).get('refresh_token') === 'bot-refresh' ? 'bot' : 'broadcaster');
+  });
+  const second = api.fork();
+  const expired = { ...tokens, broadcasterTokenExpiry: 1, botToken: 'bot-access', botRefreshToken: 'bot-refresh', botTokenExpiry: 1 };
+  await api.storeTokens(expired, '123');
+  await Promise.all([
+    api.ensureValidToken('client', 'secret', 'broadcaster', expired, '123'),
+    second.ensureValidToken('client', 'secret', 'bot', expired, '123'),
+  ]);
+  const saved = await api.getStoredTokens('123');
+  assert.equal(saved.broadcasterRefreshToken, 'test-refresh-broadcaster');
+  assert.equal(saved.botRefreshToken, 'test-refresh-bot');
+});
+test('OAuth callback merges its new grant after an in-flight background refresh', async t => {
+  let began!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  const api = await fixture(t, async () => { began(); await new Promise(resolve => setTimeout(resolve, 30)); return refreshed('broadcaster'); });
+  const expired = { ...tokens, broadcasterTokenExpiry: 1, botToken: 'keep-personal-bot' };
+  await api.storeTokens(expired, '123');
+  const background = api.ensureValidToken('client', 'secret', 'broadcaster', expired, '123');
+  await started;
+  await Promise.all([background, api.fork().updateStoredTokens({ broadcasterToken: 'callback-access', broadcasterRefreshToken: 'callback-refresh' }, '123')]);
+  const saved = await api.getStoredTokens('123');
+  assert.equal(saved.broadcasterRefreshToken, 'callback-refresh');
+  assert.equal(saved.botToken, 'keep-personal-bot');
+});
+test('explicit disconnect wins over an in-flight refresh and cannot be resurrected by a queued reader', async t => {
+  let began!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  const api = await fixture(t, async () => { began(); await new Promise(resolve => setTimeout(resolve, 30)); return refreshed('broadcaster'); });
+  const expired = { ...tokens, broadcasterTokenExpiry: 1 };
+  await api.storeTokens(expired, '123');
+  const background = api.ensureValidToken('client', 'secret', 'broadcaster', expired, '123');
+  await started;
+  const second = api.fork();
+  await Promise.all([background, second.updateStoredTokens(() => ({}), '123')]);
+  await assert.rejects(second.ensureValidToken('client', 'secret', 'broadcaster', expired, '123'), /Missing/);
+  assert.deepEqual(JSON.parse(JSON.stringify(await api.getStoredTokens('123'))), {});
+});
+
+test('separate operating-system processes preserve concurrent token rotations', async t => {
+  const api = await fixture(t, async () => Response.json({}));
+  const expired = { ...tokens, broadcasterTokenExpiry: 1, botToken: 'bot-access', botRefreshToken: 'bot-refresh', botTokenExpiry: 1 };
+  await api.storeTokens(expired, '123');
+  const source = readFileSync('src/lib/token-utils.server.ts', 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+  const script = `
+    const fs = require('fs'), path = require('path'), Module = require('module');
+    const root = process.argv[1], role = process.argv[2];
+    const m = new Module(__filename);
+    m.require = id => id === './tenant' ? {
+      tenantPath: id => path.join(root, id, 'tokens.json'),
+      communityBotTokensPath: () => path.join(root, 'community.json')
+    } : require(id);
+    global.fetch = async (_url, init) => {
+      if (init.method !== 'POST') return Response.json({});
+      await new Promise(resolve => setTimeout(resolve, 150));
+      return Response.json({ access_token: 'child-access-' + role, refresh_token: 'child-refresh-' + role, expires_in: 3600 });
+    };
+    m._compile(${JSON.stringify(compiled)}, 'token-child.cjs');
+    m.exports.ensureValidToken('client', 'secret', role, {}, '123').catch(error => { console.error(error.message); process.exitCode = 1; });
+  `;
+  await Promise.all(['broadcaster', 'bot'].map(role => new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', script, api.root, role], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let error = '';
+    child.stderr.on('data', chunk => { error += chunk; });
+    child.on('error', reject);
+    child.on('close', code => code === 0 ? resolve() : reject(new Error(error)));
+  })));
+  const saved = await api.getStoredTokens('123');
+  assert.equal(saved.broadcasterRefreshToken, 'child-refresh-broadcaster');
+  assert.equal(saved.botRefreshToken, 'child-refresh-bot');
+});
+
+test('manual login exchange persists the grant and refuses unrelated or unavailable provider identities', async () => {
+  for (const identity of ['123', '456', 'unavailable']) {
+    const writes: any[] = [];
+    const route = load('src/app/api/auth/twitch/manual-exchange/route.ts', {
+      '@/lib/token-utils.server': { updateStoredTokens: async (...args: any[]) => { writes.push(args); } },
+      'fs': { promises: { mkdir: async () => {}, readFile: async () => '{}' } },
+      '@/lib/api-response': { apiError: (error: string, options: any) => ({ error, ...options }), apiOk: (payload: any) => ({ status: 200, ...payload }) },
+      '@/lib/runtime-origin': { getOAuthRedirectUri: () => 'https://test/auth/twitch/callback' },
+      '@/lib/tenant': { getTenantIdFromSession: () => '123', tenantPath: () => '/test/tokens.json', isAdmin: () => false },
+    }, { process: { env: { TWITCH_CLIENT_ID: 'client', TWITCH_CLIENT_SECRET: 'secret' } }, fetch: async (url: string) =>
+      url.endsWith('/token') ? refreshed('manual') : identity === 'unavailable' ? new Response('', { status: 503 }) : Response.json({ data: [{ id: identity, login: 'registered' }] }) });
+    const result = await route.POST({ json: async () => ({ code: 'test-code', state: 'login' }), cookies: { get: () => ({ value: 'signed-test-session' }) }, nextUrl: { origin: 'https://test' } });
+    assert.equal(result.status, identity === '123' ? 200 : identity === '456' ? 403 : 502);
+    assert.equal(writes.length, identity === '123' ? 1 : 0);
+    if (writes.length) assert.equal(writes[0][0].broadcasterRefreshToken, 'test-refresh-manual');
+  }
 });

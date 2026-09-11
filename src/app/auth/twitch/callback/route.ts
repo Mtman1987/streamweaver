@@ -1,3 +1,4 @@
+import { updateStoredTokens } from '@/lib/token-utils.server';
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -165,7 +166,6 @@ export async function GET(request: NextRequest) {
       } catch {}
 
       const tokenStorage = {
-        ...existingTokens,
         loginToken: tokenData.access_token,
         loginRefreshToken: tokenData.refresh_token,
         loginTokenExpiry: tokenExpiry,
@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
         broadcasterAvatarUrl: userInfo.profile_image_url,
         lastUpdated: new Date().toISOString(),
       };
-      await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
+      await updateStoredTokens(tokenStorage, twitchId);
 
       // A tenant may be paused in the in-memory reauthorization gate. Reload
       // the durable token immediately so chat commands such as !points recover
@@ -227,8 +227,7 @@ export async function GET(request: NextRequest) {
         try { existingTokens = JSON.parse(await fs.readFile(tokensFile, 'utf-8')); } catch {}
 
         const tokenStorage = {
-          ...existingTokens,
-          loginToken: tokenData.access_token,
+            loginToken: tokenData.access_token,
           loginRefreshToken: tokenData.refresh_token,
           loginTokenExpiry: tokenExpiry,
           loginUsername: username,
@@ -242,7 +241,7 @@ export async function GET(request: NextRequest) {
           broadcasterAvatarUrl: userInfo.profile_image_url,
           lastUpdated: new Date().toISOString(),
         };
-        await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
+        await updateStoredTokens(tokenStorage, twitchId);
 
         const sessionData = {
           id: twitchId,
@@ -311,14 +310,13 @@ export async function GET(request: NextRequest) {
 
       const username = userInfo?.login || '';
       const storage = {
-        ...existing,
         communityBotToken: tokenData.access_token,
         communityBotRefreshToken: tokenData.refresh_token,
         communityBotTokenExpiry: tokenExpiry,
         communityBotUsername: username,
         lastUpdated: new Date().toISOString(),
       };
-      await fs.writeFile(cbPath, JSON.stringify(storage, null, 2));
+      await updateStoredTokens(storage, undefined, true);
       return clearPrivilegedOAuthCookie(
         NextResponse.redirect(`${appOrigin}/integrations?success=true`),
       );
@@ -356,7 +354,6 @@ export async function GET(request: NextRequest) {
     }
 
     const tokenStorage = {
-      ...existingTokens,
       ...(isBroadcaster
         ? {
             broadcasterToken: tokenData.access_token,
@@ -385,7 +382,7 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     };
 
-    await fs.writeFile(tokensFile, JSON.stringify(tokenStorage, null, 2));
+    await updateStoredTokens(tokenStorage, tenantId);
 
     // Reload the tenant's durable grant and clear any in-memory reauth pause.
     await reconnectTwitchTenant(tenantId);

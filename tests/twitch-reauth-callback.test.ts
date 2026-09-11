@@ -8,7 +8,7 @@ test('Twitch login stores the fresh grant before reconnecting the tenant runtime
   const loginEnd = source.indexOf('// ─── BROADCASTER / BOT / COMMUNITY-BOT FLOW', loginStart);
   const loginFlow = source.slice(loginStart, loginEnd);
 
-  const durableWrite = loginFlow.indexOf('await fs.writeFile(tokensFile');
+  const durableWrite = loginFlow.indexOf('await updateStoredTokens(tokenStorage, twitchId)');
   const reconnect = loginFlow.indexOf('await reconnectTwitchTenant(twitchId)');
   const sessionRedirect = loginFlow.indexOf('NextResponse.redirect');
 

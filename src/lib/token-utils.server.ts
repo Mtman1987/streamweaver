@@ -42,20 +42,39 @@ export interface StoredTokens {
 
 const refreshLocks = new Map<string, Promise<string>>();
 const storageQueues = new Map<string, Promise<unknown>>();
+const storageLeases = new Map<string, { error?: Error }>();
+const lockfile = require('proper-lockfile');
 
 function serializeStorage<T>(file: string, operation: () => Promise<T>): Promise<T> {
   const previous = storageQueues.get(file) || Promise.resolve();
-  const run = previous.catch(() => {}).then(operation);
+  const run = previous.catch(() => {}).then(async () => {
+    await fs.mkdir(resolve(file, '..'), { recursive: true });
+    const lease: { error?: Error } = {};
+    const release = await lockfile.lock(file, {
+      realpath: false, stale: 60000, update: 10000,
+      retries: { retries: 120, factor: 1, minTimeout: 250, maxTimeout: 250 },
+      onCompromised: (error: Error) => { lease.error = error; },
+    });
+    storageLeases.set(file, lease);
+    try {
+      return await operation();
+    } finally {
+      storageLeases.delete(file);
+      await release();
+    }
+  });
   storageQueues.set(file, run);
   void run.finally(() => { if (storageQueues.get(file) === run) storageQueues.delete(file); }).catch(() => {});
   return run;
 }
 
 async function writeTokensFile(file: string, tokens: StoredTokens): Promise<void> {
+  if (storageLeases.get(file)?.error) throw storageLeases.get(file)!.error;
   await fs.mkdir(resolve(file, '..'), { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
     await fs.writeFile(temporary, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+    if (storageLeases.get(file)?.error) throw storageLeases.get(file)!.error;
     await fs.rename(temporary, file);
   } finally {
     await fs.unlink(temporary).catch(() => {});
@@ -119,6 +138,22 @@ export async function getStoredTokens(tenantId?: string): Promise<StoredTokens |
 export async function storeTokens(tokens: StoredTokens, tenantId?: string): Promise<void> {
   const filePath = tokensFilePath(tenantId);
   await serializeStorage(filePath, () => writeTokensFile(filePath, tokens));
+}
+
+/** All OAuth callbacks and disconnects share the refresh writer's file lock. */
+export async function updateStoredTokens(
+  update: Partial<StoredTokens> | ((current: StoredTokens) => StoredTokens),
+  tenantId?: string,
+  community = false,
+): Promise<void> {
+  const file = community ? communityTokensFilePath() : tokensFilePath(tenantId);
+  await serializeStorage(file, async () => {
+    let current: StoredTokens = {};
+    try { current = JSON.parse(await fs.readFile(file, 'utf8')); }
+    catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
+    const next = typeof update === 'function' ? update(current) : { ...current, ...update };
+    await writeTokensFile(file, next);
+  });
 }
 
 export async function refreshAccessToken(
