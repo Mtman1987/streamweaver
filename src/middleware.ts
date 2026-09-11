@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { applyRefreshedSpmtCookies, refreshSpmtConnection, type RefreshedSpmtConnection } from '@/lib/spmt-oauth';
+import { applySpmtLocalSession, spmtLocalSession, applyRefreshedSpmtCookies, refreshSpmtConnection, type RefreshedSpmtConnection } from '@/lib/spmt-oauth';
 import { parseSessionCookie } from '@/lib/session-cookie';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
@@ -79,8 +79,8 @@ async function resolveSpmtIdentity(request: NextRequest): Promise<{ identity: an
 
   const refreshed = await refreshSpmtConnection(request).catch(() => null);
   if (!refreshed) return { identity: null, refreshed: null };
-  identity = await fetchSpmtIdentity(refreshed.accessToken);
-  return { identity, refreshed: identity ? refreshed : null };
+  identity = refreshed.user?.id ? refreshed.user : await fetchSpmtIdentity(refreshed.accessToken);
+  return { identity, refreshed };
 }
 
 function withRefreshedCookies(response: NextResponse, refreshed: RefreshedSpmtConnection | null) {
@@ -103,11 +103,13 @@ function withCachedSessionHeaders(request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get('host') || '';
+  const browserSpmtSession = Boolean(request.cookies.get('streamweaver-spmt-token')?.value || request.cookies.get('streamweaver-spmt-refresh')?.value);
+  const renewLocalSession = pathname === '/api/session' && request.method === 'GET' && browserSpmtSession && !parseSessionCookie(request.cookies.get('streamweaver-session')?.value);
 
   if ((host.startsWith('127.0.0.1') || host.startsWith('localhost')) && pathname.startsWith('/api/')) return NextResponse.next();
-  if (MACHINE_PATHS.includes(pathname) || MACHINE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
-  if (pathname.startsWith('/api/') && isPublicApiRequest(request)) return NextResponse.next();
-  if (PUBLIC_PATHS.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
+  if ((MACHINE_PATHS.includes(pathname) && !(pathname === '/api/ai/image' && browserSpmtSession)) || MACHINE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
+  if (!renewLocalSession && pathname.startsWith('/api/') && isPublicApiRequest(request)) return NextResponse.next();
+  if (!renewLocalSession && PUBLIC_PATHS.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
   if (pathname.includes('.') && !pathname.endsWith('.html')) return NextResponse.next();
 
   const adminPath = ADMIN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
@@ -130,25 +132,33 @@ export async function middleware(request: NextRequest) {
 
   const { identity, refreshed } = await resolveSpmtIdentity(request);
   if (!identity) {
-    if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'SPMT session required' }, { status: 401 });
+    if (pathname.startsWith('/api/')) return withRefreshedCookies(NextResponse.json({ error: 'SPMT session required' }, { status: 401 }), refreshed);
     const login = new URL('/login', request.url);
     login.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(login);
+    return withRefreshedCookies(NextResponse.redirect(login), refreshed);
   }
 
   const admin = isAdmin(identity);
   if (adminPath && !admin) {
-    if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'SPMT admin required' }, { status: 403 });
+    if (pathname.startsWith('/api/')) return withRefreshedCookies(NextResponse.json({ error: 'SPMT admin required' }, { status: 403 }), refreshed);
     return withRefreshedCookies(NextResponse.redirect(new URL('/dashboard', request.url)), refreshed);
   }
 
   if (pathname === '/' || pathname === '') return withRefreshedCookies(NextResponse.redirect(new URL('/dashboard', request.url)), refreshed);
 
+  if (refreshed) {
+    request.cookies.set('streamweaver-spmt-token', refreshed.accessToken);
+    request.cookies.set('streamweaver-spmt-refresh', refreshed.refreshToken);
+  }
+  const restoredLocalSession = refreshed || !parseSessionCookie(request.cookies.get('streamweaver-session')?.value) ? spmtLocalSession(identity) : null;
+  if (restoredLocalSession) request.cookies.set('streamweaver-session', restoredLocalSession);
   const headers = new Headers(request.headers);
   headers.set('x-spmt-user-id', String(identity.id));
   headers.set('x-spmt-username', String(identity.username || identity.displayName || ''));
   headers.set('x-spmt-is-admin', admin ? '1' : '0');
-  return withRefreshedCookies(NextResponse.next({ request: { headers } }), refreshed);
+  const response = NextResponse.next({ request: { headers } });
+  if (restoredLocalSession) applySpmtLocalSession(response, restoredLocalSession);
+  return withRefreshedCookies(response, refreshed);
 }
 
 export const config = {

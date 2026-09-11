@@ -1,3 +1,4 @@
+import { clearSpmtSessionCookies } from '@/lib/spmt-oauth';
 import { NextRequest, NextResponse } from 'next/server';
 import { parseSessionCookie } from '@/lib/session-cookie';
 
@@ -16,9 +17,6 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const response = NextResponse.json({ success: true });
-  response.cookies.delete('streamweaver-session');
-  response.cookies.delete('streamweaver-spmt-token');
-  response.cookies.delete('streamweaver-spmt-refresh');
-  response.cookies.delete('streamweaver-spmt-state');
+  clearSpmtSessionCookies(response);
   return response;
 }
