@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applySpmtLocalSession, spmtLocalSession, applyRefreshedSpmtCookies, refreshSpmtConnection, type RefreshedSpmtConnection } from '@/lib/spmt-oauth';
 import { parseSessionCookie } from '@/lib/session-cookie';
+import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
@@ -19,6 +20,8 @@ const PUBLIC_PATHS = [
 
 const MACHINE_PATHS = [
   '/api/discord/chat', '/api/integrations/social-stream', '/api/ai/shoutout',
+  // Each handler validates its existing service credential before any action.
+  '/api/discord/pokemon-interaction', '/api/internal/lost-signal/transmission',
   '/api/ai/image',
   '/api/kick/chat-tag-broadcast', '/api/quackverse/pack-overlay',
   '/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator',
@@ -33,6 +36,15 @@ const MACHINE_PATHS = [
 ];
 
 const MACHINE_PREFIXES = ['/api/discord-avatar/', '/api/discord-media/', '/api/say/', '/api/webhooks/'];
+// Mixed browser/service handlers already accept this shared credential. A
+// service request must not also require a human session; handlers still apply
+// their actor and tenant checks.
+const INTERNAL_SERVICE_PATHS = [
+  '/api/chat/chatters', '/api/chat/log', '/api/tts', '/api/tts/current',
+  '/api/twitch/events', '/api/twitch/create-clip',
+  '/api/private-chat/finalize-discord-message', '/api/private-chat/respond',
+  '/api/private-ltm/condense', '/api/ai/chat-with-memory',
+];
 const ADMIN_PREFIXES = ['/admin', '/api/admin/', '/settings/admin', '/api/settings/admin'];
 const TWITCH_SESSION_BOOTSTRAP_PATHS = ['/api/user-profile', '/api/user-config'];
 
@@ -108,6 +120,7 @@ export async function middleware(request: NextRequest) {
 
   if ((host.startsWith('127.0.0.1') || host.startsWith('localhost')) && pathname.startsWith('/api/')) return NextResponse.next();
   if ((MACHINE_PATHS.includes(pathname) && !(pathname === '/api/ai/image' && browserSpmtSession)) || MACHINE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
+  if (INTERNAL_SERVICE_PATHS.includes(pathname) && hasInternalServiceAccess(request)) return NextResponse.next();
   if (!renewLocalSession && pathname.startsWith('/api/') && isPublicApiRequest(request)) return NextResponse.next();
   if (!renewLocalSession && PUBLIC_PATHS.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
   if (pathname.includes('.') && !pathname.endsWith('.html')) return NextResponse.next();
