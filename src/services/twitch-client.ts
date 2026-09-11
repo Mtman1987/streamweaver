@@ -657,6 +657,8 @@ export async function setupTwitchClient(tenantId: string) {
     });
 
     tenant.broadcasterClient.on('message', async (channel, tags, message, self) => {
+      // Outbound visits must not run another tenant's bots a second time.
+      if (channel.replace(/^#/, '').toLowerCase() !== broadcasterUsername.toLowerCase()) return;
       await dispatchIncomingTwitchMessage(channel, tags, message, self, tenantId);
     });
 
