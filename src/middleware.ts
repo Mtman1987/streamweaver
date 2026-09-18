@@ -46,6 +46,17 @@ const INTERNAL_SERVICE_PATHS = [
   '/api/private-ltm/condense', '/api/ai/chat-with-memory',
 ];
 const ADMIN_PREFIXES = ['/admin', '/api/admin/', '/settings/admin', '/api/settings/admin'];
+
+function isOverlayDocumentPath(pathname: string): boolean {
+  return pathname.startsWith('/overlay/')
+    || pathname.startsWith('/xpn/overlay/')
+    || pathname.startsWith('/tts/')
+    || [
+      '/brb-player', '/classic-gamble-overlay', '/gamble-overlay', '/gym-battle-overlay',
+      '/partner-checkin', '/pokemon-overlay', '/pokemon-collection-overlay', '/pokemon-pack-overlay',
+      '/pokemon-trade-overlay', '/shoutout-player', '/tts-listener', '/tts-player',
+    ].includes(pathname);
+}
 const TWITCH_SESSION_BOOTSTRAP_PATHS = ['/api/user-profile', '/api/user-config'];
 
 function isPublicApiRequest(request: NextRequest): boolean {
@@ -114,6 +125,11 @@ function withCachedSessionHeaders(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  if (isOverlayDocumentPath(pathname)) {
+    const headers = new Headers(request.headers);
+    headers.set('x-streamweaver-overlay-document', '1');
+    return NextResponse.next({ request: { headers } });
+  }
   const host = request.headers.get('host') || '';
   const browserSpmtSession = Boolean(request.cookies.get('streamweaver-spmt-token')?.value || request.cookies.get('streamweaver-spmt-refresh')?.value);
   const renewLocalSession = pathname === '/api/session' && request.method === 'GET' && browserSpmtSession && !parseSessionCookie(request.cookies.get('streamweaver-session')?.value);
