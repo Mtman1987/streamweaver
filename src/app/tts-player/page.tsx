@@ -20,8 +20,14 @@ export default function TTSPlayer() {
   const [alwaysShow, setAlwaysShow] = useState(false);
   const hideTimer = useRef<NodeJS.Timeout | null>(null);
   const [visible, setVisible] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setShowControls(params.get('controls') === '1');
+  }, []);
 
   // A short-lived heartbeat proves that this tenant has an actual playback
   // consumer before the server spends money generating automatic speech.
@@ -292,14 +298,16 @@ export default function TTSPlayer() {
         playsInline
         onPlay={() => { setPlaying(true); setStatus('Playing...'); }}
       />
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          window.dispatchEvent(new CustomEvent('streamweaver:skip-tts'));
-        }}
-        style={{ position: 'absolute', right: 8, bottom: 18, zIndex: 5, padding: '4px 7px', border: '1px solid rgba(255,255,255,.35)', borderRadius: 4, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: 11, cursor: 'pointer' }}
-      >Skip TTS</button>
+      {showControls && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            window.dispatchEvent(new CustomEvent('streamweaver:skip-tts'));
+          }}
+          style={{ position: 'absolute', right: 8, bottom: 18, zIndex: 5, padding: '4px 7px', border: '1px solid rgba(255,255,255,.35)', borderRadius: 4, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: 11, cursor: 'pointer' }}
+        >Skip TTS</button>
+      )}
       {/* Avatar */}
       {avatar && (
         <div style={{
