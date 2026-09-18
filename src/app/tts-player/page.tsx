@@ -60,7 +60,22 @@ export default function TTSPlayer() {
         .then(payload => {
           const d = payload?.data;
           if (!d?.idleFile && !d?.idleUrl) {
-            setAvatar(null);
+            // The Space Mountain fallback channel must always have its host
+            // visible. Its tenant volume may not contain a copied avatar yet,
+            // so use the bundled StreamWeaver host assets instead of silently
+            // rendering an empty transparent layer.
+            if (overlayTenant === 'spacemountainlive') {
+              setAvatar({
+                animationType: 'gif',
+                idleUrl: '/avatars/idle.gif',
+                talkingUrl: '/avatars/talking.gif',
+                displayMode: 'always',
+              });
+              setAlwaysShow(true);
+              setVisible(true);
+            } else {
+              setAvatar(null);
+            }
             return;
           }
           const t = (d.animationType === 'json' ? 'lottie' : d.animationType) as AvatarSettings['animationType'];
@@ -120,7 +135,30 @@ export default function TTSPlayer() {
   useEffect(() => {
     let isPlaying = false;
     const cursorKey = `streamweaver:tts-cursor:${overlayTenant || 'global'}`;
-    let cursor = window.localStorage.getItem(cursorKey) || '';
+    let cursor = '';
+    let initialized = false;
+
+    const skipQueuedAudio = async () => {
+      try {
+        const sep = tenantQuery ? `&${tenantQuery}` : '';
+        const res = await fetch(`/api/tts/current?latest=1${sep}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          cursor = data.cursor ? String(data.cursor) : '';
+          if (cursor) window.localStorage.setItem(cursorKey, cursor);
+        }
+      } catch {}
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.removeAttribute('src');
+        audio.load();
+      }
+      isPlaying = false;
+      setPlaying(false);
+      setStatus('Skipped queued TTS. Listening for new messages...');
+    };
 
     const playTTS = async (audioUrl: string): Promise<boolean> => {
       const audio = audioRef.current;
@@ -145,7 +183,7 @@ export default function TTSPlayer() {
     };
 
     const fetchNext = async () => {
-      if (isPlaying) return;
+      if (isPlaying || !initialized) return;
       try {
         const sep = tenantQuery ? `&${tenantQuery}` : '';
         const after = cursor ? `&after=${encodeURIComponent(cursor)}` : '';
@@ -189,9 +227,15 @@ export default function TTSPlayer() {
       audio.addEventListener('error', onError);
       audio.addEventListener('pause', onPause);
     }
+    window.addEventListener('streamweaver:skip-tts', skipQueuedAudio);
 
     const interval = setInterval(fetchNext, 500);
-    fetchNext();
+    // Never replay a backlog from a previous stream/session on first load.
+    // New messages arriving after this cursor still play normally.
+    skipQueuedAudio().finally(() => {
+      initialized = true;
+      fetchNext();
+    });
     return () => {
       clearInterval(interval);
       if (audio) {
@@ -199,6 +243,7 @@ export default function TTSPlayer() {
         audio.removeEventListener('error', onError);
         audio.removeEventListener('pause', onPause);
       }
+      window.removeEventListener('streamweaver:skip-tts', skipQueuedAudio);
     };
   }, [overlayTenant, tenantQuery]);
 
@@ -247,6 +292,14 @@ export default function TTSPlayer() {
         playsInline
         onPlay={() => { setPlaying(true); setStatus('Playing...'); }}
       />
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(new CustomEvent('streamweaver:skip-tts'));
+        }}
+        style={{ position: 'absolute', right: 8, bottom: 18, zIndex: 5, padding: '4px 7px', border: '1px solid rgba(255,255,255,.35)', borderRadius: 4, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: 11, cursor: 'pointer' }}
+      >Skip TTS</button>
       {/* Avatar */}
       {avatar && (
         <div style={{
