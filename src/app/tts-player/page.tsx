@@ -21,6 +21,11 @@ export default function TTSPlayer() {
   const hideTimer = useRef<NodeJS.Timeout | null>(null);
   const [visible, setVisible] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [captionText, setCaptionText] = useState('');
+  const [captionVisible, setCaptionVisible] = useState(false);
+  const captionTypeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const captionLingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const captionClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
 
