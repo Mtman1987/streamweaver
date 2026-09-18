@@ -1,5 +1,6 @@
 import type {Metadata} from 'next';
 import Script from 'next/script';
+import { headers } from 'next/headers';
 import './globals.css';
 import './workspace-parity.css';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -38,26 +39,33 @@ export const viewport = {
   themeColor: '#667eea',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestHeaders = await headers();
+  const overlayDocument = requestHeaders.get('x-streamweaver-overlay-document') === '1';
+
   return (
     <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
-      <body>
-        <div className="sw-starfield sw-starfield-a" />
-        <div className="sw-starfield sw-starfield-b" />
-        <div className="sw-starfield sw-starfield-c" />
+      <body className={overlayDocument ? 'overlay-document' : undefined}>
+        {!overlayDocument && (
+          <>
+            <div className="sw-starfield sw-starfield-a" />
+            <div className="sw-starfield sw-starfield-b" />
+            <div className="sw-starfield sw-starfield-c" />
+            <SpaceMountainEmbedBridge />
+            <Script src="https://spmt.live/shared/ecosystem-header.js" data-app="streamweaver" strategy="afterInteractive" />
+            <Script src="https://spmt.live/shared/workspace-controller.js" strategy="afterInteractive" />
+          </>
+        )}
         <OverlayDocumentMode />
-        <SpaceMountainEmbedBridge />
-        <Script src="https://spmt.live/shared/ecosystem-header.js" data-app="streamweaver" strategy="afterInteractive" />
-        <Script src="https://spmt.live/shared/workspace-controller.js" strategy="afterInteractive" />
         {/* <DashboardConnection /> */}
         <SidebarProvider>
         {children}
         </SidebarProvider>
-        <Toaster />
+        {!overlayDocument && <Toaster />}
       </body>
     </html>
   );
