@@ -494,3 +494,17 @@
   74% { opacity: 1; }
   82%, 100% { transform: translate3d(130vw, 38vh, 0) rotate(-18deg); opacity: 0; }
 }
+
+/* Overlay browser-source documents are transparent from first paint. */
+html.overlay-document,
+body.overlay-document {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+body.overlay-document::before,
+body.overlay-document::after,
+body.overlay-document > .sw-starfield {
+  display: none !important;
+  background: none !important;
+}
