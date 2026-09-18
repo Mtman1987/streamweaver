@@ -176,7 +176,6 @@ export default function TTSPlayer() {
     };
 
     const hideCaptionAfterLinger = () => {
-      if (!captionText) return;
       if (captionLingerTimer.current) clearTimeout(captionLingerTimer.current);
       captionLingerTimer.current = setTimeout(() => {
         setCaptionVisible(false);
