@@ -166,7 +166,50 @@ export default function TTSPlayer() {
       setStatus('Skipped queued TTS. Listening for new messages...');
     };
 
-    const playTTS = async (audioUrl: string): Promise<boolean> => {
+    const clearCaptionTimers = () => {
+      if (captionTypeTimer.current) clearInterval(captionTypeTimer.current);
+      if (captionLingerTimer.current) clearTimeout(captionLingerTimer.current);
+      if (captionClearTimer.current) clearTimeout(captionClearTimer.current);
+      captionTypeTimer.current = null;
+      captionLingerTimer.current = null;
+      captionClearTimer.current = null;
+    };
+
+    const hideCaptionAfterLinger = () => {
+      if (!captionText) return;
+      if (captionLingerTimer.current) clearTimeout(captionLingerTimer.current);
+      captionLingerTimer.current = setTimeout(() => {
+        setCaptionVisible(false);
+        captionClearTimer.current = setTimeout(() => setCaptionText(''), 750);
+      }, 10_000);
+    };
+
+    const typeCaption = (text: string, durationSeconds?: number) => {
+      clearCaptionTimers();
+      const clean = String(text || '').trim();
+      if (!clean) {
+        setCaptionText('');
+        setCaptionVisible(false);
+        return;
+      }
+      setCaptionText('');
+      setCaptionVisible(true);
+      let index = 0;
+      const durationMs = Number.isFinite(durationSeconds) && Number(durationSeconds) > 0
+        ? Number(durationSeconds) * 1000
+        : Math.max(1400, clean.length * 34);
+      const stepMs = Math.max(18, Math.min(70, Math.floor(durationMs / Math.max(1, clean.length))));
+      captionTypeTimer.current = setInterval(() => {
+        index = Math.min(clean.length, index + 1);
+        setCaptionText(clean.slice(0, index));
+        if (index >= clean.length && captionTypeTimer.current) {
+          clearInterval(captionTypeTimer.current);
+          captionTypeTimer.current = null;
+        }
+      }, stepMs);
+    };
+
+    const playTTS = async (audioUrl: string, text?: string): Promise<boolean> => {
       const audio = audioRef.current;
       if (!audio) return false;
 
@@ -179,6 +222,7 @@ export default function TTSPlayer() {
 
       try {
         await audio.play();
+        typeCaption(text || '', Number.isFinite(audio.duration) ? audio.duration : undefined);
         setStatus('Playing...');
         return true;
       } catch (err: any) {
@@ -198,7 +242,7 @@ export default function TTSPlayer() {
         const data = await res.json();
         if (data.audioUrl) {
           isPlaying = true;
-          const started = await playTTS(data.audioUrl);
+          const started = await playTTS(data.audioUrl, data.text || '');
           if (started && data.cursor) {
             cursor = String(data.cursor);
             window.localStorage.setItem(cursorKey, cursor);
@@ -212,6 +256,7 @@ export default function TTSPlayer() {
       isPlaying = false;
       setPlaying(false);
       setStatus('Listening for TTS...');
+      hideCaptionAfterLinger();
       // Immediately check for next queued item
       fetchNext();
     };
@@ -219,6 +264,7 @@ export default function TTSPlayer() {
       isPlaying = false;
       setPlaying(false);
       setStatus('Listening for TTS...');
+      hideCaptionAfterLinger();
     };
     const onPause = () => {
       if (!audio || audio.ended) return;
@@ -250,6 +296,7 @@ export default function TTSPlayer() {
         audio.removeEventListener('pause', onPause);
       }
       window.removeEventListener('streamweaver:skip-tts', skipQueuedAudio);
+      clearCaptionTimers();
     };
   }, [overlayTenant, tenantQuery]);
 
@@ -318,6 +365,36 @@ export default function TTSPlayer() {
           {renderAvatar()}
         </div>
       )}
+      {/* Stella captions: type beside the lower-left avatar into the lower-center canvas. */}
+      <div style={{
+        position: 'absolute',
+        left: 320,
+        right: '5vw',
+        bottom: 54,
+        minHeight: 56,
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'flex-start',
+        pointerEvents: 'none',
+        opacity: captionVisible ? 1 : 0,
+        transition: 'opacity 0.7s ease',
+      }}>
+        <div style={{
+          maxWidth: 'min(1080px, 78vw)',
+          color: '#ffd900',
+          fontFamily: 'Arial Black, Inter, system-ui, sans-serif',
+          fontWeight: 900,
+          fontSize: 'clamp(24px, 2.4vw, 48px)',
+          lineHeight: 1.16,
+          letterSpacing: '0.01em',
+          textAlign: 'left',
+          textWrap: 'balance',
+          WebkitTextStroke: '1px rgba(0,0,0,.9)',
+          textShadow: '0 3px 3px #000, 0 0 8px #000, 0 0 18px rgba(0,0,0,.9)',
+        }}>
+          {captionText}
+        </div>
+      </div>
       {/* Status (tiny, invisible in OBS) */}
       <div style={{ position: 'absolute', bottom: 2, right: 4, fontSize: 10, color: '#444', fontFamily: 'sans-serif' }}>
         {status}
