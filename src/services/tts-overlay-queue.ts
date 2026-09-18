@@ -97,7 +97,7 @@ export async function queueTtsOverlay(text: string, tenantId?: string): Promise<
     const queueRes = await fetch(`${baseUrl}/api/tts/current${tenantQuery}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ audioUrl }),
+      body: JSON.stringify({ audioUrl, text: cleanText.slice(0, 2000) }),
     });
     if (!queueRes.ok) {
       return { ok: false, generated: true, queued: false, error: `TTS queue failed: HTTP ${queueRes.status}` };

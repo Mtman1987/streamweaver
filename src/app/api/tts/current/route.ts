@@ -10,11 +10,13 @@ import { touchTtsConsumer } from '@/services/tts-consumer-presence';
 
 const ttsCurrentSchema = z.object({
   audioUrl: z.string().min(1, 'audioUrl is required'),
+  text: z.string().trim().max(2000).optional(),
 });
 
 type TtsQueueItem = {
   cursor: string;
   audioUrl: string;
+  text?: string;
   addedAt: string;
 };
 
@@ -121,6 +123,7 @@ export async function GET(request: NextRequest) {
     if (item) {
       return apiOk({
         audioUrl: item.audioUrl,
+        text: item.text || null,
         updatedAt: item.addedAt,
         cursor: item.cursor,
         remaining: Math.max(0, state.queue.length - itemIndex - 1),
@@ -131,7 +134,7 @@ export async function GET(request: NextRequest) {
 
   // Default: peek at front of queue without removing (backward compat)
   if (state.queue.length > 0) {
-    return apiOk({ audioUrl: state.queue[0].audioUrl, updatedAt: state.queue[0].addedAt });
+    return apiOk({ audioUrl: state.queue[0].audioUrl, text: state.queue[0].text || null, updatedAt: state.queue[0].addedAt });
   }
   return apiOk({ audioUrl: null, updatedAt: state.lastServedAt });
 }
@@ -151,13 +154,13 @@ export async function POST(request: NextRequest) {
       return apiError('audioUrl is required', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { audioUrl } = parsed.data;
+    const { audioUrl, text } = parsed.data;
     const tenantKey = getTenantKey(request);
     const state = await getTenantState(request);
     const addedAt = new Date().toISOString();
 
     const cursor = crypto.randomUUID();
-    state.queue.push({ cursor, audioUrl, addedAt });
+    state.queue.push({ cursor, audioUrl, ...(text ? { text } : {}), addedAt });
 
     // Cap queue at 20 to prevent memory issues
     if (state.queue.length > 20) {

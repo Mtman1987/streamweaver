@@ -70,12 +70,14 @@ test('Gate 1 two-tenant fixture isolates chat, replies, botshare, TTS, voice, ov
     assert.equal((await commandsStore.getAllCommands('tenant-b')).some((entry) => entry.id === workflowA.command?.id), false);
 
     const headers = { Authorization: 'Bearer gate-fixture-secret', 'Content-Type': 'application/json' };
-    await ttsCurrent.POST(new NextRequest('http://localhost/api/tts/current?tenant=tenant-a', { method: 'POST', headers, body: JSON.stringify({ audioUrl: 'https://example.test/a.mp3' }) }));
-    await ttsCurrent.POST(new NextRequest('http://localhost/api/tts/current?tenant=tenant-b', { method: 'POST', headers, body: JSON.stringify({ audioUrl: 'https://example.test/b.mp3' }) }));
+    await ttsCurrent.POST(new NextRequest('http://localhost/api/tts/current?tenant=tenant-a', { method: 'POST', headers, body: JSON.stringify({ audioUrl: 'https://example.test/a.mp3', text: 'Caption A' }) }));
+    await ttsCurrent.POST(new NextRequest('http://localhost/api/tts/current?tenant=tenant-b', { method: 'POST', headers, body: JSON.stringify({ audioUrl: 'https://example.test/b.mp3', text: 'Caption B' }) }));
     const ttsA = await (await ttsCurrent.GET(new NextRequest('http://localhost/api/tts/current?tenant=tenant-a&next=1'))).json();
     const ttsB = await (await ttsCurrent.GET(new NextRequest('http://localhost/api/tts/current?tenant=tenant-b&next=1'))).json();
     assert.equal(ttsA.audioUrl, 'https://example.test/a.mp3');
+    assert.equal(ttsA.text, 'Caption A');
     assert.equal(ttsB.audioUrl, 'https://example.test/b.mp3');
+    assert.equal(ttsB.text, 'Caption B');
 
     assert.deepEqual(websocketTenant.resolveTenantSocketAction('', 'reconnect-twitch'), { ok: false, error: 'Missing tenant context for reconnect-twitch' });
     assert.deepEqual(websocketTenant.resolveTenantSocketAction('tenant-a', 'reconnect-twitch'), { ok: true, tenantId: 'tenant-a' });
