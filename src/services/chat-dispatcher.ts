@@ -39,7 +39,13 @@ import { SubActionType, TriggerType } from './automation/types';
 import type { KickMessage } from './kick';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
-import { globalPath, listTenants, tenantPath } from '../lib/tenant';
+import {
+    globalPath,
+    listTenants,
+    tenantPath,
+    SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+} from '../lib/tenant';
+import { queueTtsOverlay } from './tts-overlay-queue';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
@@ -5334,7 +5340,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     sourceTenantId: tenantId,
                                     responseTenantId,
                                 });
-                                await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
+                                if (responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+                                    const tts = await queueTtsOverlay(aiReply, responseTenantId);
+                                    if (!tts.ok) console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
+                                } else {
+                                    await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
+                                }
                                 if (responseTenantId) {
                                     await appendBotInteraction({
                                         platform: 'twitch',
@@ -5433,7 +5444,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 sourceTenantId: tenantId,
                                 responseTenantId,
                             });
-                            await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
+                            const isStellaSystemReply = responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+                            if (!isStellaSystemReply) {
+                                await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
+                            }
                             const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
                             await sendTwitchCrossBotFollowUp({
                                 channel: responseChannel,
@@ -5449,25 +5463,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             // Generate TTS for AI response
                             if (shouldGenerateTtsForReply) {
                                 try {
-                                    const { textToSpeech } = await import('../ai/flows/text-to-speech');
-                                    const ttsResult = await textToSpeech({ text: aiReply, tenantId: responseTenantId || undefined });
-                                    
-                                    if (ttsResult.audioDataUri) {
-                                        const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
-                                        
-                                        if (useTTSPlayer) {
-                                            const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-                                            await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
-                                                method: 'POST',
-                                                headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
-                                                body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
-                                            }).catch(err => console.error('[Dispatcher] Failed to send TTS to player:', err));
-                                        } else if (typeof (global as any).broadcast === 'function') {
-                                            (global as any).broadcast({
-                                                type: 'play-tts',
-                                                payload: { audioDataUri: ttsResult.audioDataUri }
-                                            }, tenantId);
-                                        }
+                                    const targetTenant = responseTenantId || tenantId || undefined;
+                                    const tts = await queueTtsOverlay(aiReply, targetTenant);
+                                    if (!tts.ok) {
+                                        console.warn('[Dispatcher] TTS overlay queue failed for AI response:', tts.error);
                                     }
                                 } catch (err) {
                                     console.error('[Dispatcher] TTS generation failed for AI response:', err);
