@@ -7,16 +7,19 @@ import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import path from 'path';
 import { z } from 'zod';
 import { touchTtsConsumer } from '@/services/tts-consumer-presence';
+import { AVATAR_GESTURES } from '@/lib/avatar-gestures';
 
 const ttsCurrentSchema = z.object({
   audioUrl: z.string().min(1, 'audioUrl is required'),
   text: z.string().trim().max(2000).optional(),
+  gesture: z.enum(AVATAR_GESTURES).optional(),
 });
 
 type TtsQueueItem = {
   cursor: string;
   audioUrl: string;
   text?: string;
+  gesture?: typeof AVATAR_GESTURES[number];
   addedAt: string;
 };
 
@@ -124,6 +127,7 @@ export async function GET(request: NextRequest) {
       return apiOk({
         audioUrl: item.audioUrl,
         text: item.text || null,
+        gesture: item.gesture || null,
         updatedAt: item.addedAt,
         cursor: item.cursor,
         remaining: Math.max(0, state.queue.length - itemIndex - 1),
@@ -154,13 +158,13 @@ export async function POST(request: NextRequest) {
       return apiError('audioUrl is required', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { audioUrl, text } = parsed.data;
+    const { audioUrl, text, gesture } = parsed.data;
     const tenantKey = getTenantKey(request);
     const state = await getTenantState(request);
     const addedAt = new Date().toISOString();
 
     const cursor = crypto.randomUUID();
-    state.queue.push({ cursor, audioUrl, ...(text ? { text } : {}), addedAt });
+    state.queue.push({ cursor, audioUrl, ...(text ? { text } : {}), ...(gesture ? { gesture } : {}), addedAt });
 
     // Cap queue at 20 to prevent memory issues
     if (state.queue.length > 20) {
