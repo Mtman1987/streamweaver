@@ -6,10 +6,11 @@ export type ViewerActionPrompt = {
 };
 
 export const VIEWER_ACTION_PROMPT = [
-  'When it would genuinely help the viewer answer by clicking, you may append one viewer-button tag immediately before any avatar gesture tag.',
-  'Format: [buttons:Yes|No] or [buttons:Option A|Option B|Option C].',
-  'Use 2 to 5 short choices, each under 30 characters. Do not use buttons on every reply.',
-  'The spoken sentence immediately before the tag should clearly ask the question the buttons answer.',
+  'Normally let viewers answer you in Twitch chat. Do not use viewer-button tags for ordinary questions or conversation.',
+  'Use a viewer-button tag only when the response should be sealed/private until reveal, such as rock-paper-scissors, hidden voting, quiz guesses, secret choices, or another interaction where seeing chat answers would spoil the result.',
+  'Format: [buttons:Rock|Paper|Scissors] or [buttons:Option A|Option B|Option C].',
+  'Use 2 to 5 short choices, each under 30 characters, and at most one button set in a reply.',
+  'The spoken sentence immediately before the tag should clearly ask the private-choice question.',
   'Never mention the bracket tag aloud and never put it anywhere except the end of the reply, before an optional avatar gesture tag.',
 ].join(' ');
 
