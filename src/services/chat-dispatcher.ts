@@ -4868,6 +4868,52 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.warn('[Dispatcher] broadcasterUsername unresolved (config/tokens unreadable); skipping foreign-channel guardrail for', { tenantId, replyChannel });
             }
             
+            // SpaceMountainLive is a permanent system tenant. Until Stella has
+            // her own Twitch OAuth, StreamWeaver87 only transports/listens to chat;
+            // direct Stella invocations produce AI + TTS/avatar output without
+            // posting Stella's text back into Twitch.
+            if (
+                tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                && !isCommand
+                && !userIsKnownBot
+                && /(^|\\W)stella(\\W|$)/i.test(actualMessage)
+            ) {
+                try {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {
+                        method: 'POST',
+                        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({
+                            username: actualUsername,
+                            displayName,
+                            userId: String(tags?.['user-id'] || '').trim() || undefined,
+                            message: actualMessage,
+                            tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                            channelId: replyChannel,
+                            context: 'twitch',
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        console.error('[Dispatcher] Stella system-tenant AI failed:', response.status, await response.text().catch(() => ''));
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const aiReply = String(data.response || data.data?.response || '').trim();
+                    if (!aiReply) return;
+
+                    const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                    if (!tts.ok) {
+                        console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
+                    } else {
+                        console.log(`[Dispatcher] Stella answered @${actualUsername} via Lounge TTS in #${replyChannel}`);
+                    }
+                } catch (error) {
+                    console.error('[Dispatcher] Stella system-tenant response failed:', error);
+                }
+                return;
+            }
+
             // The Count is a built-in character, not a tenant bot. His Twitch
             // account is only a delivery identity; the canonical Black Hole
             // entitlement remains the sole personal invocation gate.
