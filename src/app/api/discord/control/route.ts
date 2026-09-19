@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       return apiOk({ action, visible: toggled.visible, message: `Public bot GIF is now ${toggled.visible ? 'visible' : 'hidden'}.` });
     }
 
-    // The public speaker button is a persistent bot toggle. Audio is queued on
+    // The owner gate above prevents an arbitrary public control link from being used to\n    // repeatedly trigger paid TTS synthesis for another tenant.\n    // The public speaker button is a persistent bot toggle. Audio is queued on
     // the same Say Player/browser-source stream as human chat TTS; HearMeOut is
     // not opened or joined by this path.
     const enabled = await togglePublicBotTtsEnabled(control.channelId, control.tenantId);
