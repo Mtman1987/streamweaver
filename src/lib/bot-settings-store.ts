@@ -5,7 +5,7 @@
 
 import { readUserConfigSync } from './user-config';
 import fs from 'fs';
-import { tenantPath } from './tenant';
+import { tenantPath, SPACEMOUNTAIN_SYSTEM_TENANT_ID } from './tenant';
 import { DEFAULT_TTS_VOICE, normalizeTtsProvider, normalizeTtsVoice } from './tts-voices';
 import { COMMUNITY_BOT_NAME, COMMUNITY_BOT_PERSONALITY } from './bot-personality-defaults';
 
@@ -107,6 +107,10 @@ export function applyBotTransportIdentity(settings: BotSettings, hasDedicatedBot
 function getEffectiveSettings(tenantId?: string) {
   if (!tenantId) return { ...DEFAULTS };
   const settings = getBotSettings(tenantId);
+  // SpaceMountainLive deliberately uses StreamWeaver87 as the transport account
+  // while retaining Stella as the tenant persona until Stella receives her own
+  // dedicated Twitch OAuth.
+  if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) return { ...settings };
   return applyBotTransportIdentity(settings, hasBotAccount(tenantId));
 }
 
