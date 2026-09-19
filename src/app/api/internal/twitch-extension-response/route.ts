@@ -47,14 +47,14 @@ export async function POST(request: NextRequest) {
       cache: 'no-store',
     });
     const payload = await response.json().catch(() => null) as any;
-    if (!response.ok || !payload?.data?.response) {
+    if (!response.ok || !payload?.response) {
       return apiError(payload?.error || 'Stella could not process the viewer response', {
         status: 502,
         code: 'AI_RESPONSE_FAILED',
       });
     }
 
-    const spoken = String(payload.data.response).trim();
+    const spoken = String(payload.response).trim();
     const tts = await queueTtsOverlay(spoken, input.tenantId);
     if (!tts.ok) {
       return apiError(tts.error || 'Stella response could not be queued for TTS', {
