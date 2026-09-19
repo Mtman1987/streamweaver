@@ -18,7 +18,7 @@ import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
 import { getPoints, getPointBalance, setPoints, settleWager } from './points';
 import { getAIConfig } from './ai-provider';
-import { getBotName } from '../lib/bot-settings-store';
+import { getBotName, tenantHasBotAccount } from '../lib/bot-settings-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
 import {
     THE_COUNT_NAME,
@@ -4915,7 +4915,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
                     if (!tts.ok) {
                         console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                    } else {
+                    }
+
+                    if (tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
+                        await sendChatMessage(
+                            aiReply,
+                            'bot',
+                            replyChannel,
+                            SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                        ).catch((error) => {
+                            console.warn('[Dispatcher] Stella Twitch chat delivery failed:', error);
+                        });
+                        console.log(`[Dispatcher] Stella answered @${actualUsername} via Twitch + Lounge TTS in #${replyChannel}`);
+                    } else if (tts.ok) {
                         console.log(`[Dispatcher] Stella answered @${actualUsername} via Lounge TTS in #${replyChannel}`);
                     }
                 } catch (error) {
