@@ -22,6 +22,7 @@ const MACHINE_PATHS = [
   '/api/discord/chat', '/api/integrations/social-stream', '/api/ai/shoutout',
   // Each handler validates its existing service credential before any action.
   '/api/discord/pokemon-interaction', '/api/internal/lost-signal/transmission',
+  '/api/internal/twitch-extension-response',
   '/api/ai/image',
   '/api/kick/chat-tag-broadcast', '/api/quackverse/pack-overlay',
   '/api/shared-chat/spmt-feed', '/api/shared-chat/spmt-dispatch', '/api/shared-chat/spmt-operator',

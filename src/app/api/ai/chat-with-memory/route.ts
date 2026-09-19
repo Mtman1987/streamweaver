@@ -13,6 +13,8 @@ import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib
 import { NATURAL_DIALOGUE_POLICY, splitPersonalityPrompt } from '@/lib/personality-prompt';
 import { AVATAR_GESTURE_PROMPT, extractAvatarGesture } from '@/lib/avatar-gestures';
 import { rememberAvatarGesture } from '@/lib/avatar-gesture-runtime';
+import { VIEWER_ACTION_PROMPT, extractViewerActionPrompt } from '@/lib/viewer-action-prompts';
+import { rememberViewerActionPrompt } from '@/lib/viewer-action-runtime';
 
 type ChatContext = 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private';
 
@@ -202,6 +204,7 @@ export async function POST(request: NextRequest) {
       extendedGuidance,
       NATURAL_DIALOGUE_POLICY,
       AVATAR_GESTURE_PROMPT,
+      VIEWER_ACTION_PROMPT,
       worldLoreText,
       botInteractionHistory,
       commanderContext,
@@ -245,8 +248,10 @@ export async function POST(request: NextRequest) {
       .replace(new RegExp(`^(${botResponseName}|${botResponseName.toLowerCase()}):\\s*`, 'i'), '')
       .trim();
     const parsedGesture = extractAvatarGesture(responseWithGesture);
-    const cleanResponse = parsedGesture.text;
+    const parsedViewerPrompt = extractViewerActionPrompt(parsedGesture.text);
+    const cleanResponse = parsedViewerPrompt.text;
     if (parsedGesture.gesture) rememberAvatarGesture(tenantId, cleanResponse, parsedGesture.gesture);
+    if (parsedViewerPrompt.options) rememberViewerActionPrompt(tenantId, cleanResponse, parsedViewerPrompt.options);
 
     const aiEntry = {
       type: 'ai' as const,
