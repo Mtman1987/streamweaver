@@ -9,6 +9,8 @@ import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 
 const eventSubSockets = new Map<string, WebSocket>();
+const CHAT_TAG_API_BASE = String(process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
+const DANCE_PARTY_REWARD_TITLE = 'dance party';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 function normalizeTenantId(tenantId?: string): string | undefined {
@@ -41,6 +43,18 @@ function tenantKey(tenantId?: string): string {
 
 function userMessageKey(username: string, tenantId?: string): string {
     return `${tenantKey(tenantId)}:${username.toLowerCase()}`;
+}
+
+async function triggerDanceParty(channel: string, userLogin: string) {
+    const secret = String(process.env.CHAT_TAG_SECRET || process.env.BOT_SECRET_KEY || '').trim();
+    if (!secret || !channel) return { ok: false, reason: 'chat-tag-service-unavailable' };
+    const response = await fetch(`${CHAT_TAG_API_BASE}/api/game-hub/parade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-bot-secret': secret },
+        body: JSON.stringify({ action: 'start', channel, trigger: 'redeem', triggerUser: userLogin }),
+    });
+    const payload = await response.json().catch(() => null) as any;
+    return { ok: response.ok, status: response.status, payload };
 }
 
 async function getBroadcasterAuth(tenantId?: string): Promise<{ clientId: string; accessToken: string; broadcasterId: string } | null> {
@@ -278,6 +292,20 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                         const userLogin = String(event?.user_login || '');
                         const userInput = String(event?.user_input || '').trim();
                         console.log(`[EventSub] Channel point redeem: ${rewardTitle} by ${userLogin}, input: "${userInput}"`);
+
+                        if (rewardTitle.trim().toLowerCase() === DANCE_PARTY_REWARD_TITLE) {
+                            const context = await resolvePointsCtx(tenantId);
+                            const channel = String(event?.broadcaster_user_login || context?.username || '').trim().toLowerCase();
+                            const result = await triggerDanceParty(channel, userLogin);
+                            if (!result.ok && result.status === 429) {
+                                const retryMs = Number(result.payload?.retryAfterMs || 0);
+                                const minutes = Math.max(1, Math.ceil(retryMs / 60000));
+                                sendChatMessage(`@${userLogin}, Dance Party is cooling down — about ${minutes} minute${minutes === 1 ? '' : 's'} left.`, 'broadcaster', undefined, tenantId).catch(() => {});
+                            } else if (!result.ok) {
+                                console.warn('[EventSub] Dance Party trigger failed:', result.status, result.payload);
+                            }
+                            return;
+                        }
                         
                         // Load redeems config to match reward titles
                         let redeemsConfig;
