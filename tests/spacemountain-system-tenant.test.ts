@@ -1,0 +1,34 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+function read(file: string) {
+  return fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+}
+
+test('SpaceMountainLive remains a permanent system tenant with Stella persona', () => {
+  const tenant = read('src/lib/tenant.ts');
+  assert.match(tenant, /SPACEMOUNTAIN_SYSTEM_TENANT_ID = 'spacemountainlive'/);
+  assert.match(tenant, /SPACEMOUNTAIN_SYSTEM_BOT_NAME = 'Stella'/);
+  assert.match(tenant, /await bootstrapTenant\(SPACEMOUNTAIN_SYSTEM_TENANT_ID, SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL\)/);
+});
+
+test('SpaceMountainLive uses the existing community bot listener without broadcaster OAuth', () => {
+  const twitch = read('src/services/twitch-client.ts');
+  assert.match(twitch, /tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
+  assert.match(twitch, /ensureCommunityBotForChannel\(channel, clientId, clientSecret\)/);
+  assert.match(twitch, /System tenant listening/);
+});
+
+test('Stella keeps her persona name while StreamWeaver87 is transport only', () => {
+  const settings = read('src/lib/bot-settings-store.ts');
+  assert.match(settings, /tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
+  assert.match(settings, /return \{ \.\.\.settings \}/);
+});
+
+test('Stella Twitch AI responses go to the overlay queue instead of posting chat text', () => {
+  const dispatcher = read('src/services/chat-dispatcher.ts');
+  assert.match(dispatcher, /isStellaSystemReply = responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
+  assert.match(dispatcher, /queueTtsOverlay\(aiReply, targetTenant\)/);
+});
