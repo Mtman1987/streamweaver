@@ -48,6 +48,8 @@ function ChromaGestureVideo({ gesture, onEnded }: { gesture: AvatarGestureName; 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
+  const paintedRef = useRef(false);
+  const [painted, setPainted] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -84,6 +86,10 @@ function ChromaGestureVideo({ gesture, onEnded }: { gesture: AvatarGestureName; 
             }
           }
           ctx.putImageData(frame, 0, 0);
+          if (!paintedRef.current) {
+            paintedRef.current = true;
+            setPainted(true);
+          }
         } catch {
           // If a browser refuses pixel access, keep playback alive; the next
           // animation still returns to idle rather than wedging the controller.
@@ -103,7 +109,19 @@ function ChromaGestureVideo({ gesture, onEnded }: { gesture: AvatarGestureName; 
   }, [gesture]);
 
   return (
-    <>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <img
+        src={STELLA_IDLE_URL}
+        alt=""
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          opacity: painted ? 0 : 1,
+        }}
+      />
       <video
         ref={videoRef}
         src={STELLA_GESTURES[gesture].url}
@@ -114,8 +132,18 @@ function ChromaGestureVideo({ gesture, onEnded }: { gesture: AvatarGestureName; 
         onEnded={onEnded}
         style={{ display: 'none' }}
       />
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-    </>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          opacity: painted ? 1 : 0,
+        }}
+      />
+    </div>
   );
 }
 
@@ -130,6 +158,34 @@ function StellaAvatar({ controllerRef }: { controllerRef: React.MutableRefObject
   const bagRef = useRef<AvatarGestureName[]>([...ALL_GESTURES]);
   const boundaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rngTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const imageUrls = [STELLA_IDLE_URL, STELLA_TALKING_URL];
+    const images = imageUrls.map((src) => {
+      const image = new Image();
+      image.src = src;
+      image.decode?.().catch(() => {});
+      return image;
+    });
+    const videos = ALL_GESTURES.map((name) => {
+      const video = document.createElement('video');
+      video.preload = 'auto';
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+      video.src = STELLA_GESTURES[name].url;
+      video.load();
+      return video;
+    });
+    return () => {
+      videos.forEach((video) => {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      });
+      images.forEach((image) => { image.src = ''; });
+    };
+  }, []);
 
   const clearBoundary = useCallback(() => {
     if (boundaryTimerRef.current) clearTimeout(boundaryTimerRef.current);
