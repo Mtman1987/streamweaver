@@ -1,7 +1,13 @@
 import * as tmi from 'tmi.js';
 import { getStoredTokens, ensureValidToken, isTwitchAuthFailure, ProactiveTwitchRefreshGate } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
-import { listTenants, communityBotTokensPath, getAdminTwitchId } from '../lib/tenant';
+import {
+  listTenants,
+  communityBotTokensPath,
+  getAdminTwitchId,
+  SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+  SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
+} from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
 import { recordSharedChatEvent } from './shared-chat-ingestion';
 import { normalizeTwitchSharedChatEvent } from './shared-chat-normalizers';
@@ -470,6 +476,44 @@ export async function setupTwitchClient(tenantId: string) {
     console.error(`[Twitch:${tenantId}] Client credentials not configured.`);
     setupInProgress.delete(tenantId);
     return;
+  }
+
+  // SpaceMountainLive is intentionally a system tenant, not a normal
+  // broadcaster-authenticated tenant. Its existing community-bot OAuth is the
+  // chat transport; do not request or require broadcaster OAuth.
+  if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+    try {
+      const channel = SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
+      channelToTenant.set(channel, tenantId);
+      const tenant: TenantClients = tenantClients.get(tenantId) || {
+        broadcasterClient: null,
+        botClient: null,
+        status: 'connecting',
+        broadcasterUsername: channel,
+        botUsername: '',
+        retryCount: 0,
+      };
+      tenant.broadcasterUsername = channel;
+      tenant.broadcasterClient = null;
+      tenantClients.set(tenantId, tenant);
+
+      const sharedBot = await ensureCommunityBotForChannel(channel, clientId, clientSecret);
+      if (!sharedBot) {
+        tenant.status = 'disconnected';
+        console.warn('[Twitch:spacemountainlive] Shared community bot is unavailable.');
+        return;
+      }
+
+      tenant.botClient = sharedBot;
+      tenant.botUsername = communityBotUsername || 'StreamWeaver87';
+      tenant.status = 'connected';
+      tenant.retryCount = 0;
+      tenantsNeedingReauth.delete(tenantId);
+      console.log(`[Twitch:spacemountainlive] System tenant listening in #${channel} through ${tenant.botUsername}`);
+      return;
+    } finally {
+      setupInProgress.delete(tenantId);
+    }
   }
 
   let attemptedTokens: StoredTokens | null = null;
