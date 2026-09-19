@@ -7,11 +7,11 @@ const file = path.join(root, 'src/services/chat-dispatcher.ts');
 const raw = fs.readFileSync(file, 'utf8');
 let source = raw.replace(/\r\n/g, '\n');
 
-const topLevelImport = "import { getBotName } from '../lib/bot-settings-store';";
+const topLevelImport = /import \{[^}]*\bgetBotName\b[^}]*\} from '\.\.\/lib\/bot-settings-store';/;
 const shadowed = "            const { getBotName, getBotInterests, getBotAliases } = require('../lib/bot-settings-store');";
 const corrected = "            const { getBotInterests, getBotAliases } = require('../lib/bot-settings-store');";
 
-if (!source.includes(topLevelImport)) {
+if (!topLevelImport.test(source)) {
   throw new Error('chat-dispatcher bot-name shadow patch: top-level getBotName import is missing');
 }
 

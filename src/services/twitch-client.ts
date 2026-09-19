@@ -227,7 +227,15 @@ async function ensureCommunityBotForChannel(
           const tenantId = channelToTenant.get(channelName);
           if (!tenantId) return;
           const tenant = tenantClients.get(tenantId);
-          if (tenant && !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)) {
+          if (
+            tenant
+            && (
+              !shouldDispatchIncomingFromCommunityBot(tenant.broadcasterClient)
+              || (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                && isClientUsable(tenant.botClient)
+                && !isSharedCommunityBotClient(tenant.botClient))
+            )
+          ) {
             return;
           }
 
@@ -479,8 +487,9 @@ export async function setupTwitchClient(tenantId: string) {
   }
 
   // SpaceMountainLive is intentionally a system tenant, not a normal
-  // broadcaster-authenticated tenant. Its existing community-bot OAuth is the
-  // chat transport; do not request or require broadcaster OAuth.
+  // broadcaster-authenticated tenant. Prefer Stella's dedicated bot OAuth for
+  // both listening and sending; fall back to the shared StreamWeaver87 account
+  // only when Stella is not connected.
   if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
     try {
       const channel = SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
@@ -493,9 +502,71 @@ export async function setupTwitchClient(tenantId: string) {
         botUsername: '',
         retryCount: 0,
       };
+
+      if (tenant.botClient && !isSharedCommunityBotClient(tenant.botClient)) {
+        try {
+          tenant.botClient.removeAllListeners();
+          await disconnectIfOpen(tenant.botClient);
+        } catch {}
+      }
+
       tenant.broadcasterUsername = channel;
       tenant.broadcasterClient = null;
+      tenant.botClient = null;
+      tenant.status = 'connecting';
       tenantClients.set(tenantId, tenant);
+
+      const tokens = await getStoredTokens(tenantId);
+      const dedicatedBotUsername = String(tokens?.botUsername || '').trim().toLowerCase();
+      const hasDedicatedBot = Boolean(
+        dedicatedBotUsername
+        && tokens?.botToken
+        && tokens?.botRefreshToken
+      );
+
+      if (hasDedicatedBot) {
+        try {
+          const botOauthToken = await ensureValidToken(clientId, clientSecret, 'bot', tokens!, tenantId);
+          const dedicatedBot = new tmi.Client({
+            options: { debug: false },
+            identity: {
+              username: dedicatedBotUsername,
+              password: `oauth:${botOauthToken.replace(/^oauth:/, '')}`,
+            },
+            channels: [channel],
+          });
+
+          dedicatedBot.on('connected', () => {
+            tenant.status = 'connected';
+            tenant.retryCount = 0;
+            console.log(`[Twitch:spacemountainlive] Stella connected as ${dedicatedBotUsername}`);
+          });
+
+          dedicatedBot.on('message', async (incomingChannel, tags, message, self) => {
+            if (incomingChannel.replace(/^#/, '').toLowerCase() !== channel) return;
+            await dispatchIncomingTwitchMessage(incomingChannel, tags, message, self, tenantId);
+          });
+
+          dedicatedBot.on('disconnected', (reason) => {
+            console.log(`[Twitch:spacemountainlive] Stella disconnected: ${reason}`);
+            if (tenant.botClient === dedicatedBot) tenant.botClient = null;
+            tenant.status = 'disconnected';
+            tenant.retryCount++;
+            if (!isAuthFailure(reason)) scheduleRetry(tenantId);
+          });
+
+          await dedicatedBot.connect();
+          tenant.botClient = dedicatedBot;
+          tenant.botUsername = dedicatedBotUsername;
+          tenantsNeedingReauth.delete(tenantId);
+          reconnectRefreshGate.markSuccessful(tenantId);
+          console.log(`[Twitch:spacemountainlive] System tenant listening in #${channel} through Stella (${dedicatedBotUsername})`);
+          return;
+        } catch (error) {
+          console.warn('[Twitch:spacemountainlive] Stella bot unavailable; falling back to StreamWeaver87:', error);
+          tenant.botClient = null;
+        }
+      }
 
       const sharedBot = await ensureCommunityBotForChannel(channel, clientId, clientSecret);
       if (!sharedBot) {
@@ -509,7 +580,7 @@ export async function setupTwitchClient(tenantId: string) {
       tenant.status = 'connected';
       tenant.retryCount = 0;
       tenantsNeedingReauth.delete(tenantId);
-      console.log(`[Twitch:spacemountainlive] System tenant listening in #${channel} through ${tenant.botUsername}`);
+      console.log(`[Twitch:spacemountainlive] System tenant listening in #${channel} through fallback ${tenant.botUsername}`);
       return;
     } finally {
       setupInProgress.delete(tenantId);

@@ -18,10 +18,11 @@ const TWITCH_OAUTH_ROLES = new Set<TwitchOAuthRole>([
   'bot',
   'community-bot',
   'the-count',
+  'space-mountain-bot',
 ]);
 
 function isPrivilegedRole(role: TwitchOAuthRole): role is PrivilegedTwitchOAuthRole {
-  return role === 'community-bot' || role === 'the-count';
+  return role === 'community-bot' || role === 'the-count' || role === 'space-mountain-bot';
 }
 
 export async function GET(request: NextRequest) {
@@ -68,7 +69,11 @@ export async function GET(request: NextRequest) {
     'user:bot',
     'channel:bot',
   ];
-  const scope = (requestedRole === 'the-count' ? countScopes : standardScopes).join(' ');
+  const scope = (
+    requestedRole === 'the-count' || requestedRole === 'space-mountain-bot'
+      ? countScopes
+      : standardScopes
+  ).join(' ');
 
   let state: string = requestedRole;
   let privilegedCookie: string | null = null;

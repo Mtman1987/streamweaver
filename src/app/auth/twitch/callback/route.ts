@@ -3,7 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getConfiguredAppUrl, getOAuthRedirectUri } from '@/lib/runtime-origin';
-import { tenantPath, bootstrapTenant, communityBotTokensPath, isAdmin } from '@/lib/tenant';
+import {
+  tenantPath,
+  bootstrapTenant,
+  communityBotTokensPath,
+  isAdmin,
+  SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+} from '@/lib/tenant';
 import { parseSessionCookie, serializeSessionCookie, STREAMWEAVER_SESSION_MAX_AGE } from '@/lib/session-cookie';
 import { THE_COUNT_TWITCH_LOGIN } from '@/lib/the-count';
 import { storeTheCountTwitchCredential } from '@/lib/the-count-twitch-vault.server';
@@ -93,7 +99,10 @@ export async function GET(request: NextRequest) {
       NextResponse.redirect(`${appOrigin}/integrations?error=invalid_oauth_state`),
     );
   }
-  if ((state === 'community-bot' || state === 'the-count') && (!preflightTenantId || !isAdmin(preflightTenantId))) {
+  if (
+    (state === 'community-bot' || state === 'the-count' || state === 'space-mountain-bot')
+    && (!preflightTenantId || !isAdmin(preflightTenantId))
+  ) {
     const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
     return clearPrivilegedOAuthCookie(
       NextResponse.redirect(`${appOrigin}/integrations?error=admin_only`),
@@ -266,6 +275,7 @@ export async function GET(request: NextRequest) {
     const isBot = state === 'bot';
     const isCommunityBot = state === 'community-bot';
     const isTheCount = state === 'the-count';
+    const isSpaceMountainBot = state === 'space-mountain-bot';
 
     if (isTheCount) {
       const login = String(userInfo?.login || '').trim().toLowerCase();
@@ -293,6 +303,32 @@ export async function GET(request: NextRequest) {
 
       return clearPrivilegedOAuthCookie(
         NextResponse.redirect(`${appOrigin}/integrations?success=the-count`),
+      );
+    }
+
+    if (isSpaceMountainBot) {
+      const username = String(userInfo?.login || '').trim().toLowerCase();
+      if (!username) {
+        return clearPrivilegedOAuthCookie(
+          NextResponse.redirect(`${appOrigin}/integrations?error=stella_identity&msg=Could+not+identify+the+Twitch+account+used+for+Stella.`),
+        );
+      }
+
+      await bootstrapTenant(SPACEMOUNTAIN_SYSTEM_TENANT_ID, 'spacemountainlive');
+      await updateStoredTokens({
+        botToken: tokenData.access_token,
+        botRefreshToken: tokenData.refresh_token,
+        botTokenExpiry: tokenExpiry,
+        botUsername: username,
+        botProfileImageUrl: userInfo?.profile_image_url,
+        botAvatarUrl: userInfo?.profile_image_url,
+        lastUpdated: new Date().toISOString(),
+      }, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+
+      await reconnectTwitchTenant(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+
+      return clearPrivilegedOAuthCookie(
+        NextResponse.redirect(`${appOrigin}/integrations?success=space-mountain-bot`),
       );
     }
 
