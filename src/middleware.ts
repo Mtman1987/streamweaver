@@ -11,7 +11,7 @@ const PUBLIC_PATHS = [
   '/login', '/auth/', '/api/auth/', '/api/__health', '/api/health', '/api/session',
   '/private-chat/control', '/api/private-chat/control',
   '/overlay/', '/xpn/', '/tts-listener', '/tts-player', '/say-player', '/tts-mixer',
-  '/brb-player', '/shoutout-player', '/partner-checkin', '/pokemon-pack-overlay',
+  '/brb-player', '/shoutout-player', '/partner-checkin', '/card-pack-overlay', '/pokemon-pack-overlay',
   '/pokemon-collection-overlay', '/pokemon-trade-overlay', '/gym-battle-overlay',
   '/gamble-overlay', '/classic-gamble-overlay', '/pokemon-test', '/test-cardback',
   '/test-collection', '/_next/', '/favicon.ico', '/app-icon.png', '/StreamWeaver.png',
@@ -54,7 +54,7 @@ function isOverlayDocumentPath(pathname: string): boolean {
     || pathname.startsWith('/tts/')
     || [
       '/brb-player', '/classic-gamble-overlay', '/gamble-overlay', '/gym-battle-overlay',
-      '/partner-checkin', '/pokemon-overlay', '/pokemon-collection-overlay', '/pokemon-pack-overlay',
+      '/partner-checkin', '/card-pack-overlay', '/pokemon-overlay', '/pokemon-collection-overlay', '/pokemon-pack-overlay',
       '/pokemon-trade-overlay', '/shoutout-player', '/tts-listener', '/tts-player',
     ].includes(pathname);
 }
