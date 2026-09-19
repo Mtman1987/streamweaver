@@ -2705,6 +2705,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername);
     const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
     const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
+    // SpaceMountainLive doubles as infrastructure elsewhere (including ChatTag),
+    // so it can legitimately be classified as a bot identity. In its own
+    // production channel, however, commands typed by @spacemountainlive are
+    // broadcaster commands and must reach the full command runtime. Keep the
+    // bot classification for non-command automation/points/welcome loop guards.
+    const isSpaceMountainBroadcasterCommand =
+        isCommand
+        && tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        && replyChannel.toLowerCase() === 'spacemountainlive'
+        && actualUsername.toLowerCase() === 'spacemountainlive';
     const isKnownAutomationBotMessage = !isBotMessage && (
         await isKnownBot(actualUsername, tenantId) ||
         await isConfiguredTwitchBotUsername(actualUsername) ||
@@ -3061,7 +3071,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (VERBOSE_LOGS) console.log(`[Dispatcher] Skipping Discord bridge for message starting with [`);
     }
 
-    if (isCommand && !isBot) {
+    if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand)) {
         console.log(`[Dispatcher] Processing command: ${actualMessage} from ${actualUsername}`);
         const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
 
