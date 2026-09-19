@@ -2,6 +2,7 @@ import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { readPrivateChatMessages, type PrivateChatMessage } from '@/lib/private-chat-store';
 import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { consumeAvatarGesture } from '@/lib/avatar-gesture-runtime';
 
 export type QueueTtsOverlayResult = {
   ok: boolean;
@@ -97,7 +98,7 @@ export async function queueTtsOverlay(text: string, tenantId?: string): Promise<
     const queueRes = await fetch(`${baseUrl}/api/tts/current${tenantQuery}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ audioUrl, text: cleanText.slice(0, 2000) }),
+      body: JSON.stringify({ audioUrl, text: cleanText.slice(0, 2000), gesture: consumeAvatarGesture(tenantId, cleanText) }),
     });
     if (!queueRes.ok) {
       return { ok: false, generated: true, queued: false, error: `TTS queue failed: HTTP ${queueRes.status}` };
