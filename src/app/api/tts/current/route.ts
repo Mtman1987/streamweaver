@@ -8,11 +8,18 @@ import path from 'path';
 import { z } from 'zod';
 import { touchTtsConsumer } from '@/services/tts-consumer-presence';
 import { AVATAR_GESTURES } from '@/lib/avatar-gestures';
+import type { ViewerActionPrompt } from '@/lib/viewer-action-prompts';
 
 const ttsCurrentSchema = z.object({
   audioUrl: z.string().min(1, 'audioUrl is required'),
   text: z.string().trim().max(2000).optional(),
   gesture: z.enum(AVATAR_GESTURES).optional(),
+  viewerPrompt: z.object({
+    id: z.string().trim().min(1).max(120),
+    question: z.string().trim().min(1).max(500),
+    options: z.array(z.string().trim().min(1).max(80)).min(2).max(5),
+    expiresAt: z.string().trim().min(1).max(80),
+  }).optional(),
 });
 
 type TtsQueueItem = {
@@ -20,6 +27,7 @@ type TtsQueueItem = {
   audioUrl: string;
   text?: string;
   gesture?: typeof AVATAR_GESTURES[number];
+  viewerPrompt?: ViewerActionPrompt;
   addedAt: string;
 };
 
@@ -110,6 +118,8 @@ export async function GET(request: NextRequest) {
     const latest = state.queue[state.queue.length - 1];
     return apiOk({
       audioUrl: null,
+      text: latest?.text || null,
+      viewerPrompt: latest?.viewerPrompt || null,
       updatedAt: latest?.addedAt || state.lastServedAt,
       cursor: latest?.cursor || null,
       remaining: 0,
@@ -128,6 +138,7 @@ export async function GET(request: NextRequest) {
         audioUrl: item.audioUrl,
         text: item.text || null,
         gesture: item.gesture || null,
+        viewerPrompt: item.viewerPrompt || null,
         updatedAt: item.addedAt,
         cursor: item.cursor,
         remaining: Math.max(0, state.queue.length - itemIndex - 1),
@@ -158,13 +169,20 @@ export async function POST(request: NextRequest) {
       return apiError('audioUrl is required', { status: 400, code: 'INVALID_BODY' });
     }
 
-    const { audioUrl, text, gesture } = parsed.data;
+    const { audioUrl, text, gesture, viewerPrompt } = parsed.data;
     const tenantKey = getTenantKey(request);
     const state = await getTenantState(request);
     const addedAt = new Date().toISOString();
 
     const cursor = crypto.randomUUID();
-    state.queue.push({ cursor, audioUrl, ...(text ? { text } : {}), ...(gesture ? { gesture } : {}), addedAt });
+    state.queue.push({
+      cursor,
+      audioUrl,
+      ...(text ? { text } : {}),
+      ...(gesture ? { gesture } : {}),
+      ...(viewerPrompt ? { viewerPrompt } : {}),
+      addedAt,
+    });
 
     // Cap queue at 20 to prevent memory issues
     if (state.queue.length > 20) {
