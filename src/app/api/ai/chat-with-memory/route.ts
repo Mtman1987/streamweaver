@@ -11,6 +11,8 @@ import { resolveResearchMode } from '@/services/research-mode';
 import { z } from 'zod';
 import { BOT_NO_SELF_PROMOTION_POLICY, visitorChannelConductPolicy } from '@/lib/bot-conduct-policy';
 import { NATURAL_DIALOGUE_POLICY, splitPersonalityPrompt } from '@/lib/personality-prompt';
+import { AVATAR_GESTURE_PROMPT, extractAvatarGesture } from '@/lib/avatar-gestures';
+import { rememberAvatarGesture } from '@/lib/avatar-gesture-runtime';
 
 type ChatContext = 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private';
 
@@ -199,6 +201,7 @@ export async function POST(request: NextRequest) {
       botConductPolicy,
       extendedGuidance,
       NATURAL_DIALOGUE_POLICY,
+      AVATAR_GESTURE_PROMPT,
       worldLoreText,
       botInteractionHistory,
       commanderContext,
@@ -238,9 +241,12 @@ export async function POST(request: NextRequest) {
       return apiOk({ response: 'Sorry, I had trouble processing that. Could you rephrase?' });
     }
 
-    const cleanResponse = responseText
+    const responseWithGesture = responseText
       .replace(new RegExp(`^(${botResponseName}|${botResponseName.toLowerCase()}):\\s*`, 'i'), '')
       .trim();
+    const parsedGesture = extractAvatarGesture(responseWithGesture);
+    const cleanResponse = parsedGesture.text;
+    if (parsedGesture.gesture) rememberAvatarGesture(tenantId, cleanResponse, parsedGesture.gesture);
 
     const aiEntry = {
       type: 'ai' as const,
