@@ -65,6 +65,11 @@ export function getAdminTwitchId(): string {
 // Subdirectories created for each new tenant
 const TENANT_SUBDIRS = ['tokens', 'config', 'data', 'actions', 'commands', 'logs'];
 
+export const SPACEMOUNTAIN_SYSTEM_TENANT_ID = 'spacemountainlive';
+export const SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL = 'spacemountainlive';
+export const SPACEMOUNTAIN_SYSTEM_BOT_NAME = 'Stella';
+export const SPACEMOUNTAIN_SYSTEM_BOT_PERSONALITY = `You are Stella, the resident AI host of SpaceMountainLive. You are warm, quick, playful, and community-focused. You host the 24/7 Space Mountain community lounge, highlight community streamers, help viewers use commands and activities, and respond naturally when viewers address Stella. Keep public Twitch responses concise enough for spoken TTS, usually 1-3 sentences. Never claim to be StreamWeaver87; StreamWeaver87 is only a transport/community bot account. You are Stella.`;
+
 /**
  * Bootstrap a new tenant's directory structure on first login.
  * Copies default templates if they exist.
@@ -106,16 +111,39 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
     }
 
     let changed = false;
+    const systemTenant = String(twitchId).toLowerCase() === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
     const accidentallySeededAthena =
       !isAdmin(twitchId) && isAccidentalAthenaGlobalDefault(userConfig.AI_BOT_PERSONALITY);
 
-    if (!userConfig.AI_BOT_PERSONALITY || accidentallySeededAthena) {
-      userConfig.AI_BOT_PERSONALITY = COMMUNITY_BOT_PERSONALITY;
-      changed = true;
-    }
-    if (!userConfig.AI_BOT_NAME || (accidentallySeededAthena && userConfig.AI_BOT_NAME === 'Athena')) {
-      userConfig.AI_BOT_NAME = COMMUNITY_BOT_NAME;
-      changed = true;
+    if (systemTenant) {
+      if (!userConfig.AI_BOT_PERSONALITY || userConfig.AI_BOT_PERSONALITY === COMMUNITY_BOT_PERSONALITY || accidentallySeededAthena) {
+        userConfig.AI_BOT_PERSONALITY = SPACEMOUNTAIN_SYSTEM_BOT_PERSONALITY;
+        changed = true;
+      }
+      if (!userConfig.AI_BOT_NAME || userConfig.AI_BOT_NAME === COMMUNITY_BOT_NAME || userConfig.AI_BOT_NAME === 'Athena') {
+        userConfig.AI_BOT_NAME = SPACEMOUNTAIN_SYSTEM_BOT_NAME;
+        changed = true;
+      }
+      const aliases = new Set(
+        String(userConfig.AI_BOT_ALIASES || '')
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean),
+      );
+      if (![...aliases].some((value) => value.toLowerCase() === 'stella')) {
+        aliases.add('Stella');
+        userConfig.AI_BOT_ALIASES = [...aliases].join(',');
+        changed = true;
+      }
+    } else {
+      if (!userConfig.AI_BOT_PERSONALITY || accidentallySeededAthena) {
+        userConfig.AI_BOT_PERSONALITY = COMMUNITY_BOT_PERSONALITY;
+        changed = true;
+      }
+      if (!userConfig.AI_BOT_NAME || (accidentallySeededAthena && userConfig.AI_BOT_NAME === 'Athena')) {
+        userConfig.AI_BOT_NAME = COMMUNITY_BOT_NAME;
+        changed = true;
+      }
     }
     if (!userConfig.TWITCH_BROADCASTER_USERNAME) {
       userConfig.TWITCH_BROADCASTER_USERNAME = username;
@@ -239,6 +267,10 @@ export function getTenantIdFromSession(sessionJson: string | undefined): string 
  * without overwriting anything that already exists.
  */
 export async function rebootstrapAllTenants(): Promise<void> {
+  // SpaceMountainLive is a permanent system tenant. It intentionally exists
+  // without broadcaster OAuth so global/lounge routes never depend on a human
+  // account session.
+  await bootstrapTenant(SPACEMOUNTAIN_SYSTEM_TENANT_ID, SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL);
   const tenantIds = await listTenants();
   if (tenantIds.length === 0) return;
 
