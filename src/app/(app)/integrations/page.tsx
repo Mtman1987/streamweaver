@@ -67,22 +67,26 @@ export default function IntegrationsPage() {
     botConnected: boolean;
     communityBotConnected: boolean;
     theCountConnected: boolean;
+    spaceMountainBotConnected: boolean;
     owner: boolean;
     broadcasterUsername: string | null;
     botUsername: string | null;
     communityBotUsername: string | null;
     theCountUsername: string | null;
+    spaceMountainBotUsername: string | null;
   }>({
     loading: true,
     broadcasterConnected: false,
     botConnected: false,
     communityBotConnected: false,
     theCountConnected: false,
+    spaceMountainBotConnected: false,
     owner: false,
     broadcasterUsername: null,
     botUsername: null,
     communityBotUsername: null,
     theCountUsername: null,
+    spaceMountainBotUsername: null,
   });
 
   const [kickStatus, setKickStatus] = useState<{
@@ -140,11 +144,13 @@ export default function IntegrationsPage() {
         botConnected: !!data?.botConnected,
         communityBotConnected: !!data?.communityBotConnected,
         theCountConnected: !!data?.theCountConnected,
+        spaceMountainBotConnected: !!data?.spaceMountainBotConnected,
         owner: data?.owner === true,
         broadcasterUsername: data?.broadcasterUsername ?? null,
         botUsername: data?.botUsername ?? null,
         communityBotUsername: data?.communityBotUsername ?? null,
         theCountUsername: data?.theCountUsername ?? null,
+        spaceMountainBotUsername: data?.spaceMountainBotUsername ?? null,
       });
     } catch {
       setTwitchStatus((prev) => ({ ...prev, loading: false }));
@@ -164,7 +170,7 @@ export default function IntegrationsPage() {
   }, []);
 
   // --- Actions ---
-  const connectTwitch = (role: "broadcaster" | "bot" | "community-bot" | "the-count") => {
+  const connectTwitch = (role: "broadcaster" | "bot" | "community-bot" | "the-count" | "space-mountain-bot") => {
     if (!twitchConfigured) {
       toast({ variant: "destructive", title: "Twitch not configured", description: "Missing NEXT_PUBLIC_TWITCH_CLIENT_ID" });
       return;
@@ -176,6 +182,12 @@ export default function IntegrationsPage() {
       toast({
         title: "Authorize The Count",
         description: "On Twitch, sign in as TheCountSPMT. StreamWeaver will reject every other account.",
+      });
+    }
+    if (role === "space-mountain-bot") {
+      toast({
+        title: "Authorize Stella",
+        description: "On Twitch, sign in with Stella's Twitch account. This connects her only to the SpaceMountainLive system tenant.",
       });
     }
     window.location.href = `/api/auth/twitch?role=${role}`;
@@ -381,6 +393,22 @@ export default function IntegrationsPage() {
                   onClick={() => connectTwitch("the-count")}
                 >
                   {twitchStatus.theCountConnected ? "Re-authorize Same Account" : "Authorize The Count"}
+                </Button>
+              </AccountRow>
+
+              <AccountRow
+                connected={twitchStatus.spaceMountainBotConnected}
+                label="Stella — SpaceMountainLive Bot"
+                username={twitchStatus.spaceMountainBotUsername}
+                description="Dedicated Twitch identity for Stella on the permanent SpaceMountainLive system channel. Does not OAuth the broadcaster account."
+              >
+                <Button
+                  size="sm"
+                  variant={twitchStatus.spaceMountainBotConnected ? "ghost" : "default"}
+                  className={twitchStatus.spaceMountainBotConnected ? "text-xs" : ""}
+                  onClick={() => connectTwitch("space-mountain-bot")}
+                >
+                  {twitchStatus.spaceMountainBotConnected ? "Re-authorize Stella" : "Authorize Stella"}
                 </Button>
               </AccountRow>
 
