@@ -14,11 +14,22 @@ export interface StreamWeaverModes {
 const DEFAULT_MODES: StreamWeaverModes = {
   gamblemode: 'chat',
   welcomemode: 'chat',
-  greetingmode: 'chat',
+  greetingmode: 'full',
   clipmode: 'viewer',
   pokemode: 'chat',
   chatmode: 'single',
 };
+
+const FULL_SHOUTOUT_MIGRATION_TENANTS = new Set(['mtman1987', 'spacemountainlive']);
+
+function migrateOwnerFullShoutoutMode(parsed: Record<string, unknown>, tenantId?: string): boolean {
+  const normalizedTenant = String(tenantId || '').trim().toLowerCase();
+  if (!FULL_SHOUTOUT_MIGRATION_TENANTS.has(normalizedTenant)) return false;
+  if (parsed.fullShoutoutPipelineV2 === true) return false;
+  parsed.greetingmode = 'full';
+  parsed.fullShoutoutPipelineV2 = true;
+  return true;
+}
 
 const MODE_OPTIONS: Record<keyof StreamWeaverModes, string[]> = {
   gamblemode: ['overlay', 'chat'],
@@ -59,8 +70,13 @@ export async function loadModes(tenantId?: string): Promise<StreamWeaverModes> {
   try {
     await fs.mkdir(path.dirname(modesFilePath(tenantId)), { recursive: true });
     const data = await fs.readFile(modesFilePath(tenantId), 'utf-8');
-    const parsed = JSON.parse(data);
+    const parsed = JSON.parse(data) as Record<string, unknown>;
+    const migrated = migrateOwnerFullShoutoutMode(parsed, tenantId);
     const modes: StreamWeaverModes = { ...DEFAULT_MODES, ...parsed };
+    if (migrated) {
+      await fs.writeFile(modesFilePath(tenantId), JSON.stringify(parsed, null, 2));
+      await syncLegacyGreetingFlag('full', tenantId);
+    }
     modeCache.set(key, modes);
     return modes;
   } catch {
@@ -171,4 +187,3 @@ export async function toggleMasterChatmode(tenantId?: string): Promise<void> {
 export async function getAllModes(tenantId?: string): Promise<StreamWeaverModes> {
   return await loadModes(tenantId);
 }
-
