@@ -5,6 +5,7 @@ import { applySavedSink } from '@/services/audio-sink';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import type { AvatarGestureName } from '@/lib/avatar-gestures';
+import { LoungeAttributionMarquee } from '@/components/overlay/lounge-attribution-marquee';
 
 type AvatarSettings = {
   animationType: 'mp4' | 'gif' | 'lottie';
@@ -715,9 +716,11 @@ export default function TTSPlayer() {
           {captionText}
         </div>
       </div>
-      <div style={{ position: 'absolute', bottom: 2, right: 4, fontSize: 10, color: '#444', fontFamily: 'sans-serif' }}>
-        {status}
-      </div>
+      {loungePlacement ? <LoungeAttributionMarquee /> : (
+        <div style={{ position: 'absolute', bottom: 2, right: 4, fontSize: 10, color: '#444', fontFamily: 'sans-serif' }}>
+          {status}
+        </div>
+      )}
     </div>
   );
 }

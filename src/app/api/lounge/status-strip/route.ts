@@ -51,6 +51,10 @@ export async function GET() {
     id: String(game?.id || ''),
     name: String(game?.shortName || game?.name || game?.id || 'Active game'),
     command: String(game?.commandKey || game?.id || ''),
+    playerCommands: (Array.isArray(game?.playerCommands) ? game.playerCommands : []).map((command: any) => ({
+      trigger: String(command?.trigger || '').trim(),
+      description: String(command?.description || '').trim(),
+    })).filter((command: any) => command.trigger),
   }));
   const login = String(source?.twitchLogin || user?.twitchLogin || user?.login || '').replace(/^@/, '').trim();
   const mediaCandidates = [

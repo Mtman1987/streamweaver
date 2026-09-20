@@ -55,6 +55,22 @@ test('Lounge Stella captions stay inside the main panel and clamp to three lines
   assert.match(player, /WebkitLineClamp: 3/);
 });
 
+test('Lounge TTS layer carries the persistent attribution and alternating contextual marquee', () => {
+  const player = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
+  const banner = fs.readFileSync('src/components/overlay/lounge-attribution-marquee.tsx', 'utf8');
+  const content = fs.readFileSync('src/lib/lounge-marquee.ts', 'utf8');
+  const statusRoute = fs.readFileSync('src/app/api/lounge/status-strip/route.ts', 'utf8');
+  assert.match(player, /<LoungeAttributionMarquee \/>/);
+  assert.match(banner, /POWERED BY SPACEMOUNTAIN\.LIVE/);
+  assert.match(banner, /Built by Mtman1987/);
+  assert.match(banner, /space-logo-main\.png/);
+  assert.match(content, /10 \* 60 \* 1000/);
+  assert.match(content, /cycle % 2 === 0 \? 'commands' : 'thanks'/);
+  assert.match(content, /'general', 'social', 'collecting', 'community'/);
+  assert.match(content, /LOUNGE_MEDIA_COMMANDS/);
+  assert.match(statusRoute, /playerCommands/);
+});
+
 test('Lounge gamble results temporarily fill the Chat Tag panel', () => {
   const overlay = fs.readFileSync('src/app/gamble-overlay/page.tsx', 'utf8');
   assert.match(overlay, /get\('placement'\) === 'lounge-tag'/);
