@@ -46,6 +46,8 @@ import {
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
 } from '../lib/tenant';
 import { queueTtsOverlay } from './tts-overlay-queue';
+import { getTwitchBotTtsVoice, isAlwaysSpokenTwitchBot, shouldQueueTwitchSay } from './twitch-say-policy';
+import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
@@ -2791,16 +2793,35 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     });
 
     const sayMessage = stripTwitchEmotesFromText(actualMessage, tags.emotes);
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(sayMessage)) {
+    if (
+        shouldQueueTwitchSay({
+            tenantId,
+            username: actualUsername,
+            isCommand,
+            isBotMessage,
+            isKnownAutomationBotMessage,
+        })
+        && !message.startsWith('[')
+        && isSayTextSpeakable(sayMessage)
+    ) {
         readSayUsers().then((sayUsers) => {
-            if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
+            if (!isAlwaysSpokenTwitchBot(actualUsername) && !isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
             if (isSaySuppressedForTenant(tenantId) || isSaySuppressedForTenant(sayChannelKey)) return;
-            const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
+            const isCharacterBot = isAlwaysSpokenTwitchBot(actualUsername);
+            const spokenMessage = isCharacterBot
+                ? cleanSayTextForSpeech(sayMessage)
+                : formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
+                body: JSON.stringify({
+                    tenantId: sayChannelKey,
+                    text: spokenMessage,
+                    speakerUserId: actualUsername,
+                    speakerPlatform: 'twitch',
+                    voice: getTwitchBotTtsVoice(actualUsername),
+                }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }
@@ -2844,6 +2865,45 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             console.log(`[Dispatcher] Command ${cmdName} is disabled as a custom command; continuing with core Pokemon handler.`);
+        }
+
+        // The permanent SpaceMountainLive channel uses Stella/StreamWeaver as
+        // its one Twitch listener. Route both request commands into the exact
+        // room-scoped sessions rendered by the anonymous Lounge overlay.
+        if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && replyChannel.toLowerCase() === 'spacemountainlive') {
+            const loungeRequest = actualMessage.match(/^!(sr|wr)(?:\s+(.+))?$/i);
+            if (loungeRequest) {
+                const command = loungeRequest[1].toLowerCase();
+                const query = String(loungeRequest[2] || '').trim();
+                if (!query) {
+                    await replyMaybeKick(`@${actualUsername}, use !${command} ${command === 'sr' ? '<song or YouTube URL>' : '<movie or show>'}.`, 'bot').catch(() => {});
+                    return;
+                }
+
+                const mediaKind = command === 'wr' ? 'movie' : 'music';
+                const roomId = 'system-spacemountainlive-lounge';
+                const sessionId = `watch-room-${roomId}-${mediaKind}`;
+                try {
+                    const result = await executeHearMeOutBotAction({
+                        action: 'hmo.media.request',
+                        tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                        roomId,
+                        sessionId,
+                        mediaKind,
+                        query,
+                        actorUserId: String(tags?.['user-id'] || actualUsername),
+                        actorName: displayName || actualUsername,
+                        idempotencyKey: String(tags?.id || `${replyChannel}:${actualUsername}:${actualMessage}`),
+                    });
+                    const message = String(result.message || '').trim()
+                        || (mediaKind === 'movie' ? 'Added that to the lounge watch queue.' : 'Added that to the lounge song queue.');
+                    await replyMaybeKick(`@${actualUsername} ${mediaKind === 'movie' ? '🎬' : '🎵'} ${message}`, 'bot').catch(() => {});
+                } catch (error) {
+                    console.error(`[Dispatcher] Lounge !${command} failed:`, error);
+                    await replyMaybeKick(`@${actualUsername}, I couldn't add that ${mediaKind === 'movie' ? 'watch' : 'song'} request right now.`, 'bot').catch(() => {});
+                }
+                return;
+            }
         }
 
         // Handle check-in commands (process early)
@@ -3755,8 +3815,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
-        // HearMeOut's Twitch bot listens directly for !sr. Re-posting it from
-        // Athena creates duplicate queue entries and wakes AI mention handling.
+        // Outside the permanent Lounge, HearMeOut's own Twitch bot still owns
+        // !sr. Re-posting it creates duplicate queue entries.
         if (actualMessage.toLowerCase().startsWith('!sr ')) {
             return;
         }
@@ -4912,11 +4972,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const aiReply = String(data.response || data.data?.response || '').trim();
                     if (!aiReply) return;
 
-                    const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-                    if (!tts.ok) {
-                        console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                    }
-
                     if (tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
                         await sendChatMessage(
                             aiReply,
@@ -4926,8 +4981,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         ).catch((error) => {
                             console.warn('[Dispatcher] Stella Twitch chat delivery failed:', error);
                         });
-                        console.log(`[Dispatcher] Stella answered @${actualUsername} via Twitch + Lounge TTS in #${replyChannel}`);
-                    } else if (tts.ok) {
+                        console.log(`[Dispatcher] Stella answered @${actualUsername} in Twitch; the Lounge reader will speak it once.`);
+                    } else {
+                        const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                        if (!tts.ok) console.warn('[Dispatcher] Stella fallback TTS queue failed:', tts.error);
                         console.log(`[Dispatcher] Stella answered @${actualUsername} via Lounge TTS in #${replyChannel}`);
                     }
                 } catch (error) {
@@ -5408,11 +5465,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     sourceTenantId: tenantId,
                                     responseTenantId,
                                 });
-                                if (responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
-                                    const tts = await queueTtsOverlay(aiReply, responseTenantId);
-                                    if (!tts.ok) console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                                } else {
+                                if (responseTenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID || tenantHasBotAccount(responseTenantId)) {
                                     await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
+                                } else {
+                                    const tts = await queueTtsOverlay(aiReply, responseTenantId);
+                                    if (!tts.ok) console.warn('[Dispatcher] Stella fallback TTS queue failed:', tts.error);
                                 }
                                 if (responseTenantId) {
                                     await appendBotInteraction({
@@ -5513,10 +5570,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 responseTenantId,
                             });
                             const isStellaSystemReply = responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
-                            if (!isStellaSystemReply) {
+                            const stellaHasChatIdentity = isStellaSystemReply && tenantHasBotAccount(responseTenantId);
+                            if (!isStellaSystemReply || stellaHasChatIdentity) {
                                 await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
                             }
-                            const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
+                            const shouldGenerateTtsForReply = (!responseTenantId || responseTenantId === tenantId)
+                                && !stellaHasChatIdentity;
                             await sendTwitchCrossBotFollowUp({
                                 channel: responseChannel,
                                 userName: actualUsername,

@@ -24,6 +24,7 @@ export type HearMeOutBotActionPayload = {
   actorName?: string;
   actorRole?: string;
   query?: string;
+  mediaKind?: 'music' | 'movie';
   control?: string;
   value?: number;
   bot?: ActionBotPersona;

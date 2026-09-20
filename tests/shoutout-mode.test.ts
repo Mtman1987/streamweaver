@@ -19,3 +19,7 @@ test('legacy on and off mode values still migrate cleanly', () => {
   assert.equal(resolveShoutoutMode({ persistedMode: 'on' }), 'full');
   assert.equal(resolveShoutoutMode({ persistedMode: 'off' }), 'chat');
 });
+
+test('the default shoutout mode is the full programmed pipeline', () => {
+  assert.equal(resolveShoutoutMode({}), 'full');
+});
