@@ -41,8 +41,7 @@ export async function GET(request: NextRequest) {
   const fallbackToLatest = request.nextUrl.searchParams.get('fallback') === 'latest';
   const latestShowcaseEvent = fallbackToLatest
     ? replay.slice().reverse().find((entry) => (
-        !entry.sender.roles.includes('bot')
-        && entry.type !== 'system'
+        entry.type !== 'system'
         && !entry.deletedAt
         && Boolean(entry.text.trim() || entry.media.length)
       )) || null

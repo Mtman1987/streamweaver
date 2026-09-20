@@ -3,20 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const SPMT_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
+const DSH_URL = String(process.env.DSH_COMMUNITY_SPOTLIGHT_URL || 'https://discord-stream-hub-new.fly.dev/api/community-spotlight');
+const CHAT_TAG_URL = String(process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_CHAT_TAG_URL || 'https://chat-tag-new.fly.dev').replace(/\/+$/, '');
 
 function text(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
   return '';
-}
-
-function rowsFrom(payload: any): any[] {
-  const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
-  if (Array.isArray(data?.liveMembers)) return data.liveMembers;
-  return [data?.shoutouts, data?.items, data?.rows, data?.community]
-    .find((value) => Array.isArray(value)) || [];
 }
 
 function isPriorityCreator(row: any): boolean {
@@ -29,25 +23,47 @@ function isPriorityCreator(row: any): boolean {
 export async function GET(request: NextRequest) {
   const group = request.nextUrl.searchParams.get('group') === 'partner' ? 'partner' : 'community';
   try {
-    const response = await fetch(`${SPMT_URL}/api/community/shoutouts`, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
-    });
-    if (!response.ok) throw new Error(`SPMT live feed returned ${response.status}`);
-    const payload = await response.json().catch(() => ({}));
-    const creators = rowsFrom(payload)
-      .filter((row) => row && (row.isLive === true || row.live === true || String(row.status || '').toLowerCase() === 'live'))
+    const load = async (url: string) => {
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
+      });
+      if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+      return response.json().catch(() => ({}));
+    };
+    const [dshResult, chatTagResult] = await Promise.allSettled([
+      load(DSH_URL),
+      load(`${CHAT_TAG_URL}/api/discord/live-members`),
+    ]);
+    const dsh = dshResult.status === 'fulfilled' ? dshResult.value : {};
+    const chatTag = chatTagResult.status === 'fulfilled' ? chatTagResult.value : {};
+    const liveDetails = new Map((Array.isArray(chatTag?.liveMembers) ? chatTag.liveMembers : [])
+      .map((row: any) => [String(row?.twitchUsername || '').toLowerCase(), row]));
+    const twitchProfiles = new Map((Array.isArray(chatTag?.allMembers) ? chatTag.allMembers : [])
+      .map((row: any) => [String(row?.username || '').toLowerCase(), row]));
+    const spotlight = dsh?.spotlight || {};
+    const rows = Array.isArray(dsh?.users) ? dsh.users : [];
+    if (!rows.length && dshResult.status === 'rejected' && chatTagResult.status === 'rejected') {
+      throw new Error('Both live community feeds are unavailable');
+    }
+    const creators = rows
       .filter((row) => group === 'partner' ? isPriorityCreator(row) : !isPriorityCreator(row))
-      .map((row) => ({
-        username: text(row.twitchUsername, row.username, row.login),
-        displayName: text(row.twitchDisplayName, row.displayName, row.name, row.twitchUsername, row.username, row.login) || 'Live creator',
-        avatarUrl: text(row.profileImageUrl, row.profile_image_url, row.avatarUrl, row.avatar_url, row.logoUrl, row.logo),
-        gameName: text(row.gameName, row.game_name, row.game, row.categoryName, row.category),
-        title: text(row.title, row.streamTitle, row.stream_title),
-        viewerCount: Math.max(0, Number(row.viewerCount ?? row.viewer_count ?? row.viewers ?? 0) || 0),
-        group: group === 'partner' ? 'Partner / Crew' : 'Community',
-      }))
+      .map((row) => {
+        const username = text(row.twitchLogin, row.twitchUsername, row.username, row.login);
+        const details: any = liveDetails.get(username.toLowerCase()) || {};
+        const profile: any = twitchProfiles.get(username.toLowerCase()) || {};
+        const featured = String(spotlight?.twitchLogin || '').toLowerCase() === username.toLowerCase() ? spotlight : {};
+        return {
+          username,
+          displayName: text(details.twitchDisplayName, row.displayName, row.username, username) || 'Live creator',
+          avatarUrl: text(featured.avatarUrl, profile.profile_image_url, row.avatarUrl, details.avatarUrl),
+          gameName: text(featured.gameTitle, details.gameName),
+          title: text(featured.streamTitle, details.streamTitle),
+          viewerCount: Math.max(0, Number(featured.viewerCount ?? details.viewerCount ?? 0) || 0),
+          group: group === 'partner' ? 'Partner / Crew' : 'Community',
+        };
+      })
       .filter((creator) => creator.username || creator.displayName);
 
     return NextResponse.json({ group, creators }, { headers: { 'cache-control': 'no-store, no-cache, must-revalidate' } });

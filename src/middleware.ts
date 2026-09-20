@@ -68,6 +68,7 @@ function isPublicApiRequest(request: NextRequest): boolean {
   if (pathname.startsWith('/api/ai/image/file/')) return true;
   if (pathname === '/api/ai/image/library' && searchParams.get('scope') !== 'private') return true;
   if (pathname.startsWith('/api/overlay/')) return true;
+  if (pathname === '/api/lounge/live-shoutouts' || pathname === '/api/lounge/status-strip') return true;
   if (['/api/gamble/overlay-data','/api/classic-gamble/overlay-data','/api/avatars','/api/bic-list','/api/bic-counter','/api/pokedex','/api/tts/current'].includes(pathname)) return true;
   if (pathname === '/api/shared-chat/featured' && searchParams.get('tenant')) return true;
   if (pathname === '/api/user-profile' && searchParams.get('tenant')) return true;

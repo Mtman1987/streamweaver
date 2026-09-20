@@ -12,7 +12,7 @@ test('featured chat supports a visible human-message fallback', () => {
   const route = fs.readFileSync('src/app/api/shared-chat/featured/route.ts', 'utf8');
   const overlay = fs.readFileSync('src/app/overlay/shared-chat-featured/page.tsx', 'utf8');
   assert.match(route, /fallbackToLatest/);
-  assert.match(route, /!entry\.sender\.roles\.includes\('bot'\)/);
+  assert.doesNotMatch(route, /!entry\.sender\.roles\.includes\('bot'\)/);
   assert.match(route, /entry\.text\.trim\(\) \|\| entry\.media\.length/);
   assert.match(overlay, /Waiting for the next community message/);
 });
@@ -102,6 +102,14 @@ test('Lounge has separate partner and community live shoutout rotations', () => 
   assert.match(overlay, /group === 'partner' \? 18_000 : 9_000/);
   assert.match(route, /isPriorityCreator/);
   assert.match(route, /viewerCount/);
+  assert.match(route, /discord-stream-hub-new\.fly\.dev\/api\/community-spotlight/);
+  assert.match(route, /chat-tag-new\.fly\.dev/);
+});
+
+test('Lounge data APIs are public to unauthenticated browser-source overlays', () => {
+  const middleware = fs.readFileSync('src/middleware.ts', 'utf8');
+  assert.match(middleware, /pathname === '\/api\/lounge\/live-shoutouts'/);
+  assert.match(middleware, /pathname === '\/api\/lounge\/status-strip'/);
 });
 
 test('top-right strip prioritizes active games then identifies the main spotlight', () => {

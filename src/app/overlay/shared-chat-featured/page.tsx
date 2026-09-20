@@ -98,7 +98,7 @@ export default function SharedChatFeaturedOverlay() {
   const attachments = (event?.media || []).filter((entry) => entry.type !== "emote" && entry.type !== "audio");
   const badges = event?.sender.badges || [];
   const roles = (event?.sender.roles || []).filter((role) => role !== "viewer" && role !== "bot");
-  const displayBadges = badges.length ? badges.slice(0, 3) : roles.slice(0, 2).map((role) => ({ id: role, label: role }));
+  const displayBadges: FeaturedBadge[] = badges.length ? badges.slice(0, 3) : roles.slice(0, 2).map((role) => ({ id: role, label: role }));
   const initial = event?.sender.displayName.trim().charAt(0).toUpperCase() || "★";
   const textLength = event?.text.length || 0;
   const messageClass = textLength > 150 ? "message small" : textLength > 85 ? "message medium" : "message";
