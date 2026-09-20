@@ -6,9 +6,43 @@ import {
   writeSharedChatOperatorState,
 } from '@/services/shared-chat-operator-state';
 import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
+import { isKnownBot } from '@/services/known-bots';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const LOUNGE_ECOSYSTEM_VOICES = new Set([
+  'stellabot87',
+  'athenabot87',
+  'spacemountainlive',
+  'streamweaverbot',
+  'streamweaver87',
+]);
+
+function normalizedSenderNames(entry: Awaited<ReturnType<typeof readSharedChatReplay>>[number]): string[] {
+  return [entry.sender.login, entry.sender.displayName]
+    .map((value) => String(value || '').trim().replace(/^@/, '').toLowerCase())
+    .filter(Boolean);
+}
+
+async function isLoungeShowcaseEligible(
+  entry: Awaited<ReturnType<typeof readSharedChatReplay>>[number],
+  tenantId: string,
+): Promise<boolean> {
+  if (entry.type === 'system' || entry.deletedAt || !(entry.text.trim() || entry.media.length)) return false;
+
+  const message = entry.text.trim().toLowerCase();
+  if (message.startsWith('!') || message.startsWith('spmt')) return false;
+
+  const senderNames = normalizedSenderNames(entry);
+  if (senderNames.some((name) => LOUNGE_ECOSYSTEM_VOICES.has(name))) return true;
+  if (entry.sender.roles.includes('bot')) return false;
+
+  for (const senderName of senderNames) {
+    if (await isKnownBot(senderName, tenantId)) return false;
+  }
+  return true;
+}
 
 export async function GET(request: NextRequest) {
   const requestedTenant = String(request.nextUrl.searchParams.get('tenant') || '').trim();
@@ -35,17 +69,22 @@ export async function GET(request: NextRequest) {
       featuredAt: nextId ? new Date().toISOString() : null,
     });
   }
-  const explicitlyFeaturedEvent = state.featuredEventId
+  const explicitCandidate = state.featuredEventId
     ? replay.find((entry) => entry.eventId === state.featuredEventId) || null
     : null;
-  const fallbackToLatest = request.nextUrl.searchParams.get('fallback') === 'latest';
-  const latestShowcaseEvent = fallbackToLatest
-    ? replay.slice().reverse().find((entry) => (
-        entry.type !== 'system'
-        && !entry.deletedAt
-        && Boolean(entry.text.trim() || entry.media.length)
-      )) || null
+  const explicitlyFeaturedEvent = explicitCandidate && await isLoungeShowcaseEligible(explicitCandidate, tenantId)
+    ? explicitCandidate
     : null;
+  const fallbackToLatest = request.nextUrl.searchParams.get('fallback') === 'latest';
+  let latestShowcaseEvent = null;
+  if (fallbackToLatest) {
+    for (const entry of replay.slice().reverse()) {
+      if (await isLoungeShowcaseEligible(entry, tenantId)) {
+        latestShowcaseEvent = entry;
+        break;
+      }
+    }
+  }
   const event = explicitlyFeaturedEvent || latestShowcaseEvent;
   return NextResponse.json({
     event,

@@ -8,12 +8,18 @@ test('Twitch !leaderboard routes to the points leaderboard overlay', () => {
   assert.match(dispatcher, /requestedCmd === '!leaderboard' \? '!pleader'/);
 });
 
-test('featured chat supports a visible human-message fallback', () => {
+test('featured chat rejects commands and outside bots while keeping ecosystem voices', () => {
   const route = fs.readFileSync('src/app/api/shared-chat/featured/route.ts', 'utf8');
   const overlay = fs.readFileSync('src/app/overlay/shared-chat-featured/page.tsx', 'utf8');
   assert.match(route, /fallbackToLatest/);
-  assert.doesNotMatch(route, /!entry\.sender\.roles\.includes\('bot'\)/);
-  assert.match(route, /entry\.text\.trim\(\) \|\| entry\.media\.length/);
+  assert.match(route, /message\.startsWith\('!'\)/);
+  assert.match(route, /message\.startsWith\('spmt'\)/);
+  assert.match(route, /isKnownBot\(senderName, tenantId\)/);
+  assert.match(route, /'stellabot87'/);
+  assert.match(route, /'athenabot87'/);
+  assert.match(route, /'spacemountainlive'/);
+  assert.match(route, /LOUNGE_ECOSYSTEM_VOICES\.has\(name\)/);
+  assert.match(route, /entry\.sender\.roles\.includes\('bot'\)/);
   assert.match(overlay, /Waiting for the next community message/);
 });
 
