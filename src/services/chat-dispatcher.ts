@@ -46,7 +46,7 @@ import {
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
 } from '../lib/tenant';
 import { queueTtsOverlay } from './tts-overlay-queue';
-import { isAlwaysSpokenTwitchBot, shouldQueueTwitchSay } from './twitch-say-policy';
+import { getTwitchBotTtsVoice, isAlwaysSpokenTwitchBot, shouldQueueTwitchSay } from './twitch-say-policy';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
@@ -2808,11 +2808,20 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (!isAlwaysSpokenTwitchBot(actualUsername) && !isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
             if (isSaySuppressedForTenant(tenantId) || isSaySuppressedForTenant(sayChannelKey)) return;
-            const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
+            const isCharacterBot = isAlwaysSpokenTwitchBot(actualUsername);
+            const spokenMessage = isCharacterBot
+                ? cleanSayTextForSpeech(sayMessage)
+                : formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
             return fetch(`${getInternalAppUrl()}/api/say/queue`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
+                body: JSON.stringify({
+                    tenantId: sayChannelKey,
+                    text: spokenMessage,
+                    speakerUserId: actualUsername,
+                    speakerPlatform: 'twitch',
+                    voice: getTwitchBotTtsVoice(actualUsername),
+                }),
             });
         }).catch((error) => console.warn('[Say TTS] Twitch queue failed:', error));
     }
