@@ -1,4 +1,8 @@
-import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '../lib/tenant';
+const ALWAYS_SPOKEN_TWITCH_BOTS = new Set(['athenabot87', 'stellabot87']);
+
+export function isAlwaysSpokenTwitchBot(username: string): boolean {
+  return ALWAYS_SPOKEN_TWITCH_BOTS.has(username.toLowerCase());
+}
 
 export function shouldQueueTwitchSay(input: {
   tenantId?: string;
@@ -10,6 +14,5 @@ export function shouldQueueTwitchSay(input: {
   if (input.isCommand) return false;
   if (!input.isBotMessage && !input.isKnownAutomationBotMessage) return true;
 
-  return String(input.tenantId || '').toLowerCase() === SPACEMOUNTAIN_SYSTEM_TENANT_ID
-    && input.username.toLowerCase() === 'stellabot87';
+  return isAlwaysSpokenTwitchBot(input.username);
 }
