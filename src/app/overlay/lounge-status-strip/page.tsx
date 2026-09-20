@@ -9,9 +9,21 @@ type StatusPayload = {
   media: null | { kind: 'music' | 'movie'; title: string; thumbnailUrl: string };
 };
 
+function clockParts(now: Date | null) {
+  if (!now) return { local: 'LOCAL · SYNCING', utc: 'UTC · SYNCING' };
+  const local = new Intl.DateTimeFormat(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  }).format(now).toUpperCase();
+  const utc = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(now).replace(',', '').toUpperCase();
+  return { local: `LOCAL · ${local}`, utc: `UTC · ${utc}` };
+}
+
 export default function LoungeStatusStrip() {
   const [payload, setPayload] = React.useState<StatusPayload>({ games: [], spotlight: null, media: null });
   const [rotationIndex, setRotationIndex] = React.useState(0);
+  const [now, setNow] = React.useState<Date | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -28,7 +40,14 @@ export default function LoungeStatusStrip() {
     return () => { active = false; window.clearInterval(refresh); };
   }, []);
 
-  const rotationCount = payload.games.length + (payload.spotlight ? 1 : 0) + (payload.media ? 1 : 0);
+  React.useEffect(() => {
+    const update = () => setNow(new Date());
+    update();
+    const clock = window.setInterval(update, 15_000);
+    return () => window.clearInterval(clock);
+  }, []);
+
+  const rotationCount = payload.games.length + (payload.spotlight ? 1 : 0) + (payload.media ? 1 : 0) + 1;
 
   React.useEffect(() => {
     setRotationIndex((current) => rotationCount ? current % rotationCount : 0);
@@ -43,8 +62,11 @@ export default function LoungeStatusStrip() {
   const showSpotlight = Boolean(spotlight) && activeIndex === payload.games.length;
   const mediaIndex = payload.games.length + (spotlight ? 1 : 0);
   const showMedia = Boolean(media) && activeIndex === mediaIndex;
-  const game = showSpotlight || showMedia ? null : payload.games[activeIndex] || null;
+  const clockIndex = mediaIndex + (media ? 1 : 0);
+  const showClock = activeIndex === clockIndex;
+  const game = showSpotlight || showMedia || showClock ? null : payload.games[activeIndex] || null;
   const initial = spotlight?.displayName.charAt(0).toUpperCase() || '✦';
+  const clock = clockParts(now);
 
   return (
     <main className="stage">
@@ -58,14 +80,21 @@ export default function LoungeStatusStrip() {
         .label { color:#9ff5ff;font-size:7px;font-weight:1000;letter-spacing:.12em;line-height:1; }
         .value { width:100%; min-width:0; margin-top:3px; overflow:hidden; font-family:Inter,ui-sans-serif,system-ui,sans-serif; font-size:20px; font-weight:950; line-height:1; letter-spacing:-.025em; text-shadow:0 1px 3px #000; white-space:nowrap; }
         .gameIcon { flex:0 0 auto;font-size:21px;filter:drop-shadow(0 0 5px #6fefff); }
+        .clockValue { display:grid;gap:2px;margin-top:3px;font-size:10px;font-weight:900;line-height:1.05;letter-spacing:.015em;text-shadow:0 1px 3px #000;white-space:nowrap; }
+        .clockValue span:last-child { color:#d8d2ff; }
         @keyframes swap { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
       `}</style>
-      {game && !showSpotlight && !showMedia ? (
+      {game && !showSpotlight && !showMedia && !showClock ? (
         <section className="strip" key={game.id}><div className="gameIcon">🎮</div><div className="copy"><div className="label">NOW PLAYING</div><AutoFitText className="value" minFontSize={8} maxFontSize={20}>{`${game.name}${game.command ? ` · !${game.command}` : ''}`}</AutoFitText></div></section>
       ) : showMedia && media ? (
         <section className="strip" key={`${media.kind}:${media.title}`}>
           {media.thumbnailUrl ? <img className="avatar" src={media.thumbnailUrl} alt="" /> : <div className="gameIcon">{media.kind === 'music' ? '🎵' : '🎬'}</div>}
           <div className="copy"><div className="label">{media.kind === 'music' ? 'NOW LISTENING' : 'NOW WATCHING'}</div><AutoFitText className="value" minFontSize={8} maxFontSize={20}>{media.title}</AutoFitText></div>
+        </section>
+      ) : showClock ? (
+        <section className="strip" key="station-time">
+          <div className="gameIcon">◷</div>
+          <div className="copy"><div className="label">STATION TIME</div><div className="clockValue"><span>{clock.local}</span><span>{clock.utc}</span></div></div>
         </section>
       ) : (
         <section className="strip" key={spotlight?.login || 'waiting'}>

@@ -59,8 +59,8 @@ export function LoungeAttributionMarquee() {
           position: absolute;
           z-index: 20;
           right: 10px;
-          bottom: 8px;
-          height: 38px;
+          bottom: 4px;
+          height: 34px;
           max-width: calc(100vw - 20px);
           overflow: hidden;
           border: 1.5px solid rgba(73, 237, 255, .92);
@@ -74,7 +74,7 @@ export function LoungeAttributionMarquee() {
           transition: width .8s cubic-bezier(.2,.8,.2,1), height .65s ease, border-radius .8s ease;
         }
         .compact { width: min(230px, calc(100vw - 20px)); }
-        .expanded { width: calc(100vw - 20px); height: 48px; border-radius: 13px; }
+        .expanded { width: calc(100vw - 20px); height: 40px; border-radius: 13px; }
         .brand {
           position: absolute;
           z-index: 2;
@@ -138,9 +138,9 @@ export function LoungeAttributionMarquee() {
         .mode { margin-right: 18px; color: #ffe678; font-family: Georgia, 'Times New Roman', serif; font-style: italic; letter-spacing: .08em; }
         @keyframes lounge-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         @media (max-width: 680px) {
-          .lounge-credit { right: 7px; bottom: 6px; max-width: calc(100vw - 14px); }
+          .lounge-credit { right: 7px; bottom: 4px; max-width: calc(100vw - 14px); }
           .compact { width: min(210px, calc(100vw - 14px)); }
-          .expanded { width: calc(100vw - 14px); height: 46px; }
+          .expanded { width: calc(100vw - 14px); height: 40px; }
           .brand { width: 210px; }
           .logo-shell { width: 27px; height: 27px; }
           .powered { font-size: 6px; }

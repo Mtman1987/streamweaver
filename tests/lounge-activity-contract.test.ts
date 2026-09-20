@@ -144,17 +144,20 @@ test('Lounge data APIs are public to unauthenticated browser-source overlays', (
   assert.match(middleware, /pathname === '\/api\/lounge\/status-strip'/);
 });
 
-test('top-right strip rotates active games, main spotlight, and HearMeOut media', () => {
+test('top-right strip rotates active games, main spotlight, HearMeOut media, and local/UTC time', () => {
   const overlay = fs.readFileSync('src/app/overlay/lounge-status-strip/page.tsx', 'utf8');
   const route = fs.readFileSync('src/app/api/lounge/status-strip/route.ts', 'utf8');
   assert.match(overlay, /NOW PLAYING/);
   assert.match(overlay, /NOW STREAMING/);
   assert.match(overlay, /NOW LISTENING/);
   assert.match(overlay, /NOW WATCHING/);
-  assert.match(overlay, /payload\.games\.length \+ \(payload\.spotlight \? 1 : 0\) \+ \(payload\.media \? 1 : 0\)/);
+  assert.match(overlay, /payload\.games\.length \+ \(payload\.spotlight \? 1 : 0\) \+ \(payload\.media \? 1 : 0\) \+ 1/);
   assert.match(overlay, /activeIndex === payload\.games\.length/);
   assert.match(overlay, /rotationCount < 2/);
   assert.match(overlay, /spotlight\.avatarUrl/);
+  assert.match(overlay, /STATION TIME/);
+  assert.match(overlay, /LOCAL ·/);
+  assert.match(overlay, /UTC ·/);
   assert.doesNotMatch(overlay, /Space Mountain Live/);
   assert.match(route, /api\/game-hub\/channel\?channel=spacemountainlive/);
   assert.match(route, /api\/community-spotlight/);
