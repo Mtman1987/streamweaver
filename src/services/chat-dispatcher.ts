@@ -46,6 +46,8 @@ import {
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
 } from '../lib/tenant';
 import { queueTtsOverlay } from './tts-overlay-queue';
+import { shouldQueueTwitchSay } from './twitch-say-policy';
+import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
@@ -2791,7 +2793,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     });
 
     const sayMessage = stripTwitchEmotesFromText(actualMessage, tags.emotes);
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(sayMessage)) {
+    if (
+        shouldQueueTwitchSay({
+            tenantId,
+            username: actualUsername,
+            isCommand,
+            isBotMessage,
+            isKnownAutomationBotMessage,
+        })
+        && !message.startsWith('[')
+        && isSayTextSpeakable(sayMessage)
+    ) {
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
@@ -2844,6 +2856,45 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             console.log(`[Dispatcher] Command ${cmdName} is disabled as a custom command; continuing with core Pokemon handler.`);
+        }
+
+        // The permanent SpaceMountainLive channel uses Stella/StreamWeaver as
+        // its one Twitch listener. Route both request commands into the exact
+        // room-scoped sessions rendered by the anonymous Lounge overlay.
+        if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && replyChannel.toLowerCase() === 'spacemountainlive') {
+            const loungeRequest = actualMessage.match(/^!(sr|wr)(?:\s+(.+))?$/i);
+            if (loungeRequest) {
+                const command = loungeRequest[1].toLowerCase();
+                const query = String(loungeRequest[2] || '').trim();
+                if (!query) {
+                    await replyMaybeKick(`@${actualUsername}, use !${command} ${command === 'sr' ? '<song or YouTube URL>' : '<movie or show>'}.`, 'bot').catch(() => {});
+                    return;
+                }
+
+                const mediaKind = command === 'wr' ? 'movie' : 'music';
+                const roomId = 'system-spacemountainlive-lounge';
+                const sessionId = `watch-room-${roomId}-${mediaKind}`;
+                try {
+                    const result = await executeHearMeOutBotAction({
+                        action: 'hmo.media.request',
+                        tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                        roomId,
+                        sessionId,
+                        mediaKind,
+                        query,
+                        actorUserId: String(tags?.['user-id'] || actualUsername),
+                        actorName: displayName || actualUsername,
+                        idempotencyKey: String(tags?.id || `${replyChannel}:${actualUsername}:${actualMessage}`),
+                    });
+                    const message = String(result.message || '').trim()
+                        || (mediaKind === 'movie' ? 'Added that to the lounge watch queue.' : 'Added that to the lounge song queue.');
+                    await replyMaybeKick(`@${actualUsername} ${mediaKind === 'movie' ? '🎬' : '🎵'} ${message}`, 'bot').catch(() => {});
+                } catch (error) {
+                    console.error(`[Dispatcher] Lounge !${command} failed:`, error);
+                    await replyMaybeKick(`@${actualUsername}, I couldn't add that ${mediaKind === 'movie' ? 'watch' : 'song'} request right now.`, 'bot').catch(() => {});
+                }
+                return;
+            }
         }
 
         // Handle check-in commands (process early)
@@ -3755,8 +3806,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
-        // HearMeOut's Twitch bot listens directly for !sr. Re-posting it from
-        // Athena creates duplicate queue entries and wakes AI mention handling.
+        // Outside the permanent Lounge, HearMeOut's own Twitch bot still owns
+        // !sr. Re-posting it creates duplicate queue entries.
         if (actualMessage.toLowerCase().startsWith('!sr ')) {
             return;
         }
