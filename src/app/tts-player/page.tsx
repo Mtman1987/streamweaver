@@ -667,8 +667,8 @@ export default function TTSPlayer() {
       {(isStella || avatar) && (
         <div style={{
           position: 'absolute',
-          bottom: loungePlacement ? 92 : 0,
-          left: loungePlacement ? -12 : 0,
+          bottom: loungePlacement ? 115 : 0,
+          left: loungePlacement ? -35 : 0,
           width: loungePlacement ? 210 : 300,
           height: loungePlacement ? 210 : 300,
           transition: 'opacity 0.5s', opacity: visible ? 1 : 0,

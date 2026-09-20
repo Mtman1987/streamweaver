@@ -25,6 +25,6 @@ test('command leaderboard fills the compact activity panel', () => {
 test('Lounge Stella is scaled down and lifted onto the lower panel edge', () => {
   const player = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
   assert.match(player, /loungePlacement \? 210 : 300/);
-  assert.match(player, /loungePlacement \? 92 : 0/);
-  assert.match(player, /loungePlacement \? -12 : 0/);
+  assert.match(player, /loungePlacement \? 115 : 0/);
+  assert.match(player, /loungePlacement \? -35 : 0/);
 });
