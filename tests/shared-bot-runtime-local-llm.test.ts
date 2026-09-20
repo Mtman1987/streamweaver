@@ -68,7 +68,7 @@ test('public control API never exposes Adult Mode or private memory deletion', (
   assert.doesNotMatch(source, /writePrivateChatSettings/);
 });
 
-test('public AI uses the shared EdenAI-first provider with local Qwen fallback', () => {
+test('public AI uses EdenAI, configured OpenAI, then local Qwen', () => {
   const chatSource = readFileSync(
     new URL('../src/app/api/ai/chat-with-memory/route.ts', import.meta.url),
     'utf8',
@@ -81,10 +81,12 @@ test('public AI uses the shared EdenAI-first provider with local Qwen fallback',
   assert.match(chatSource, /generateAIResponse\(prompt, systemIdentity, tenantId/);
   assert.doesNotMatch(chatSource, /api\.edenai\.run\/v3\/chat\/completions/);
   const edenCall = providerSource.indexOf('await generateEdenAIFallbackResponse(');
+  const openAiCall = providerSource.indexOf('await generateOpenAiFallbackResponse(');
   const qwenCall = providerSource.indexOf('await requestSpmtLocalLlm(');
-  assert.ok(edenCall >= 0 && qwenCall > edenCall);
+  assert.ok(edenCall >= 0 && openAiCall > edenCall && qwenCall > openAiCall);
   assert.match(providerSource, /EdenAI primary failed/);
-  assert.match(providerSource, /falling back to local Qwen/);
+  assert.match(providerSource, /OpenAI fallback failed/);
+  assert.match(providerSource, /trying local Qwen/);
 });
 
 test('private tenant chat uses Qwen only when Adult Mode is enabled', () => {

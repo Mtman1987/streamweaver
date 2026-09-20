@@ -41,15 +41,19 @@ test('the shared provider repairs incomplete completions instead of returning cu
   assert.match(memoryChat, /maxCharacters:\s*context === 'discord'/);
 });
 
-test('EdenAI is primary and local Qwen is fallback when EdenAI fails', () => {
+test('EdenAI is primary, configured OpenAI is secondary, and local Qwen is final fallback', () => {
   const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
   const local = readFileSync(new URL('../src/services/spmt-local-llm.ts', import.meta.url), 'utf8');
   assert.match(local, /SPMT_LOCAL_LLM_ENABLED !== 'false'/);
   const edenCall = provider.indexOf('await generateEdenAIFallbackResponse(');
+  const openAiCall = provider.indexOf('await generateOpenAiFallbackResponse(');
   const qwenCall = provider.indexOf('await requestSpmtLocalLlm(');
   assert.ok(edenCall >= 0, 'EdenAI primary call is missing');
+  assert.ok(openAiCall >= 0, 'OpenAI fallback call is missing');
   assert.ok(qwenCall >= 0, 'Qwen fallback call is missing');
-  assert.ok(edenCall < qwenCall, 'EdenAI must be attempted before Qwen');
+  assert.ok(edenCall < openAiCall && openAiCall < qwenCall, 'AI fallbacks must be attempted in order');
   assert.match(provider, /EdenAI primary failed/);
-  assert.match(provider, /falling back to local Qwen/);
+  assert.match(provider, /OpenAI fallback failed/);
+  assert.match(provider, /configuredProvider\.provider === 'openai'/);
+  assert.match(provider, /apiKey: configuredOpenAiKey \|\| undefined/);
 });

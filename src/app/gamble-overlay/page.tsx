@@ -88,7 +88,7 @@ export default function GambleOverlay() {
       fontFamily: '"Segoe UI", Arial, sans-serif', background: 'transparent'
     }}>
       <div style={{
-        background: bgColor, border: '8px solid white', borderRadius: 24,
+        background: bgColor, border: '8px solid white',
         padding: loungeTag ? '7px 10px' : '80px 160px', color: 'white', textAlign: 'center',
         boxShadow: '0 16px 48px rgba(0,0,0,0.8)', minWidth: loungeTag ? 0 : 800,
         width: loungeTag ? '100%' : undefined,

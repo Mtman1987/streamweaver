@@ -1,6 +1,7 @@
 import { readUserConfigSync } from '@/lib/user-config';
 import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
 import { isSpmtLocalLlmEnabled, requestSpmtLocalLlm } from '@/services/spmt-local-llm';
+import { isOpenAiFallbackConfigured, generateOpenAiFallbackResponse } from '@/services/openai-fallback';
 
 export type AIProvider = 'gemini' | 'edenai' | 'openai';
 
@@ -139,11 +140,29 @@ export async function generateAIResponse(
     return response;
   } catch (error) {
     edenFailure = error instanceof Error ? error.message : String(error);
-    console.warn(`[AI Provider] EdenAI primary failed for tenant ${tenantId || 'global'}; falling back to local Qwen:`, edenFailure);
+    console.warn(`[AI Provider] EdenAI primary failed for tenant ${tenantId || 'global'}; trying configured fallbacks:`, edenFailure);
+  }
+
+  let openAiFailure = '';
+  const configuredProvider = getAIConfig(tenantId);
+  const configuredOpenAiKey = configuredProvider.provider === 'openai' ? configuredProvider.apiKey : '';
+  if (isOpenAiFallbackConfigured(configuredOpenAiKey)) {
+    try {
+      const response = await generateOpenAiFallbackResponse(prompt, governedPrompt(systemPrompt), {
+        ...options,
+        apiKey: configuredOpenAiKey || undefined,
+        model: configuredProvider.provider === 'openai' ? configuredProvider.model : undefined,
+      });
+      console.log(`[AI Provider] OpenAI fallback served tenant ${tenantId || 'global'}`);
+      return response;
+    } catch (error) {
+      openAiFailure = error instanceof Error ? error.message : String(error);
+      console.warn(`[AI Provider] OpenAI fallback failed for tenant ${tenantId || 'global'}; trying local Qwen:`, openAiFailure);
+    }
   }
 
   if (!isSpmtLocalLlmEnabled()) {
-    throw new Error(`AI generation failed. EdenAI primary: ${edenFailure} Local Qwen fallback is disabled.`);
+    throw new Error(`AI generation failed. EdenAI primary: ${edenFailure} OpenAI fallback: ${openAiFailure || 'not configured'} Local Qwen fallback is disabled.`);
   }
 
   if (localLlmCircuitIsOpen()) {

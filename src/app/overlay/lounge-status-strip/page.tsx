@@ -5,10 +5,11 @@ import * as React from 'react';
 type StatusPayload = {
   games: Array<{ id: string; name: string; command: string }>;
   spotlight: null | { login: string; displayName: string; avatarUrl: string };
+  media: null | { kind: 'music' | 'movie'; title: string; thumbnailUrl: string };
 };
 
 export default function LoungeStatusStrip() {
-  const [payload, setPayload] = React.useState<StatusPayload>({ games: [], spotlight: null });
+  const [payload, setPayload] = React.useState<StatusPayload>({ games: [], spotlight: null, media: null });
   const [rotationIndex, setRotationIndex] = React.useState(0);
 
   React.useEffect(() => {
@@ -18,7 +19,7 @@ export default function LoungeStatusStrip() {
         const response = await fetch('/api/lounge/status-strip', { cache: 'no-store' });
         if (!response.ok) return;
         const next = await response.json();
-        if (active) setPayload({ games: Array.isArray(next?.games) ? next.games : [], spotlight: next?.spotlight || null });
+        if (active) setPayload({ games: Array.isArray(next?.games) ? next.games : [], spotlight: next?.spotlight || null, media: next?.media || null });
       } catch {}
     };
     void load();
@@ -26,7 +27,7 @@ export default function LoungeStatusStrip() {
     return () => { active = false; window.clearInterval(refresh); };
   }, []);
 
-  const rotationCount = payload.games.length + (payload.spotlight ? 1 : 0);
+  const rotationCount = payload.games.length + (payload.spotlight ? 1 : 0) + (payload.media ? 1 : 0);
 
   React.useEffect(() => {
     setRotationIndex((current) => rotationCount ? current % rotationCount : 0);
@@ -36,9 +37,12 @@ export default function LoungeStatusStrip() {
   }, [rotationCount]);
 
   const spotlight = payload.spotlight;
+  const media = payload.media;
   const activeIndex = rotationIndex % Math.max(1, rotationCount);
   const showSpotlight = Boolean(spotlight) && activeIndex === payload.games.length;
-  const game = showSpotlight ? null : payload.games[activeIndex] || null;
+  const mediaIndex = payload.games.length + (spotlight ? 1 : 0);
+  const showMedia = Boolean(media) && activeIndex === mediaIndex;
+  const game = showSpotlight || showMedia ? null : payload.games[activeIndex] || null;
   const initial = spotlight?.displayName.charAt(0).toUpperCase() || '✦';
 
   return (
@@ -55,12 +59,17 @@ export default function LoungeStatusStrip() {
         .gameIcon { flex:0 0 auto;font-size:21px;filter:drop-shadow(0 0 5px #6fefff); }
         @keyframes swap { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
       `}</style>
-      {game && !showSpotlight ? (
-        <section className="strip" key={game.id}><div className="gameIcon">🎮</div><div className="copy"><div className="label">ACTIVE GAME</div><div className="value">{game.name}{game.command ? ` · !${game.command}` : ''}</div></div></section>
+      {game && !showSpotlight && !showMedia ? (
+        <section className="strip" key={game.id}><div className="gameIcon">🎮</div><div className="copy"><div className="label">NOW PLAYING</div><div className="value">{game.name}{game.command ? ` · !${game.command}` : ''}</div></div></section>
+      ) : showMedia && media ? (
+        <section className="strip" key={`${media.kind}:${media.title}`}>
+          {media.thumbnailUrl ? <img className="avatar" src={media.thumbnailUrl} alt="" /> : <div className="gameIcon">{media.kind === 'music' ? '🎵' : '🎬'}</div>}
+          <div className="copy"><div className="label">{media.kind === 'music' ? 'NOW LISTENING' : 'NOW WATCHING'}</div><div className="value">{media.title}</div></div>
+        </section>
       ) : (
         <section className="strip" key={spotlight?.login || 'waiting'}>
           {spotlight?.avatarUrl ? <img className="avatar" src={spotlight.avatarUrl} alt="" /> : <div className="fallback">{initial}</div>}
-          <div className="copy"><div className="label">NOW SHOWING</div><div className="value">{spotlight ? `@${spotlight.login}` : 'No live spotlight'}</div></div>
+          <div className="copy"><div className="label">NOW STREAMING</div><div className="value">{spotlight ? `@${spotlight.login}` : 'No live spotlight'}</div></div>
         </section>
       )}
     </main>

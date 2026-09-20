@@ -3677,7 +3677,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Twitch chat is routed through StreamWeaver in this channel. Bridge
         // media commands directly to HearMeOut's two canonical 24/7 sessions
         // and always acknowledge them so chat can see where a failure occurs.
-        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|play|pause|stop|skip|next|np|nowplaying|mute|unmute|volume)(?:\s+(.*))?$/i);
+        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume)(?:\s+(.*))?$/i);
         if (hearMeOutCommand) {
             const command = hearMeOutCommand[1].toLowerCase();
             const argument = String(hearMeOutCommand[2] || '').trim();
@@ -3729,10 +3729,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         readSession('discord-music-room'),
                         readSession('discord-watch-room'),
                     ]);
-                    const active = music?.session?.current ? music.session : movie?.session?.current ? movie.session : null;
-                    await reply(active?.current?.item?.title
-                        ? `▶️ HearMeOut: ${active.current.item.title} (${active.playback?.status || 'ready'}) · ${active.queue?.length || 0} queued.`
-                        : 'HearMeOut is idle; both queues are empty.', 'bot').catch(() => {});
+                    const summaries = [
+                        music?.session?.current?.item?.title
+                            ? `music: ${music.session.current.item.title} (${music.session.playback?.status || 'ready'}, ${music.session.queue?.length || 0} queued)`
+                            : 'music: empty',
+                        movie?.session?.current?.item?.title
+                            ? `movies: ${movie.session.current.item.title} (${movie.session.playback?.status || 'ready'}, ${movie.session.queue?.length || 0} queued)`
+                            : 'movies: empty',
+                    ];
+                    await reply(`▶️ HearMeOut — ${summaries.join(' · ')}`, 'bot').catch(() => {});
                 } catch (error) {
                     await replyFailure(error);
                 }
@@ -3743,7 +3748,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 await reply(`@${actualUsername}, only the broadcaster or a moderator can use !${command}.`, 'bot').catch(() => {});
                 return;
             }
-            const control = command === 'stop' ? 'pause' : command === 'skip' || command === 'next' ? 'next' : command;
+            const requestedLane = /^(?:music|song|songs)$/i.test(argument) ? 'music'
+                : /^(?:movie|movies|video|watch)$/i.test(argument) ? 'movie'
+                : null;
+            const isLaneSwitch = ['music', 'songs', 'movie', 'movies'].includes(command);
+            const targetLane = isLaneSwitch
+                ? (command === 'music' || command === 'songs' ? 'music' : 'movie')
+                : requestedLane;
+            const control = isLaneSwitch || command === 'play' ? 'play'
+                : command === 'stop' ? 'pause'
+                    : command === 'skip' || command === 'next' ? 'next'
+                        : command;
             const value = command === 'volume' ? Number(argument) : undefined;
             if (command === 'volume' && (!argument || !Number.isFinite(value) || value! < 0 || value! > 100)) {
                 await reply(`@${actualUsername}, usage: !volume 0-100`, 'bot').catch(() => {});
@@ -3755,9 +3770,32 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     readSession('discord-music-room'),
                     readSession('discord-watch-room'),
                 ]);
-                const sessionId = music?.session?.current ? 'discord-music-room'
-                    : movie?.session?.current ? 'discord-watch-room'
-                    : 'discord-music-room';
+                const sessions = [
+                    { lane: 'music', sessionId: 'discord-music-room', state: music?.session },
+                    { lane: 'movie', sessionId: 'discord-watch-room', state: movie?.session },
+                ];
+                const ordered = [...sessions].sort((left, right) => {
+                    const leftPlaying = left.state?.playback?.status === 'playing' ? 1 : 0;
+                    const rightPlaying = right.state?.playback?.status === 'playing' ? 1 : 0;
+                    if (leftPlaying !== rightPlaying) return rightPlaying - leftPlaying;
+                    return Number(right.state?.playback?.updatedAt || 0) - Number(left.state?.playback?.updatedAt || 0);
+                });
+                const selected = targetLane
+                    ? sessions.find((entry) => entry.lane === targetLane)!
+                    : ordered.find((entry) => entry.state?.current) || sessions[0];
+                const sessionId = selected.sessionId;
+
+                if (isLaneSwitch) {
+                    const other = sessions.find((entry) => entry.sessionId !== sessionId);
+                    if (other?.state?.current && other.state?.playback?.status === 'playing') {
+                        await executeHearMeOutBotAction({
+                            ...actionBase,
+                            action: 'hmo.media.control',
+                            sessionId: other.sessionId,
+                            control: 'pause',
+                        });
+                    }
+                }
                 const result: any = await executeHearMeOutBotAction({
                     ...actionBase,
                     action: 'hmo.media.control',
@@ -3766,7 +3804,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     value,
                 });
                 const title = result?.session?.current?.item?.title || 'media player';
-                await reply(`✅ HearMeOut ${control}${command === 'volume' ? ` ${value}%` : ''}: ${title}.`, 'bot').catch(() => {});
+                const laneLabel = selected.lane === 'music' ? 'music' : 'movies';
+                await reply(`✅ HearMeOut ${laneLabel} ${control}${command === 'volume' ? ` ${value}%` : ''}: ${title}.`, 'bot').catch(() => {});
             } catch (error) {
                 await replyFailure(error);
             }

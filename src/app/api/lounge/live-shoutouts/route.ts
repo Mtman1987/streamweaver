@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Chat Tag is the current Twitch-live source of truth. DSH enriches those
     // live identities with the saved partner/crew group and Discord avatar.
     // Only fall back to DSH's cached online rows when the live feed is down.
-    const rows = chatTagResult.status === 'fulfilled' && Array.isArray(chatTag?.liveMembers)
+    const rows: any[] = chatTagResult.status === 'fulfilled' && Array.isArray(chatTag?.liveMembers)
       ? currentLiveMembers.map((liveRow: any) => {
           const login = text(liveRow.twitchUsername, liveRow.username, liveRow.login);
           return { ...(dshByLogin.get(login.toLowerCase()) || {}), ...liveRow, twitchLogin: login };
@@ -62,8 +62,8 @@ export async function GET(request: NextRequest) {
       throw new Error('Both live community feeds are unavailable');
     }
     const creators = rows
-      .filter((row) => group === 'partner' ? isPriorityCreator(row) : !isPriorityCreator(row))
-      .map((row) => {
+      .filter((row: any) => group === 'partner' ? isPriorityCreator(row) : !isPriorityCreator(row))
+      .map((row: any) => {
         const username = text(row.twitchLogin, row.twitchUsername, row.username, row.login);
         const details: any = liveDetails.get(username.toLowerCase()) || {};
         const profile: any = twitchProfiles.get(username.toLowerCase()) || {};
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
           group: group === 'partner' ? 'Partner / Crew' : 'Community',
         };
       })
-      .filter((creator) => creator.username || creator.displayName);
+      .filter((creator: any) => creator.username || creator.displayName);
 
     return NextResponse.json({ group, creators }, { headers: { 'cache-control': 'no-store, no-cache, must-revalidate' } });
   } catch (error) {

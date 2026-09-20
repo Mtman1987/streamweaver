@@ -82,11 +82,14 @@ test('Twitch social commands publish an overlay event before replying', () => {
 
 test('Twitch HearMeOut commands acknowledge and bridge both global queues', () => {
   const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
-  assert.match(dispatcher, /\^!\(sr\|wr\|play\|pause\|stop\|skip\|next\|np\|nowplaying\|mute\|unmute\|volume\)/);
+  assert.match(dispatcher, /\^!\(sr\|wr\|music\|songs\|movie\|movies\|play\|pause\|stop\|skip\|next\|clear\|np\|nowplaying\|mute\|unmute\|volume\)/);
   assert.match(dispatcher, /!\$\{command\} received/);
   assert.match(dispatcher, /sessionId = command === 'sr' \? 'discord-music-room' : 'discord-watch-room'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /action: 'hmo\.media\.control'/);
+  assert.match(dispatcher, /const requestedLane =/);
+  assert.match(dispatcher, /const isLaneSwitch =/);
+  assert.match(dispatcher, /other\.state\?\.playback\?\.status === 'playing'/);
   assert.doesNotMatch(dispatcher, /HearMeOut's Twitch bot listens directly for !sr/);
 });
 
@@ -107,6 +110,7 @@ test('Lounge has separate partner and community live shoutout rotations', () => 
   assert.match(overlay, /setLeaving\(true\)/);
   assert.match(overlay, /slideOut 1\.1s/);
   assert.match(overlay, /right: 8px; top: 7px/);
+  assert.match(overlay, /padding-top: 22px/);
   assert.doesNotMatch(overlay, /PARTNER SPOTLIGHT|COMMUNITY LIVE/);
   assert.match(overlay, /creator\.gameName \|\| 'Just Chatting'/);
   assert.doesNotMatch(overlay, /creator\.gameName \|\| creator\.title/);
@@ -122,18 +126,23 @@ test('Lounge data APIs are public to unauthenticated browser-source overlays', (
   assert.match(middleware, /pathname === '\/api\/lounge\/status-strip'/);
 });
 
-test('top-right strip prioritizes active games then identifies the main spotlight', () => {
+test('top-right strip rotates active games, main spotlight, and HearMeOut media', () => {
   const overlay = fs.readFileSync('src/app/overlay/lounge-status-strip/page.tsx', 'utf8');
   const route = fs.readFileSync('src/app/api/lounge/status-strip/route.ts', 'utf8');
-  assert.match(overlay, /ACTIVE GAME/);
-  assert.match(overlay, /NOW SHOWING/);
-  assert.match(overlay, /payload\.games\.length \+ \(payload\.spotlight \? 1 : 0\)/);
+  assert.match(overlay, /NOW PLAYING/);
+  assert.match(overlay, /NOW STREAMING/);
+  assert.match(overlay, /NOW LISTENING/);
+  assert.match(overlay, /NOW WATCHING/);
+  assert.match(overlay, /payload\.games\.length \+ \(payload\.spotlight \? 1 : 0\) \+ \(payload\.media \? 1 : 0\)/);
   assert.match(overlay, /activeIndex === payload\.games\.length/);
   assert.match(overlay, /rotationCount < 2/);
   assert.match(overlay, /spotlight\.avatarUrl/);
   assert.doesNotMatch(overlay, /Space Mountain Live/);
   assert.match(route, /api\/game-hub\/channel\?channel=spacemountainlive/);
   assert.match(route, /api\/community-spotlight/);
+  assert.match(route, /hmo\.media\.state\.read/);
+  assert.match(route, /discord-music-room/);
+  assert.match(route, /discord-watch-room/);
 });
 
 test('Lounge live cards use current Twitch live members and DSH group metadata', () => {

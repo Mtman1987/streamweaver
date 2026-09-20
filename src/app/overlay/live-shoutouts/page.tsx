@@ -70,11 +70,11 @@ export default function LoungeLiveShoutouts() {
         .avatar, .avatarFallback { position: relative; z-index: 1; width: 62px; height: 62px; border: 2px solid #78f2ff; border-radius: 50%; box-shadow: 0 0 10px rgba(37,233,255,.7); }
         .avatar { object-fit: cover; }
         .avatarFallback { display: grid; place-items: center; background: linear-gradient(145deg,#7143c9,#168fc8); font: 900 30px Georgia,serif; }
-        .copy { position: relative; z-index: 1; min-width: 0; }
+        .copy { position: relative; z-index: 1; min-width: 0; padding-top: 22px; }
         .card:not(.leaving) .copy, .card:not(.leaving) .avatar, .card:not(.leaving) .avatarFallback, .card:not(.leaving) .live { animation: slideIn 1.1s cubic-bezier(.2,.8,.2,1) both; }
         .card.leaving .copy, .card.leaving .avatar, .card.leaving .avatarFallback, .card.leaving .live { animation: slideOut 1.1s cubic-bezier(.4,0,.8,.2) both; }
-        .name { padding-right: 58px; overflow: hidden; font: 900 clamp(16px,8vw,25px)/1 Georgia,'Times New Roman',serif; text-overflow: ellipsis; text-shadow: 0 2px 4px #000; white-space: nowrap; }
-        .game { margin-top: 5px; overflow: hidden; color: #e8f9ff; font-size: 11px; font-weight: 800; line-height: 1.05; text-overflow: ellipsis; white-space: nowrap; }
+        .name { overflow: hidden; font: 900 clamp(16px,8vw,25px)/1 Georgia,'Times New Roman',serif; text-overflow: ellipsis; text-shadow: 0 2px 4px #000; white-space: nowrap; }
+        .game { margin-top: 4px; overflow: hidden; color: #e8f9ff; font-size: 11px; font-weight: 800; line-height: 1.05; text-overflow: ellipsis; white-space: nowrap; }
         .live { position: absolute; z-index: 2; right: 8px; top: 7px; display: flex; min-width: 48px; flex-direction: row; align-items: center; justify-content: center; gap: 4px; padding: 4px 6px; border-radius: 8px; background: rgba(2,8,30,.82); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
         .live strong { color: #ff6683; font-size: 10px; letter-spacing: .08em; }
         .live span { color: #ffe76f; font-size: 12px; font-weight: 1000; }

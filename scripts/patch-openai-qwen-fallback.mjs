@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 const helper = `export type OpenAiFallbackMessage = { role: 'user' | 'assistant'; content: string };
-export type OpenAiFallbackOptions = { maxTokens?: number; temperature?: number; model?: string };
+export type OpenAiFallbackOptions = { maxTokens?: number; temperature?: number; model?: string; apiKey?: string };
 
 function extractOutputText(payload: any): string {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) return payload.output_text.trim();
@@ -13,8 +13,8 @@ function extractOutputText(payload: any): string {
     .trim();
 }
 
-export function isOpenAiFallbackConfigured(): boolean {
-  return Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+export function isOpenAiFallbackConfigured(apiKey?: string): boolean {
+  return Boolean(String(apiKey || process.env.OPENAI_API_KEY || '').trim());
 }
 
 export async function requestOpenAiFallback(input: {
@@ -22,7 +22,7 @@ export async function requestOpenAiFallback(input: {
   messages: OpenAiFallbackMessage[];
   options?: OpenAiFallbackOptions;
 }): Promise<{ text: string; model: string }> {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+  const apiKey = String(input.options?.apiKey || process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) throw new Error('OpenAI API key is not configured.');
   const model = String(input.options?.model || process.env.OPENAI_CHAT_MODEL || 'gpt-5-mini').trim();
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -72,9 +72,15 @@ patchFile('src/services/ai-provider.ts', (source) => {
 `;
   if (!source.includes(marker)) throw new Error('AI provider local fallback marker missing.');
   const replacement = `  let openAiFailure = '';
-  if (isOpenAiFallbackConfigured()) {
+  const configuredProvider = getAIConfig(tenantId);
+  const configuredOpenAiKey = configuredProvider.provider === 'openai' ? configuredProvider.apiKey : '';
+  if (isOpenAiFallbackConfigured(configuredOpenAiKey)) {
     try {
-      const response = await generateOpenAiFallbackResponse(prompt, governedPrompt(systemPrompt), options);
+      const response = await generateOpenAiFallbackResponse(prompt, governedPrompt(systemPrompt), {
+        ...options,
+        apiKey: configuredOpenAiKey || undefined,
+        model: configuredProvider.provider === 'openai' ? configuredProvider.model : undefined,
+      });
       console.log(\`[AI Provider] OpenAI fallback served tenant \${tenantId || 'global'}\`);
       return response;
     } catch (error) {
