@@ -105,7 +105,10 @@ test('Lounge has separate partner and community live shoutout rotations', () => 
   const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
   assert.match(overlay, /PARTNER SPOTLIGHT/);
   assert.match(overlay, /COMMUNITY LIVE/);
-  assert.match(overlay, /group === 'partner' \? 18_000 : 9_000/);
+  assert.match(overlay, /group === 'partner' \? 36_000 : 18_000/);
+  assert.match(overlay, /setLeaving\(true\)/);
+  assert.match(overlay, /slideOut 1\.1s/);
+  assert.match(overlay, /right: 8px; top: 7px/);
   assert.match(route, /isPriorityCreator/);
   assert.match(route, /viewerCount/);
   assert.match(route, /discord-stream-hub-new\.fly\.dev\/api\/community-spotlight/);
