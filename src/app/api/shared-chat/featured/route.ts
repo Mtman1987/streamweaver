@@ -39,7 +39,15 @@ export async function GET(request: NextRequest) {
     ? replay.find((entry) => entry.eventId === state.featuredEventId) || null
     : null;
   const fallbackToLatest = request.nextUrl.searchParams.get('fallback') === 'latest';
-  const event = explicitlyFeaturedEvent || (fallbackToLatest ? replay[replay.length - 1] || null : null);
+  const latestShowcaseEvent = fallbackToLatest
+    ? replay.slice().reverse().find((entry) => (
+        !entry.sender.roles.includes('bot')
+        && entry.type !== 'system'
+        && !entry.deletedAt
+        && Boolean(entry.text.trim() || entry.media.length)
+      )) || null
+    : null;
+  const event = explicitlyFeaturedEvent || latestShowcaseEvent;
   return NextResponse.json({
     event,
     presentation: {
