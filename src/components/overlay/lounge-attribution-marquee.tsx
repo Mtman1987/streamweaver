@@ -71,10 +71,10 @@ export function LoungeAttributionMarquee() {
           box-shadow: 0 0 7px rgba(41, 239, 255, .58), inset 0 0 13px rgba(128, 76, 255, .2);
           font-family: Inter, ui-sans-serif, system-ui, sans-serif;
           pointer-events: none;
-          transition: width .8s cubic-bezier(.2,.8,.2,1), height .65s ease, border-radius .8s ease;
+          transition: width .8s cubic-bezier(.2,.8,.2,1), border-radius .8s ease;
         }
         .compact { width: min(230px, calc(100vw - 20px)); }
-        .expanded { width: calc(100vw - 20px); height: 40px; border-radius: 13px; }
+        .expanded { width: calc(100vw - 20px); height: 34px; border-radius: 13px; }
         .brand {
           position: absolute;
           z-index: 2;
@@ -140,7 +140,7 @@ export function LoungeAttributionMarquee() {
         @media (max-width: 680px) {
           .lounge-credit { right: 7px; bottom: 4px; max-width: calc(100vw - 14px); }
           .compact { width: min(210px, calc(100vw - 14px)); }
-          .expanded { width: calc(100vw - 14px); height: 40px; }
+          .expanded { width: calc(100vw - 14px); height: 34px; }
           .brand { width: 210px; }
           .logo-shell { width: 27px; height: 27px; }
           .powered { font-size: 6px; }
