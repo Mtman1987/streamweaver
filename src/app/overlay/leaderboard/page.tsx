@@ -52,9 +52,9 @@ export default function LeaderboardOverlay() {
 
   return (
     <div style={{
-      position: 'fixed', top: 20, right: 20, zIndex: 50,
+      position: 'fixed', inset: 0, zIndex: 50, boxSizing: 'border-box', overflow: 'hidden',
       background: 'rgba(0,0,0,0.9)', border: '2px solid rgba(255,215,0,0.3)',
-      borderRadius: 12, padding: 16, minWidth: 320, maxWidth: 400,
+      borderRadius: 12, padding: 12,
       fontFamily: "'Segoe UI', system-ui, sans-serif", color: '#e0e0e0',
       animation: 'fadeIn 0.3s ease-out',
     }}>
@@ -73,7 +73,7 @@ export default function LeaderboardOverlay() {
               <span style={{ fontSize: 14, fontWeight: 700, color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#888', minWidth: 28 }}>
                 #{entry.rank}
               </span>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{entry.user}</span>
+              <span style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.user}</span>
             </div>
             <span style={{ fontSize: 14, fontWeight: 700, color: '#ffd700' }}>
               {typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}

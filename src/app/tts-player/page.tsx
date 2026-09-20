@@ -352,6 +352,8 @@ export default function TTSPlayer() {
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
   const isStella = overlayTenant === 'spacemountainlive';
+  const loungePlacement = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('placement') === 'lounge';
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -664,7 +666,11 @@ export default function TTSPlayer() {
 
       {(isStella || avatar) && (
         <div style={{
-          position: 'absolute', bottom: 0, left: 0, width: 300, height: 300,
+          position: 'absolute',
+          bottom: loungePlacement ? 92 : 0,
+          left: loungePlacement ? -12 : 0,
+          width: loungePlacement ? 210 : 300,
+          height: loungePlacement ? 210 : 300,
           transition: 'opacity 0.5s', opacity: visible ? 1 : 0,
           pointerEvents: 'none',
         }}>

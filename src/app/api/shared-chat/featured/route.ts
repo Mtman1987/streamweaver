@@ -35,9 +35,11 @@ export async function GET(request: NextRequest) {
       featuredAt: nextId ? new Date().toISOString() : null,
     });
   }
-  const event = state.featuredEventId
+  const explicitlyFeaturedEvent = state.featuredEventId
     ? replay.find((entry) => entry.eventId === state.featuredEventId) || null
     : null;
+  const fallbackToLatest = request.nextUrl.searchParams.get('fallback') === 'latest';
+  const event = explicitlyFeaturedEvent || (fallbackToLatest ? replay[replay.length - 1] || null : null);
   return NextResponse.json({
     event,
     presentation: {

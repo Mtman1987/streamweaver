@@ -4265,8 +4265,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
         
         // Handle leaderboard commands
-        if (['!leader', '!pleader', '!wleader', '!cleader', '!bleader', '!bitsleader'].includes(actualMessage.split(' ')[0].toLowerCase())) {
-            const cmd = actualMessage.split(' ')[0].toLowerCase();
+        if (['!leader', '!leaderboard', '!pleader', '!wleader', '!cleader', '!bleader', '!bitsleader'].includes(actualMessage.split(' ')[0].toLowerCase())) {
+            const requestedCmd = actualMessage.split(' ')[0].toLowerCase();
+            const cmd = requestedCmd === '!leaderboard' ? '!pleader' : requestedCmd;
             const args = actualMessage.substring(cmd.length).trim();
             const broadcastFn = typeof (global as any).broadcast === 'function' ? (global as any).broadcast : () => {};
             await handleLeaderboardCommand(cmd, actualUsername, args, broadcastFn, tenantId, String(tags['user-id'] || tags.userId || ''));

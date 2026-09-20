@@ -21,10 +21,13 @@ type FeaturedPayload = {
 
 export default function SharedChatFeaturedOverlay() {
   const [tenant, setTenant] = React.useState("");
+  const [fallback, setFallback] = React.useState("");
   const [payload, setPayload] = React.useState<FeaturedPayload | null>(null);
 
   React.useEffect(() => {
-    setTenant(new URLSearchParams(window.location.search).get("tenant") || "");
+    const params = new URLSearchParams(window.location.search);
+    setTenant(params.get("tenant") || "");
+    setFallback(params.get("fallback") || "");
   }, []);
 
   React.useEffect(() => {
@@ -32,7 +35,8 @@ export default function SharedChatFeaturedOverlay() {
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch(`/api/shared-chat/featured?tenant=${encodeURIComponent(tenant)}`, { cache: "no-store" });
+        const fallbackQuery = fallback === "latest" ? "&fallback=latest" : "";
+        const response = await fetch(`/api/shared-chat/featured?tenant=${encodeURIComponent(tenant)}${fallbackQuery}`, { cache: "no-store" });
         if (!response.ok) return;
         const next = await response.json();
         if (active) setPayload(next);
@@ -41,9 +45,20 @@ export default function SharedChatFeaturedOverlay() {
     void load();
     const timer = window.setInterval(() => void load(), 1_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [tenant]);
+  }, [tenant, fallback]);
 
-  if (!payload?.event) return null;
+  if (!payload?.event) {
+    if (fallback !== "latest") return null;
+    return (
+      <main className="flex min-h-screen items-end justify-center bg-transparent p-3 font-sans">
+        <style jsx global>{`html, body { background: transparent !important; }`}</style>
+        <article className="w-full rounded-2xl border border-cyan-300/30 bg-slate-950/75 p-4 text-white shadow-2xl backdrop-blur-xl">
+          <strong className="text-sm uppercase tracking-widest text-cyan-200">Featured chat</strong>
+          <p className="mt-2 text-base text-white/70">Waiting for the next community message…</p>
+        </article>
+      </main>
+    );
+  }
   const { event, presentation } = payload;
   const appearance = presentation.style === "minimal"
     ? "border-l-4 border-cyan-300 bg-transparent"
@@ -52,7 +67,7 @@ export default function SharedChatFeaturedOverlay() {
       : "border border-white/20 bg-slate-950/75 backdrop-blur-xl";
 
   return (
-    <main className="flex min-h-screen items-end justify-center bg-transparent p-10 font-sans">
+    <main className="flex min-h-screen items-end justify-center bg-transparent p-3 font-sans">
       <style jsx global>{`html, body { background: transparent !important; }`}</style>
       <article key={event.eventId} className={`w-full max-w-3xl rounded-2xl p-5 text-white shadow-2xl ${appearance}`}>
         <div className="flex items-center gap-4">
@@ -63,7 +78,7 @@ export default function SharedChatFeaturedOverlay() {
               <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 font-bold uppercase text-cyan-200">{event.platform}</span>
               <span className="text-white/60">{event.channelName || event.sourceName || ""}</span>
             </div>
-            <p className="mt-2 whitespace-pre-wrap break-words text-2xl font-medium leading-snug">{event.text}</p>
+            <p className="mt-2 line-clamp-5 whitespace-pre-wrap break-words text-lg font-medium leading-snug">{event.text}</p>
             {(event.donation || event.membership) && (
               <p className="mt-2 font-bold text-amber-300">
                 {event.donation?.display || (event.donation ? `${event.donation.amount} ${event.donation.currency}` : "")}
