@@ -53,3 +53,13 @@ test('Twitch social commands publish an overlay event before replying', () => {
     'the Twitch social animation must publish before the chat reply',
   );
 });
+
+test('Twitch HearMeOut commands acknowledge and bridge both global queues', () => {
+  const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+  assert.match(dispatcher, /\^!\(sr\|wr\|play\|pause\|stop\|skip\|next\|np\|nowplaying\|mute\|unmute\|volume\)/);
+  assert.match(dispatcher, /!\$\{command\} received/);
+  assert.match(dispatcher, /sessionId = command === 'sr' \? 'discord-music-room' : 'discord-watch-room'/);
+  assert.match(dispatcher, /action: 'hmo\.media\.request'/);
+  assert.match(dispatcher, /action: 'hmo\.media\.control'/);
+  assert.doesNotMatch(dispatcher, /HearMeOut's Twitch bot listens directly for !sr/);
+});

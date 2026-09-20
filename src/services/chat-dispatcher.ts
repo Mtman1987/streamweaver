@@ -69,6 +69,7 @@ import {
 import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
+import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
@@ -3667,9 +3668,102 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
-        // HearMeOut's Twitch bot listens directly for !sr. Re-posting it from
-        // Athena creates duplicate queue entries and wakes AI mention handling.
-        if (actualMessage.toLowerCase().startsWith('!sr ')) {
+        // Twitch chat is routed through StreamWeaver in this channel. Bridge
+        // media commands directly to HearMeOut's two canonical 24/7 sessions
+        // and always acknowledge them so chat can see where a failure occurs.
+        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|play|pause|stop|skip|next|np|nowplaying|mute|unmute|volume)(?:\s+(.*))?$/i);
+        if (hearMeOutCommand) {
+            const command = hearMeOutCommand[1].toLowerCase();
+            const argument = String(hearMeOutCommand[2] || '').trim();
+            const actorUserId = String(tags.username || tags['user-id'] || actualUsername);
+            const actionBase = {
+                tenantId: tenantId || 'spacemountainlive',
+                actorUserId,
+                actorName: actualUsername,
+                actorRole: tags.badges?.broadcaster ? 'owner' : tags.mod ? 'moderator' : 'member',
+            } as const;
+            const readSession = (sessionId: string) => executeHearMeOutBotAction({
+                ...actionBase,
+                action: 'hmo.media.state.read',
+                sessionId,
+            });
+            const replyFailure = async (error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                await reply(`❌ HearMeOut received !${command}, but it failed: ${message}`, 'bot').catch(() => {});
+            };
+
+            if (command === 'sr' || command === 'wr') {
+                if (!argument) {
+                    await reply(`@${actualUsername}, usage: !${command} <${command === 'sr' ? 'song or YouTube URL' : 'movie, show, or video'}>`, 'bot').catch(() => {});
+                    return;
+                }
+                const sessionId = command === 'sr' ? 'discord-music-room' : 'discord-watch-room';
+                await reply(`📡 @${actualUsername}, !${command} received — searching HearMeOut now.`, 'bot').catch(() => {});
+                try {
+                    const result: any = await executeHearMeOutBotAction({
+                        ...actionBase,
+                        action: 'hmo.media.request',
+                        sessionId,
+                        query: argument,
+                    });
+                    const title = result?.request?.item?.title || argument;
+                    const position = result?.session?.current?.requestId === result?.request?.requestId
+                        ? 'now playing'
+                        : `queued (${result?.session?.queue?.length || 1})`;
+                    await reply(`✅ HearMeOut: ${title} — ${position}.`, 'bot').catch(() => {});
+                } catch (error) {
+                    await replyFailure(error);
+                }
+                return;
+            }
+
+            if (command === 'np' || command === 'nowplaying') {
+                try {
+                    const [music, movie]: any[] = await Promise.all([
+                        readSession('discord-music-room'),
+                        readSession('discord-watch-room'),
+                    ]);
+                    const active = music?.session?.current ? music.session : movie?.session?.current ? movie.session : null;
+                    await reply(active?.current?.item?.title
+                        ? `▶️ HearMeOut: ${active.current.item.title} (${active.playback?.status || 'ready'}) · ${active.queue?.length || 0} queued.`
+                        : 'HearMeOut is idle; both queues are empty.', 'bot').catch(() => {});
+                } catch (error) {
+                    await replyFailure(error);
+                }
+                return;
+            }
+
+            if (!(tags.mod || tags.badges?.broadcaster)) {
+                await reply(`@${actualUsername}, only the broadcaster or a moderator can use !${command}.`, 'bot').catch(() => {});
+                return;
+            }
+            const control = command === 'stop' ? 'pause' : command === 'skip' || command === 'next' ? 'next' : command;
+            const value = command === 'volume' ? Number(argument) : undefined;
+            if (command === 'volume' && (!argument || !Number.isFinite(value) || value! < 0 || value! > 100)) {
+                await reply(`@${actualUsername}, usage: !volume 0-100`, 'bot').catch(() => {});
+                return;
+            }
+            await reply(`📡 @${actualUsername}, !${command} received — applying it to HearMeOut.`, 'bot').catch(() => {});
+            try {
+                const [music, movie]: any[] = await Promise.all([
+                    readSession('discord-music-room'),
+                    readSession('discord-watch-room'),
+                ]);
+                const sessionId = music?.session?.current ? 'discord-music-room'
+                    : movie?.session?.current ? 'discord-watch-room'
+                    : 'discord-music-room';
+                const result: any = await executeHearMeOutBotAction({
+                    ...actionBase,
+                    action: 'hmo.media.control',
+                    sessionId,
+                    control,
+                    value,
+                });
+                const title = result?.session?.current?.item?.title || 'media player';
+                await reply(`✅ HearMeOut ${control}${command === 'volume' ? ` ${value}%` : ''}: ${title}.`, 'bot').catch(() => {});
+            } catch (error) {
+                await replyFailure(error);
+            }
             return;
         }
 
