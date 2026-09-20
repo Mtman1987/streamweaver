@@ -144,6 +144,9 @@ button:hover{background:#3d2b5e;border-color:#ffd700}
 <div id="detailOverlay" class="detail-overlay" style="display:none" onclick="if(event.target===this)closeDetail()"></div>
 <script>
 const OWNER='${username.toLowerCase()}';
+const PAGE_PARAMS=new URLSearchParams(window.location.search);
+const FOCUS_CARD=(PAGE_PARAMS.get('card')||'').trim().toLowerCase();
+const TRADE_WITH=(PAGE_PARAMS.get('trade')||'').trim().replace(/^@/,'').toLowerCase();
 const ALL_USERS=${JSON.stringify({
     [username.toLowerCase()]: { cards: enriched, packsOpened, rareCount, deck: allCollections[username.toLowerCase()]?.deck || null },
     ...Object.fromEntries(Object.entries(otherUsers).map(([u, d]) => [u, {
@@ -465,6 +468,21 @@ buildTabs();buildToolbar();
 const savedDeck=ALL_USERS[OWNER]?.deck;
 if(savedDeck){deckCards=savedDeck.cards||[];for(const[t,n]of Object.entries(savedDeck.energy||{}))if(deckEnergy[t]!==undefined)deckEnergy[t]=n}
 buildDeckBar();buildControls();filterCards();
+
+if(TRADE_WITH&&ALL_USERS[TRADE_WITH]&&TRADE_WITH!==OWNER){
+  currentUser=TRADE_WITH;
+  pickMode='swap';
+  buildTabs();buildToolbar();buildControls();filterCards();
+}
+if(FOCUS_CARD){
+  const cards=ALL_USERS[OWNER]?.cards||[];
+  const hit=cards.find(c=>
+    c.name.toLowerCase()===FOCUS_CARD||
+    c.name.toLowerCase().includes(FOCUS_CARD)||
+    (c.setCode+'-'+c.number).toLowerCase()===FOCUS_CARD
+  );
+  if(hit)setTimeout(()=>showDetail(hit.idx),60);
+}
 <\/script>
 </body></html>`;
 }

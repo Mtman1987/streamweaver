@@ -17,11 +17,6 @@ type PendingSwap = {
 
 const pendingSwaps = new Map<string, Map<string, PendingSwap>>();
 
-function normalizeTenantId(tenantId?: string): string | undefined {
-  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
-  return tenantId;
-}
-
 function tenantLookupOrder(tenantId?: string): string[] {
   const ids = [tenantId || 'global'];
   if (ids[0] !== 'global') ids.push('global');
@@ -59,7 +54,6 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
   } catch {}
 
   const tid = tenantId || 'global';
-  const broadcastTid = normalizeTenantId(tenantId);
   const tenantSwaps = pendingSwaps.get(tid) || new Map();
   pendingSwaps.set(tid, tenantSwaps);
 
@@ -93,25 +87,11 @@ export async function proposeSwap(fromUser: string, toUser: string, fromCardNum:
     tenantId
   ).catch(() => {});
 
-  if (typeof (global as any).broadcast === 'function') {
-    (global as any).broadcast({
-      type: 'pokemon-swap-proposal',
-      payload: { from: fromUser, to: toUser, fromCard: fc, toCard: tc },
-    }, broadcastTid);
-    (global as any).broadcast({
-      type: 'pokemon-trade-preview',
-      userA: fromUser, userB: toUser,
-      avatarA: fromAvatar, avatarB: toAvatar,
-      cardA: { name: fc.name, number: fc.number, setCode: fc.setCode, imageUrl: fc.imageUrl },
-      cardB: { name: tc.name, number: tc.number, setCode: tc.setCode, imageUrl: tc.imageUrl },
-    }, broadcastTid);
-  }
 }
 
 export async function acceptSwap(username: string, tenantId?: string): Promise<boolean> {
   const tid = tenantLookupOrder(tenantId).find((id) => pendingSwaps.get(id)?.has(username.toLowerCase()));
   if (!tid) return false;
-  const broadcastTid = normalizeTenantId(tenantId);
   const tenantSwaps = pendingSwaps.get(tid);
   if (!tenantSwaps) return false;
 
@@ -158,16 +138,6 @@ export async function acceptSwap(username: string, tenantId?: string): Promise<b
     undefined,
     tenantId
   ).catch(() => {});
-
-  if (typeof (global as any).broadcast === 'function') {
-    (global as any).broadcast({
-      type: 'pokemon-trade-execute',
-      userA: swap.from, userB: swap.to,
-      avatarA: swap.fromAvatar, avatarB: swap.toAvatar,
-      cardA: { name: swap.fromCard.name, number: swap.fromCard.number, setCode: swap.fromCard.setCode, imageUrl: swap.fromCard.imageUrl },
-      cardB: { name: swap.toCard.name, number: swap.toCard.number, setCode: swap.toCard.setCode, imageUrl: swap.toCard.imageUrl },
-    }, broadcastTid);
-  }
 
   return true;
 }
