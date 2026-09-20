@@ -84,6 +84,16 @@ test('Twitch HearMeOut commands acknowledge and bridge both global queues', () =
   assert.doesNotMatch(dispatcher, /HearMeOut's Twitch bot listens directly for !sr/);
 });
 
+test('Space Mountain owner and Twitch moderators can control Lounge playback', () => {
+  const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+  assert.match(dispatcher, /const isHearMeOutOwner = Boolean\(/);
+  assert.match(dispatcher, /isSpaceMountainBroadcasterCommand/);
+  assert.match(dispatcher, /actualUsername\.toLowerCase\(\) === broadcasterUsername\.toLowerCase\(\)/);
+  assert.match(dispatcher, /const canControlHearMeOut = Boolean\(tags\.mod \|\| isHearMeOutOwner\)/);
+  assert.match(dispatcher, /actorRole: isHearMeOutOwner \? 'owner'/);
+  assert.match(dispatcher, /if \(!canControlHearMeOut\)/);
+});
+
 test('Lounge has separate partner and community live shoutout rotations', () => {
   const overlay = fs.readFileSync('src/app/overlay/live-shoutouts/page.tsx', 'utf8');
   const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
