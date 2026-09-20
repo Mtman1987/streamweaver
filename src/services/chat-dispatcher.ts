@@ -70,6 +70,7 @@ import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
+import { overrideLoungeMediaLayout, voteLoungeMediaLayout } from './lounge-media-layout';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
@@ -3677,6 +3678,48 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // Twitch chat is routed through StreamWeaver in this channel. Bridge
         // media commands directly to HearMeOut's two canonical 24/7 sessions
         // and always acknowledge them so chat can see where a failure occurs.
+        const loungeLayoutVote = actualMessage.trim().match(/^!bump(media|stream)$/i);
+        if (loungeLayoutVote) {
+            const target = loungeLayoutVote[1].toLowerCase() === 'media' ? 'media' : 'stream';
+            try {
+                const result = await voteLoungeMediaLayout(target, String(tags['user-id'] || tags.username || actualUsername));
+                if (!result.accepted) {
+                    await reply(`🔒 The Lounge layout is locked by a moderator. Mods can use !layout auto to reopen voting.`, 'bot').catch(() => {});
+                } else if (result.changed) {
+                    await reply(`🚀 Vote passed — ${target === 'media' ? 'HearMeOut is now on the main stage and the live stream is in the media box' : 'the live stream is back on the main stage and HearMeOut is in the media box'}.`, 'bot').catch(() => {});
+                } else {
+                    const count = result.votes[target];
+                    await reply(`🗳️ @${actualUsername} voted to bump ${target}. ${count}/${result.votes.required} votes.`, 'bot').catch(() => {});
+                }
+            } catch (error) {
+                await reply(`❌ Lounge layout vote failed: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
+        const loungeLayoutOverride = actualMessage.trim().match(/^!(media|hmo|stream|live)\s+big$|^!layout\s+auto$/i);
+        if (loungeLayoutOverride) {
+            if (!canControlHearMeOut) {
+                await reply(`@${actualUsername}, only the broadcaster or a moderator can override the Lounge layout.`, 'bot').catch(() => {});
+                return;
+            }
+            const target = /^!layout\s+auto$/i.test(actualMessage.trim())
+                ? 'auto'
+                : /^(?:media|hmo)$/i.test(String(loungeLayoutOverride[1] || '')) ? 'media' : 'stream';
+            try {
+                await overrideLoungeMediaLayout(target, actualUsername);
+                const message = target === 'auto'
+                    ? 'Lounge layout voting is open again.'
+                    : target === 'media'
+                        ? 'HearMeOut is locked to the main stage; the live stream is in the media box.'
+                        : 'The live stream is locked to the main stage; HearMeOut is in the media box.';
+                await reply(`✅ ${message}`, 'bot').catch(() => {});
+            } catch (error) {
+                await reply(`❌ Lounge layout override failed: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
         const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume)(?:\s+(.*))?$/i);
         if (hearMeOutCommand) {
             const command = hearMeOutCommand[1].toLowerCase();

@@ -160,6 +160,23 @@ test('changing Lounge names and titles auto-fit instead of truncating', () => {
   assert.match(leaderboard, /<AutoFitText minFontSize=\{8\} maxFontSize=\{15\}/);
 });
 
+test('Lounge media bump supports viewer votes and broadcaster or moderator overrides', () => {
+  const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+  const state = fs.readFileSync('src/services/lounge-media-layout.ts', 'utf8');
+  const route = fs.readFileSync('src/app/api/lounge/media-layout/route.ts', 'utf8');
+  const middleware = fs.readFileSync('src/middleware.ts', 'utf8');
+  assert.match(dispatcher, /!bump\(media\|stream\)/);
+  assert.match(dispatcher, /!\(media\|hmo\|stream\|live\).*big/);
+  assert.match(dispatcher, /!layout\\s\+auto/);
+  assert.match(dispatcher, /if \(!canControlHearMeOut\)/);
+  assert.match(dispatcher, /voteLoungeMediaLayout/);
+  assert.match(dispatcher, /overrideLoungeMediaLayout/);
+  assert.match(state, /LOUNGE_MEDIA_BUMP_VOTES/);
+  assert.match(state, /VOTE_WINDOW_MS = 5 \* 60 \* 1000/);
+  assert.match(route, /access-control-allow-origin/);
+  assert.match(middleware, /api\/lounge\/media-layout/);
+});
+
 test('Lounge live cards use current Twitch live members and DSH group metadata', () => {
   const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
   assert.match(route, /const currentLiveMembers = Array\.isArray\(chatTag\?\.liveMembers\)/);
