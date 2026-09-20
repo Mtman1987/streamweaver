@@ -12,7 +12,14 @@ test('ordinary viewer messages remain eligible for Twitch say TTS', () => {
   }), true);
 });
 
-test('StellaBot87 messages are spoken for the Stella system tenant', () => {
+test('AthenaBot87 and StellaBot87 messages are always spoken from Twitch chat', () => {
+  assert.equal(shouldQueueTwitchSay({
+    tenantId: 'mtman1987',
+    username: 'AthenaBot87',
+    isCommand: false,
+    isBotMessage: true,
+    isKnownAutomationBotMessage: false,
+  }), true);
   assert.equal(shouldQueueTwitchSay({
     tenantId: 'spacemountainlive',
     username: 'StellaBot87',
