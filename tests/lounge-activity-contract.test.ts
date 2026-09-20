@@ -123,6 +123,9 @@ test('top-right strip prioritizes active games then identifies the main spotligh
   const route = fs.readFileSync('src/app/api/lounge/status-strip/route.ts', 'utf8');
   assert.match(overlay, /ACTIVE GAME/);
   assert.match(overlay, /NOW SHOWING/);
+  assert.match(overlay, /payload\.games\.length \+ \(payload\.spotlight \? 1 : 0\)/);
+  assert.match(overlay, /activeIndex === payload\.games\.length/);
+  assert.match(overlay, /rotationCount < 2/);
   assert.match(overlay, /spotlight\.avatarUrl/);
   assert.doesNotMatch(overlay, /Space Mountain Live/);
   assert.match(route, /api\/game-hub\/channel\?channel=spacemountainlive/);

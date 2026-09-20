@@ -9,7 +9,7 @@ type StatusPayload = {
 
 export default function LoungeStatusStrip() {
   const [payload, setPayload] = React.useState<StatusPayload>({ games: [], spotlight: null });
-  const [gameIndex, setGameIndex] = React.useState(0);
+  const [rotationIndex, setRotationIndex] = React.useState(0);
 
   React.useEffect(() => {
     let active = true;
@@ -26,14 +26,19 @@ export default function LoungeStatusStrip() {
     return () => { active = false; window.clearInterval(refresh); };
   }, []);
 
-  React.useEffect(() => {
-    if (payload.games.length < 2) return;
-    const rotation = window.setInterval(() => setGameIndex((current) => (current + 1) % payload.games.length), 8_000);
-    return () => window.clearInterval(rotation);
-  }, [payload.games.length]);
+  const rotationCount = payload.games.length + (payload.spotlight ? 1 : 0);
 
-  const game = payload.games[gameIndex % Math.max(1, payload.games.length)] || null;
+  React.useEffect(() => {
+    setRotationIndex((current) => rotationCount ? current % rotationCount : 0);
+    if (rotationCount < 2) return;
+    const rotation = window.setInterval(() => setRotationIndex((current) => (current + 1) % rotationCount), 8_000);
+    return () => window.clearInterval(rotation);
+  }, [rotationCount]);
+
   const spotlight = payload.spotlight;
+  const activeIndex = rotationIndex % Math.max(1, rotationCount);
+  const showSpotlight = Boolean(spotlight) && activeIndex === payload.games.length;
+  const game = showSpotlight ? null : payload.games[activeIndex] || null;
   const initial = spotlight?.displayName.charAt(0).toUpperCase() || '✦';
 
   return (
@@ -50,7 +55,7 @@ export default function LoungeStatusStrip() {
         .gameIcon { flex:0 0 auto;font-size:21px;filter:drop-shadow(0 0 5px #6fefff); }
         @keyframes swap { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
       `}</style>
-      {game ? (
+      {game && !showSpotlight ? (
         <section className="strip" key={game.id}><div className="gameIcon">🎮</div><div className="copy"><div className="label">ACTIVE GAME</div><div className="value">{game.name}{game.command ? ` · !${game.command}` : ''}</div></div></section>
       ) : (
         <section className="strip" key={spotlight?.login || 'waiting'}>
