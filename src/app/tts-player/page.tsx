@@ -680,10 +680,12 @@ export default function TTSPlayer() {
 
       <div style={{
         position: 'absolute',
-        left: 320,
-        right: '5vw',
-        bottom: 54,
-        minHeight: 56,
+        left: loungePlacement ? '23%' : 320,
+        right: loungePlacement ? '29%' : '5vw',
+        bottom: loungePlacement ? '32%' : 54,
+        minHeight: loungePlacement ? 0 : 56,
+        maxHeight: loungePlacement ? '3.45em' : undefined,
+        overflow: loungePlacement ? 'hidden' : 'visible',
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'flex-start',
@@ -692,17 +694,23 @@ export default function TTSPlayer() {
         transition: 'opacity 0.7s ease',
       }}>
         <div style={{
-          maxWidth: 'min(1080px, 78vw)',
+          maxWidth: loungePlacement ? '100%' : 'min(1080px, 78vw)',
           color: '#ffd900',
           fontFamily: 'Arial Black, Inter, system-ui, sans-serif',
           fontWeight: 900,
-          fontSize: 'clamp(24px, 2.4vw, 48px)',
+          fontSize: loungePlacement ? 'clamp(16px, 2vw, 24px)' : 'clamp(24px, 2.4vw, 48px)',
           lineHeight: 1.16,
           letterSpacing: '0.01em',
           textAlign: 'left',
           textWrap: 'balance',
           WebkitTextStroke: '1px rgba(0,0,0,.9)',
           textShadow: '0 3px 3px #000, 0 0 8px #000, 0 0 18px rgba(0,0,0,.9)',
+          ...(loungePlacement ? {
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical' as const,
+            WebkitLineClamp: 3,
+            overflow: 'hidden',
+          } : {}),
         }}>
           {captionText}
         </div>
