@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { shouldQueueTwitchSay } from '../src/services/twitch-say-policy';
+import {
+  ATHENA_TWITCH_TTS_VOICE,
+  getTwitchBotTtsVoice,
+  shouldQueueTwitchSay,
+} from '../src/services/twitch-say-policy';
 
 test('ordinary viewer messages remain eligible for Twitch say TTS', () => {
   assert.equal(shouldQueueTwitchSay({
@@ -44,4 +48,9 @@ test('other bot messages and commands remain blocked from Twitch say TTS', () =>
     isBotMessage: true,
     isKnownAutomationBotMessage: false,
   }), false);
+});
+
+test('Athena keeps her canonical voice while Stella uses her configured voice', () => {
+  assert.equal(getTwitchBotTtsVoice('AthenaBot87'), ATHENA_TWITCH_TTS_VOICE);
+  assert.equal(getTwitchBotTtsVoice('StellaBot87'), undefined);
 });
