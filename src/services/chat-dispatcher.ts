@@ -3700,9 +3700,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             return;
         }
-        // Twitch chat is routed through StreamWeaver in this channel. Bridge
-        // media commands directly to HearMeOut's two canonical 24/7 sessions
-        // and always acknowledge them so chat can see where a failure occurs.
+        // Twitch chat is routed through StreamWeaver in this channel. The
+        // HearMeOut service adapter sends these legacy command shapes to the
+        // isolated Apollo Lounge player; it must not mutate the retired global
+        // HearMeOut sessions.
         const loungeLayoutVote = actualMessage.trim().match(/^!bump(media|stream)$/i);
         if (loungeLayoutVote) {
             const target = loungeLayoutVote[1].toLowerCase() === 'media' ? 'media' : 'stream';
@@ -3772,7 +3773,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     return;
                 }
                 const sessionId = command === 'sr' ? 'discord-music-room' : 'discord-watch-room';
-                await reply(`📡 @${actualUsername}, !${command} received — searching HearMeOut now.`, 'bot').catch(() => {});
+                await reply(`📡 @${actualUsername}, !${command} received — searching the 24-Hour Lounge now.`, 'bot').catch(() => {});
                 try {
                     const result: any = await executeHearMeOutBotAction({
                         ...actionBase,
@@ -3781,10 +3782,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         query: argument,
                     });
                     const title = result?.request?.item?.title || argument;
-                    const position = result?.session?.current?.requestId === result?.request?.requestId
-                        ? 'now playing'
-                        : `queued (${result?.session?.queue?.length || 1})`;
-                    await reply(`✅ HearMeOut: ${title} — ${position}.`, 'bot').catch(() => {});
+                    const confirmation = String(result?.message || 'Added to the 24-Hour Lounge queue.').replace(/[.]+$/, '');
+                    await reply(`✅ 24-Hour Lounge: ${title} — ${confirmation}.`, 'bot').catch(() => {});
                 } catch (error) {
                     await replyFailure(error);
                 }
