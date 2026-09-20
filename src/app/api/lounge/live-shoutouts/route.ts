@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
           username,
           displayName: text(details.twitchDisplayName, row.displayName, row.username, username) || 'Live creator',
           avatarUrl: text(featured.avatarUrl, profile.profile_image_url, row.avatarUrl, details.avatarUrl),
-          gameName: text(featured.gameTitle, details.gameName),
+          gameName: text(featured.gameTitle, details.gameName, details.game_name, row.gameName, row.game_name),
           title: text(featured.streamTitle, details.streamTitle),
           viewerCount: Math.max(0, Number(featured.viewerCount ?? details.viewerCount ?? 0) || 0),
           group: group === 'partner' ? 'Partner / Crew' : 'Community',

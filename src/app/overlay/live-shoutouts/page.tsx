@@ -7,9 +7,7 @@ type Creator = {
   displayName: string;
   avatarUrl: string;
   gameName: string;
-  title: string;
   viewerCount: number;
-  group: string;
 };
 
 export default function LoungeLiveShoutouts() {
@@ -61,7 +59,6 @@ export default function LoungeLiveShoutouts() {
 
   const creator = creators[index] || null;
   const initial = creator?.displayName.trim().charAt(0).toUpperCase() || '✦';
-  const label = group === 'partner' ? 'PARTNER SPOTLIGHT' : 'COMMUNITY LIVE';
 
   return (
     <main className="stage">
@@ -76,8 +73,7 @@ export default function LoungeLiveShoutouts() {
         .copy { position: relative; z-index: 1; min-width: 0; }
         .card:not(.leaving) .copy, .card:not(.leaving) .avatar, .card:not(.leaving) .avatarFallback, .card:not(.leaving) .live { animation: slideIn 1.1s cubic-bezier(.2,.8,.2,1) both; }
         .card.leaving .copy, .card.leaving .avatar, .card.leaving .avatarFallback, .card.leaving .live { animation: slideOut 1.1s cubic-bezier(.4,0,.8,.2) both; }
-        .eyebrow { padding-right: 58px; overflow: hidden; color: #94f4ff; font-size: 9px; font-weight: 1000; letter-spacing: .1em; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
-        .name { margin-top: 4px; overflow: hidden; font: 900 clamp(16px,8vw,25px)/1 Georgia,'Times New Roman',serif; text-overflow: ellipsis; text-shadow: 0 2px 4px #000; white-space: nowrap; }
+        .name { padding-right: 58px; overflow: hidden; font: 900 clamp(16px,8vw,25px)/1 Georgia,'Times New Roman',serif; text-overflow: ellipsis; text-shadow: 0 2px 4px #000; white-space: nowrap; }
         .game { margin-top: 5px; overflow: hidden; color: #e8f9ff; font-size: 11px; font-weight: 800; line-height: 1.05; text-overflow: ellipsis; white-space: nowrap; }
         .live { position: absolute; z-index: 2; right: 8px; top: 7px; display: flex; min-width: 48px; flex-direction: row; align-items: center; justify-content: center; gap: 4px; padding: 4px 6px; border-radius: 8px; background: rgba(2,8,30,.82); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
         .live strong { color: #ff6683; font-size: 10px; letter-spacing: .08em; }
@@ -91,9 +87,8 @@ export default function LoungeLiveShoutouts() {
         <article className={`card${leaving ? ' leaving' : ''}`} key={`${creator.username}-${index}`}>
           {creator.avatarUrl ? <img className="avatar" src={creator.avatarUrl} alt="" /> : <div className="avatarFallback">{initial}</div>}
           <div className="copy">
-            <div className="eyebrow">{label}</div>
             <div className="name">{creator.displayName}</div>
-            <div className="game">{creator.gameName || creator.title || 'Live on Twitch'}</div>
+            <div className="game">{creator.gameName || 'Just Chatting'}</div>
           </div>
           <div className="live"><strong>● LIVE</strong><span>{creator.viewerCount.toLocaleString()}</span></div>
         </article>
