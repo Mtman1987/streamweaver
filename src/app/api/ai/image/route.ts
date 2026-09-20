@@ -8,6 +8,7 @@ import { generateImageWithEdenAI } from '@/services/image-provider';
 import { generateImageWithSeaArt } from '@/services/image-provider';
 import { generateImageWithPerchance } from '@/services/image-provider';
 import { generateImageWithPollinations } from '@/services/image-provider';
+import { generateImageWithOpenAI } from '@/services/image-provider';
 import { isSeaArtModelMismatchError } from '@/services/image-provider';
 import { CloudflareWorkersAIUnavailableError, generateImageWithCloudflare } from '@/services/cloudflare-image';
 import { getGenMode } from '@/lib/gen-mode-store';
@@ -24,7 +25,7 @@ const imageSchema = z.object({
   resolution: z.string().trim().min(3).max(32).optional(),
   numImages: z.coerce.number().int().min(1).max(4).optional(),
   providerParams: z.record(z.unknown()).optional(),
-  providerOverride: z.enum(['cloudflare', 'eden', 'seaart', 'perchance', 'pollinations']).optional(),
+  providerOverride: z.enum(['cloudflare', 'eden', 'openai', 'seaart', 'perchance', 'pollinations']).optional(),
   scope: z.enum(['public', 'private']).optional().default('public'),
   tenantId: z.string().trim().max(128).optional(),
 });
@@ -123,6 +124,8 @@ export async function POST(request: NextRequest) {
     const genMode = parsed.data.providerOverride || settings?.mode || legacyMode;
     const generator = genMode === 'cloudflare'
       ? generateImageWithCloudflare
+      : genMode === 'openai'
+        ? generateImageWithOpenAI
       : genMode === 'seaart'
         ? generateImageWithSeaArt
         : genMode === 'perchance'
@@ -133,7 +136,9 @@ export async function POST(request: NextRequest) {
     const generationOptions = {
       prompt: parsed.data.prompt,
       tenantId,
-      model: parsed.data.model || settings?.model || undefined,
+      // A provider override must not inherit a saved model belonging to a
+      // different provider (for example, an Eden model ID sent to OpenAI).
+      model: parsed.data.model || (parsed.data.providerOverride ? undefined : settings?.model) || undefined,
       resolution: parsed.data.resolution || settings?.resolution || undefined,
       numImages: parsed.data.numImages || settings?.imageCount || 1,
       providerParams: {

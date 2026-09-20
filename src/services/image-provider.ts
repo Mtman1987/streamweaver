@@ -19,6 +19,7 @@ export type ImageGenerationOptions = {
 };
 
 export const EDEN_IMAGE_PROMPT_MAX_LENGTH = 1500;
+export const DEFAULT_OPENAI_IMAGE_MODEL = 'gpt-image-2.5-flare';
 
 export function compactImagePrompt(prompt: string, maxLength: number): string {
   const normalized = String(prompt || '').replace(/\s+/g, ' ').trim();
@@ -211,6 +212,54 @@ function normalizeSeaArtDimensions(resolution: string | undefined, hd: boolean):
 function getEdenAIKey(tenantId?: string): string {
   const config = readUserConfigSync(tenantId);
   return config.EDENAI_API_KEY || process.env.EDENAI_API_KEY || '';
+}
+
+function getOpenAIKey(tenantId?: string): string {
+  const config = readUserConfigSync(tenantId);
+  return config.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+}
+
+export function buildOpenAIImagePayload(options: ImageGenerationOptions) {
+  const count = Math.max(1, Math.min(4, Number(options.numImages || 1) || 1));
+  return {
+    model: String(options.model || process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL).trim(),
+    prompt: compactImagePrompt(options.prompt, 3000),
+    size: options.resolution || '1024x1024',
+    quality: String(options.providerParams?.quality || 'low'),
+    n: count,
+    output_format: String(options.providerParams?.outputFormat || 'png'),
+  };
+}
+
+export async function generateImageWithOpenAI(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  const apiKey = getOpenAIKey(options.tenantId);
+  if (!apiKey) throw new Error('No OpenAI API key configured for image generation');
+
+  const payload = buildOpenAIImagePayload(options);
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const data = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+  if (!response.ok) {
+    const detail = data?.error?.message || data?.error || summarizeResponseBody(data);
+    throw new Error(`OpenAI image generation failed: ${response.status} ${String(detail).slice(0, 500)}`);
+  }
+
+  const images = (Array.isArray(data?.data) ? data.data : [])
+    .map((entry: any) => {
+      const base64 = String(entry?.b64_json || '').trim();
+      if (base64) return `data:image/${payload.output_format};base64,${base64}`;
+      return String(entry?.url || '').trim();
+    })
+    .filter(Boolean);
+  if (!images.length) throw new Error('OpenAI image generation returned no image');
+  return { image: images[0], images, raw: data };
 }
 
 export const DEFAULT_EDEN_IMAGE_MODEL = 'image/generation/leonardo/SDXL 0.9';

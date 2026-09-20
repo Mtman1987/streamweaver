@@ -192,6 +192,55 @@ test('EdenAI compacts provider payload prompts to Leonardo limit', async () => {
   assert.match(payload.input.text, /^detail-0 detail-1/);
 });
 
+test('OpenAI image generation uses the inexpensive direct Image API settings', async () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  const originalModel = process.env.OPENAI_IMAGE_MODEL;
+  process.env.OPENAI_API_KEY = 'test-openai-key';
+  delete process.env.OPENAI_IMAGE_MODEL;
+
+  try {
+    let requestUrl = '';
+    let requestHeaders: Record<string, string> = {};
+    let requestPayload: Record<string, unknown> = {};
+    global.fetch = (async (input, init) => {
+      requestUrl = String(input);
+      requestHeaders = init?.headers as Record<string, string>;
+      requestPayload = JSON.parse(String(init?.body || '{}'));
+      return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const { DEFAULT_OPENAI_IMAGE_MODEL, generateImageWithOpenAI } = await import('../src/services/image-provider');
+    const result = await generateImageWithOpenAI({
+      prompt: 'one centered pixel-art owl',
+      resolution: '1024x1024',
+      numImages: 1,
+      providerParams: { quality: 'low' },
+    });
+
+    assert.equal(requestUrl, 'https://api.openai.com/v1/images/generations');
+    assert.equal(requestHeaders.Authorization, 'Bearer test-openai-key');
+    assert.deepEqual(requestPayload, {
+      model: DEFAULT_OPENAI_IMAGE_MODEL,
+      prompt: 'one centered pixel-art owl',
+      size: '1024x1024',
+      quality: 'low',
+      n: 1,
+      output_format: 'png',
+    });
+    assert.equal(result.image, 'data:image/png;base64,aW1hZ2U=');
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+    if (originalModel === undefined) delete process.env.OPENAI_IMAGE_MODEL;
+    else process.env.OPENAI_IMAGE_MODEL = originalModel;
+  }
+});
+
 test('EdenAI image payload excludes SeaArt-only tuning variables', async () => {
   const { buildEdenAIImagePayload, DEFAULT_EDEN_IMAGE_MODEL } = await import('../src/services/image-provider');
   const payload = buildEdenAIImagePayload({
