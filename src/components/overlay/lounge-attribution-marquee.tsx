@@ -60,7 +60,7 @@ export function LoungeAttributionMarquee() {
           z-index: 20;
           right: 10px;
           bottom: 8px;
-          height: 50px;
+          height: 38px;
           max-width: calc(100vw - 20px);
           overflow: hidden;
           border: 1.5px solid rgba(73, 237, 255, .92);
@@ -68,39 +68,53 @@ export function LoungeAttributionMarquee() {
           color: #fff;
           background:
             linear-gradient(110deg, rgba(12, 7, 35, .96), rgba(52, 20, 105, .95) 46%, rgba(3, 65, 112, .96));
-          box-shadow: 0 0 11px rgba(41, 239, 255, .72), inset 0 0 18px rgba(128, 76, 255, .24);
+          box-shadow: 0 0 7px rgba(41, 239, 255, .58), inset 0 0 13px rgba(128, 76, 255, .2);
           font-family: Inter, ui-sans-serif, system-ui, sans-serif;
           pointer-events: none;
-          transition: width .8s cubic-bezier(.2,.8,.2,1), border-radius .8s ease;
+          transition: width .8s cubic-bezier(.2,.8,.2,1), height .65s ease, border-radius .8s ease;
         }
-        .compact { width: min(350px, calc(100vw - 20px)); }
-        .expanded { width: calc(100vw - 20px); border-radius: 13px; }
+        .compact { width: min(230px, calc(100vw - 20px)); }
+        .expanded { width: calc(100vw - 20px); height: 48px; border-radius: 13px; }
         .brand {
           position: absolute;
           z-index: 2;
           inset: 0 auto 0 0;
           display: flex;
-          width: 350px;
+          width: 230px;
           max-width: 100%;
           align-items: center;
-          gap: 9px;
-          padding: 5px 12px 5px 7px;
+          gap: 6px;
+          padding: 3px 9px 3px 4px;
           background: linear-gradient(90deg, rgba(9, 5, 28, .99) 0%, rgba(30, 13, 65, .98) 82%, rgba(30, 13, 65, 0) 100%);
           transition: width .6s ease;
         }
-        .expanded .brand { width: 76px; padding-right: 21px; }
-        .logo {
-          width: 38px;
-          height: 38px;
+        .expanded .brand { width: 62px; padding-right: 18px; }
+        .logo-shell {
+          position: relative;
+          display: grid;
+          width: 29px;
+          height: 29px;
           flex: 0 0 auto;
+          place-items: center;
+          overflow: hidden;
+          border: 1px solid rgba(113, 241, 255, .5);
+          border-radius: 9px;
+          background: radial-gradient(circle at 35% 30%, rgba(166, 99, 255, .7), rgba(7, 25, 67, .96));
+        }
+        .logo {
+          position: relative;
+          z-index: 1;
+          width: 100%;
+          height: 100%;
           object-fit: contain;
           filter: drop-shadow(0 0 6px rgba(41,239,255,.72));
         }
+        .logo-fallback { position: absolute; color: #8ff7ff; font-size: 17px; text-shadow: 0 0 8px #8a65ff; }
         .credit-copy { min-width: 0; opacity: 1; transition: opacity .3s ease; }
         .expanded .credit-copy { opacity: 0; }
-        .powered { color: #a8f8ff; font-size: 9px; font-weight: 950; letter-spacing: .14em; white-space: nowrap; }
-        .builder { margin-top: 2px; font-family: Georgia, 'Times New Roman', serif; font-size: 17px; font-style: italic; font-weight: 800; line-height: 1; white-space: nowrap; text-shadow: 0 0 8px rgba(169,112,255,.8); }
-        .marquee-window { position: absolute; inset: 0 0 0 62px; overflow: hidden; opacity: 0; transition: opacity .35s ease .35s; }
+        .powered { color: #a8f8ff; font-size: 6.5px; font-weight: 950; letter-spacing: .1em; white-space: nowrap; }
+        .builder { margin-top: 2px; font-family: Georgia, 'Times New Roman', serif; font-size: 12px; font-style: italic; font-weight: 800; line-height: 1; white-space: nowrap; text-shadow: 0 0 6px rgba(169,112,255,.72); }
+        .marquee-window { position: absolute; inset: 0 0 0 50px; overflow: hidden; opacity: 0; transition: opacity .35s ease .35s; }
         .expanded .marquee-window { opacity: 1; }
         .track {
           position: absolute;
@@ -124,19 +138,23 @@ export function LoungeAttributionMarquee() {
         .mode { margin-right: 18px; color: #ffe678; font-family: Georgia, 'Times New Roman', serif; font-style: italic; letter-spacing: .08em; }
         @keyframes lounge-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         @media (max-width: 680px) {
-          .lounge-credit { height: 46px; right: 7px; bottom: 6px; max-width: calc(100vw - 14px); }
-          .compact { width: min(315px, calc(100vw - 14px)); }
-          .expanded { width: calc(100vw - 14px); }
-          .brand { width: 315px; }
-          .logo { width: 34px; height: 34px; }
-          .builder { font-size: 15px; }
+          .lounge-credit { right: 7px; bottom: 6px; max-width: calc(100vw - 14px); }
+          .compact { width: min(210px, calc(100vw - 14px)); }
+          .expanded { width: calc(100vw - 14px); height: 46px; }
+          .brand { width: 210px; }
+          .logo-shell { width: 27px; height: 27px; }
+          .powered { font-size: 6px; }
+          .builder { font-size: 11px; }
         }
         @media (prefers-reduced-motion: reduce) {
           .track { animation-duration: 1ms !important; transform: none !important; padding-left: 18px; }
         }
       `}</style>
       <div className="brand">
-        <img className="logo" src="https://spmt.live/assets/space-logo-main.png" alt="" />
+        <span className="logo-shell">
+          <span className="logo-fallback">✦</span>
+          <img className="logo" src="https://spmt.live/assets/space-logo-main.png" alt="" onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />
+        </span>
         <div className="credit-copy">
           <div className="powered">POWERED BY SPACEMOUNTAIN.LIVE</div>
           <div className="builder">Built by Mtman1987</div>

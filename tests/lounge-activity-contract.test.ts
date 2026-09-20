@@ -64,6 +64,8 @@ test('Lounge TTS layer carries the persistent attribution and alternating contex
   assert.match(banner, /POWERED BY SPACEMOUNTAIN\.LIVE/);
   assert.match(banner, /Built by Mtman1987/);
   assert.match(banner, /space-logo-main\.png/);
+  assert.match(banner, /width: min\(230px/);
+  assert.match(banner, /logo-fallback/);
   assert.match(content, /10 \* 60 \* 1000/);
   assert.match(content, /cycle % 2 === 0 \? 'commands' : 'thanks'/);
   assert.match(content, /'general', 'social', 'collecting', 'community'/);
