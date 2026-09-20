@@ -35,8 +35,8 @@ test('the command pass contains always-on, media, and only supplied active games
 });
 
 test('the thank-you pass includes partners, services, and viewers', () => {
-  assert.match(LOUNGE_THANKS_MESSAGE, /Twitch/);
-  assert.match(LOUNGE_THANKS_MESSAGE, /OpenAI/);
-  assert.match(LOUNGE_THANKS_MESSAGE, /partner communities/);
+  assert.match(LOUNGE_THANKS_MESSAGE, /our community/);
+  assert.match(LOUNGE_THANKS_MESSAGE, /our partners/);
   assert.match(LOUNGE_THANKS_MESSAGE, /viewers like you/);
+  assert.doesNotMatch(LOUNGE_THANKS_MESSAGE, /Twitch|Discord|OpenAI|Streamer\.bot|Fly\.io/);
 });

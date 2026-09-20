@@ -29,11 +29,7 @@ function unique(values: string[]): string[] {
 export const LOUNGE_ALWAYS_ON_COMMANDS = unique(publicTwitchCommands(ALWAYS_ON_CATEGORY_SLUGS));
 export const LOUNGE_MEDIA_COMMANDS = unique(publicTwitchCommands(new Set(['media'])));
 
-export const LOUNGE_THANKS_MESSAGE = [
-  'SpaceMountain.live sends its many thanks to Twitch, Discord, OpenAI, Streamer.bot, Fly.io,',
-  'our partner communities, every service and creator who helped make this possible,',
-  'and viewers like you. Thanks for riding with us.',
-].join(' ');
+export const LOUNGE_THANKS_MESSAGE = 'Thanks to our community, our partners, and viewers like you for helping make SpaceMountain.live possible.';
 
 export function loungeMarqueeMoment(now = Date.now()): {
   expanded: boolean;
