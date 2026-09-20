@@ -66,6 +66,11 @@ import {
     DISCORD_ROUTED_COMMAND_NAMES,
     DISCORD_UNSUPPORTED_COMMAND_MESSAGES,
 } from './discord-command-catalog';
+import {
+    beginLoungeCommandMenu,
+    consumeLoungeCommandMenuChoice,
+    directLoungeCommandCategory,
+} from './lounge-command-menu';
 import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
@@ -1391,6 +1396,12 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         return true;
     }
 
+    const discordCommandCategory = directLoungeCommandCategory(actualMessage, await resolveIsMod());
+    if (discordCommandCategory) {
+        for (const line of discordCommandCategory) await reply(line);
+        return true;
+    }
+
     if (actualMessage.toLowerCase() === '!admin') {
         await reply(buildDiscordAdminCommandsSummary({ isMod: await resolveIsMod() }));
         return true;
@@ -2603,6 +2614,20 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         oldIds.forEach(id => processedMessages.delete(id));
     }
     
+    // A category number is conversational only while this same viewer has a
+    // live !commands menu. Consume it before redemption/free-text listeners.
+    const earlyCommandCategory = consumeLoungeCommandMenuChoice(message, {
+        platform: 'twitch',
+        tenantId,
+        channelId: replyChannel,
+        username,
+        isMod: Boolean(tags.mod || tags.badges?.broadcaster),
+    });
+    if (earlyCommandCategory) {
+        for (const line of earlyCommandCategory) await replyMaybeKick(`@${username} ${line}`, 'bot');
+        return;
+    }
+
     // Track chat messages for redemptions (before any other processing)
     let consumedByRedemption = false;
     if (!self && !message.startsWith('!') && !message.startsWith('[')) {
@@ -2623,7 +2648,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             console.log(`[Dispatcher] Failed to parse Discord message: ${message}`);
         }
     }
-    
+
     const mtFixItIntent = detectMtFixItIntent(actualMessage);
 
     if (!self && mtFixItIntent.matched) {
@@ -4391,25 +4416,31 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const outputContext = getChatOutputContext();
 
         // Handle !commands
-        if (actualMessage.toLowerCase() === '!commands') {
+        if (/^!commands(?:\s+[1-8])?$/i.test(actualMessage.trim())) {
+            const isMod = Boolean(tags.mod || tags.badges?.broadcaster);
+            const directCategory = directLoungeCommandCategory(actualMessage, isMod);
             if (outputContext?.platform === 'discord' && outputContext.channelId) {
-                await sendStructuredDiscordReply({
-                    channelId: outputContext.channelId,
-                    message: buildDiscordCommandsSummary(),
-                    tenantId,
-                    title: 'StreamWeaver Discord Commands',
-                    responseType: 'Command Directory',
-                    fields: buildDiscordCommandDirectoryFields(),
-                    sourceMessageId: outputContext.messageId,
-                    sourceMessage: actualMessage,
-                    sourceUser: actualUsername,
-                    sourceUserAvatarUrl: outputContext.userAvatarUrl,
-                }).catch(() => {});
+                if (directCategory) {
+                    for (const line of directCategory) await reply(line, 'bot').catch(() => {});
+                } else {
+                    await sendStructuredDiscordReply({
+                        channelId: outputContext.channelId,
+                        message: buildDiscordCommandsSummary(),
+                        tenantId,
+                        title: 'StreamWeaver Discord Commands',
+                        responseType: 'Command Directory',
+                        fields: buildDiscordCommandDirectoryFields(),
+                        sourceMessageId: outputContext.messageId,
+                        sourceMessage: actualMessage,
+                        sourceUser: actualUsername,
+                        sourceUserAvatarUrl: outputContext.userAvatarUrl,
+                    }).catch(() => {});
+                }
             } else {
-                await reply(
-                    '🎮 Fun: !hug,!boop,!cuddle,!dance,!highfive,!lurk,!unlurk | 🎲 Games: !gamble,!roll,!double,!coinflip | 🃏 Pokemon: !pack,!collection,!show <card>,!trade,!swap,!offer,!accept,!challenge,!attack,!switch,!setdeck,!deck | 📊 Info: !points,!followage,!uptime,!time,!watchtime,!stats | 🏆 Leaders: !leader,!pleader,!wleader,!cleader,!bleader | 🔧 Type !admin for mod commands',
-                    'broadcaster',
-                ).catch(() => {});
+                const lines = directCategory || [beginLoungeCommandMenu({
+                    platform: 'twitch', tenantId, channelId: replyChannel, username: actualUsername, isMod,
+                })];
+                for (const line of lines) await reply(`@${actualUsername} ${line}`, 'broadcaster').catch(() => {});
             }
             return;
         }

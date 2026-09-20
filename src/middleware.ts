@@ -8,7 +8,7 @@ const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').r
 const PUBLIC_PATHS = [
   // Validates the SPMT bearer itself, including outage vs expiry.
   '/api/mountainview/private-assistant',
-  '/login', '/auth/', '/api/auth/', '/api/__health', '/api/health', '/api/session',
+  '/login', '/auth/', '/api/auth/', '/api/__health', '/api/health', '/api/session', '/command-guide',
   '/private-chat/control', '/api/private-chat/control',
   '/overlay/', '/xpn/', '/tts-listener', '/tts-player', '/say-player', '/tts-mixer',
   '/brb-player', '/shoutout-player', '/partner-checkin', '/card-pack-overlay', '/pokemon-pack-overlay',

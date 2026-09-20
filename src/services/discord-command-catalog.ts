@@ -1,3 +1,5 @@
+import { LOUNGE_COMMAND_CATEGORIES } from '@/lib/lounge-command-directory';
+
 type CatalogOptions = {
   isMod: boolean;
 };
@@ -83,17 +85,18 @@ function formatCommands(commands: string[]): string {
 }
 
 export function buildDiscordCommandDirectoryFields(): DiscordCommandDirectorySection[] {
-  return [
-    { name: 'Social', value: formatCommands(DISCORD_PRIMARY_FUN_COMMANDS) },
-    { name: 'Profile and leaderboards', value: formatCommands(DISCORD_INFO_COMMANDS.slice(0, 13)) },
-    { name: 'Pokémon', value: formatCommands(DISCORD_INFO_COMMANDS.slice(13)) },
-    { name: 'Games, economy, and tools', value: formatCommands(DISCORD_UTILITY_COMMANDS.filter((command) => command !== '!commands')) },
-    { name: 'Moderator commands', value: 'Use `!admin` to view commands available to moderators.' },
-  ];
+  return LOUNGE_COMMAND_CATEGORIES.map((category) => ({
+    name: `${category.number}. ${category.icon} ${category.name}`,
+    value: category.slug === 'admin'
+      ? 'Use `!admin` to view commands available to moderators.'
+      : formatCommands(category.commands
+          .filter((command) => command.audience !== 'moderator' && command.surfaces.includes('Discord'))
+          .map((command) => command.command)),
+  })).filter((section) => section.value.length > 0);
 }
 
 export function buildDiscordCommandsSummary(): string {
-  return 'Choose a category below. Commands with `@user` accept a Discord mention or username.';
+  return 'Every Lounge command is organized below. Use `!commands 1` through `!commands 8` for one category; commands with `@user` accept a Discord mention or username.';
 }
 
 export function buildDiscordAdminCommandsSummary(options: CatalogOptions): string {
