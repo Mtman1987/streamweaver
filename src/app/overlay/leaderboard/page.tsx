@@ -53,7 +53,7 @@ export default function LeaderboardOverlay() {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 50, boxSizing: 'border-box', overflow: 'hidden',
+      position: 'fixed', inset: 0, zIndex: 50, boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column',
       background: 'rgba(0,0,0,0.9)', border: '2px solid rgba(255,215,0,0.3)',
       borderRadius: 12, padding: 12,
       fontFamily: "'Segoe UI', system-ui, sans-serif", color: '#e0e0e0',
@@ -63,10 +63,10 @@ export default function LeaderboardOverlay() {
         <span style={{ fontSize: 20 }}>🏆</span>
         <AutoFitText minFontSize={10} maxFontSize={18} style={{ flex: 1, fontWeight: 700, color: '#ffd700' }}>{title}</AutoFitText>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', minHeight: 0, flex: 1, flexDirection: 'column', gap: 4 }}>
         {entries.map((entry, i) => (
           <div key={entry.user} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            display: 'flex', minHeight: 0, flex: 1, alignItems: 'center', justifyContent: 'space-between',
             padding: '6px 10px', borderRadius: 6,
             background: i === 0 ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)',
           }}>

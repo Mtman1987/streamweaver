@@ -58,7 +58,7 @@ export function LoungeAttributionMarquee() {
           --violet: #a970ff;
           position: absolute;
           z-index: 20;
-          right: 10px;
+          left: 10px;
           bottom: 4px;
           height: 34px;
           max-width: calc(100vw - 20px);
@@ -138,7 +138,7 @@ export function LoungeAttributionMarquee() {
         .mode { margin-right: 18px; color: #ffe678; font-family: Georgia, 'Times New Roman', serif; font-style: italic; letter-spacing: .08em; }
         @keyframes lounge-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         @media (max-width: 680px) {
-          .lounge-credit { right: 7px; bottom: 4px; max-width: calc(100vw - 14px); }
+          .lounge-credit { left: 7px; bottom: 4px; max-width: calc(100vw - 14px); }
           .compact { width: min(210px, calc(100vw - 14px)); }
           .expanded { width: calc(100vw - 14px); height: 34px; }
           .brand { width: 210px; }
