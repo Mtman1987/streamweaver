@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 
 export default function GambleOverlay() {
+  const loungeTag = useSearchParams().get('placement') === 'lounge-tag';
   const [data, setData] = useState<any>(null);
   const [visible, setVisible] = useState(false);
 
@@ -87,18 +89,25 @@ export default function GambleOverlay() {
     }}>
       <div style={{
         background: bgColor, border: '8px solid white', borderRadius: 24,
-        padding: '80px 160px', color: 'white', textAlign: 'center',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.8)', minWidth: 800,
+        padding: loungeTag ? '7px 10px' : '80px 160px', color: 'white', textAlign: 'center',
+        boxShadow: '0 16px 48px rgba(0,0,0,0.8)', minWidth: loungeTag ? 0 : 800,
+        width: loungeTag ? '100%' : undefined,
+        height: loungeTag ? '100%' : undefined,
+        display: loungeTag ? 'flex' : undefined,
+        flexDirection: loungeTag ? 'column' : undefined,
+        justifyContent: loungeTag ? 'center' : undefined,
+        borderWidth: loungeTag ? 2 : 8,
+        borderRadius: loungeTag ? 12 : 24,
         animation: isJackpot ? 'pulse 0.5s infinite' : 'fadeIn 0.3s ease-out'
       }}>
-        <div style={{ fontSize: 56, marginBottom: 30, opacity: 0.9 }}>{user}</div>
-        <div style={{ fontSize: 72, fontWeight: 'bold', marginBottom: 20 }}>
+        <div style={{ fontSize: loungeTag ? 14 : 56, marginBottom: loungeTag ? 2 : 30, opacity: 0.95, fontWeight: 900 }}>{user}</div>
+        <div style={{ fontSize: loungeTag ? 24 : 72, fontWeight: 900, marginBottom: loungeTag ? 2 : 20, lineHeight: 1 }}>
           {title}
         </div>
-        <div style={{ fontSize: 64 }}>
+        <div style={{ fontSize: loungeTag ? 19 : 64, fontWeight: 900, lineHeight: 1 }}>
           {changeDisplay} Points
         </div>
-        <div style={{ fontSize: 48, marginTop: 20, opacity: 0.8 }}>
+        <div style={{ fontSize: loungeTag ? 11 : 48, marginTop: loungeTag ? 3 : 20, opacity: 0.9 }}>
           {oldTotalDisplay} → {newTotalDisplay}
         </div>
       </div>

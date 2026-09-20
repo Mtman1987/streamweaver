@@ -55,6 +55,7 @@ export default function CardPackOverlay() {
   const [phase, setPhase] = useState<Phase>('hidden');
   const lastEventId = useRef('');
   const captureMode = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1', []);
+  const loungeMain = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('placement') === 'lounge-main', []);
 
   const play = (next: CardPackOpenedEvent) => {
     if (!next?.cards?.length || (next.eventId && next.eventId === lastEventId.current && !captureMode)) return;
@@ -116,8 +117,11 @@ export default function CardPackOverlay() {
   const regularCards = event.cards.filter((card) => card !== feature).slice(0, 8);
 
   return (
-    <main className="fixed inset-0 flex items-center justify-center overflow-hidden bg-transparent p-4 text-white">
-      <div className={`relative h-[510px] w-[920px] overflow-hidden rounded-[32px] border shadow-2xl ${isQuackverse ? 'border-cyan-300/60 bg-slate-950/95' : 'border-yellow-300/60 bg-slate-950/95'}`}>
+    <main className="fixed inset-0 flex items-center justify-center overflow-hidden bg-transparent p-0 text-white">
+      <div
+        className={`relative h-[510px] w-[920px] shrink-0 overflow-hidden rounded-[32px] border shadow-2xl ${isQuackverse ? 'border-cyan-300/60 bg-slate-950/95' : 'border-yellow-300/60 bg-slate-950/95'}`}
+        style={{ transform: loungeMain ? 'scale(0.69)' : undefined, transformOrigin: 'center' }}
+      >
         <div className={`absolute inset-0 opacity-40 ${isQuackverse ? 'bg-[radial-gradient(circle_at_20%_20%,rgba(34,211,238,.45),transparent_38%),radial-gradient(circle_at_80%_75%,rgba(168,85,247,.35),transparent_42%)]' : 'bg-[radial-gradient(circle_at_20%_20%,rgba(250,204,21,.4),transparent_38%),radial-gradient(circle_at_80%_75%,rgba(239,68,68,.3),transparent_42%)]'}`} />
         <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-8 py-6">
           <div>

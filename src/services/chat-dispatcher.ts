@@ -4476,25 +4476,43 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             
-            // Handle simple response
-            if ((command as any).response && !(command as any).actionId && !(command as any).actions) {
-                await reply((command as any).response, 'broadcaster').catch(() => {});
-                return;
-            }
-            
-    if (!(command as any).actionId && isSocialCommandName(cmdName)) {
+            if (!(command as any).actionId && isSocialCommandName(cmdName)) {
+                const target = actualMessage.substring(cmdName.length + 2).trim();
+                const botName = getBotName(tenantId);
                 const response = await generateSocialCommandReply({
                     platform: 'twitch',
                     commandName: cmdName,
                     userName: actualUsername,
-                    target: actualMessage.substring(cmdName.length + 2).trim(),
+                    target,
                     tenantId,
-                    botName: getBotName(tenantId),
+                    botName,
                 });
                 if (response) {
+                    if (isSocialOverlayCommand(cmdName)) {
+                        publishSocialOverlayEvent({
+                            command: cmdName,
+                            tenantId,
+                            actor: { name: actualUsername },
+                            ...(target ? { target: { name: target } } : {}),
+                            bot: { name: botName },
+                            animation: {
+                                theme: cmdName,
+                                durationMs: cmdName === 'love' ? 10_000 : 7_000,
+                                particleCount: cmdName === 'love' ? 48 : 32,
+                                reducedMotionSafe: true,
+                            },
+                        });
+                    }
                     await reply(response, 'bot').catch(() => {});
                     return;
                 }
+            }
+
+            // Handle simple responses after native social commands so legacy
+            // canned replies cannot swallow their overlay event.
+            if ((command as any).response && !(command as any).actionId && !(command as any).actions) {
+                await reply((command as any).response, 'broadcaster').catch(() => {});
+                return;
             }
             
 
