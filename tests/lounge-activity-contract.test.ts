@@ -67,8 +67,10 @@ test('Lounge TTS layer carries the persistent attribution and alternating contex
   assert.match(banner, /Built by Mtman1987/);
   assert.match(banner, /space-logo-main\.png/);
   assert.match(banner, /width: min\(230px/);
-  assert.match(banner, /left: 10px/);
-  assert.doesNotMatch(banner, /right: 10px/);
+  assert.match(banner, /right: 10px/);
+  assert.match(banner, /\.lounge-credit::before[\s\S]*opacity: 0/);
+  assert.match(banner, /\.expanded::before \{ opacity: 1; \}/);
+  assert.match(banner, /\.expanded \.brand[\s\S]*background: linear-gradient/);
   assert.match(banner, /\.expanded \{ width: calc\(100vw - 20px\); height: 34px/);
   assert.doesNotMatch(banner, /transition:.*height/);
   assert.match(banner, /logo-fallback/);

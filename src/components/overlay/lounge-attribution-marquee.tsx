@@ -58,21 +58,30 @@ export function LoungeAttributionMarquee() {
           --violet: #a970ff;
           position: absolute;
           z-index: 20;
-          left: 10px;
+          right: 10px;
           bottom: 4px;
           height: 34px;
           max-width: calc(100vw - 20px);
           overflow: hidden;
-          border: 1.5px solid rgba(73, 237, 255, .92);
           border-radius: 15px;
           color: #fff;
-          background:
-            linear-gradient(110deg, rgba(12, 7, 35, .96), rgba(52, 20, 105, .95) 46%, rgba(3, 65, 112, .96));
-          box-shadow: 0 0 7px rgba(41, 239, 255, .58), inset 0 0 13px rgba(128, 76, 255, .2);
           font-family: Inter, ui-sans-serif, system-ui, sans-serif;
           pointer-events: none;
           transition: width .8s cubic-bezier(.2,.8,.2,1), border-radius .8s ease;
         }
+        .lounge-credit::before {
+          content: '';
+          position: absolute;
+          z-index: 0;
+          inset: 0;
+          border: 1.5px solid rgba(73, 237, 255, .92);
+          border-radius: inherit;
+          background: linear-gradient(110deg, rgba(12, 7, 35, .96), rgba(52, 20, 105, .95) 46%, rgba(3, 65, 112, .96));
+          box-shadow: 0 0 7px rgba(41, 239, 255, .58), inset 0 0 13px rgba(128, 76, 255, .2);
+          opacity: 0;
+          transition: opacity .45s ease;
+        }
+        .expanded::before { opacity: 1; }
         .compact { width: min(230px, calc(100vw - 20px)); }
         .expanded { width: calc(100vw - 20px); height: 34px; border-radius: 13px; }
         .brand {
@@ -85,10 +94,14 @@ export function LoungeAttributionMarquee() {
           align-items: center;
           gap: 6px;
           padding: 3px 9px 3px 4px;
-          background: linear-gradient(90deg, rgba(9, 5, 28, .99) 0%, rgba(30, 13, 65, .98) 82%, rgba(30, 13, 65, 0) 100%);
+          background: transparent;
           transition: width .6s ease;
         }
-        .expanded .brand { width: 62px; padding-right: 18px; }
+        .expanded .brand {
+          width: 62px;
+          padding-right: 18px;
+          background: linear-gradient(90deg, rgba(9, 5, 28, .99) 0%, rgba(30, 13, 65, .98) 82%, rgba(30, 13, 65, 0) 100%);
+        }
         .logo-shell {
           position: relative;
           display: grid;
@@ -138,7 +151,7 @@ export function LoungeAttributionMarquee() {
         .mode { margin-right: 18px; color: #ffe678; font-family: Georgia, 'Times New Roman', serif; font-style: italic; letter-spacing: .08em; }
         @keyframes lounge-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
         @media (max-width: 680px) {
-          .lounge-credit { left: 7px; bottom: 4px; max-width: calc(100vw - 14px); }
+          .lounge-credit { right: 7px; bottom: 4px; max-width: calc(100vw - 14px); }
           .compact { width: min(210px, calc(100vw - 14px)); }
           .expanded { width: calc(100vw - 14px); height: 34px; }
           .brand { width: 210px; }
