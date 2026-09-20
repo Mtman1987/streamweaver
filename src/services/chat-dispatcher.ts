@@ -46,7 +46,7 @@ import {
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
 } from '../lib/tenant';
 import { queueTtsOverlay } from './tts-overlay-queue';
-import { shouldQueueTwitchSay } from './twitch-say-policy';
+import { isAlwaysSpokenTwitchBot, shouldQueueTwitchSay } from './twitch-say-policy';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
@@ -2805,7 +2805,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         && isSayTextSpeakable(sayMessage)
     ) {
         readSayUsers().then((sayUsers) => {
-            if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
+            if (!isAlwaysSpokenTwitchBot(actualUsername) && !isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
             if (isSaySuppressedForTenant(tenantId) || isSaySuppressedForTenant(sayChannelKey)) return;
             const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
@@ -4963,11 +4963,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const aiReply = String(data.response || data.data?.response || '').trim();
                     if (!aiReply) return;
 
-                    const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-                    if (!tts.ok) {
-                        console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                    }
-
                     if (tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
                         await sendChatMessage(
                             aiReply,
@@ -4977,8 +4972,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         ).catch((error) => {
                             console.warn('[Dispatcher] Stella Twitch chat delivery failed:', error);
                         });
-                        console.log(`[Dispatcher] Stella answered @${actualUsername} via Twitch + Lounge TTS in #${replyChannel}`);
-                    } else if (tts.ok) {
+                        console.log(`[Dispatcher] Stella answered @${actualUsername} in Twitch; the Lounge reader will speak it once.`);
+                    } else {
+                        const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                        if (!tts.ok) console.warn('[Dispatcher] Stella fallback TTS queue failed:', tts.error);
                         console.log(`[Dispatcher] Stella answered @${actualUsername} via Lounge TTS in #${replyChannel}`);
                     }
                 } catch (error) {
@@ -5459,11 +5456,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     sourceTenantId: tenantId,
                                     responseTenantId,
                                 });
-                                if (responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
-                                    const tts = await queueTtsOverlay(aiReply, responseTenantId);
-                                    if (!tts.ok) console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                                } else {
+                                if (responseTenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID || tenantHasBotAccount(responseTenantId)) {
                                     await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
+                                } else {
+                                    const tts = await queueTtsOverlay(aiReply, responseTenantId);
+                                    if (!tts.ok) console.warn('[Dispatcher] Stella fallback TTS queue failed:', tts.error);
                                 }
                                 if (responseTenantId) {
                                     await appendBotInteraction({
@@ -5564,10 +5561,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 responseTenantId,
                             });
                             const isStellaSystemReply = responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
-                            if (!isStellaSystemReply) {
+                            const stellaHasChatIdentity = isStellaSystemReply && tenantHasBotAccount(responseTenantId);
+                            if (!isStellaSystemReply || stellaHasChatIdentity) {
                                 await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
                             }
-                            const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
+                            const shouldGenerateTtsForReply = (!responseTenantId || responseTenantId === tenantId)
+                                && !stellaHasChatIdentity;
                             await sendTwitchCrossBotFollowUp({
                                 channel: responseChannel,
                                 userName: actualUsername,
