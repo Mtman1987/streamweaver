@@ -145,6 +145,21 @@ test('top-right strip rotates active games, main spotlight, and HearMeOut media'
   assert.match(route, /discord-watch-room/);
 });
 
+test('changing Lounge names and titles auto-fit instead of truncating', () => {
+  const autoFit = fs.readFileSync('src/components/overlay/auto-fit-text.tsx', 'utf8');
+  const status = fs.readFileSync('src/app/overlay/lounge-status-strip/page.tsx', 'utf8');
+  const shoutouts = fs.readFileSync('src/app/overlay/live-shoutouts/page.tsx', 'utf8');
+  const featuredChat = fs.readFileSync('src/app/overlay/shared-chat-featured/page.tsx', 'utf8');
+  const leaderboard = fs.readFileSync('src/app/overlay/leaderboard/page.tsx', 'utf8');
+  assert.match(autoFit, /new ResizeObserver\(fit\)/);
+  assert.match(autoFit, /text\.scrollWidth <= available/);
+  assert.match(status, /<AutoFitText className="value"/);
+  assert.match(shoutouts, /<AutoFitText className="name"/);
+  assert.match(shoutouts, /<AutoFitText className="game"/);
+  assert.match(featuredChat, /<AutoFitText className="name"/);
+  assert.match(leaderboard, /<AutoFitText minFontSize=\{8\} maxFontSize=\{15\}/);
+});
+
 test('Lounge live cards use current Twitch live members and DSH group metadata', () => {
   const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
   assert.match(route, /const currentLiveMembers = Array\.isArray\(chatTag\?\.liveMembers\)/);

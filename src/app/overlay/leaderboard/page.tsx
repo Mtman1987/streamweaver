@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
+import { AutoFitText } from '@/components/overlay/auto-fit-text';
 
 interface LeaderboardEntry {
   rank: number;
@@ -60,7 +61,7 @@ export default function LeaderboardOverlay() {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <span style={{ fontSize: 20 }}>🏆</span>
-        <span style={{ fontSize: 16, fontWeight: 700, color: '#ffd700' }}>{title}</span>
+        <AutoFitText minFontSize={10} maxFontSize={18} style={{ flex: 1, fontWeight: 700, color: '#ffd700' }}>{title}</AutoFitText>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {entries.map((entry, i) => (
@@ -69,11 +70,11 @@ export default function LeaderboardOverlay() {
             padding: '6px 10px', borderRadius: 6,
             background: i === 0 ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', minWidth: 0, flex: 1, alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#888', minWidth: 28 }}>
                 #{entry.rank}
               </span>
-              <span style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.user}</span>
+              <AutoFitText minFontSize={8} maxFontSize={15} style={{ flex: 1, fontWeight: 700 }}>{entry.user}</AutoFitText>
             </div>
             <span style={{ fontSize: 14, fontWeight: 700, color: '#ffd700' }}>
               {typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}

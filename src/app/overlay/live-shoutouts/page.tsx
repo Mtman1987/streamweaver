@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { AutoFitText } from '@/components/overlay/auto-fit-text';
 
 type Creator = {
   username: string;
@@ -87,8 +88,8 @@ export default function LoungeLiveShoutouts() {
         <article className={`card${leaving ? ' leaving' : ''}`} key={`${creator.username}-${index}`}>
           {creator.avatarUrl ? <img className="avatar" src={creator.avatarUrl} alt="" /> : <div className="avatarFallback">{initial}</div>}
           <div className="copy">
-            <div className="name">{creator.displayName}</div>
-            <div className="game">{creator.gameName || 'Just Chatting'}</div>
+            <AutoFitText className="name" minFontSize={12} maxFontSize={25}>{creator.displayName}</AutoFitText>
+            <AutoFitText className="game" minFontSize={8} maxFontSize={13}>{creator.gameName || 'Just Chatting'}</AutoFitText>
           </div>
           <div className="live"><strong>● LIVE</strong><span>{creator.viewerCount.toLocaleString()}</span></div>
         </article>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AutoFitText } from "@/components/overlay/auto-fit-text";
 
 type FeaturedBadge = { id: string; label?: string; imageUrl?: string };
 type FeaturedMedia = {
@@ -152,7 +153,7 @@ export default function SharedChatFeaturedOverlay() {
             <div className="sender">
               {event.sender.avatarUrl ? <img className="avatar" src={event.sender.avatarUrl} alt="" /> : <div className="avatar-fallback">{initial}</div>}
               <div className="identity">
-                <div className="name">{event.sender.displayName}</div>
+                <AutoFitText className="name" minFontSize={13} maxFontSize={28}>{event.sender.displayName}</AutoFitText>
                 <div className="identity-meta">
                   <span className="platform">{event.platform.toUpperCase()}</span>
                   {displayBadges.map((badge) => (
