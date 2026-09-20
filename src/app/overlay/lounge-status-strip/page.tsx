@@ -55,7 +55,7 @@ export default function LoungeStatusStrip() {
       ) : (
         <section className="strip" key={spotlight?.login || 'waiting'}>
           {spotlight?.avatarUrl ? <img className="avatar" src={spotlight.avatarUrl} alt="" /> : <div className="fallback">{initial}</div>}
-          <div className="copy"><div className="label">NOW SHOWING</div><div className="value">{spotlight ? `@${spotlight.login}` : 'Space Mountain Live'}</div></div>
+          <div className="copy"><div className="label">NOW SHOWING</div><div className="value">{spotlight ? `@${spotlight.login}` : 'No live spotlight'}</div></div>
         </section>
       )}
     </main>

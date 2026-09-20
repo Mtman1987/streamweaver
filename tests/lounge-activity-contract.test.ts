@@ -124,6 +124,15 @@ test('top-right strip prioritizes active games then identifies the main spotligh
   assert.match(overlay, /ACTIVE GAME/);
   assert.match(overlay, /NOW SHOWING/);
   assert.match(overlay, /spotlight\.avatarUrl/);
+  assert.doesNotMatch(overlay, /Space Mountain Live/);
   assert.match(route, /api\/game-hub\/channel\?channel=spacemountainlive/);
   assert.match(route, /api\/community-spotlight/);
+});
+
+test('Lounge live cards use current Twitch live members and DSH group metadata', () => {
+  const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
+  assert.match(route, /const currentLiveMembers = Array\.isArray\(chatTag\?\.liveMembers\)/);
+  assert.match(route, /const dshByLogin = new Map/);
+  assert.match(route, /chatTagResult\.status === 'fulfilled'/);
+  assert.match(route, /dshByLogin\.get\(login\.toLowerCase\(\)\)/);
 });

@@ -38,12 +38,26 @@ export async function GET(request: NextRequest) {
     ]);
     const dsh = dshResult.status === 'fulfilled' ? dshResult.value : {};
     const chatTag = chatTagResult.status === 'fulfilled' ? chatTagResult.value : {};
-    const liveDetails = new Map((Array.isArray(chatTag?.liveMembers) ? chatTag.liveMembers : [])
+    const currentLiveMembers = Array.isArray(chatTag?.liveMembers) ? chatTag.liveMembers : [];
+    const liveDetails = new Map(currentLiveMembers
       .map((row: any) => [String(row?.twitchUsername || '').toLowerCase(), row]));
     const twitchProfiles = new Map((Array.isArray(chatTag?.allMembers) ? chatTag.allMembers : [])
       .map((row: any) => [String(row?.username || '').toLowerCase(), row]));
     const spotlight = dsh?.spotlight || {};
-    const rows = Array.isArray(dsh?.users) ? dsh.users : [];
+    const dshRows = Array.isArray(dsh?.users) ? dsh.users : [];
+    const dshByLogin = new Map(dshRows.map((row: any) => [
+      text(row.twitchLogin, row.twitchUsername, row.username, row.login).toLowerCase(),
+      row,
+    ]));
+    // Chat Tag is the current Twitch-live source of truth. DSH enriches those
+    // live identities with the saved partner/crew group and Discord avatar.
+    // Only fall back to DSH's cached online rows when the live feed is down.
+    const rows = chatTagResult.status === 'fulfilled' && Array.isArray(chatTag?.liveMembers)
+      ? currentLiveMembers.map((liveRow: any) => {
+          const login = text(liveRow.twitchUsername, liveRow.username, liveRow.login);
+          return { ...(dshByLogin.get(login.toLowerCase()) || {}), ...liveRow, twitchLogin: login };
+        })
+      : dshRows;
     if (!rows.length && dshResult.status === 'rejected' && chatTagResult.status === 'rejected') {
       throw new Error('Both live community feeds are unavailable');
     }
