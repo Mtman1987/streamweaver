@@ -13,6 +13,7 @@ import { handleOneOffTranslation } from './translation-manager';
 import type { StorageContext } from './storage';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { routeBotAction, type BotActorRole } from './bot-action-runtime';
+import { buildPokemonBrowserUrl } from './pokemon-browser';
 
 /**
  * Handle an incoming Kick chat message — process commands and award points
@@ -438,83 +439,38 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         states?.delete(username.toLowerCase());
         return;
       }
-      case 'collection': {
+      case 'collection':
+      case 'collections':
+      case 'pokedex': {
         const { getUserCards } = require('./pokemon-collection');
         const cards = await getUserCards(pointsUsername);
-        if (cards.length === 0) {
-          await reply(`@${username}, you don't have any cards yet! Use !pack to open packs.`);
-        } else {
-          const rareCount = cards.filter((c: any) => c.rarity?.includes('Rare')).length;
-          let pokedexUrl = '';
-          try {
-            const { generatePokedexHtml } = require('./pokedex-html');
-            const { getUserCollection } = require('./pokemon-storage-discord');
-            const { getConfiguredAppUrl } = require('../lib/runtime-origin');
-            const fsSync = require('fs');
-            const pathMod = require('path');
-            const POKEDEX_DIR = pathMod.join(process.env.PERSIST_ROOT || pathMod.join(process.cwd(), 'data', 'runtime'), 'global', 'pokedex');
-            fsSync.mkdirSync(POKEDEX_DIR, { recursive: true });
-            const collection = await getUserCollection(pointsUsername);
-            const html = await generatePokedexHtml(pointsUsername, cards, collection.packsOpened);
-            const key = pointsUsername.toLowerCase();
-            fsSync.writeFileSync(pathMod.join(POKEDEX_DIR, `${key}.html`), html);
-            pokedexUrl = `${getConfiguredAppUrl()}/api/pokedex?user=${encodeURIComponent(key)}`;
-          } catch {}
-          const urlPart = pokedexUrl ? ` Pokédex: ${pokedexUrl}` : '';
-          await reply(`@${username} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <set-num> <set-num> <set-num>`);
-        }
+        const rareCount = cards.filter((c: any) => c.rarity?.includes('Rare')).length;
+        const url = buildPokemonBrowserUrl(pointsUsername);
+        await reply(cards.length
+          ? `@${username} has ${cards.length} cards (${rareCount} rare). Pokédex, decks and trades: ${url}`
+          : `@${username}, your Pokédex is empty. Open a pack with !pack, then manage cards here: ${url}`);
         return;
       }
       case 'show': {
-        const searchName = args.trim().toLowerCase();
+        const searchName = args.trim();
         if (!searchName) {
           await reply(`@${username}, usage: !show <card name>`);
           return;
         }
-        const path = require('path');
-        const fs = require('fs');
-        const cardsDir = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
         const { getUserCards } = require('./pokemon-collection');
         const userCards = await getUserCards(pointsUsername);
-        let owned = userCards.filter((c: any) => c.name.toLowerCase() === searchName);
-        if (owned.length === 0) owned = userCards.filter((c: any) => c.name.toLowerCase().includes(searchName));
-        if (owned.length === 0) {
+        const normalized = searchName.toLowerCase();
+        const owned = userCards.find((card: any) =>
+          String(card.name || '').toLowerCase() === normalized ||
+          String(card.name || '').toLowerCase().includes(normalized) ||
+          `${card.setCode}-${card.number}`.toLowerCase() === normalized
+        );
+        if (!owned) {
           await reply(`@${username}, you don't own any card matching "${searchName}".`);
           return;
         }
-        const seen = new Set<string>();
-        const unique = owned.filter((c: any) => {
-          const key = `${c.setCode}-${c.number}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        }).slice(0, 3);
-        for (const card of unique) {
-          let tcg: any = null;
-          try {
-            const setData = JSON.parse(fs.readFileSync(path.join(cardsDir, `${card.setCode}.json`), 'utf-8'));
-            tcg = setData.find((c: any) => c.number === card.number);
-          } catch {}
-          const count = userCards.filter((c: any) => c.number === card.number && c.setCode === card.setCode).length;
-          const info = [
-            card.name,
-            tcg?.level ? `Lv.${tcg.level}` : '',
-            `#${card.number}`,
-            `Set: ${card.setCode}`,
-            card.rarity || 'Common',
-            tcg?.hp ? `HP: ${tcg.hp}` : '',
-            tcg?.types ? `Type: ${tcg.types.join('/')}` : '',
-            tcg?.attacks?.length ? `Attacks: ${tcg.attacks.map((a: any) => `${a.name} (${a.damage || 0})`).join(', ')}` : '',
-            `(owned: ${count}x)`,
-          ].filter(Boolean).join(' | ');
-          await reply(`@${username}: ${info}`);
-          if (typeof (global as any).broadcast === 'function') {
-            (global as any).broadcast({
-              type: 'pokemon-show-card',
-              payload: { imageUrl: tcg?.images?.large || card.imageUrl, name: card.name, number: card.number, setCode: card.setCode, rarity: card.rarity, hp: tcg?.hp, types: tcg?.types, level: tcg?.level, attacks: tcg?.attacks, abilities: tcg?.abilities, weaknesses: tcg?.weaknesses, resistances: tcg?.resistances, username: pointsUsername, owned: count }
-            }, tenantId);
-          }
-        }
+        const url = buildPokemonBrowserUrl(pointsUsername, { card: `${owned.setCode}-${owned.number}` });
+        await reply(`@${username}, open ${owned.name} in your Pokédex: ${url}`);
         return;
       }
       case 'pack': {
@@ -637,6 +593,14 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
           console.error('[KickDispatcher] !so failed:', err);
           await reply(`@${username}, shoutout failed: ${err?.message || 'unknown error'}`);
         }
+        return;
+      }
+      case 'trade': {
+        const targetUser = args.trim().replace(/^@/, '');
+        const url = buildPokemonBrowserUrl(pointsUsername, targetUser ? { tradeWith: targetUser } : {});
+        await reply(targetUser
+          ? `@${username}, trade with @${targetUser} from your Pokédex: ${url}`
+          : `@${username}, choose a player and cards from your Pokédex: ${url}`);
         return;
       }
       case 'offer': {

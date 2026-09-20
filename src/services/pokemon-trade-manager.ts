@@ -16,11 +16,6 @@ interface TradeSession {
 const activeTrades = new Map<string, Map<string, TradeSession>>();
 const TRADE_TIMEOUT = 120000;
 
-function normalizeTenantId(tenantId?: string): string | undefined {
-  if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
-  return tenantId;
-}
-
 function getTradeKey(user1: string, user2: string, tenantId: string): string {
   return `${tenantId}:${[user1, user2].sort().join(':')}`;
 }
@@ -130,16 +125,6 @@ export async function offerCard(username: string, cardIdentifier: string, tenant
       tenantId
     );
 
-    const broadcast = (global as any).broadcast;
-    if (typeof broadcast === 'function') {
-      broadcast({
-        type: 'pokemon-trade-preview',
-        userA: session.initiator,
-        userB: session.target,
-        cardA: session.initiatorCard,
-        cardB: session.targetCard
-      }, normalizeTenantId(tid));
-    }
   }
 }
 
@@ -231,17 +216,6 @@ async function executeTrade(session: TradeSession): Promise<void> {
 
   await saveUserCollection(session.initiator, collA);
   await saveUserCollection(session.target, collB);
-
-  const broadcast = (global as any).broadcast;
-  if (typeof broadcast === 'function') {
-    broadcast({
-      type: 'pokemon-trade-execute',
-      userA: session.initiator,
-      userB: session.target,
-      cardA: { ...removedA },
-      cardB: { ...removedB }
-    }, normalizeTenantId(session.tenantId));
-  }
 
   await sendChatMessage(
     `✅ Trade complete! @${session.initiator} got ${removedB.name}, @${session.target} got ${removedA.name}!`,

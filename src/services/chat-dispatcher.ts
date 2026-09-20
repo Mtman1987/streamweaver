@@ -46,6 +46,7 @@ import {
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
 } from '../lib/tenant';
 import { queueTtsOverlay } from './tts-overlay-queue';
+import { buildPokemonBrowserUrl } from './pokemon-browser';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
 import { appendPublicChatMessages } from '../lib/public-chat-store';
@@ -3141,47 +3142,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !collection command
-        if (actualMessage.toLowerCase() === '!collection') {
+        // Pokemon collection is browser-first. Only booster reveals belong on the stream overlay.
+        if (['!collection', '!collections', '!pokedex'].includes(actualMessage.toLowerCase())) {
             const { getUserCards } = require('./pokemon-collection');
-            const { getUserCollection } = require('./pokemon-storage-discord');
             const cards = await getUserCards(actualUsername);
-            if (cards.length === 0) {
-                await reply(`@${actualUsername}, you don't have any cards yet! Use !pack to open packs.`, 'broadcaster').catch(() => {});
-                return;
-            }
             const rareCount = cards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
-
-            // Generate Pokédex HTML and serve locally
-            let pokedexUrl = '';
-            try {
-                const { generatePokedexHtml } = require('./pokedex-html');
-                const fsSync = require('fs');
-                const pathMod = require('path');
-                const { getConfiguredAppUrl } = require('../lib/runtime-origin');
-                const POKEDEX_DIR = pathMod.join(process.env.PERSIST_ROOT || pathMod.join(process.cwd(), 'data', 'runtime'), 'global', 'pokedex');
-                fsSync.mkdirSync(POKEDEX_DIR, { recursive: true });
-
-                const collection = await getUserCollection(actualUsername);
-                const html = await generatePokedexHtml(actualUsername, cards, collection.packsOpened);
-                const key = actualUsername.toLowerCase();
-                fsSync.writeFileSync(pathMod.join(POKEDEX_DIR, `${key}.html`), html);
-
-                const baseUrl = getConfiguredAppUrl();
-                pokedexUrl = `${baseUrl}/api/pokedex?user=${encodeURIComponent(key)}`;
-            } catch (e) {
-                console.error('[Collection] Pokédex generation failed:', e);
-            }
-
-            const urlPart = pokedexUrl ? ` Pok\u00e9dex: ${pokedexUrl}` : '';
-            await reply(`@${actualUsername} has ${cards.length} cards (${rareCount} rare).${urlPart} | !gymteam <set-num> <set-num> <set-num>`, 'broadcaster').catch(() => {});
-
-            if (typeof (global as any).broadcast === 'function') {
-                (global as any).broadcast({
-                    type: 'pokemon-collection-show',
-                    payload: { username: actualUsername, cards }
-                }, tenantId);
-            }
+            const pokedexUrl = buildPokemonBrowserUrl(actualUsername);
+            const summary = cards.length
+                ? `@${actualUsername} has ${cards.length} cards (${rareCount} rare). Pokédex, decks and trades: ${pokedexUrl}`
+                : `@${actualUsername}, your Pokédex is empty. Open a pack with !pack, then manage cards here: ${pokedexUrl}`;
+            await reply(summary, 'broadcaster').catch(() => {});
             return;
         }
 
@@ -3246,88 +3216,30 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        // Handle !show command for Pokemon cards (BEFORE command store check)
+        // Card details live in the browser Pokédex instead of occupying the stream overlay.
         if (actualMessage.toLowerCase().startsWith('!show ')) {
-          const searchName = actualMessage.substring(6).trim().toLowerCase();
-          if (!searchName) {
-            await reply(`@${actualUsername}, usage: !show <card name>`, 'broadcaster').catch(() => {});
-            return;
-          }
-
-          const path = require('path');
-          const fs = require('fs');
-          const CARDS_DB_DIR = path.join(process.cwd(), 'pokemon-tcg-data-master', 'cards', 'en');
-          const { getUserCards } = require('./pokemon-collection');
-          const userCards = await getUserCards(actualUsername);
-
-          // Find owned cards matching the search (exact then partial)
-          let owned = userCards.filter((c: any) => c.name.toLowerCase() === searchName);
-          if (owned.length === 0) {
-            owned = userCards.filter((c: any) => c.name.toLowerCase().includes(searchName));
-          }
-
-          if (owned.length === 0) {
-            await reply(`@${actualUsername}, you don't own any card matching "${searchName}".`, 'broadcaster').catch(() => {});
-            return;
-          }
-
-          // Dedupe by setCode+number, keep first of each
-          const seen = new Set<string>();
-          const unique = owned.filter((c: any) => {
-            const key = `${c.setCode}-${c.number}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-
-          for (const card of unique) {
-            // Look up full TCG data for stats
-            let tcg: any = null;
-            try {
-              const setData = JSON.parse(fs.readFileSync(path.join(CARDS_DB_DIR, `${card.setCode}.json`), 'utf-8'));
-              tcg = setData.find((c: any) => c.number === card.number);
-            } catch {}
-
-            const count = userCards.filter((c: any) => c.number === card.number && c.setCode === card.setCode).length;
-            const info = [
-              card.name,
-              tcg?.level ? `Lv.${tcg.level}` : '',
-              `#${card.number}`,
-              `Set: ${card.setCode}`,
-              card.rarity || 'Common',
-              tcg?.hp ? `HP: ${tcg.hp}` : '',
-              tcg?.types ? `Type: ${tcg.types.join('/')}` : '',
-              tcg?.attacks?.length ? `Attacks: ${tcg.attacks.map((a: any) => `${a.name} (${a.damage || 0})`).join(', ')}` : '',
-              tcg?.weaknesses?.length ? `Weak: ${tcg.weaknesses.map((w: any) => w.type).join('/')}` : '',
-              `(owned: ${count}x)`
-            ].filter(Boolean).join(' | ');
-
-            await reply(`@${actualUsername}: ${info}`, 'broadcaster').catch(() => {});
-
-            if (typeof (global as any).broadcast === 'function') {
-              (global as any).broadcast({
-                type: 'pokemon-show-card',
-                payload: {
-                  imageUrl: tcg?.images?.large || card.imageUrl,
-                  name: card.name,
-                  number: card.number,
-                  setCode: card.setCode,
-                  rarity: card.rarity,
-                  hp: tcg?.hp,
-                  types: tcg?.types,
-                  level: tcg?.level,
-                  attacks: tcg?.attacks,
-                  abilities: tcg?.abilities,
-                  weaknesses: tcg?.weaknesses,
-                  resistances: tcg?.resistances,
-                  username: actualUsername,
-                  owned: count
-                }
-              }, tenantId);
+            const searchName = actualMessage.substring(6).trim();
+            if (!searchName) {
+                await reply(`@${actualUsername}, usage: !show <card name>`, 'broadcaster').catch(() => {});
+                return;
             }
-          }
-          return;
+            const { getUserCards } = require('./pokemon-collection');
+            const userCards = await getUserCards(actualUsername);
+            const normalized = searchName.toLowerCase();
+            const owned = userCards.find((card: any) =>
+                String(card.name || '').toLowerCase() === normalized ||
+                String(card.name || '').toLowerCase().includes(normalized) ||
+                `${card.setCode}-${card.number}`.toLowerCase() === normalized
+            );
+            if (!owned) {
+                await reply(`@${actualUsername}, you don't own any card matching "${searchName}".`, 'broadcaster').catch(() => {});
+                return;
+            }
+            const pokedexUrl = buildPokemonBrowserUrl(actualUsername, { card: `${owned.setCode}-${owned.number}` });
+            await reply(`@${actualUsername}, open ${owned.name} in your Pokédex: ${pokedexUrl}`, 'broadcaster').catch(() => {});
+            return;
         }
+
         // Handle !t one-off translation for mods
         if (actualMessage.toLowerCase().startsWith('!t ')) {
             if (!tenantId) {
@@ -3849,6 +3761,20 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+
+        // Trading is selected in the Pokédex browser; the resulting !swap command
+        // still performs the server-side atomic card exchange.
+        if (actualMessage.toLowerCase().startsWith('!trade')) {
+            const targetUser = actualMessage.substring('!trade'.length).trim().replace(/^@/, '');
+            const pokedexUrl = buildPokemonBrowserUrl(actualUsername, targetUser ? { tradeWith: targetUser } : {});
+            await reply(
+                targetUser
+                    ? `@${actualUsername}, trade with @${targetUser} from your Pokédex: ${pokedexUrl}`
+                    : `@${actualUsername}, choose a player and cards from your Pokédex: ${pokedexUrl}`,
+                'broadcaster',
+            ).catch(() => {});
+            return;
+        }
 
         // Handle !offer command (Pokemon trade)
         if (actualMessage.toLowerCase().startsWith('!offer ')) {
@@ -4657,63 +4583,23 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const { getUserCards } = require('./pokemon-collection');
                     const cards = await getUserCards(actualUsername);
                     const rareCount = cards.filter((c: any) => c.rarity && c.rarity.includes('Rare')).length;
-                    
-                    // Create file and upload to Discord
-                    const fileContent = cards.map((card: any) => {
-                      return [
-                        card.name,
-                        `#${card.number}`,
-                        `Set: ${card.setCode}`,
-                        card.rarity || 'Common'
-                      ].filter(Boolean).join(' | ');
-                    }).join('\n');
-                    
-                    const { uploadFileToDiscord, deleteMessage, getChannelMessages } = require('./discord');
-                    const STORAGE_CHANNEL_ID = '1476540488147533895';
-                    const fileName = `collection_${actualUsername}_${Date.now()}.txt`;
-                    
-                    // Delete old collection files from this user
-                    try {
-                      const messages = await getChannelMessages(STORAGE_CHANNEL_ID, 50);
-                      for (const msg of messages) {
-                        if (msg.content?.includes(`${actualUsername}'s collection`) && msg.attachments?.length > 0) {
-                          await deleteMessage(STORAGE_CHANNEL_ID, msg.id).catch(() => {});
-                        }
-                      }
-                    } catch {}
-                    
-                    const result = await uploadFileToDiscord(
-                      STORAGE_CHANNEL_ID,
-                      fileContent,
-                      fileName,
-                      `${actualUsername}'s collection`
-                    );
-                    
-                    let downloadUrl = '';
-                    if (result && result.data && (result.data as any).attachments?.[0]?.url) {
-                      downloadUrl = (result.data as any).attachments[0].url;
-                    }
-                    
-                    await reply(`@${actualUsername} has ${cards.length} cards (${rareCount} rare). Download: ${downloadUrl}`, 'broadcaster').catch(() => {});
-                    
-                    // Show on overlay
-                    if (typeof (global as any).broadcast === 'function') {
-                      (global as any).broadcast({
-                        type: 'pokemon-collection-show',
-                        payload: { username: actualUsername, cards: cards.map((c: any) => `${c.setCode}-${c.number}`) }
-                      }, tenantId);
-                    }
+                    const url = buildPokemonBrowserUrl(actualUsername);
+                    await reply(
+                        cards.length
+                            ? `@${actualUsername} has ${cards.length} cards (${rareCount} rare). Pokédex, decks and trades: ${url}`
+                            : `@${actualUsername}, your Pokédex is empty. Open a pack with !pack, then manage cards here: ${url}`,
+                        'broadcaster',
+                    ).catch(() => {});
                 } else if (actionType === 'pokemon-trade-initiate') {
                     const args = actualMessage.substring(cmdName.length + 2).trim().split(/\s+/);
                     const targetUser = args[0]?.replace('@', '');
-                    
-                    if (!targetUser) {
-                        await reply(`@${actualUsername}, usage: !trade @user`, 'bot').catch(() => {});
-                        return;
-                    }
-                    
-                    const { initiateTrade } = require('./pokemon-trade-manager');
-                    await initiateTrade(actualUsername, targetUser, tenantId);
+                    const url = buildPokemonBrowserUrl(actualUsername, targetUser ? { tradeWith: targetUser } : {});
+                    await reply(
+                        targetUser
+                            ? `@${actualUsername}, trade with @${targetUser} from your Pokédex: ${url}`
+                            : `@${actualUsername}, open your Pokédex to choose a trade: ${url}`,
+                        'broadcaster',
+                    ).catch(() => {});
                 }
             }
             return;
