@@ -152,7 +152,7 @@ test('Lounge data APIs are public to unauthenticated browser-source overlays', (
   assert.match(middleware, /pathname === '\/api\/lounge\/status-strip'/);
 });
 
-test('top-right strip rotates active games, main spotlight, HearMeOut media, and local/UTC time', () => {
+test('top-right strip rotates active games, main spotlight, Apollo media, and local/UTC time', () => {
   const overlay = fs.readFileSync('src/app/overlay/lounge-status-strip/page.tsx', 'utf8');
   const route = fs.readFileSync('src/app/api/lounge/status-strip/route.ts', 'utf8');
   assert.match(overlay, /NOW PLAYING/);
@@ -169,9 +169,9 @@ test('top-right strip rotates active games, main spotlight, HearMeOut media, and
   assert.doesNotMatch(overlay, /Space Mountain Live/);
   assert.match(route, /api\/game-hub\/channel\?channel=spacemountainlive/);
   assert.match(route, /api\/community-spotlight/);
-  assert.match(route, /hmo\.media\.state\.read/);
-  assert.match(route, /discord-music-room/);
-  assert.match(route, /discord-watch-room/);
+  assert.match(route, /spacemountainlive-lounge\/apollo\/api\/watch\/broadcast\/state/);
+  assert.match(route, /mediaState\?\.current\?\.item/);
+  assert.doesNotMatch(route, /discord-music-room|discord-watch-room/);
 });
 
 test('changing Lounge names and titles auto-fit instead of truncating', () => {

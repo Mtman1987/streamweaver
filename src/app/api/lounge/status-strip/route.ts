@@ -17,31 +17,21 @@ async function json(url: string): Promise<any> {
   return response.json();
 }
 
-async function hearMeOutState(sessionId: 'discord-music-room' | 'discord-watch-room') {
-  const response = await fetch(`${HEARMEOUT_URL}/api/internal/bot/actions`, {
-    method: 'POST',
+async function apolloLoungeState() {
+  const response = await fetch(`${HEARMEOUT_URL}/api/system/spacemountainlive-lounge/apollo/api/watch/broadcast/state`, {
     cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'hmo.media.state.read',
-      tenantId: 'spacemountainlive',
-      actorUserId: 'lounge-status-strip',
-      actorName: 'Space Mountain Lounge',
-      actorRole: 'member',
-      sessionId,
-    }),
+    headers: { Accept: 'application/json' },
     signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
   });
-  if (!response.ok) throw new Error(`HearMeOut ${sessionId} returned ${response.status}`);
+  if (!response.ok) throw new Error(`Apollo Lounge returned ${response.status}`);
   return response.json();
 }
 
 export async function GET() {
-  const [gameResult, spotlightResult, musicResult, movieResult] = await Promise.allSettled([
+  const [gameResult, spotlightResult, mediaResult] = await Promise.allSettled([
     json(`${CHAT_TAG_URL}/api/game-hub/channel?channel=spacemountainlive`),
     json(SPOTLIGHT_URL),
-    hearMeOutState('discord-music-room'),
-    hearMeOutState('discord-watch-room'),
+    apolloLoungeState(),
   ]);
   const gamePayload = gameResult.status === 'fulfilled' ? gameResult.value : {};
   const spotlightPayload = spotlightResult.status === 'fulfilled' ? spotlightResult.value : {};
@@ -57,15 +47,8 @@ export async function GET() {
     })).filter((command: any) => command.trigger),
   }));
   const login = String(source?.twitchLogin || user?.twitchLogin || user?.login || '').replace(/^@/, '').trim();
-  const mediaCandidates = [
-    { kind: 'music' as const, payload: musicResult.status === 'fulfilled' ? musicResult.value : null },
-    { kind: 'movie' as const, payload: movieResult.status === 'fulfilled' ? movieResult.value : null },
-  ].filter((candidate) => candidate.payload?.session?.current?.item);
-  const playingMedia = mediaCandidates.filter((candidate) => candidate.payload?.session?.playback?.status === 'playing');
-  const selectedMedia = [...(playingMedia.length ? playingMedia : mediaCandidates)].sort((a, b) =>
-    Number(b.payload?.session?.playback?.updatedAt || 0) - Number(a.payload?.session?.playback?.updatedAt || 0),
-  )[0] || null;
-  const mediaItem = selectedMedia?.payload?.session?.current?.item || null;
+  const mediaState = mediaResult.status === 'fulfilled' ? mediaResult.value : null;
+  const mediaItem = mediaState?.current?.item || null;
   return NextResponse.json({
     games,
     spotlight: login ? {
@@ -74,7 +57,7 @@ export async function GET() {
       avatarUrl: String(source?.profileImageUrl || source?.profile_image_url || user?.profileImageUrl || user?.profile_image_url || user?.avatarUrl || '').trim(),
     } : null,
     media: mediaItem ? {
-      kind: selectedMedia?.kind,
+      kind: mediaItem?.type === 'movie' ? 'movie' : 'music',
       title: String(mediaItem?.title || mediaItem?.name || 'Untitled media').trim(),
       thumbnailUrl: String(mediaItem?.thumbnailUrl || mediaItem?.thumbnail || '').trim(),
     } : null,
