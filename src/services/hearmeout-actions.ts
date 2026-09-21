@@ -48,7 +48,10 @@ export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPaylo
     headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store',
-    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(55_000) : undefined,
+    // Apollo may need both a YouTube search and a media-resolution pass before
+    // it can acknowledge a Lounge request. Keep this wider than HearMeOut's
+    // 75-second relay window so StreamWeaver does not cancel the accepted job.
+    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(90_000) : undefined,
   });
   let response = await send(secrets[0]);
   // Retry only a rejected, unexecuted request with the other existing key.
