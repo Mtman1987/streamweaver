@@ -13,6 +13,7 @@ import { resolveSayStreamKey, SAY_SHOUTOUT_SUPPRESSION_MS, suppressSayForTenant 
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { isKnownBot } from './known-bots';
 import { resolveShoutoutMode, type ShoutoutMode } from './shoutout-mode';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import { resolve } from 'path';
 
@@ -48,6 +49,49 @@ type AuditContext = {
     displayName: string;
     source: NonNullable<ShoutoutOptions['source']>;
 };
+
+type ClipPlaybackWaiter = {
+    tenantId?: string;
+    started: (started: boolean) => void;
+    ended: () => void;
+};
+
+const clipPlaybackWaiters = new Map<string, ClipPlaybackWaiter>();
+const shoutoutSequenceTails = new Map<string, Promise<void>>();
+
+export function acknowledgeShoutoutClip(
+    eventId: unknown,
+    tenantId: unknown,
+    phase: unknown,
+): boolean {
+    const id = String(eventId || '').trim();
+    const waiter = clipPlaybackWaiters.get(id);
+    if (!waiter) return false;
+
+    const acknowledgedTenantId = String(tenantId || '').trim() || undefined;
+    if (waiter.tenantId !== acknowledgedTenantId) return false;
+
+    if (phase === 'started') waiter.started(true);
+    else if (phase === 'ended') waiter.ended();
+    else if (phase === 'failed') {
+        waiter.started(false);
+        waiter.ended();
+    } else return false;
+
+    return true;
+}
+
+async function enqueueShoutoutSequence(tenantId: string | undefined, task: () => Promise<void>): Promise<void> {
+    const key = tenantId || '__global__';
+    const previous = shoutoutSequenceTails.get(key) || Promise.resolve();
+    const current = previous.catch(() => {}).then(task);
+    shoutoutSequenceTails.set(key, current);
+    try {
+        await current;
+    } finally {
+        if (shoutoutSequenceTails.get(key) === current) shoutoutSequenceTails.delete(key);
+    }
+}
 
 function normalizeTenantId(tenantId?: string): string | undefined {
     if (tenantId?.startsWith('__kick_silent__:')) return tenantId.slice('__kick_silent__:'.length);
@@ -190,26 +234,60 @@ export async function fetchClip(username: string): Promise<TwitchClip | null> {
 }
 
 // ============================
-// CLIP PLAYBACK (NON-BLOCKING)
+// CLIP PLAYBACK
 // ============================
 
-async function playClip(clip: TwitchClip, displayName: string, profileImage: string, tenantId?: string): Promise<void> {
+async function playClip(clip: TwitchClip, displayName: string, profileImage: string, tenantId?: string): Promise<boolean> {
     const embedURL = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
-    const delay = 700 + Math.floor(clip.duration * 1000);
     const broadcastTenantId = normalizeTenantId(tenantId);
+    const eventId = randomUUID();
+
+    let resolveStarted!: (started: boolean) => void;
+    let resolveEnded!: () => void;
+    const started = new Promise<boolean>((resolve) => { resolveStarted = resolve; });
+    const ended = new Promise<void>((resolve) => { resolveEnded = resolve; });
+    clipPlaybackWaiters.set(eventId, {
+        tenantId: broadcastTenantId,
+        started: resolveStarted,
+        ended: resolveEnded,
+    });
 
     console.log(`[WalkOn] Broadcasting clip to shoutout overlay for ${displayName}`);
 
-    // Broadcast clip to shoutout overlay via WebSocket
-    if (typeof (global as any).broadcast === 'function') {
+    try {
+        if (typeof (global as any).broadcast !== 'function') return false;
         (global as any).broadcast({
             type: 'shoutout-play-clip',
-            payload: { clipUrl: embedURL, thumbnailUrl: clip.thumbnailUrl, user: displayName, profileImage }
+            payload: {
+                eventId,
+                clipUrl: embedURL,
+                thumbnailUrl: clip.thumbnailUrl,
+                user: displayName,
+                profileImage,
+                duration: clip.duration,
+            }
         }, broadcastTenantId);
-    }
 
-    // Wait for clip to finish playing
-    await new Promise(resolve => setTimeout(resolve, delay + 2000));
+        // Do not hold Stella silent for a clip that never appeared. The player
+        // confirms actual playback after Twitch returns a playable source.
+        const didStart = await Promise.race([
+            started,
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 12_000)),
+        ]);
+        if (!didStart) {
+            console.warn(`[WalkOn] Shoutout player did not start clip for ${displayName}`);
+            return false;
+        }
+
+        const maximumPlaybackMs = Math.max(15_000, Math.floor(clip.duration * 1000) + 15_000);
+        await Promise.race([
+            ended,
+            new Promise<void>((resolve) => setTimeout(resolve, maximumPlaybackMs)),
+        ]);
+        return true;
+    } finally {
+        clipPlaybackWaiters.delete(eventId);
+    }
 }
 
 // ============================
@@ -557,24 +635,13 @@ export async function handleWalkOnShoutout(username: string, displayName: string
         mode,
     });
 
-    // Build persona and generate AI greeting
-    const persona = await buildPersona(user, displayName, profileImage, realTenantId);
-    console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
-    const aiGreeting = await generateAIGreeting(persona, realTenantId);
-    console.log(`[WalkOn] AI greeting generated`);
-    await recordShoutoutAudit({
-        status: 'phase',
-        phase: 'ai-greeting-generated',
-        username: user,
-        displayName,
-        tenantId: realTenantId,
-        source: auditSource,
-        mode,
-    });
-
     // === MODE: CHAT ===
     // Single clean message: AI greeting + link. No clip, no TTS, no overlay.
     if (mode === 'chat') {
+        const persona = await buildPersona(user, displayName, profileImage, realTenantId);
+        console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
+        const aiGreeting = await generateAIGreeting(persona, realTenantId);
+        console.log(`[WalkOn] AI greeting generated`);
         const msg = options.linkMessage || `${aiGreeting} | Go check out @${displayName}: https://twitch.tv/${displayName}`;
         const fullMsg = options.linkMessage ? `${aiGreeting} | ${msg}` : msg;
         if (options.chatReply) await options.chatReply(fullMsg);
@@ -594,7 +661,8 @@ export async function handleWalkOnShoutout(username: string, displayName: string
     }
 
     // === MODE: FULL or OVERLAY ===
-    // Both play the clip first, then fire the greeting after
+    // The broadcaster link is the immediate acknowledgement. Clip lookup and
+    // greeting generation begin only after that visible acknowledgement.
 
     // Broadcaster drops the link. If that identity is unavailable, keep the
     // shoutout moving so the bot greeting can still fire.
@@ -623,22 +691,44 @@ export async function handleWalkOnShoutout(username: string, displayName: string
         });
     }
 
-    // Fetch and play clip (errors won't prevent greeting from firing)
-    try {
-        const clip = await fetchClip(username);
+    const greetingPromise = buildPersona(user, displayName, profileImage, realTenantId)
+        .then((persona) => {
+            console.log(`[WalkOn] Generating AI greeting for ${displayName}...`);
+            return generateAIGreeting(persona, realTenantId);
+        });
+    const clipPromise = fetchClip(username);
+
+    // Serialize each tenant's clip + Stella greeting so rapid shoutouts cannot
+    // replace one another or make two greetings talk over the same clip.
+    await enqueueShoutoutSequence(realTenantId, async () => {
+        const clip = await clipPromise;
         if (clip) {
-            console.log(`[WalkOn] Playing clip for ${displayName}`);
-            await playClip(clip, displayName, profileImage, realTenantId);
-            console.log(`[WalkOn] Clip finished for ${displayName}`);
-            await recordShoutoutAudit({
-                status: 'phase',
-                phase: 'clip-played',
-                username: user,
-                displayName,
-                tenantId: realTenantId,
-                source: auditSource,
-                mode,
-            });
+            try {
+                console.log(`[WalkOn] Playing clip for ${displayName}`);
+                const played = await playClip(clip, displayName, profileImage, realTenantId);
+                console.log(`[WalkOn] Clip ${played ? 'finished' : 'was not shown'} for ${displayName}`);
+                await recordShoutoutAudit({
+                    status: 'phase',
+                    phase: played ? 'clip-played' : 'clip-player-unavailable',
+                    username: user,
+                    displayName,
+                    tenantId: realTenantId,
+                    source: auditSource,
+                    mode,
+                });
+            } catch (err) {
+                console.error(`[WalkOn] Clip playback failed for ${displayName}:`, err);
+                await recordShoutoutAudit({
+                    status: 'phase',
+                    phase: 'clip-failed',
+                    username: user,
+                    displayName,
+                    tenantId: realTenantId,
+                    source: auditSource,
+                    mode,
+                    error: auditError(err),
+                });
+            }
         } else {
             console.log(`[WalkOn] No clips found for ${displayName}, skipping video`);
             await recordShoutoutAudit({
@@ -651,23 +741,24 @@ export async function handleWalkOnShoutout(username: string, displayName: string
                 mode,
             });
         }
-    } catch (err) {
-        console.error(`[WalkOn] Clip playback failed for ${displayName}:`, err);
+
+        const aiGreeting = await greetingPromise;
+        console.log(`[WalkOn] AI greeting generated`);
         await recordShoutoutAudit({
             status: 'phase',
-            phase: 'clip-failed',
+            phase: 'ai-greeting-generated',
             username: user,
             displayName,
             tenantId: realTenantId,
             source: auditSource,
             mode,
-            error: auditError(err),
         });
-    }
 
-    // Fire greeting after clip (full = chat + TTS, overlay = overlay + TTS)
-    await suppressSayDuringShoutout(realTenantId);
-    await fireGreeting(aiGreeting, mode, tenantId, options, { username: user, displayName, source: auditSource });
+        // Fire only after the player confirms the clip ended (full = chat +
+        // TTS, overlay = overlay + TTS).
+        await suppressSayDuringShoutout(realTenantId);
+        await fireGreeting(aiGreeting, mode, tenantId, options, { username: user, displayName, source: auditSource });
+    });
 
     if (!skipCooldown) await recordShoutout(user, realTenantId);
     console.log(`[WalkOn] Completed ${mode} shoutout for ${displayName}`);

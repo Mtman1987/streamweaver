@@ -189,6 +189,21 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                     return;
                 }
 
+                // A tenant-scoped shoutout overlay may only acknowledge the
+                // clip event it received. This read-only signal lets the
+                // server keep Stella silent until real playback ends without
+                // granting the overlay any mutation privileges.
+                if (message.type === 'shoutout-clip-playback') {
+                    const tenantId = (ws as any).__tenantId;
+                    const { acknowledgeShoutoutClip } = require('../services/walk-on-shoutout');
+                    acknowledgeShoutoutClip(
+                        message.payload?.eventId,
+                        tenantId,
+                        message.payload?.phase,
+                    );
+                    return;
+                }
+
                 // Tenant query/identify selects a read-only overlay subscription.
                 // Mutations require a signed session cookie or the local API key.
                 const isAuthorized = (ws as any).__localAuthorized || (ws as any).__sessionAuthorized;

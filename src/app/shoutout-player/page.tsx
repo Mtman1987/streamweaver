@@ -6,16 +6,45 @@ import { getOverlayTenantId } from '@/lib/client-tenant';
 
 export default function ShoutoutPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const websocketRef = useRef<WebSocket | null>(null);
+  const activeEventIdRef = useRef<string>('');
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackDurationRef = useRef(30);
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
+  const [fallbackEmbedUrl, setFallbackEmbedUrl] = useState('');
 
-  const playClip = async (clipUrl: string, thumbnailUrl: string, user: string, profileImage: string) => {
+  const acknowledgePlayback = (eventId: string, phase: 'started' | 'ended' | 'failed') => {
+    if (!eventId || websocketRef.current?.readyState !== WebSocket.OPEN) return;
+    websocketRef.current.send(JSON.stringify({
+      type: 'shoutout-clip-playback',
+      payload: { eventId, phase },
+    }));
+  };
+
+  const finishPlayback = () => {
+    const completedEventId = activeEventIdRef.current;
+    acknowledgePlayback(completedEventId, 'ended');
+    activeEventIdRef.current = '';
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = null;
+    setTimeout(() => {
+      if (activeEventIdRef.current && activeEventIdRef.current !== completedEventId) return;
+      if (videoRef.current) videoRef.current.src = '';
+      setFallbackEmbedUrl('');
+      setVisible(false);
+    }, 500);
+  };
+
+  const playClip = async (eventId: string, clipUrl: string, thumbnailUrl: string, user: string, profileImage: string, duration = 30) => {
     setError(null);
+    setFallbackEmbedUrl('');
+    activeEventIdRef.current = eventId;
     let match = clipUrl.match(/clip=([^&]+)/);
     if (!match) {
       // Try treating clipUrl as a direct slug/URL
       const slugMatch = clipUrl.match(/(?:clips\.twitch\.tv\/|twitch\.tv\/\w+\/clip\/)([^?&/]+)/);
-      if (!slugMatch) { setError('Invalid clip URL'); return; }
+      if (!slugMatch) { setError('Invalid clip URL'); acknowledgePlayback(eventId, 'failed'); return; }
       match = slugMatch;
     }
 
@@ -37,7 +66,8 @@ export default function ShoutoutPlayer() {
               sha256Hash: '6fd3af2b22989506269b9ac02dd87eb4a6688392d67d94e41a6886f1e9f5c00f'
             }
           }
-        })
+        }),
+        signal: AbortSignal.timeout(4_000),
       });
 
       if (!response.ok) throw new Error(`GraphQL failed: ${response.status}`);
@@ -62,20 +92,20 @@ export default function ShoutoutPlayer() {
           video.muted = true;
           await video.play();
         }
+        acknowledgePlayback(eventId, 'started');
       }
     } catch (err: any) {
       console.error('[Shoutout] Clip load failed:', err);
-      setError(err.message);
-      setTimeout(() => { setError(null); setVisible(false); }, 5000);
+      // Twitch occasionally changes its direct-media lookup. Its supported
+      // clip embed remains the reliable fallback for OBS browser sources.
+      const parent = window.location.hostname;
+      fallbackDurationRef.current = Math.max(1, duration);
+      setFallbackEmbedUrl(`https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=false`);
+      setVisible(true);
     }
   };
 
-  const handleEnded = () => {
-    setTimeout(() => {
-      if (videoRef.current) videoRef.current.src = '';
-      setVisible(false);
-    }, 500);
-  };
+  const handleEnded = finishPlayback;
 
   // Listen for shoutout events via WebSocket
   useEffect(() => {
@@ -85,14 +115,15 @@ export default function ShoutoutPlayer() {
     const connect = () => {
       try {
         ws = new WebSocket(getBrowserWebSocketUrl(getOverlayTenantId() || undefined));
+        websocketRef.current = ws;
         ws.onclose = () => { reconnect = setTimeout(connect, 3000); };
         ws.onerror = () => {};
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
             if (msg.type === 'shoutout-play-clip') {
-              const { clipUrl, thumbnailUrl, user, profileImage } = msg.payload;
-              playClip(clipUrl, thumbnailUrl, user, profileImage);
+              const { eventId, clipUrl, thumbnailUrl, user, profileImage, duration } = msg.payload;
+              playClip(eventId, clipUrl, thumbnailUrl, user, profileImage, duration);
             }
           } catch {}
         };
@@ -102,7 +133,12 @@ export default function ShoutoutPlayer() {
     };
 
     connect();
-    return () => { clearTimeout(reconnect); ws?.close(); };
+    return () => {
+      clearTimeout(reconnect);
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+      ws?.close();
+      websocketRef.current = null;
+    };
   }, []);
 
   // Also support legacy URL-param mode (for OBS WebSocket setBrowserSource)
@@ -113,7 +149,7 @@ export default function ShoutoutPlayer() {
     const user = params.get('user') || '';
     const image = params.get('image') || '';
     if (video && thumb) {
-      playClip(video, thumb, user, image);
+      playClip('', video, thumb, user, image);
     }
   }, []);
 
@@ -122,12 +158,25 @@ export default function ShoutoutPlayer() {
       <video
         ref={videoRef}
         style={{
-          width: '100%', height: '100%', objectFit: 'contain',
+          position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain',
           visibility: visible ? 'visible' : 'hidden'
         }}
         autoPlay
         onEnded={handleEnded}
       />
+      {fallbackEmbedUrl && (
+        <iframe
+          src={fallbackEmbedUrl}
+          title="Twitch shoutout clip"
+          allow="autoplay; fullscreen"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: visible ? 'block' : 'none' }}
+          onLoad={() => {
+            acknowledgePlayback(activeEventIdRef.current, 'started');
+            if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = setTimeout(finishPlayback, fallbackDurationRef.current * 1000);
+          }}
+        />
+      )}
       {error && (
         <div style={{
           position: 'absolute', top: 10, left: 10,
