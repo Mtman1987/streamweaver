@@ -14,7 +14,7 @@ const PUBLIC_PATHS = [
   '/brb-player', '/shoutout-player', '/partner-checkin', '/card-pack-overlay', '/pokemon-pack-overlay',
   '/pokemon-collection-overlay', '/pokemon-trade-overlay', '/gym-battle-overlay',
   '/gamble-overlay', '/classic-gamble-overlay', '/pokemon-test', '/test-cardback',
-  '/test-collection', '/_next/', '/favicon.ico', '/app-icon.png', '/StreamWeaver.png',
+  '/test-collection', '/spotlight-lab', '/_next/', '/favicon.ico', '/app-icon.png', '/StreamWeaver.png',
   '/manifest.json',
 ];
 
