@@ -2806,6 +2806,47 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // tenant listener as another bot message and must be stopped explicitly.
     if (self || isTheCountAccountMessage) return;
 
+    // SML media requests are production-critical Lounge commands. Handle them
+    // before imported JSON actions and general bot/command filters so stale
+    // Streamer.bot actions cannot swallow !sr or !wr.
+    const smlMediaRequest = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        ? actualMessage.trim().match(/^!(sr|wr)(?:\s+(.+))?$/i)
+        : null;
+    if (smlMediaRequest) {
+        const command = smlMediaRequest[1].toLowerCase();
+        const query = String(smlMediaRequest[2] || '').trim();
+        if (!query) {
+            await reply(
+                `@${actualUsername}, usage: !${command} <${command === 'sr' ? 'song or YouTube URL' : 'movie, show, or video'}>`,
+                'bot',
+            ).catch(() => {});
+            return;
+        }
+
+        const sessionId = command === 'sr' ? 'discord-music-room' : 'discord-watch-room';
+        try {
+            const result: any = await executeHearMeOutBotAction({
+                action: 'hmo.media.request',
+                tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                sessionId,
+                actorUserId: String(tags['user-id'] || tags.username || actualUsername),
+                actorName: actualUsername,
+                actorRole: isHearMeOutOwner ? 'owner' : tags.mod ? 'moderator' : 'member',
+                query,
+                idempotencyKey: `twitch:${replyChannel}:${String(tags.id || '') || Date.now()}:${command}`,
+            });
+            const title = String(result?.request?.item?.title || query);
+            const confirmation = String(result?.message || 'Added to the 24-Hour Lounge queue.').replace(/[.]+$/, '');
+            await reply(`✅ @${actualUsername} 24-Hour Lounge: ${title} — ${confirmation}.`, 'bot').catch(() => {});
+            console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[Dispatcher] SML !${command} HearMeOut request failed:`, error);
+            await reply(`❌ @${actualUsername} HearMeOut could not queue !${command}: ${message.slice(0, 240)}`, 'bot').catch(() => {});
+        }
+        return;
+    }
+
     if (isCommand && /^!listen$/i.test(actualMessage.trim())) {
         const links = await buildTwitchListenLinks(replyChannel);
         const replyText = links.length === 0
