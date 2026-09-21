@@ -110,7 +110,8 @@ test('Twitch HearMeOut commands acknowledge and bridge both global queues', () =
   const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
   assert.match(dispatcher, /\^!\(sr\|wr\|music\|songs\|movie\|movies\|play\|pause\|stop\|skip\|next\|clear\|np\|nowplaying\|mute\|unmute\|volume\)/);
   assert.match(dispatcher, /!\$\{command\} received/);
-  assert.match(dispatcher, /sessionId = command === 'sr' \? 'discord-music-room' : 'discord-watch-room'/);
+  assert.match(dispatcher, /roomId = 'system-spacemountainlive-lounge'/);
+  assert.match(dispatcher, /lane = command === 'wr' \? 'movie' : 'music'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /action: 'hmo\.media\.control'/);
   assert.match(dispatcher, /const requestedLane =/);

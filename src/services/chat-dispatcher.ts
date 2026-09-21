@@ -2823,12 +2823,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        const sessionId = command === 'sr' ? 'discord-music-room' : 'discord-watch-room';
+        const roomId = 'system-spacemountainlive-lounge';
+        const lane = command === 'wr' ? 'movie' : 'music';
         try {
             const result: any = await executeHearMeOutBotAction({
                 action: 'hmo.media.request',
                 tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
-                sessionId,
+                roomId,
+                lane,
+                channelId: replyChannel,
                 actorUserId: String(tags['user-id'] || tags.username || actualUsername),
                 actorName: actualUsername,
                 actorRole: isHearMeOutOwner ? 'owner' : tags.mod ? 'moderator' : 'member',
