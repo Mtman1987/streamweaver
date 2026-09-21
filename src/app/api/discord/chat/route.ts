@@ -12,7 +12,7 @@ import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { readDiscordConfig, updateDiscordConfig } from '@/lib/discord-config';
 import { getConfiguredAppUrl, getInternalAppUrl } from '@/lib/runtime-origin';
 import { resolveDiscordBotTenantId } from '@/services/discord-branding';
-import { buildStructuredDiscordReplyPayload, sendStructuredDiscordReply } from '@/services/discord-structured-replies';
+import { buildStructuredDiscordReplyPayload, editStructuredDiscordReply, sendStructuredDiscordReply } from '@/services/discord-structured-replies';
 import { isBotTriggerIgnored, toggleBotTriggerIgnoreAll, toggleIgnoredBotTrigger } from '@/lib/bot-trigger-ignore-store';
 import { processDueDiscordMessageCleanups, recordDiscordMessageCleanup } from '@/services/discord-message-cleanup';
 import { appendPublicChatMessages } from '@/lib/public-chat-store';
@@ -717,7 +717,7 @@ export async function POST(request: NextRequest) {
 
         const acknowledgement = await sendStructuredDiscordReply({
           channelId,
-          message: `I'll pass that along to ${resolvedRelayTarget.character.currentName} through ${deliverySpeaker.character.currentName}.`,
+          message: `Delivering your message to ${resolvedRelayTarget.character.currentName}…`,
           tenantId: deliverySpeaker.tenantId,
           botName: deliverySpeaker.character.currentName,
           responseType: 'Message Relay',
@@ -744,17 +744,18 @@ export async function POST(request: NextRequest) {
           relayMessage: dmRelayRequest.relayMessage,
           humanDirected: true,
         });
-        if (!relayResult.delivered && relayResult.error) {
-          await sendStructuredDiscordReply({
-            channelId,
-            message: `I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`,
-            tenantId: deliverySpeaker.tenantId,
-            botName: deliverySpeaker.character.currentName,
-            responseType: 'Message Relay',
-            isPrivate: true,
-            forceCleanup: true,
-          });
-        }
+        if (acknowledgement.messageId) await editStructuredDiscordReply(acknowledgement.messageId, {
+          channelId,
+          message: relayResult.summary,
+          tenantId: deliverySpeaker.tenantId,
+          botName: deliverySpeaker.character.currentName,
+          responseType: 'Message Relay',
+          isPrivate: true,
+          forceCleanup: true,
+          footerText: relayResult.delivered
+            ? 'Delivered • waiting for a reply • deletes 10m after last activity'
+            : 'Delivery failed',
+        }).catch((error) => console.warn('[Discord Chat] Failed to update relay delivery status:', error));
         await markDmMessageHandled(tenantId, normalized.messageId);
         return apiOk({
           success: true,
@@ -1577,7 +1578,7 @@ export async function POST(request: NextRequest) {
           return apiOk({ success: true, botResponded: Boolean(channelId), relayDelivered: false, relayError: 'target-unresolved', replies: relayOnly ? collectedReplies : undefined });
         }
 
-        const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName} through ${deliverySpeaker.character.currentName}. They'll get instructions for replying back here.`;
+        const ackReply = `Delivering your message to ${resolvedRelayTarget.character.currentName}…`;
         let sourceDiscordRelayMessageId: string | undefined;
         if (channelId) {
           const structuredInput = {
@@ -1594,10 +1595,7 @@ export async function POST(request: NextRequest) {
             forceCleanup: true,
             footerText: 'Waiting for a reply • deletes 10m after last activity',
           };
-          if (relayOnly) {
-            const payload = await buildStructuredDiscordReplyPayload(structuredInput);
-            collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
-          } else {
+          if (!relayOnly) {
             const sent = await sendStructuredDiscordReply(structuredInput);
             sourceDiscordRelayMessageId = sent.messageId;
           }
@@ -1620,8 +1618,26 @@ export async function POST(request: NextRequest) {
           humanDirected: humanDirectedRelay,
         });
 
-        if (!relayResult.delivered && relayResult.error && channelId) {
-          await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`);
+        if (channelId && sourceDiscordRelayMessageId) {
+          await editStructuredDiscordReply(sourceDiscordRelayMessageId, {
+            channelId,
+            message: relayResult.summary,
+            tenantId: deliverySpeaker.tenantId,
+            botName: deliverySpeaker.character.currentName,
+            responseType: 'Message Relay',
+            isPrivate: isDirectMessage,
+            forceCleanup: true,
+            footerText: relayResult.delivered
+              ? 'Delivered • waiting for a reply • deletes 10m after last activity'
+              : 'Delivery failed',
+          }).catch((error) => console.warn('[Discord Chat] Failed to update relay delivery status:', error));
+        } else if (channelId && relayOnly) {
+          await sendDiscordRouteReplyOrCollect(
+            channelId,
+            relayResult.summary,
+            deliverySpeaker.character.currentName,
+            'Message Relay',
+          );
         }
 
         return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });
@@ -1650,7 +1666,7 @@ export async function POST(request: NextRequest) {
         fallbackTenantId: botTenantId || tenantId || undefined,
       });
       if (resolvedRelayTarget) {
-        const ackReply = `I'll pass that along to ${resolvedRelayTarget.character.currentName}.`;
+        const ackReply = `Delivering your message to ${resolvedRelayTarget.character.currentName}…`;
         let sourceDiscordRelayMessageId: string | undefined;
         if (channelId) {
           const structuredInput = {
@@ -1667,10 +1683,7 @@ export async function POST(request: NextRequest) {
             forceCleanup: true,
             footerText: 'Waiting for a reply • deletes 10m after last activity',
           };
-          if (relayOnly) {
-            const payload = await buildStructuredDiscordReplyPayload(structuredInput);
-            collectReply({ content: payload.content, embeds: payload.embeds, username: payload.username });
-          } else {
+          if (!relayOnly) {
             const sent = await sendStructuredDiscordReply(structuredInput);
             sourceDiscordRelayMessageId = sent.messageId;
           }
@@ -1693,8 +1706,21 @@ export async function POST(request: NextRequest) {
           humanDirected: !isDiscordBotAuthor(data),
         });
 
-        if (!relayResult.delivered && relayResult.error && channelId) {
-          await sendDiscordRouteReplyOrCollect(channelId, `@${userName}, I couldn't reach ${resolvedRelayTarget.character.currentName}: ${relayResult.error}`);
+        if (channelId && sourceDiscordRelayMessageId) {
+          await editStructuredDiscordReply(sourceDiscordRelayMessageId, {
+            channelId,
+            message: relayResult.summary,
+            tenantId: botTenantId || tenantId || undefined,
+            botName,
+            responseType: 'Message Relay',
+            isPrivate: isDirectMessage,
+            forceCleanup: true,
+            footerText: relayResult.delivered
+              ? 'Delivered • waiting for a reply • deletes 10m after last activity'
+              : 'Delivery failed',
+          }).catch((error) => console.warn('[Discord Chat] Failed to update relay delivery status:', error));
+        } else if (channelId && relayOnly) {
+          await sendDiscordRouteReplyOrCollect(channelId, relayResult.summary, botName, 'Message Relay');
         }
 
         return apiOk({ success: true, botResponded: true, relayDelivered: relayResult.delivered, relayMode: relayResult.mode || null, replies: relayOnly ? collectedReplies : undefined });

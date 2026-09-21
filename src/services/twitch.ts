@@ -75,11 +75,12 @@ export async function sendChatMessage(
   message: string,
   as: 'bot' | 'broadcaster' | 'count' = 'broadcaster',
   targetChannel?: string,
-  tenantId?: string
+  tenantId?: string,
+  options?: { forceTwitch?: boolean },
 ): Promise<void> {
   if (tenantId?.startsWith('__kick_silent__')) return;
   const outputContext = getChatOutputContext();
-  if (outputContext?.platform === 'discord') {
+  if (!options?.forceTwitch && outputContext?.platform === 'discord') {
     const { sendStructuredDiscordReply } = await import('./discord-structured-replies');
     await sendStructuredDiscordReply({
       channelId: outputContext.channelId,
@@ -117,6 +118,42 @@ export async function sendChatMessage(
       throw new Error(message);
     }
     throw new Error('Twitch client not available for sending messages');
+  }
+}
+
+/**
+ * Sends to Twitch even when the request originated inside Discord's output
+ * context. Cross-platform relays must never be folded back into their source
+ * Discord card and then reported as a successful Twitch delivery.
+ */
+export async function sendTwitchChatMessage(
+  message: string,
+  as: 'bot' | 'broadcaster' | 'count' = 'bot',
+  targetChannel?: string,
+  tenantId?: string,
+): Promise<void> {
+  return sendChatMessage(message, as, targetChannel, tenantId, { forceTwitch: true });
+}
+
+/** Returns Twitch's current live state for one channel, or null on lookup failure. */
+export async function getTwitchChannelLiveStatus(channelLogin: string): Promise<boolean | null> {
+  const login = String(channelLogin || '').trim().replace(/^#/, '').toLowerCase();
+  if (!login || login === 'discord') return null;
+  try {
+    const appToken = await getTwitchAppAccessToken();
+    const clientId = getTwitchClientId();
+    const response = await fetch(`https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(login)}`, {
+      headers: {
+        Authorization: `Bearer ${appToken}`,
+        'Client-ID': clientId,
+      },
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(5_000) : undefined,
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    return Array.isArray(data?.data) ? data.data.length > 0 : null;
+  } catch {
+    return null;
   }
 }
 
