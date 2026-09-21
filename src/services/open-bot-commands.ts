@@ -85,9 +85,9 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
 
 const OPEN_COMMAND_CATALOG: Array<{ command: OpenBotCommand; meaning: string; examples: string[] }> = [
   { command: 'live-members', meaning: 'List SpaceMountain community members who are live or streaming now.', examples: ["who's live?", 'is anybody streaming?', 'show me the live crew'] },
-  { command: 'chat-tag-current', meaning: 'Say who is currently IT in the ChatTag game.', examples: ["who's it?", 'who has the tag?', 'which player is currently it?'] },
-  { command: 'chat-tag-status', meaning: 'Give the current ChatTag player and activity counts.', examples: ['ChatTag status', 'how many people play ChatTag?', 'is the game active?'] },
-  { command: 'chat-tag-leaderboard', meaning: 'List the highest-ranked ChatTag players.', examples: ['show the ChatTag leaderboard', 'who is winning?', 'give me the top three'] },
+  { command: 'chat-tag-current', meaning: 'Say who currently has the active tag in Nebula Arcade.', examples: ["who's it?", 'who has the tag?', 'which player is currently it?'] },
+  { command: 'chat-tag-status', meaning: 'Give the current Nebula Arcade player and activity counts.', examples: ['Nebula Arcade status', 'how many people are playing?', 'is the game active?'] },
+  { command: 'chat-tag-leaderboard', meaning: 'List the highest-ranked Nebula Arcade players.', examples: ['show the Nebula Arcade leaderboard', 'who is winning?', 'give me the top three'] },
   { command: 'apps', meaning: 'List the apps and tools available in the SpaceMountain ecosystem.', examples: ['what apps are there?', 'which tools can you control?', 'show the app catalog'] },
   { command: 'hearmeout', meaning: 'Report what HearMeOut is playing now and what is queued.', examples: ["what's playing?", 'what is in the HearMeOut queue?', 'music status'] },
   { command: 'help', meaning: 'Explain the safe shared commands this bot can perform.', examples: ['what can you do?', 'show public commands', 'bot help'] },
@@ -213,18 +213,18 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
     const explicitCurrent = String(state?.currentIt || '').trim();
     const current = players.find((player: any) => player?.isIt);
     const name = explicitCurrent || String(current?.twitchUsername || current?.username || current?.displayName || '').trim();
-    return name ? `🏷️ ${name} is currently IT in ChatTag.` : '🏷️ ChatTag is currently free-for-all; nobody is IT.';
+    return name ? `🏷️ ${name} currently has the active tag in Nebula Arcade.` : '🏷️ Nebula Arcade is currently free-for-all; nobody has the active tag.';
   }
   if (command === 'chat-tag-status') {
     const active = players.filter((player: any) => player?.isActive).length;
-    return `ChatTag has ${players.length} players, with ${active} currently active.`;
+    return `Nebula Arcade has ${players.length} players, with ${active} currently active.`;
   }
 
   const leaders = [...players]
     .sort((left: any, right: any) => Number(right?.score || 0) - Number(left?.score || 0))
     .slice(0, 3);
-  if (!leaders.length) return 'ChatTag does not have any ranked players yet.';
-  return `🏆 ChatTag top 3: ${leaders.map((player: any, index) => `#${index + 1} ${player.twitchUsername || player.username || player.displayName || 'unknown'} (${Number(player.score || 0)} pts)`).join(' | ')}.`;
+  if (!leaders.length) return 'Nebula Arcade does not have any ranked players yet.';
+  return `🏆 Nebula Arcade top 3: ${leaders.map((player: any, index) => `#${index + 1} ${player.twitchUsername || player.username || player.displayName || 'unknown'} (${Number(player.score || 0)} pts)`).join(' | ')}.`;
 }
 
 async function fetchSpmtChatTagState(fetcher: FetchLike): Promise<any> {

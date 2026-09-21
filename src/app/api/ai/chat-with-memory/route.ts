@@ -15,6 +15,13 @@ import { AVATAR_GESTURE_PROMPT, extractAvatarGesture } from '@/lib/avatar-gestur
 import { rememberAvatarGesture } from '@/lib/avatar-gesture-runtime';
 import { VIEWER_ACTION_PROMPT, extractViewerActionPrompt } from '@/lib/viewer-action-prompts';
 import { rememberViewerActionPrompt } from '@/lib/viewer-action-runtime';
+import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
+import {
+  buildStellaLoungeSnapshot,
+  detectStellaLoungeIntent,
+  formatStellaLoungeContext,
+  resolveStellaLoungeIntent,
+} from '@/services/stella-lounge-host';
 
 type ChatContext = 'twitch' | 'twitch-cross-bot' | 'discord' | 'discord-cross-bot' | 'kick' | 'voice' | 'private';
 
@@ -137,6 +144,20 @@ export async function POST(request: NextRequest) {
       || (storedPersonality && storedPersonality !== DEFAULTS_PERSONALITY_CHECK ? storedPersonality : null)
       || defaultPersonality;
 
+    const isStellaLounge = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+    const stellaIntent = isStellaLounge ? detectStellaLoungeIntent(message) : null;
+    if (stellaIntent) {
+      const deterministicReply = await resolveStellaLoungeIntent(stellaIntent);
+      const parsedGesture = extractAvatarGesture(deterministicReply);
+      const timestamp = new Date().toISOString();
+      if (parsedGesture.gesture) rememberAvatarGesture(tenantId, parsedGesture.text, parsedGesture.gesture);
+      await appendPublicChatMessages([
+        { type: 'user', username, message, timestamp },
+        { type: 'ai', username: botResponseName, message: parsedGesture.text, timestamp },
+      ], 100, tenantId);
+      return apiOk({ response: parsedGesture.text, hostIntent: stellaIntent });
+    }
+
     const research = await resolveResearchMode({
       tenantId,
       botName: botResponseName,
@@ -159,6 +180,9 @@ export async function POST(request: NextRequest) {
     const historyText = formatHistory(history, botResponseName);
     const worldLoreText = await formatWorldLoreForPrompt();
     const botInteractionHistory = await formatBotInteractionHistoryForPrompt(8, tenantId);
+    const stellaLoungeContext = isStellaLounge
+      ? formatStellaLoungeContext(await buildStellaLoungeSnapshot())
+      : '';
 
     let commanderContext = '';
     const userIsCommander = isCommander(username);
@@ -207,6 +231,7 @@ export async function POST(request: NextRequest) {
       VIEWER_ACTION_PROMPT,
       worldLoreText,
       botInteractionHistory,
+      stellaLoungeContext,
       commanderContext,
       contextFlag,
       discordMetadata,

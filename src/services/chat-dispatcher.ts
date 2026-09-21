@@ -5003,7 +5003,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
                 && !isCommand
                 && !userIsKnownBot
-                && /(^|\\W)stella(\\W|$)/i.test(actualMessage)
+                && /(^|\W)stella(\W|$)/i.test(actualMessage)
             ) {
                 try {
                     const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {

@@ -480,6 +480,15 @@ async function startServer() {
                 await reconnectDisconnectedTenants();
             } catch (e) { /* silent */ }
         }, 300000); // every 5 minutes
+        pollingService.addTask('stella-lounge-host', async () => {
+            try {
+                const { runStellaLoungeHostTick } = require('./src/services/stella-lounge-host');
+                const result = await runStellaLoungeHostTick();
+                if (result.delivered) console.log('[Stella Lounge Host] Ambient host turn delivered');
+            } catch (e) {
+                console.warn('[Stella Lounge Host] Tick failed:', e);
+            }
+        }, 60000);
         pollingService.addTask('kick-health', async () => {
             try {
                 const { getAllKickInstances } = require('./src/services/kick');

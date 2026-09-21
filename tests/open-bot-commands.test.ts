@@ -97,7 +97,7 @@ test('uses SPMT integration state for current IT without service-secret headers'
       players: [{ twitchUsername: 'captain', isIt: true, isActive: true, score: 50 }],
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   });
-  assert.equal(reply, '🏷️ captain is currently IT in ChatTag.');
+  assert.equal(reply, '🏷️ captain currently has the active tag in Nebula Arcade.');
 });
 
 test('uses shared local-first AI inference when wording is not an exact match', async () => {
@@ -135,7 +135,7 @@ test('keeps ChatTag status commands read-only and deterministic', async () => {
     ],
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 
-  assert.equal(await runOpenBotCommand('chat-tag-current', fetcher), '🏷️ captain is currently IT in ChatTag.');
-  assert.equal(await runOpenBotCommand('chat-tag-status', fetcher), 'ChatTag has 2 players, with 1 currently active.');
+  assert.equal(await runOpenBotCommand('chat-tag-current', fetcher), '🏷️ captain currently has the active tag in Nebula Arcade.');
+  assert.equal(await runOpenBotCommand('chat-tag-status', fetcher), 'Nebula Arcade has 2 players, with 1 currently active.');
   assert.match(await runOpenBotCommand('chat-tag-leaderboard', fetcher), /#1 captain \(50 pts\)/);
 });
