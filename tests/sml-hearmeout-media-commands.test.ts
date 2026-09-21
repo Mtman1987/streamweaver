@@ -12,8 +12,9 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
   assert.ok(selfGuard >= 0);
   assert.ok(media > selfGuard);
   assert.ok(generic > media);
-  assert.match(dispatcher, /discord-music-room/);
-  assert.match(dispatcher, /discord-watch-room/);
+  assert.match(dispatcher, /system-spacemountainlive-lounge/);
+  assert.match(dispatcher, /lane = command === 'wr' \? 'movie' : 'music'/);
+  assert.doesNotMatch(dispatcher, /const sessionId = command === 'sr' \? 'discord-music-room' : 'discord-watch-room'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /HearMeOut could not queue/);
 });
