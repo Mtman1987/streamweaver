@@ -31,6 +31,6 @@ test('SML !sr and !wr write directly to the canonical Apollo Lounge player path'
 
 
 test('direct Lounge media auth uses an allowed StreamWeaver client-credentials scope', () => {
-  assert.match(actions, /SPMT_LOUNGE_SERVICE_SCOPES = \['identity:read'\]/);
+  assert.match(actions, /SPMT_LOUNGE_SERVICE_SCOPES = \['entitlements:read'\]/);
   assert.match(actions, /getSpmtServiceToken\(SPMT_LOUNGE_SERVICE_SCOPES\)/);
 });
