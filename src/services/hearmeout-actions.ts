@@ -141,12 +141,6 @@ async function executeSpaceMountainApolloMedia(payload: HearMeOutBotActionPayloa
     };
   }
   const args: Record<string, string> = { roomId: SPACEMOUNTAIN_LOUNGE_ROOM_ID };
-  if (payload.action === 'hmo.media.request') {
-    const query = String(payload.query || '').trim().slice(0, 500);
-    if (!query) throw new Error('A song or movie request is required');
-    args.query = query;
-    args.lane = spaceMountainLane(payload);
-  }
   if (payload.action === 'hmo.media.control') {
     if (payload.control) args.control = String(payload.control).trim();
     if (payload.value !== undefined) args.value = String(payload.value);
