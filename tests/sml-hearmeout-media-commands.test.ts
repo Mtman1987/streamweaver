@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const dispatcher = fs.readFileSync(path.join(process.cwd(), 'src/services/chat-dispatcher.ts'), 'utf8');
+const actions = fs.readFileSync(path.join(process.cwd(), 'src/services/hearmeout-actions.ts'), 'utf8');
 
 test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', () => {
   const selfGuard = dispatcher.indexOf('if (self || isTheCountAccountMessage) return;');
@@ -17,4 +18,13 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
   assert.doesNotMatch(dispatcher, /const sessionId = command === 'sr' \? 'discord-music-room' : 'discord-watch-room'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /HearMeOut could not queue/);
+});
+
+
+test('SML !sr and !wr write directly to the canonical Apollo Lounge player path', () => {
+  assert.match(actions, /APOLLO_LOUNGE_ORIGIN/);
+  assert.match(actions, /\/api\/watch\/broadcast\/service-request\?roomId=/);
+  assert.match(actions, /system-spacemountainlive-lounge/);
+  assert.match(actions, /body: JSON\.stringify\(\{ query, lane, displayName: actorName \}\)/);
+  assert.match(actions, /programRoomId/);
 });
