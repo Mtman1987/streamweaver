@@ -49,7 +49,8 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
   const scriptPromiseRef = React.useRef<Promise<void> | null>(null);
 
   const active = creators[activeIndex] || null;
-  const parent = typeof window === 'undefined' ? 'spacemountain.live' : window.location.hostname;
+  const requestedParent = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('parent') || '';
+  const parent = /^[a-z0-9.-]+$/i.test(requestedParent) ? requestedParent.toLowerCase() : (typeof window === 'undefined' ? 'spacemountain.live' : window.location.hostname);
 
   const fetchLiveCreators = React.useCallback(async () => {
     const groups = await Promise.all(['community', 'partner'].map(async (group) => {
