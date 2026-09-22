@@ -49,7 +49,7 @@ function getHearMeOutServiceSecrets(): string[] {
 }
 
 const SPMT_JOB_SCOPES = ['jobs:read', 'jobs:write'];
-const SPMT_LOUNGE_SERVICE_SCOPES = ['identity:read'];
+const SPMT_LOUNGE_SERVICE_SCOPES = ['entitlements:read'];
 
 function isSpaceMountainApolloMedia(payload: HearMeOutBotActionPayload): boolean {
   if (String(payload.tenantId || '').trim().toLowerCase() !== SPACEMOUNTAIN_TENANT_ID) return false;
