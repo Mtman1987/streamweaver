@@ -23,14 +23,17 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
 
 test('SML !sr and !wr write directly to the canonical Apollo Lounge player path', () => {
   assert.match(actions, /APOLLO_LOUNGE_ORIGIN/);
-  assert.match(actions, /\/api\/watch\/broadcast\/service-request\?roomId=/);
+  assert.match(actions, /\/api\/watch\/broadcast\/requests\?roomId=/);
   assert.match(actions, /system-spacemountainlive-lounge/);
   assert.match(actions, /body: JSON\.stringify\(\{ query, lane, displayName: actorName \}\)/);
   assert.match(actions, /programRoomId/);
 });
 
 
-test('direct Lounge media auth uses an allowed StreamWeaver client-credentials scope', () => {
-  assert.match(actions, /SPMT_LOUNGE_SERVICE_SCOPES = \['entitlements:read'\]/);
-  assert.match(actions, /getSpmtServiceToken\(SPMT_LOUNGE_SERVICE_SCOPES\)/);
+test('SML Twitch media does not mint a service token for the public Lounge request path', () => {
+  const start = actions.indexOf("if (payload.action === 'hmo.media.request')");
+  const end = actions.indexOf("const args: Record<string, string>", start);
+  const requestBlock = actions.slice(start, end);
+  assert.doesNotMatch(requestBlock, /getSpmtServiceToken/);
+  assert.doesNotMatch(requestBlock, /Authorization:/);
 });
