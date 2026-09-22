@@ -49,7 +49,6 @@ function getHearMeOutServiceSecrets(): string[] {
 }
 
 const SPMT_JOB_SCOPES = ['jobs:read', 'jobs:write'];
-const SPMT_LOUNGE_SERVICE_SCOPES = ['entitlements:read'];
 
 function isSpaceMountainApolloMedia(payload: HearMeOutBotActionPayload): boolean {
   if (String(payload.tenantId || '').trim().toLowerCase() !== SPACEMOUNTAIN_TENANT_ID) return false;
@@ -102,29 +101,20 @@ async function executeSpaceMountainApolloMedia(payload: HearMeOutBotActionPayloa
     const query = String(payload.query || '').trim().slice(0, 500);
     if (!query) throw new Error('A song or movie request is required');
     const lane = spaceMountainLane(payload);
-    const send = async () => {
-      const token = await getSpmtServiceToken(SPMT_LOUNGE_SERVICE_SCOPES);
-      return fetch(`${APOLLO_LOUNGE_ORIGIN}/api/watch/broadcast/service-request?roomId=${encodeURIComponent(SPACEMOUNTAIN_LOUNGE_ROOM_ID)}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'idempotency-key': key,
-        },
-        body: JSON.stringify({ query, lane, displayName: actorName }),
-        cache: 'no-store',
-        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(105_000) : undefined,
-      });
-    };
-    let response = await send();
-    if (response.status === 401) {
-      await response.body?.cancel().catch(() => {});
-      clearSpmtServiceTokenCache(SPMT_LOUNGE_SERVICE_SCOPES);
-      response = await send();
-    }
+    const endpoint = `${APOLLO_LOUNGE_ORIGIN}/api/watch/broadcast/requests?roomId=${encodeURIComponent(SPACEMOUNTAIN_LOUNGE_ROOM_ID)}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'idempotency-key': key,
+      },
+      body: JSON.stringify({ query, lane, displayName: actorName }),
+      cache: 'no-store',
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(105_000) : undefined,
+    });
     const data = await response.json().catch(() => null) as any;
-    if (!response.ok || data?.success !== true) {
+    if (!response.ok) {
       throw new Error(String(data?.error || data?.message || `Apollo Lounge request failed (${response.status})`));
     }
     return {
@@ -134,9 +124,9 @@ async function executeSpaceMountainApolloMedia(payload: HearMeOutBotActionPayloa
       message: 'Added to the 24-Hour Lounge queue.',
       request: data.current ?? data.queue?.at?.(-1),
       route: {
-        endpoint: `${APOLLO_LOUNGE_ORIGIN}/api/watch/broadcast/service-request`,
-        publicRoomId: data.publicRoomId,
-        programRoomId: data.programRoomId,
+        endpoint,
+        publicRoomId: SPACEMOUNTAIN_LOUNGE_ROOM_ID,
+        programRoomId: data.sessionId,
         sessionId: data.sessionId,
       },
     };
