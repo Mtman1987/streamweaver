@@ -49,6 +49,7 @@ function getHearMeOutServiceSecrets(): string[] {
 }
 
 const SPMT_JOB_SCOPES = ['jobs:read', 'jobs:write'];
+const SPMT_LOUNGE_SERVICE_SCOPES = ['identity:read'];
 
 function isSpaceMountainApolloMedia(payload: HearMeOutBotActionPayload): boolean {
   if (String(payload.tenantId || '').trim().toLowerCase() !== SPACEMOUNTAIN_TENANT_ID) return false;
@@ -102,7 +103,7 @@ async function executeSpaceMountainApolloMedia(payload: HearMeOutBotActionPayloa
     if (!query) throw new Error('A song or movie request is required');
     const lane = spaceMountainLane(payload);
     const send = async () => {
-      const token = await getSpmtServiceToken(SPMT_JOB_SCOPES);
+      const token = await getSpmtServiceToken(SPMT_LOUNGE_SERVICE_SCOPES);
       return fetch(`${APOLLO_LOUNGE_ORIGIN}/api/watch/broadcast/service-request?roomId=${encodeURIComponent(SPACEMOUNTAIN_LOUNGE_ROOM_ID)}`, {
         method: 'POST',
         headers: {
@@ -119,7 +120,7 @@ async function executeSpaceMountainApolloMedia(payload: HearMeOutBotActionPayloa
     let response = await send();
     if (response.status === 401) {
       await response.body?.cancel().catch(() => {});
-      clearSpmtServiceTokenCache(SPMT_JOB_SCOPES);
+      clearSpmtServiceTokenCache(SPMT_LOUNGE_SERVICE_SCOPES);
       response = await send();
     }
     const data = await response.json().catch(() => null) as any;
