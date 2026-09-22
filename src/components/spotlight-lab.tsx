@@ -37,7 +37,7 @@ function cleanCreators(value: unknown): Creator[] {
   });
 }
 
-export function SpotlightLab({ method }: { method: Method }) {
+export function SpotlightLab({ method, autoStart = false, clean = false }: { method: Method; autoStart?: boolean; clean?: boolean }) {
   const [creators, setCreators] = React.useState<Creator[]>([]);
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [started, setStarted] = React.useState(false);
@@ -77,7 +77,7 @@ export function SpotlightLab({ method }: { method: Method }) {
     return scriptPromiseRef.current;
   }, []);
 
-  const start = async () => {
+  const start = React.useCallback(async () => {
     setLoading(true);
     try {
       const live = await fetchLiveCreators();
@@ -94,7 +94,11 @@ export function SpotlightLab({ method }: { method: Method }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchLiveCreators, method]);
+
+  React.useEffect(() => {
+    if (autoStart && !started && !loading) void start();
+  }, [autoStart, loading, start, started]);
 
   React.useEffect(() => {
     if (!started || creators.length < 2) return;
@@ -156,9 +160,10 @@ export function SpotlightLab({ method }: { method: Method }) {
   const copy = METHOD_COPY[method];
 
   return (
-    <main className="lab">
+    <main className={`lab${clean ? ' clean' : ''}`}>
       <style jsx>{`
         .lab { min-height: 100vh; padding: 24px; color: #eefaff; font-family: var(--font-inter), Arial, sans-serif; background: radial-gradient(circle at top left, #1c4388, transparent 42%), #060a1c; }
+        .lab.clean { padding: 0; background: #000; }
         .shell { max-width: 1180px; margin: 0 auto; }
         h1 { margin: 0; font: 800 clamp(27px,4vw,46px)/1 var(--font-space-grotesk), sans-serif; letter-spacing: -.04em; }
         .kicker { margin: 0 0 8px; color: #7eefff; font-weight: 800; letter-spacing: .12em; font-size: 12px; }
@@ -170,6 +175,8 @@ export function SpotlightLab({ method }: { method: Method }) {
         .volume { display: flex; gap: 8px; align-items: center; color: #dbe6ff; font-size: 13px; font-weight: 700; }
         input { accent-color: #6defff; }
         .stage { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border: 2px solid #41dfee; border-radius: 18px; background: #010207; box-shadow: 0 0 45px rgba(57,216,255,.22); }
+        .clean-shell { width: 100%; max-width: none; height: 100vh; }
+        .clean-shell .stage { width: 100%; height: 100vh; aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: none; }
         .player, .player :global(iframe), .frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
         .waiting { display: grid; place-items: center; height: 100%; color: #a9b9d7; text-align: center; padding: 20px; }
         .now { display: flex; justify-content: space-between; gap: 10px; margin: 14px 3px; color: #e4efff; font-weight: 800; }
@@ -177,15 +184,15 @@ export function SpotlightLab({ method }: { method: Method }) {
         .foot { color: #93a6cb; font-size: 13px; line-height: 1.5; }
         a { color: #78efff; }
       `}</style>
-      <section className="shell">
-        <p className="kicker">SPACE MOUNTAIN • SPOTLIGHT LAB</p>
+      <section className={`shell${clean ? ' clean-shell' : ''}`}>
+        {!clean && <><p className="kicker">SPACE MOUNTAIN • SPOTLIGHT LAB</p>
         <h1>{copy.title}</h1>
         <p className="summary">{copy.summary} It uses the same live community and partner feed as your existing spotlight, and rotates every 30 seconds.</p>
         <div className="control">
           <button type="button" onClick={() => void start()} disabled={loading}>{loading ? 'Loading live creators…' : started ? 'Restart test' : 'Start test'}</button>
           <label className="volume">Volume <input aria-label="Twitch player volume" type="range" min="0" max="1" step="0.05" value={volume} onChange={(event) => setVolume(Number(event.target.value))} /></label>
           <span className="status">{message}</span>
-        </div>
+        </div></>}
         <div className="stage">
           {!started || !active ? <div className="waiting">{started ? 'Waiting for a live approved creator…' : 'The player will appear here after you start the test.'}</div> : method === 'official-api' ? (
             <div className="player" ref={playerHostRef} />
@@ -193,8 +200,8 @@ export function SpotlightLab({ method }: { method: Method }) {
             <iframe className="frame" key={`${method}-${active.username}-${activeIndex}`} src={method === 'multitwitch' ? multiTwitchUrl : playerUrl} allow="autoplay; fullscreen" allowFullScreen title={`${copy.title}: ${active.username}`} />
           )}
         </div>
-        <div className="now"><span>NOW TESTING</span><strong>{active ? `@${active.username} • next change in 30 seconds` : 'Waiting for live creators'}</strong></div>
-        <p className="foot">For a fair comparison, click play once if Twitch asks. The important difference is what happens after the first 30-second change.</p>
+        {!clean && <><div className="now"><span>NOW TESTING</span><strong>{active ? `@${active.username} • next change in 30 seconds` : 'Waiting for live creators'}</strong></div>
+        <p className="foot">For a fair comparison, click play once if Twitch asks. The important difference is what happens after the first 30-second change.</p></>}
       </section>
     </main>
   );
