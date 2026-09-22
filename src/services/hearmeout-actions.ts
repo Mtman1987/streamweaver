@@ -2,6 +2,7 @@ const HEARMEOUT_URL = String(
   process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev',
 ).replace(/\/+$/, '');
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
+const APOLLO_LOUNGE_ORIGIN = String(process.env.APOLLO_LOUNGE_ORIGIN || 'https://web-terminal-bvesa.sprites.app').replace(/\/+$/, '');
 const SPACEMOUNTAIN_TENANT_ID = 'spacemountainlive';
 const SPACEMOUNTAIN_LOUNGE_ROOM_ID = 'system-spacemountainlive-lounge';
 const LEGACY_SPACEMOUNTAIN_LOUNGE_SESSIONS = new Set(['discord-music-room', 'discord-watch-room']);
@@ -96,6 +97,49 @@ async function executeSpaceMountainApolloMedia(payload: HearMeOutBotActionPayloa
   const key = String(payload.idempotencyKey || `streamweaver-lounge:${Date.now()}`).slice(0, 200);
   const actorName = String(payload.actorName || 'Twitch viewer').trim().slice(0, 120) || 'Twitch viewer';
   const actorUserId = String(payload.actorUserId || `twitch:spacemountainlive:${actorName.toLowerCase()}`).trim().slice(0, 160);
+  if (payload.action === 'hmo.media.request') {
+    const query = String(payload.query || '').trim().slice(0, 500);
+    if (!query) throw new Error('A song or movie request is required');
+    const lane = spaceMountainLane(payload);
+    const send = async () => {
+      const token = await getSpmtServiceToken(SPMT_JOB_SCOPES);
+      return fetch(`${APOLLO_LOUNGE_ORIGIN}/api/watch/broadcast/service-request?roomId=${encodeURIComponent(SPACEMOUNTAIN_LOUNGE_ROOM_ID)}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'idempotency-key': key,
+        },
+        body: JSON.stringify({ query, lane, displayName: actorName }),
+        cache: 'no-store',
+        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(105_000) : undefined,
+      });
+    };
+    let response = await send();
+    if (response.status === 401) {
+      await response.body?.cancel().catch(() => {});
+      clearSpmtServiceTokenCache(SPMT_JOB_SCOPES);
+      response = await send();
+    }
+    const data = await response.json().catch(() => null) as any;
+    if (!response.ok || data?.success !== true) {
+      throw new Error(String(data?.error || data?.message || `Apollo Lounge request failed (${response.status})`));
+    }
+    return {
+      ...data,
+      success: true,
+      action: payload.action,
+      message: 'Added to the 24-Hour Lounge queue.',
+      request: data.current ?? data.queue?.at?.(-1),
+      route: {
+        endpoint: `${APOLLO_LOUNGE_ORIGIN}/api/watch/broadcast/service-request`,
+        publicRoomId: data.publicRoomId,
+        programRoomId: data.programRoomId,
+        sessionId: data.sessionId,
+      },
+    };
+  }
   const args: Record<string, string> = { roomId: SPACEMOUNTAIN_LOUNGE_ROOM_ID };
   if (payload.action === 'hmo.media.request') {
     const query = String(payload.query || '').trim().slice(0, 500);
