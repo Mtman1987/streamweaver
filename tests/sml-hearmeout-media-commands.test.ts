@@ -7,10 +7,11 @@ const dispatcher = fs.readFileSync(path.join(process.cwd(), 'src/services/chat-d
 const actions = fs.readFileSync(path.join(process.cwd(), 'src/services/hearmeout-actions.ts'), 'utf8');
 
 test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', () => {
-  const selfGuard = dispatcher.indexOf('if (self || isTheCountAccountMessage) return;');
+  const selfGuard = dispatcher.indexOf('if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;');
   const media = dispatcher.indexOf('const smlMediaRequest = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID');
   const generic = dispatcher.indexOf('if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand))');
   assert.ok(selfGuard >= 0);
+  assert.match(dispatcher, /self && !isSpaceMountainBroadcasterCommand/);
   assert.ok(media > selfGuard);
   assert.ok(generic > media);
   assert.match(dispatcher, /system-spacemountainlive-lounge/);

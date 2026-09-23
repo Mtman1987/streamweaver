@@ -114,7 +114,7 @@ patchFile('src/services/chat-dispatcher.ts', (source) => {
 
   const selfMarker = "    // Skip self messages (broadcaster client echoes its own sends)\n    if (self) return;\n\n";
   const selfReplacement = "    // Skip self messages (broadcaster client echoes its own sends).\n    // The dedicated Count client is send-only, so its echo arrives through the\n    // tenant listener as another bot message and must be stopped explicitly.\n    if (self || isTheCountAccountMessage) return;\n\n";
-  if (!source.includes('if (self || isTheCountAccountMessage) return;')) {
+  if (!source.includes('if (self || isTheCountAccountMessage) return;') && !source.includes('if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;')) {
     if (!source.includes(selfMarker)) throw new Error('The Count patch: Twitch self-message marker missing');
     source = source.replace(selfMarker, selfReplacement);
   }

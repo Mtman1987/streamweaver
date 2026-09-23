@@ -2804,7 +2804,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Skip self messages (broadcaster client echoes its own sends).
     // The dedicated Count client is send-only, so its echo arrives through the
     // tenant listener as another bot message and must be stopped explicitly.
-    if (self || isTheCountAccountMessage) return;
+    if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;
 
     // SML media requests are production-critical Lounge commands. Handle them
     // before imported JSON actions and general bot/command filters so stale
