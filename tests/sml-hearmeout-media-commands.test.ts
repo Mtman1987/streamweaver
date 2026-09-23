@@ -22,19 +22,15 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
 });
 
 
-test('SML !sr and !wr write directly to the canonical Apollo Lounge player path', () => {
-  assert.match(actions, /APOLLO_LOUNGE_ORIGIN/);
-  assert.match(actions, /\/api\/watch\/broadcast\/requests\?roomId=/);
-  assert.match(actions, /system-spacemountainlive-lounge/);
-  assert.match(actions, /body: JSON\.stringify\(\{ query, lane, displayName: actorName \}\)/);
-  assert.match(actions, /programRoomId/);
+test('SML media commands route to the canonical live HearMeOut queue owner', () => {
+  assert.match(actions, /function liveHearMeOutPayload/);
+  assert.match(actions, /SPACEMOUNTAIN_MUSIC_SESSION_ID = 'discord-music-room'/);
+  assert.match(actions, /SPACEMOUNTAIN_MOVIE_SESSION_ID = 'discord-watch-room'/);
+  assert.match(actions, /sessionId: lane === 'movie' \? SPACEMOUNTAIN_MOVIE_SESSION_ID : SPACEMOUNTAIN_MUSIC_SESSION_ID/);
+  assert.match(actions, /fetch\(\`\$\{HEARMEOUT_URL\}\/api\/internal\/bot\/actions\`/);
+  assert.doesNotMatch(actions, /APOLLO_LOUNGE_ORIGIN|\/api\/watch\/broadcast\/requests\?roomId=|executeSpaceMountainApolloMedia/);
 });
 
-
-test('SML Twitch media does not mint a service token for the public Lounge request path', () => {
-  const start = actions.indexOf("if (payload.action === 'hmo.media.request')");
-  const end = actions.indexOf("const args: Record<string, string>", start);
-  const requestBlock = actions.slice(start, end);
-  assert.doesNotMatch(requestBlock, /getSpmtServiceToken/);
-  assert.doesNotMatch(requestBlock, /Authorization:/);
+test('SML media commands do not use the SPMT job queue or Apollo as a second queue owner', () => {
+  assert.doesNotMatch(actions, /getSpmtServiceToken|SPMT_JOB_SCOPES|\/v1\/suite-actions|\/v1\/jobs\//);
 });
