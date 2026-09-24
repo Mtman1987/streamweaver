@@ -46,23 +46,26 @@ function isInternalServiceAuthorized(headers: http.IncomingHttpHeaders): boolean
     return isKnownInternalSecret(bearer || botSecret);
 }
 
-function getChatTagBridgeConfig(): { url: string; secret: string } {
+function getChatTagBotBridgeConfig(): { url: string; secret: string } {
     const url = String(
-        process.env.CHAT_TAG_BASE_URL
-        || process.env.CHAT_TAG_API_BASE
-        || process.env.NEXT_PUBLIC_CHAT_TAG_URL
-        || 'https://chat-tag-new.fly.dev'
+        process.env.CHAT_TAG_BOT_BASE_URL
+        || 'https://chat-tag-bot-new.fly.dev'
     ).replace(/\/+$/, '');
-    const secret = String(process.env.CHAT_TAG_SECRET || process.env.BOT_SECRET_KEY || '').trim();
+    const secret = String(
+        process.env.CHAT_TAG_BOT_SECRET
+        || process.env.CHAT_TAG_SECRET
+        || process.env.BOT_SECRET_KEY
+        || ''
+    ).trim();
     return { url, secret };
 }
 
 async function sendSpaceMountainBroadcasterMessage(message: string): Promise<void> {
-    const { url, secret } = getChatTagBridgeConfig();
+    const { url, secret } = getChatTagBotBridgeConfig();
     if (!secret) {
-        throw new Error('ChatTag service secret is not configured for spacemountainlive broadcaster sends');
+        throw new Error('ChatTag bot service secret is not configured for spacemountainlive broadcaster sends');
     }
-    const response = await fetch(`${url}/api/bot/spacemountainlive-send`, {
+    const response = await fetch(`${url}/internal/spacemountainlive-send`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -72,7 +75,7 @@ async function sendSpaceMountainBroadcasterMessage(message: string): Promise<voi
     });
     if (!response.ok) {
         const payload = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(payload?.error || `ChatTag spacemountainlive send failed (${response.status})`);
+        throw new Error(payload?.error || `ChatTag live bot spacemountainlive send failed (${response.status})`);
     }
 }
 
