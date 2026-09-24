@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
 import { readDiscordConfig } from '../lib/discord-config';
 import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
-import { getAdminTwitchId, tenantPath } from '../lib/tenant';
+import { getAdminTwitchId, tenantPath, SPACEMOUNTAIN_SYSTEM_TENANT_ID, SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL } from '../lib/tenant';
 import { readUserConfigSync } from '../lib/user-config';
 import { isKnownInternalSecret } from '../lib/internal-service-auth';
 
@@ -44,6 +44,36 @@ function isInternalServiceAuthorized(headers: http.IncomingHttpHeaders): boolean
     const botSecretHeader = headers['x-bot-secret'];
     const botSecret = Array.isArray(botSecretHeader) ? botSecretHeader[0] : String(botSecretHeader || '');
     return isKnownInternalSecret(bearer || botSecret);
+}
+
+function getChatTagBridgeConfig(): { url: string; secret: string } {
+    const url = String(
+        process.env.CHAT_TAG_BASE_URL
+        || process.env.CHAT_TAG_API_BASE
+        || process.env.NEXT_PUBLIC_CHAT_TAG_URL
+        || 'https://chat-tag-new.fly.dev'
+    ).replace(/\/+$/, '');
+    const secret = String(process.env.CHAT_TAG_SECRET || process.env.BOT_SECRET_KEY || '').trim();
+    return { url, secret };
+}
+
+async function sendSpaceMountainBroadcasterMessage(message: string): Promise<void> {
+    const { url, secret } = getChatTagBridgeConfig();
+    if (!secret) {
+        throw new Error('ChatTag service secret is not configured for spacemountainlive broadcaster sends');
+    }
+    const response = await fetch(`${url}/api/bot/spacemountainlive-send`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-bot-secret': secret,
+        },
+        body: JSON.stringify({ message }),
+    });
+    if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || `ChatTag spacemountainlive send failed (${response.status})`);
+    }
 }
 
 async function mirrorOutboundTwitchMessageToDiscord(input: {
@@ -261,7 +291,29 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         let sendAs: 'bot' | 'broadcaster' | 'count' = outboundRoute.sendAs;
 
                         if (outboundRoute.systemTranslated) {
-                            console.log('[HTTP /api/twitch/send-message] SpaceMountain system tenant translated broadcaster send to bot identity');
+                            console.log('[HTTP /api/twitch/send-message] System route translation applied');
+                        }
+
+                        const isSpaceMountainBroadcasterSend =
+                            requestedIdentity === 'broadcaster'
+                            && tid === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                            && channel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
+
+                        if (isSpaceMountainBroadcasterSend) {
+                            await sendSpaceMountainBroadcasterMessage(message.trim());
+                            await mirrorOutboundTwitchMessageToDiscord({
+                                bridgeToDiscord,
+                                tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                                message,
+                                displayName: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
+                            });
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({
+                                success: true,
+                                delegated: 'chat-tag',
+                                identity: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
+                            }));
+                            return;
                         }
 
                         if (!channel && tid) {
