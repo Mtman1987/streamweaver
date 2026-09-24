@@ -73,11 +73,19 @@ function liveHearMeOutPayload(payload: HearMeOutBotActionPayload): HearMeOutBotA
 
 export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPayload): Promise<Record<string, unknown>> {
   const effectivePayload = liveHearMeOutPayload(payload);
-  const secrets = getHearMeOutServiceSecrets();
-  if (!secrets.length) throw new Error('HearMeOut shared service credential is not configured');
-  const send = (secret: string) => fetch(`${HEARMEOUT_URL}/api/internal/bot/actions`, {
+  const isPublicLoungeQueueAction = isSpaceMountainLoungeMedia(effectivePayload)
+    && (effectivePayload.action === 'hmo.media.request' || effectivePayload.action === 'hmo.media.state.read');
+  const secrets = isPublicLoungeQueueAction ? [] : getHearMeOutServiceSecrets();
+  if (!isPublicLoungeQueueAction && !secrets.length) {
+    throw new Error('HearMeOut shared service credential is not configured');
+  }
+  const send = (secret?: string) => fetch(`${HEARMEOUT_URL}/api/internal/bot/actions`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: {
+      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
     body: JSON.stringify(effectivePayload),
     cache: 'no-store',
     // Live HearMeOut may need media resolution before it can acknowledge a
@@ -85,8 +93,8 @@ export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPaylo
     signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(105_000) : undefined,
   });
   let response = await send(secrets[0]);
-  // Retry only a rejected, unexecuted request with the other existing key.
-  if (response.status === 401 && secrets[1]) {
+  // Retry only a rejected, unexecuted protected request with the other existing key.
+  if (!isPublicLoungeQueueAction && response.status === 401 && secrets[1]) {
     await response.body?.cancel();
     response = await send(secrets[1]);
   }

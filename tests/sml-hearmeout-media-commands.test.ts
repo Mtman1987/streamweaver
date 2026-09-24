@@ -24,11 +24,19 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
 
 test('SML media commands route to the canonical live HearMeOut queue owner', () => {
   assert.match(actions, /function liveHearMeOutPayload/);
-  assert.match(actions, /SPACEMOUNTAIN_MUSIC_SESSION_ID = 'discord-music-room'/);
-  assert.match(actions, /SPACEMOUNTAIN_MOVIE_SESSION_ID = 'discord-watch-room'/);
-  assert.match(actions, /sessionId: lane === 'movie' \? SPACEMOUNTAIN_MOVIE_SESSION_ID : SPACEMOUNTAIN_MUSIC_SESSION_ID/);
+  assert.match(actions, /sessionId: SPACEMOUNTAIN_LOUNGE_SESSION_ID/);
   assert.match(actions, /fetch\(\`\$\{HEARMEOUT_URL\}\/api\/internal\/bot\/actions\`/);
+  assert.match(actions, /isPublicLoungeQueueAction/);
+  assert.match(actions, /effectivePayload\.action === 'hmo\.media\.request'/);
+  assert.match(actions, /effectivePayload\.action === 'hmo\.media\.state\.read'/);
+  assert.match(actions, /\.\.\.\(secret \? \{ Authorization: \`Bearer \$\{secret\}\` \} : \{\}\)/);
   assert.doesNotMatch(actions, /APOLLO_LOUNGE_ORIGIN|\/api\/watch\/broadcast\/requests\?roomId=|executeSpaceMountainApolloMedia/);
+});
+
+test('only Lounge queue/read bypass the shared secret; controls stay protected', () => {
+  assert.match(actions, /isPublicLoungeQueueAction = isSpaceMountainLoungeMedia\(effectivePayload\)/);
+  assert.match(actions, /!isPublicLoungeQueueAction && !secrets\.length/);
+  assert.match(actions, /!isPublicLoungeQueueAction && response\.status === 401/);
 });
 
 test('SML media commands do not use the SPMT job queue or Apollo as a second queue owner', () => {
