@@ -21,7 +21,7 @@ test('SpaceMountainLive uses StellaBot87 without community-bot fallback', () => 
   assert.match(twitch, /refusing community-bot fallback/);
 });
 
-test('Stella keeps her persona name while StreamWeaver87 is transport only', () => {
+test('SpaceMountain system tenant keeps Stella as its persona name', () => {
   const settings = read('src/lib/bot-settings-store.ts');
   assert.match(settings, /tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
   assert.match(settings, /return \{ \.\.\.settings \}/);
