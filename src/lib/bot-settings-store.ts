@@ -107,9 +107,8 @@ export function applyBotTransportIdentity(settings: BotSettings, hasDedicatedBot
 function getEffectiveSettings(tenantId?: string) {
   if (!tenantId) return { ...DEFAULTS };
   const settings = getBotSettings(tenantId);
-  // SpaceMountainLive deliberately uses StreamWeaver87 as the transport account
-  // while retaining Stella as the tenant persona until Stella receives her own
-  // dedicated Twitch OAuth.
+  // SpaceMountainLive keeps Stella's tenant persona. Twitch transport is
+  // provided by the dedicated StellaBot87 system-tenant connection.
   if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) return { ...settings };
   return applyBotTransportIdentity(settings, hasBotAccount(tenantId));
 }
