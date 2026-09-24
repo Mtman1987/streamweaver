@@ -475,7 +475,7 @@ async function fireGreeting(aiGreeting: string, mode: ShoutoutMode, tenantId?: s
                     await fetch(`http://127.0.0.1:${process.env.PORT||3100}/api/tts/current${tenantQuery}`, {
                         method: 'POST',
                         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
-                        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri })
+                        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri, text: aiGreeting })
                     }).catch(err => console.error('[WalkOn] Failed to update TTS player:', err));
                 } else {
                     if (typeof (global as any).broadcast === 'function') {
