@@ -31,26 +31,27 @@ test('Stella OAuth writes only bot credentials to the SpaceMountain system tenan
   assert.match(flow, /reconnectTwitchTenant\(SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
 });
 
-test('SML runtime prefers Stella and falls back to StreamWeaver87', () => {
+test('SML runtime uses Stella only and refuses community-bot fallback', () => {
   const runtime = read('src/services/twitch-client.ts');
 
   assert.match(runtime, /Stella connected as/);
   assert.match(runtime, /System tenant listening in #\$\{channel\} through Stella/);
-  assert.match(runtime, /Stella bot unavailable; falling back to StreamWeaver87/);
-  assert.match(runtime, /!isSharedCommunityBotClient\(tenant\.botClient\)/);
+  assert.match(runtime, /Stella bot unavailable; system tenant remains disconnected/);
+  assert.match(runtime, /refusing community-bot fallback/);
 });
 
-test('SpaceMountain outbound broadcaster intent is translated to system bot routing', () => {
+test('SpaceMountain broadcaster sends delegate to ChatTag while bot sends stay Stella', () => {
   const runtime = read('src/services/twitch-client.ts');
   const routes = read('src/server/routes.ts');
 
   assert.match(runtime, /resolveOutboundTwitchRoute/);
   assert.match(runtime, /requestedTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
   assert.match(runtime, /requestedChannel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL/);
-  assert.match(runtime, /clientType: 'bot'/);
-  assert.match(runtime, /sendAs: 'bot'/);
-  assert.match(routes, /resolveOutboundTwitchRoute/);
-  assert.match(routes, /system tenant translated broadcaster send to bot identity/);
+  assert.match(runtime, /clientType: requestedIdentity === 'broadcaster' \? 'broadcaster' : 'bot'/);
+  assert.match(runtime, /sendAs: requestedIdentity/);
+  assert.match(routes, /sendSpaceMountainBroadcasterMessage/);
+  assert.match(routes, /\/api\/bot\/spacemountainlive-send/);
+  assert.match(routes, /delegated: 'chat-tag'/);
 });
 
 test('Stella replies post to Twitch only when her dedicated bot exists', () => {
