@@ -50,16 +50,22 @@ test('SpaceMountain broadcaster sends delegate to ChatTag while bot sends stay S
   assert.match(runtime, /clientType: requestedIdentity === 'broadcaster' \? 'broadcaster' : 'bot'/);
   assert.match(runtime, /sendAs: requestedIdentity/);
   assert.match(routes, /sendSpaceMountainBroadcasterMessage/);
-  assert.match(routes, /\/api\/bot\/spacemountainlive-send/);
+  assert.match(routes, /chat-tag-bot-new\.fly\.dev/);
+  assert.match(routes, /\/internal\/spacemountainlive-send/);
   assert.match(routes, /delegated: 'chat-tag'/);
 });
 
-test('Stella replies post to Twitch only when her dedicated bot exists', () => {
+test('Stella replies post to Twitch before the same text can reach Lounge TTS', () => {
   const dispatcher = read('src/services/chat-dispatcher.ts');
+  const directStart = dispatcher.indexOf('Stella system-tenant reply skipped');
+  const directEnd = dispatcher.indexOf('// The Count is a built-in character', directStart);
+  const direct = dispatcher.slice(directStart, directEnd);
 
-  assert.match(dispatcher, /tenantHasBotAccount\(SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
-  assert.match(dispatcher, /sendChatMessage\([\s\S]*aiReply,[\s\S]*'bot',[\s\S]*SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
-  assert.match(dispatcher, /Twitch \+ Lounge TTS/);
+  assert.match(direct, /tenantHasBotAccount\(SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
+  assert.match(direct, /sendChatMessage\([\s\S]*aiReply,[\s\S]*'bot',[\s\S]*SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
+  assert.match(direct, /queueTtsOverlay\(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
+  assert.ok(direct.indexOf('sendChatMessage(') < direct.indexOf('queueTtsOverlay('));
+  assert.match(dispatcher, /!isSpaceMountainSystemReply \|\| twitchBotPosted/);
 });
 
 test('owner Integrations UI exposes Stella connection status and OAuth button', () => {
