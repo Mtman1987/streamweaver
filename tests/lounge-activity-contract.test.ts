@@ -49,6 +49,11 @@ test('Lounge Stella is scaled down and lifted onto the lower panel edge', () => 
   assert.match(player, /loungePlacement \? -35 : 0/);
 });
 
+test('SpaceMountain Lounge shoutouts always use full chat plus TTS mode', () => {
+  const shoutout = fs.readFileSync('src/services/walk-on-shoutout.ts', 'utf8');
+  assert.match(shoutout, /tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID\) return 'full'/);
+});
+
 test('Lounge shoutout TTS carries caption text and switches Stella immediately', () => {
   const shoutout = fs.readFileSync('src/services/walk-on-shoutout.ts', 'utf8');
   const player = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
