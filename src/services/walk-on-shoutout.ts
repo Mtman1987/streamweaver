@@ -2,7 +2,7 @@ import { getTwitchUser } from './twitch';
 import { sendChatMessage } from './twitch';
 import { sendDiscordMessage } from './discord';
 import { textToSpeech } from '../ai/flows/text-to-speech';
-import { tenantPath } from '../lib/tenant';
+import { tenantPath, SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '../lib/tenant';
 import { readDiscordConfig } from '../lib/discord-config';
 import { getShoutoutEligibility, getShoutoutCount, recordShoutout } from './welcome-wagon-tracker';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
@@ -137,6 +137,7 @@ async function suppressSayDuringShoutout(tenantId?: string): Promise<void> {
 
 async function getShoutoutMode(tenantId?: string): Promise<ShoutoutMode> {
     tenantId = normalizeTenantId(tenantId);
+    if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) return 'full';
     let persistedMode: string | undefined;
     try {
         const { getMode } = await import('./modes-manager');
