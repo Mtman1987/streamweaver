@@ -1,3 +1,4 @@
+import { SPACEMOUNTAIN_LOUNGE_SESSION_ID } from '@/lib/spacemountain-lounge';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -17,13 +18,13 @@ async function json(url: string): Promise<any> {
   return response.json();
 }
 
-async function apolloLoungeState() {
-  const response = await fetch(`${HEARMEOUT_URL}/api/system/spacemountainlive-lounge/apollo/api/watch/broadcast/state`, {
+async function loungeState() {
+  const response = await fetch(`${HEARMEOUT_URL}/api/watch/sessions/${encodeURIComponent(SPACEMOUNTAIN_LOUNGE_SESSION_ID)}/state`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
     signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
   });
-  if (!response.ok) throw new Error(`Apollo Lounge returned ${response.status}`);
+  if (!response.ok) throw new Error(`HearMeOut Lounge returned ${response.status}`);
   return response.json();
 }
 
@@ -31,7 +32,7 @@ export async function GET() {
   const [gameResult, spotlightResult, mediaResult] = await Promise.allSettled([
     json(`${CHAT_TAG_URL}/api/game-hub/channel?channel=spacemountainlive`),
     json(SPOTLIGHT_URL),
-    apolloLoungeState(),
+    loungeState(),
   ]);
   const gamePayload = gameResult.status === 'fulfilled' ? gameResult.value : {};
   const spotlightPayload = spotlightResult.status === 'fulfilled' ? spotlightResult.value : {};
