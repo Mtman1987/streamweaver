@@ -240,14 +240,28 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
 
                         const { getActiveTenantIds, getTwitchClient: getTc } = twitchClientModule;
                         const { sendWithSharedChatAwareness } = require('../services/shared-chat');
-                        const isCountSend = as === 'count';
-                        const clientType: 'bot' | 'broadcaster' = as === 'broadcaster' ? 'broadcaster' : 'bot';
-                        let sendAs: 'bot' | 'broadcaster' | 'count' = isCountSend ? 'count' : clientType;
+                        const requestedIdentity: 'bot' | 'broadcaster' | 'count' =
+                            as === 'count' ? 'count' : as === 'broadcaster' ? 'broadcaster' : 'bot';
                         let channel = String(targetChannel || '').replace(/^#/, '').trim().toLowerCase();
                         let tid: string | undefined = requestedTenantId ? String(requestedTenantId) : undefined;
 
                         if (!tid && channel) {
                             tid = twitchClientModule.getTenantIdFromChannel(channel);
+                        }
+
+                        const outboundRoute = twitchClientModule.resolveOutboundTwitchRoute({
+                            tenantId: tid,
+                            channel,
+                            as: requestedIdentity,
+                        });
+                        tid = outboundRoute.tenantId;
+                        channel = outboundRoute.channel;
+                        const isCountSend = requestedIdentity === 'count';
+                        const clientType: 'bot' | 'broadcaster' = outboundRoute.clientType;
+                        let sendAs: 'bot' | 'broadcaster' | 'count' = outboundRoute.sendAs;
+
+                        if (outboundRoute.systemTranslated) {
+                            console.log('[HTTP /api/twitch/send-message] SpaceMountain system tenant translated broadcaster send to bot identity');
                         }
 
                         if (!channel && tid) {
