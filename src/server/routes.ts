@@ -46,36 +46,23 @@ function isInternalServiceAuthorized(headers: http.IncomingHttpHeaders): boolean
     return isKnownInternalSecret(bearer || botSecret);
 }
 
-function getChatTagBotBridgeConfig(): { url: string; secret: string } {
-    const url = String(
-        process.env.CHAT_TAG_BOT_BASE_URL
-        || 'https://chat-tag-bot-new.fly.dev'
+function getChatTagBotBridgeUrl(): string {
+    return String(
+        process.env.CHAT_TAG_BOT_PRIVATE_URL
+        || 'http://chat-tag-bot-new.internal:8092'
     ).replace(/\/+$/, '');
-    const secret = String(
-        process.env.CHAT_TAG_BOT_SECRET
-        || process.env.CHAT_TAG_SECRET
-        || process.env.BOT_SECRET_KEY
-        || ''
-    ).trim();
-    return { url, secret };
 }
 
 async function sendSpaceMountainBroadcasterMessage(message: string): Promise<void> {
-    const { url, secret } = getChatTagBotBridgeConfig();
-    if (!secret) {
-        throw new Error('ChatTag bot service secret is not configured for spacemountainlive broadcaster sends');
-    }
-    const response = await fetch(`${url}/internal/spacemountainlive-send`, {
+    const url = getChatTagBotBridgeUrl();
+    const response = await fetch(`${url}/spacemountainlive-send`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-bot-secret': secret,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
     });
     if (!response.ok) {
         const payload = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(payload?.error || `ChatTag live bot spacemountainlive send failed (${response.status})`);
+        throw new Error(payload?.error || `ChatTag private spacemountainlive send failed (${response.status})`);
     }
 }
 
