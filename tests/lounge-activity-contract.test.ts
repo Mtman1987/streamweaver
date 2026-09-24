@@ -49,6 +49,14 @@ test('Lounge Stella is scaled down and lifted onto the lower panel edge', () => 
   assert.match(player, /loungePlacement \? -35 : 0/);
 });
 
+test('Lounge shoutout TTS carries caption text and switches Stella immediately', () => {
+  const shoutout = fs.readFileSync('src/services/walk-on-shoutout.ts', 'utf8');
+  const player = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
+  assert.match(shoutout, /audioUrl: ttsResult\.audioDataUri, text: aiGreeting/);
+  assert.match(player, /if \(phaseRef\.current === 'idle'\) \{\s*enterPhase\('talking'\);/);
+  assert.doesNotMatch(player, /phaseRef\.current === 'idle' && !boundaryTimerRef\.current/);
+});
+
 test('Lounge Stella captions stay inside the main panel and clamp to three lines', () => {
   const player = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
   assert.match(player, /left: loungePlacement \? '23%'/);
