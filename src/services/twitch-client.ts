@@ -50,6 +50,45 @@ const reconnectRefreshGate = new ProactiveTwitchRefreshGate();
 const lastReauthNotice = new Map<string, number>();
 const REAUTH_NOTICE_INTERVAL_MS = 60_000;
 
+export type TwitchSendIdentity = 'bot' | 'broadcaster' | 'count';
+
+export function resolveOutboundTwitchRoute(input: {
+  tenantId?: string;
+  channel?: string;
+  as?: TwitchSendIdentity;
+}): {
+  tenantId?: string;
+  channel: string;
+  clientType: 'bot' | 'broadcaster';
+  sendAs: TwitchSendIdentity;
+  systemTranslated: boolean;
+} {
+  const requestedIdentity: TwitchSendIdentity = input.as || 'bot';
+  const requestedTenantId = String(input.tenantId || '').trim().toLowerCase();
+  const requestedChannel = String(input.channel || '').trim().replace(/^#/, '').toLowerCase();
+  const isSystemTenant =
+    requestedTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+    || requestedChannel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
+
+  if (isSystemTenant && requestedIdentity !== 'count') {
+    return {
+      tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+      channel: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
+      clientType: 'bot',
+      sendAs: 'bot',
+      systemTranslated: requestedIdentity === 'broadcaster',
+    };
+  }
+
+  return {
+    tenantId: requestedTenantId || undefined,
+    channel: requestedChannel,
+    clientType: requestedIdentity === 'broadcaster' ? 'broadcaster' : 'bot',
+    sendAs: requestedIdentity,
+    systemTranslated: false,
+  };
+}
+
 async function dispatchIncomingTwitchMessage(
   channel: string,
   tags: Record<string, any>,
