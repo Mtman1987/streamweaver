@@ -40,6 +40,19 @@ test('SML runtime prefers Stella and falls back to StreamWeaver87', () => {
   assert.match(runtime, /!isSharedCommunityBotClient\(tenant\.botClient\)/);
 });
 
+test('SpaceMountain outbound broadcaster intent is translated to system bot routing', () => {
+  const runtime = read('src/services/twitch-client.ts');
+  const routes = read('src/server/routes.ts');
+
+  assert.match(runtime, /resolveOutboundTwitchRoute/);
+  assert.match(runtime, /requestedTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
+  assert.match(runtime, /requestedChannel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL/);
+  assert.match(runtime, /clientType: 'bot'/);
+  assert.match(runtime, /sendAs: 'bot'/);
+  assert.match(routes, /resolveOutboundTwitchRoute/);
+  assert.match(routes, /system tenant translated broadcaster send to bot identity/);
+});
+
 test('Stella replies post to Twitch only when her dedicated bot exists', () => {
   const dispatcher = read('src/services/chat-dispatcher.ts');
 
