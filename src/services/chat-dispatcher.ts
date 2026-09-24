@@ -3889,7 +3889,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
 
-            if (!canControlHearMeOut) {
+            // Starting requested media is public. Destructive/admin controls
+            // still require the broadcaster or a moderator at the chat layer.
+            if (command !== 'play' && !canControlHearMeOut) {
                 await reply(`@${actualUsername}, only the broadcaster or a moderator can use !${command}.`, 'bot').catch(() => {});
                 return;
             }
