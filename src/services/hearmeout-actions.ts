@@ -1,4 +1,4 @@
-import { SPACEMOUNTAIN_LOUNGE_ROOM_ID, SPACEMOUNTAIN_LOUNGE_SESSION_ID, SPACEMOUNTAIN_LOUNGE_TENANT_ID } from '@/lib/spacemountain-lounge';
+import { SPACEMOUNTAIN_LOUNGE_ROOM_ID, SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID, SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID, SPACEMOUNTAIN_LOUNGE_TENANT_ID } from '@/lib/spacemountain-lounge';
 const HEARMEOUT_URL = String(
   process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev',
 ).replace(/\/+$/, '');
@@ -49,14 +49,16 @@ function isSpaceMountainLoungeMedia(payload: HearMeOutBotActionPayload): boolean
   const roomId = String(payload.roomId || '').trim();
   const sessionId = String(payload.sessionId || '').trim();
   return roomId === SPACEMOUNTAIN_LOUNGE_ROOM_ID
-    || sessionId === SPACEMOUNTAIN_LOUNGE_SESSION_ID
+    || sessionId === SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID
+    || sessionId === SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID
     || sessionId === 'discord-music-room'
     || sessionId === 'discord-watch-room';
 }
 
 function spaceMountainLane(payload: HearMeOutBotActionPayload): 'music' | 'movie' {
   if (payload.lane === 'movie' || payload.lane === 'music') return payload.lane;
-  return String(payload.sessionId || '') === 'discord-watch-room' ? 'movie' : 'music';
+  const sessionId = String(payload.sessionId || '');
+  return sessionId === 'discord-watch-room' || sessionId === SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID ? 'movie' : 'music';
 }
 
 function liveHearMeOutPayload(payload: HearMeOutBotActionPayload): HearMeOutBotActionPayload {
@@ -66,7 +68,7 @@ function liveHearMeOutPayload(payload: HearMeOutBotActionPayload): HearMeOutBotA
     ...payload,
     roomId: undefined,
     room: undefined,
-    sessionId: SPACEMOUNTAIN_LOUNGE_SESSION_ID,
+    sessionId: lane === 'movie' ? SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID : SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID,
     lane,
   };
 }
