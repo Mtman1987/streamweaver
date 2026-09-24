@@ -5109,11 +5109,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const aiReply = String(data.response || data.data?.response || '').trim();
                     if (!aiReply) return;
 
-                    if (!tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
-                        console.warn('[Dispatcher] Stella system-tenant reply skipped: stellabot87 is not authenticated.');
-                        return;
-                    }
-
                     await sendChatMessage(
                         aiReply,
                         'bot',
