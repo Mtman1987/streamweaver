@@ -18,7 +18,7 @@ import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
 import { getPoints, getPointBalance, setPoints, settleWager } from './points';
 import { getAIConfig } from './ai-provider';
-import { getBotName, tenantHasBotAccount } from '../lib/bot-settings-store';
+import { getBotName } from '../lib/bot-settings-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
 import {
     THE_COUNT_NAME,
