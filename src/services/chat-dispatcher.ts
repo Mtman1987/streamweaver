@@ -45,6 +45,7 @@ import {
     tenantPath,
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
 } from '../lib/tenant';
+import { SPACEMOUNTAIN_LOUNGE_ROOM_ID } from '../lib/spacemountain-lounge';
 import { queueTtsOverlay } from './tts-overlay-queue';
 import { buildPokemonBrowserUrl } from './pokemon-browser';
 import { readDiscordConfig } from '../lib/discord-config';
@@ -2823,7 +2824,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        const roomId = 'system-spacemountainlive-lounge';
+        const roomId = SPACEMOUNTAIN_LOUNGE_ROOM_ID;
         const lane = command === 'wr' ? 'movie' : 'music';
         try {
             const result: any = await executeHearMeOutBotAction({
