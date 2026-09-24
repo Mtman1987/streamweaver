@@ -279,9 +279,9 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
 
   const canSpeak = hasActiveTtsConsumer(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   const canChat = tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-  if (!canSpeak && !canChat) {
+  if (!canChat) {
     nextAmbientAt = now + 5 * 60_000;
-    return { delivered: false, reason: 'no-live-output' };
+    return { delivered: false, reason: 'stella-chat-unavailable' };
   }
 
   ambientRunning = true;
@@ -307,14 +307,11 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
     if (!text) return { delivered: false, reason: 'empty-generation' };
     if (parsed.gesture) rememberAvatarGesture(SPACEMOUNTAIN_SYSTEM_TENANT_ID, text, parsed.gesture);
 
-    let delivered = false;
+    await sendChatMessage(text, 'bot', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+    let delivered = true;
     if (canSpeak) {
       const tts = await queueTtsOverlay(text, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
       delivered ||= Boolean(tts.ok && tts.queued);
-    }
-    if (canChat) {
-      await sendChatMessage(text, 'bot', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-      delivered = true;
     }
     if (delivered) {
       await appendPublicChatMessages([{
