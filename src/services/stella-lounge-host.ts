@@ -8,7 +8,6 @@ import {
   SPACEMOUNTAIN_SYSTEM_TENANT_ID,
   SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
 } from '@/lib/tenant';
-import { tenantHasBotAccount } from '@/lib/bot-settings-store';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { sendChatMessage } from '@/services/twitch';
@@ -278,11 +277,6 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
   if (now < nextAmbientAt) return { delivered: false, reason: 'not-due' };
 
   const canSpeak = hasActiveTtsConsumer(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-  const canChat = tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-  if (!canChat) {
-    nextAmbientAt = now + 5 * 60_000;
-    return { delivered: false, reason: 'stella-chat-unavailable' };
-  }
 
   ambientRunning = true;
   scheduleNextAmbient(now);
