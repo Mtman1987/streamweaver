@@ -52,16 +52,17 @@ test('SpaceMountain broadcaster sends delegate to ChatTag while bot sends stay S
   assert.match(routes, /sendSpaceMountainBroadcasterMessage/);
   assert.match(routes, /chat-tag-bot-new\.fly\.dev/);
   assert.match(routes, /\/internal\/spacemountainlive-send/);
+  assert.match(routes, /'x-spacemountain-lounge': '1'/);
   assert.match(routes, /delegated: 'chat-tag'/);
 });
 
-test('Stella replies post to Twitch before the same text can reach Lounge TTS', () => {
+test('Stella Lounge replies use the live runtime instead of a static bot-account preflight', () => {
   const dispatcher = read('src/services/chat-dispatcher.ts');
-  const directStart = dispatcher.indexOf('Stella system-tenant reply skipped');
+  const directStart = dispatcher.indexOf('// SpaceMountainLive is a permanent system tenant.');
   const directEnd = dispatcher.indexOf('// The Count is a built-in character', directStart);
   const direct = dispatcher.slice(directStart, directEnd);
 
-  assert.match(direct, /tenantHasBotAccount\(SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
+  assert.doesNotMatch(direct, /tenantHasBotAccount\(SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
   assert.match(direct, /sendChatMessage\([\s\S]*aiReply,[\s\S]*'bot',[\s\S]*SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
   assert.match(direct, /queueTtsOverlay\(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
   assert.ok(direct.indexOf('sendChatMessage(') < direct.indexOf('queueTtsOverlay('));
