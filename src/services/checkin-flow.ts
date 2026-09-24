@@ -168,7 +168,7 @@ async function playGreeting(greeting: string, tenantId?: string): Promise<void> 
       await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/tts/current${tenantQuery}`, {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri }),
+        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri, text: greeting }),
       }).catch(() => {});
     } else if (typeof (global as any).broadcast === 'function') {
       (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, ttsTenantId);
