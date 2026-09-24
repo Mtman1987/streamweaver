@@ -5109,24 +5109,23 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const aiReply = String(data.response || data.data?.response || '').trim();
                     if (!aiReply) return;
 
+                    if (!tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
+                        console.warn('[Dispatcher] Stella system-tenant reply skipped: stellabot87 is not authenticated.');
+                        return;
+                    }
+
+                    await sendChatMessage(
+                        aiReply,
+                        'bot',
+                        replyChannel,
+                        SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                    );
+
                     const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
                     if (!tts.ok) {
                         console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
                     }
-
-                    if (tenantHasBotAccount(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
-                        await sendChatMessage(
-                            aiReply,
-                            'bot',
-                            replyChannel,
-                            SPACEMOUNTAIN_SYSTEM_TENANT_ID,
-                        ).catch((error) => {
-                            console.warn('[Dispatcher] Stella Twitch chat delivery failed:', error);
-                        });
-                        console.log(`[Dispatcher] Stella answered @${actualUsername} via Twitch + Lounge TTS in #${replyChannel}`);
-                    } else if (tts.ok) {
-                        console.log(`[Dispatcher] Stella answered @${actualUsername} via Lounge TTS in #${replyChannel}`);
-                    }
+                    console.log(`[Dispatcher] Stella answered @${actualUsername} via Twitch + Lounge TTS in #${replyChannel}`);
                 } catch (error) {
                     console.error('[Dispatcher] Stella system-tenant response failed:', error);
                 }
@@ -5693,10 +5692,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 sourceTenantId: tenantId,
                                 responseTenantId,
                             });
-                            await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch((error) => {
+                            let twitchBotPosted = true;
+                            try {
+                                await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId);
+                            } catch (error) {
+                                twitchBotPosted = false;
                                 console.warn('[Dispatcher] Twitch bot chat delivery failed:', error);
-                            });
-                            const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
+                            }
+                            const isSpaceMountainSystemReply = responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+                            const shouldGenerateTtsForReply =
+                                (!responseTenantId || responseTenantId === tenantId)
+                                && (!isSpaceMountainSystemReply || twitchBotPosted);
                             await sendTwitchCrossBotFollowUp({
                                 channel: responseChannel,
                                 userName: actualUsername,
