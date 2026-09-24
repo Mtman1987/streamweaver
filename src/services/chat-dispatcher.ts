@@ -2807,6 +2807,24 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // tenant listener as another bot message and must be stopped explicitly.
     if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;
 
+    // !so is a core StreamWeaver command. Route it before persisted/custom
+    // command state so a stale imported command cannot swallow the built-in
+    // shoutout pipeline. This still uses the normal walk-on shoutout flow for
+    // every tenant; SpaceMountainLive does not get a separate implementation.
+    if (actualMessage.toLowerCase().startsWith('!so ')) {
+        const targetName = actualMessage.substring(4).trim().replace('@', '');
+        if (targetName) {
+            console.log(`[Dispatcher] Processing !so shoutout for ${targetName}`);
+            incrementMetric('shoutoutsGiven', 1, tenantId).catch(() => {});
+            const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
+            await handleWalkOnShoutout(targetName, targetName, profileImage, true, tenantId).catch(err => {
+                console.error('[Dispatcher] !so shoutout failed:', err);
+                reply(`@${actualUsername}, shoutout failed: ${err.message}`, 'bot').catch(() => {});
+            });
+        }
+        return;
+    }
+
     // SML media requests are production-critical Lounge commands. Handle them
     // before imported JSON actions and general bot/command filters so stale
     // Streamer.bot actions cannot swallow !sr or !wr.
@@ -4030,20 +4048,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 }
             } catch (err) {
                 console.error('[Bic] Error:', err);
-            }
-            return;
-        }
-        
-        if (actualMessage.toLowerCase().startsWith('!so ')) {
-            const targetName = actualMessage.substring(4).trim().replace('@', '');
-            if (targetName) {
-                console.log(`[Dispatcher] Processing !so shoutout for ${targetName}`);
-                incrementMetric('shoutoutsGiven', 1, tenantId).catch(() => {});
-                const profileImage = `https://static-cdn.jtvnw.net/jtv_user_pictures/${targetName}-profile_image-300x300.png`;
-                await handleWalkOnShoutout(targetName, targetName, profileImage, true, tenantId).catch(err => {
-                    console.error('[Dispatcher] !so shoutout failed:', err);
-                    reply(`@${actualUsername}, shoutout failed: ${err.message}`, 'bot').catch(() => {});
-                });
             }
             return;
         }
