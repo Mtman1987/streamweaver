@@ -5076,10 +5076,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.warn('[Dispatcher] broadcasterUsername unresolved (config/tokens unreadable); skipping foreign-channel guardrail for', { tenantId, replyChannel });
             }
             
-            // SpaceMountainLive is a permanent system tenant. Until Stella has
-            // her own Twitch OAuth, StreamWeaver87 only transports/listens to chat;
-            // direct Stella invocations produce AI + TTS/avatar output without
-            // posting Stella's text back into Twitch.
+            // SpaceMountainLive is a permanent system tenant. Stella owns the
+            // spoken bot identity, so direct replies are posted to Twitch as
+            // stellabot87 and the exact same text is queued to the Lounge TTS.
             if (
                 tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
                 && !isCommand
@@ -5694,10 +5693,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                 sourceTenantId: tenantId,
                                 responseTenantId,
                             });
-                            const isStellaSystemReply = responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
-                            if (!isStellaSystemReply) {
-                                await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
-                            }
+                            await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch((error) => {
+                                console.warn('[Dispatcher] Twitch bot chat delivery failed:', error);
+                            });
                             const shouldGenerateTtsForReply = !responseTenantId || responseTenantId === tenantId;
                             await sendTwitchCrossBotFollowUp({
                                 channel: responseChannel,
