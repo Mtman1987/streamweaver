@@ -3889,9 +3889,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
 
-            // Starting requested media is public. Destructive/admin controls
-            // still require the broadcaster or a moderator at the chat layer.
-            if (command !== 'play' && !canControlHearMeOut) {
+            // SpaceMountain Lounge is deliberately auth-free while the shared
+            // player is under development. Other tenants keep their normal
+            // broadcaster/moderator control gate.
+            if (tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID && command !== 'play' && !canControlHearMeOut) {
                 await reply(`@${actualUsername}, only the broadcaster or a moderator can use !${command}.`, 'bot').catch(() => {});
                 return;
             }
