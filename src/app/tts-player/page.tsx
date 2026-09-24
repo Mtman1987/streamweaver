@@ -284,9 +284,9 @@ function StellaAvatar({ controllerRef }: { controllerRef: React.MutableRefObject
         if (requestedGesture) aiGestureRef.current = requestedGesture;
         talkingRequestedRef.current = true;
 
-        // Frame 1 exists at initial load and immediately after a gesture. Use it
-        // instead of making speech wait through an unnecessary full idle cycle.
-        if (phaseRef.current === 'idle' && !boundaryTimerRef.current) {
+        // Speech owns the avatar immediately. Do not wait for the current
+        // idle GIF loop boundary or short TTS can finish before Stella talks.
+        if (phaseRef.current === 'idle') {
           enterPhase('talking');
         }
       },
