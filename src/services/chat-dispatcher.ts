@@ -5938,6 +5938,17 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         return { commandHandled: true };
     }
 
+    if (!msg.author?.bot && /^!t(?:\s|$)/i.test(normalizedContent)) {
+        if (!tenantId) return { commandHandled: true };
+        const args = normalizedContent.slice(2).trim().split(/\s+/).filter(Boolean);
+        const translated = await handleOneOffTranslation(args, tenantId, {
+            actorUsername: sourceUserName,
+            canManageOthers: await hasEffectiveDiscordModAccess(msg),
+        });
+        if (translated) await sendDiscordMessage(sourceChannelId, translated).catch(() => {});
+        return { commandHandled: true };
+    }
+
     if (!msg.author?.bot) {
         const commandHandled = await executeDiscordCommandMessage({
             ...msg,
@@ -5945,6 +5956,30 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         }, tenantId, options);
         if (commandHandled) {
             return { commandHandled: true };
+        }
+    }
+
+    if (
+        tenantId
+        && !msg.author?.bot
+        && normalizedContent
+        && !normalizedContent.startsWith('!')
+        && !normalizedContent.startsWith('[')
+        && await isUserAutoTranslate(sourceUserName, tenantId)
+    ) {
+        const translated = await autoTranslateIncoming(normalizedContent, sourceUserName, tenantId);
+        if (translated) {
+            const targetLanguage = await getAutoTranslateLanguage(sourceUserName, tenantId) || 'en';
+            await sendDiscordMessage(sourceChannelId, `🌐 @${sourceUserName} → ${targetLanguage.toUpperCase()}: ${translated}`).catch(() => {});
+            publishTranslationSubtitleEvent({
+                tenantId,
+                username: sourceUserName,
+                displayName: sourceUserName,
+                sourceText: normalizedContent,
+                translatedText: translated,
+                targetLanguage,
+                durationMs: 9000,
+            });
         }
     }
 
