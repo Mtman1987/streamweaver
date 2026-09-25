@@ -27,6 +27,7 @@ export type SocialOverlayEvent = {
     name: string;
     avatarUrl?: string;
   };
+  reaction?: string;
   animation: {
     theme: SocialOverlayCommand;
     durationMs: number;
