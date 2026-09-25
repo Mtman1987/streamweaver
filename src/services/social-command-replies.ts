@@ -1,7 +1,9 @@
+import { promises as fs } from 'fs';
+import path from 'path';
 import { getBotName, getBotPersonality } from '@/lib/bot-settings-store';
-import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
-import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { tenantPath } from '@/lib/tenant';
+import { generateAIResponse } from '@/services/ai-provider';
 
 export const SOCIAL_COMMAND_NAMES = [
   'hug', 'boop', 'cuddle', 'dance', 'fistbump', 'headpat', 'highfive', 'love', 'tickle', 'hover',
@@ -24,6 +26,77 @@ const TARGETED_SOCIAL_COMMANDS = new Set<SocialCommandName>([
 ]);
 
 const SOCIAL_COMMAND_SET = new Set<string>(SOCIAL_COMMAND_NAMES);
+
+const SOCIAL_HISTORY_FILE = 'data/social-reaction-history.json';
+type SocialReactionHistory = { sequence: number; replies: string[] };
+const socialHistoryLocks = new Map<string, Promise<void>>();
+
+function socialHistoryPath(tenantId?: string): string | null {
+  const tenant = String(tenantId || '').trim();
+  return tenant ? tenantPath(tenant, SOCIAL_HISTORY_FILE) : null;
+}
+
+async function readSocialHistory(tenantId?: string): Promise<SocialReactionHistory> {
+  const filePath = socialHistoryPath(tenantId);
+  if (!filePath) return { sequence: 0, replies: [] };
+  try {
+    const raw = JSON.parse(await fs.readFile(filePath, 'utf8')) as Partial<SocialReactionHistory>;
+    return {
+      sequence: Math.max(0, Math.floor(Number(raw.sequence || 0))),
+      replies: Array.isArray(raw.replies)
+        ? raw.replies.map((value) => String(value || '').trim()).filter(Boolean).slice(-80)
+        : [],
+    };
+  } catch (error: any) {
+    if (error?.code !== 'ENOENT') console.warn('[SocialCommands] Could not read reaction history:', error);
+    return { sequence: 0, replies: [] };
+  }
+}
+
+async function rememberSocialReply(tenantId: string | undefined, reply: string): Promise<void> {
+  const filePath = socialHistoryPath(tenantId);
+  if (!filePath || !reply.trim()) return;
+  const tenant = String(tenantId);
+  const previous = socialHistoryLocks.get(tenant) || Promise.resolve();
+  const next = previous.then(async () => {
+    const history = await readSocialHistory(tenant);
+    const normalized = reply.trim();
+    history.sequence += 1;
+    if (!history.replies.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
+      history.replies.push(normalized);
+      history.replies = history.replies.slice(-80);
+    }
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const temp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(temp, JSON.stringify(history, null, 2), 'utf8');
+    await fs.rename(temp, filePath);
+  }).catch((error) => console.warn('[SocialCommands] Could not persist reaction history:', error));
+  socialHistoryLocks.set(tenant, next);
+  await next;
+  if (socialHistoryLocks.get(tenant) === next) socialHistoryLocks.delete(tenant);
+}
+
+function cleanSocialReply(value: unknown): string {
+  return String(value || '').replace(/[\r\n\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
+}
+
+function uniqueSocialFallback(input: { commandName: SocialCommandName; userName: string; target?: string }, sequence: number): string {
+  const target = String(input.target || '').trim() || 'the Lounge';
+  const action = input.commandName === 'fistbump' ? 'fist bump'
+    : input.commandName === 'highfive' ? 'high five'
+    : input.commandName === 'headpat' ? 'headpat'
+    : input.commandName;
+  const variants = [
+    `${input.userName} just sent a ${action} toward ${target}; mission control logged the impact.`,
+    `Zero gravity did absolutely nothing to stop ${input.userName}'s ${action} from reaching ${target}.`,
+    `${target}, incoming: ${input.userName} just launched a ${action} across the Lounge.`,
+    `Social telemetry spike: ${input.userName} → ${target}, classified as ${action}.`,
+    `The Lounge sensors caught that ${action}; ${input.userName} has been officially noticed.`,
+    `${input.userName} just turned a simple ${action} into a full orbital event for ${target}.`,
+  ];
+  const base = variants[Math.abs(sequence) % variants.length]!;
+  return sequence < variants.length ? base : `${base} Starlog ${sequence + 1}.`;
+}
 
 export function isSocialCommandName(commandName: string): commandName is SocialCommandName {
   return SOCIAL_COMMAND_SET.has(String(commandName || '').toLowerCase());
@@ -121,6 +194,7 @@ function buildSocialCommandPrompt(input: {
   target?: string;
   platform: 'discord' | 'twitch';
   botName: string;
+  recentReplies?: string[];
 }): string {
   const target = String(input.target || '').trim();
   const hasTarget = TARGETED_SOCIAL_COMMANDS.has(input.commandName);
@@ -137,56 +211,53 @@ function buildSocialCommandPrompt(input: {
     SOCIAL_COMMAND_STYLE[input.commandName],
     'Never claim real-world knowledge about either person that was not provided.',
     'Keep it to one sentence and under 220 characters.',
+    'This is a public stream interaction. Use no private memory or personal facts beyond the names and action supplied here.',
+    'Never repeat an exact previous reaction. Change the opening, sentence shape, imagery, and punchline.',
+    input.recentReplies?.length ? `Recent reactions that must not be repeated exactly: ${JSON.stringify(input.recentReplies.slice(-20))}` : '',
     `The response should sound like ${input.botName}, not like a generic assistant.`,
   ].join('\n');
 }
 
 export async function generateSocialCommandReply(input: GenerateSocialCommandReplyInput): Promise<string | null> {
   const commandName = String(input.commandName || '').toLowerCase();
-  if (!isSocialCommandName(commandName)) {
-    return null;
-  }
+  if (!isSocialCommandName(commandName)) return null;
 
   const botName = input.botName || getBotName(input.tenantId) || 'StreamWeaver';
   const normalizedTarget = String(input.target || '').trim();
-  const fallback = getSocialCommandFallback({
-    commandName,
-    userName: input.userName,
-    target: normalizedTarget,
-  });
+  const history = await readSocialHistory(input.tenantId);
+  const recentLower = new Set(history.replies.map((item) => item.toLowerCase()));
+  const personality = await buildSpeakerPersonality(input.tenantId, botName);
 
   try {
-    const personality = await buildSpeakerPersonality(input.tenantId, botName);
-    const response = await fetch(`${getInternalAppUrl()}/api/ai/chat-with-memory`, {
-      method: 'POST',
-      headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        username: input.userName,
-        displayName: input.userName,
-        message: buildSocialCommandPrompt({
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const reply = cleanSocialReply(await generateAIResponse(
+        buildSocialCommandPrompt({
           commandName,
           userName: input.userName,
           target: normalizedTarget,
           platform: input.platform,
           botName,
-        }),
+          recentReplies: history.replies,
+        }) + (attempt ? '\nThe previous candidate repeated an earlier line. Produce a substantially different sentence now.' : ''),
         personality,
-        responseName: botName,
-        tenantId: input.tenantId,
-        context: input.platform === 'discord' ? 'discord' : 'twitch',
-      }),
-    });
-
-    if (!response.ok) {
-      console.warn('[SocialCommands] AI generation failed:', response.status, await response.text().catch(() => ''));
-      return fallback;
+        input.tenantId,
+        { maxTokens: 90, maxCharacters: 220, temperature: 1 },
+      ));
+      if (reply && !recentLower.has(reply.toLowerCase())) {
+        await rememberSocialReply(input.tenantId, reply);
+        return reply;
+      }
     }
-
-    const data = await response.json().catch(() => null) as { response?: string; data?: { response?: string } } | null;
-    const reply = String(data?.response || data?.data?.response || '').trim();
-    return reply || fallback;
   } catch (error) {
     console.warn('[SocialCommands] AI generation error:', error);
-    return fallback;
   }
+
+  let fallback = uniqueSocialFallback({ commandName, userName: input.userName, target: normalizedTarget }, history.sequence);
+  let offset = 0;
+  while (recentLower.has(fallback.toLowerCase()) && offset < 100) {
+    offset += 1;
+    fallback = uniqueSocialFallback({ commandName, userName: input.userName, target: normalizedTarget }, history.sequence + offset);
+  }
+  await rememberSocialReply(input.tenantId, fallback);
+  return fallback;
 }
