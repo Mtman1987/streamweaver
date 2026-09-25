@@ -136,9 +136,16 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
           .map((value) => value.trim())
           .filter(Boolean),
       );
-      if (![...aliases].some((value) => value.toLowerCase() === 'stella')) {
-        aliases.add('Stella');
-        userConfig.AI_BOT_ALIASES = [...aliases].join(',');
+      const requiredStellaAliases = ['Stella', 'StellaBot87', 'Stella Bot'];
+      for (const alias of requiredStellaAliases) {
+        if (![...aliases].some((value) => value.toLowerCase() === alias.toLowerCase())) {
+          aliases.add(alias);
+          changed = true;
+        }
+      }
+      if (changed) userConfig.AI_BOT_ALIASES = [...aliases].join(',');
+      if (!String(userConfig.AI_BOT_INTERESTS || '').trim()) {
+        userConfig.AI_BOT_INTERESTS = 'space,gaming,games,AI,technology,music,movies,books,streaming,astronomy';
         changed = true;
       }
     } else {
