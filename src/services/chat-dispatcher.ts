@@ -12,7 +12,7 @@ import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { extractShoutoutRequestTarget, matchShoutoutTarget } from './shoutout-matcher';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
-import { autoTranslateIncoming, getAutoTranslateLanguage, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
+import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
 import { publishTranslationSubtitleEvent } from './translation-subtitle-events';
 import { handleLeaderboardCommand } from './leaderboard-commands';
 import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
@@ -3147,7 +3147,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
         const args = actualMessage.substring(3).trim().split(/\s+/).filter(Boolean);
         const translated = await handleOneOffTranslation(args, tenantId, {
-            actorUsername: actualUsername,
+            requesterUsername: actualUsername,
             canManageOthers: Boolean(tags.mod || tags.badges?.broadcaster),
         });
         if (translated) await reply(translated, 'bot').catch(() => {});
@@ -3171,16 +3171,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (!self && !message.startsWith('[') && translationEnabled && tenantId) {
         const translated = await autoTranslateIncoming(actualMessage, actualUsername, tenantId);
         if (translated) {
-            const targetLanguage = await getAutoTranslateLanguage(actualUsername, tenantId) || 'en';
-            console.log(`[Dispatcher] Auto-translated incoming → ${targetLanguage}: ${translated}`);
-            await reply(`🌐 @${actualUsername} → ${targetLanguage.toUpperCase()}: ${translated}`, 'bot').catch(() => {});
+            console.log(`[Dispatcher] Auto-translated incoming → ${translated.targetLanguage}: ${translated.translatedText}`);
+            await reply(`🌐 @${actualUsername} → ${translated.targetLanguage.toUpperCase()}: ${translated.translatedText}`, 'bot').catch(() => {});
             publishTranslationSubtitleEvent({
                 tenantId,
                 username: actualUsername,
                 displayName,
                 sourceText: actualMessage,
-                translatedText: translated,
-                targetLanguage,
+                translatedText: translated.translatedText,
+                targetLanguage: translated.targetLanguage,
                 durationMs: 9000,
             });
         }
@@ -5942,7 +5941,7 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         if (!tenantId) return { commandHandled: true };
         const args = normalizedContent.slice(2).trim().split(/\s+/).filter(Boolean);
         const translated = await handleOneOffTranslation(args, tenantId, {
-            actorUsername: sourceUserName,
+            requesterUsername: sourceUserName,
             canManageOthers: await hasEffectiveDiscordModAccess(msg),
         });
         if (translated) await sendDiscordMessage(sourceChannelId, translated).catch(() => {});
@@ -5969,15 +5968,14 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
     ) {
         const translated = await autoTranslateIncoming(normalizedContent, sourceUserName, tenantId);
         if (translated) {
-            const targetLanguage = await getAutoTranslateLanguage(sourceUserName, tenantId) || 'en';
-            await sendDiscordMessage(sourceChannelId, `🌐 @${sourceUserName} → ${targetLanguage.toUpperCase()}: ${translated}`).catch(() => {});
+            await sendDiscordMessage(sourceChannelId, `🌐 @${sourceUserName} → ${translated.targetLanguage.toUpperCase()}: ${translated.translatedText}`).catch(() => {});
             publishTranslationSubtitleEvent({
                 tenantId,
                 username: sourceUserName,
                 displayName: sourceUserName,
                 sourceText: normalizedContent,
-                translatedText: translated,
-                targetLanguage,
+                translatedText: translated.translatedText,
+                targetLanguage: translated.targetLanguage,
                 durationMs: 9000,
             });
         }
