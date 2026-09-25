@@ -13,6 +13,7 @@ import { handleVoiceShoutout } from './voice-shoutout';
 import { extractShoutoutRequestTarget, matchShoutoutTarget } from './shoutout-matcher';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
+import { publishTranslationSubtitleEvent } from './translation-subtitle-events';
 import { handleLeaderboardCommand } from './leaderboard-commands';
 import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
@@ -1844,16 +1845,17 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                         ? { target: { name: actualMessage.substring(cmdName.length + 2).trim() } }
                         : {}),
                     bot: { name: speaker.botName },
+                    reaction: response,
                     animation: {
                         theme: cmdName,
-                        durationMs: cmdName === 'love' ? 10_000 : 7_000,
+                        durationMs: cmdName === 'love' ? 10_000 : 9_000,
                         particleCount: cmdName === 'love' ? 48 : 32,
                         reducedMotionSafe: true,
                     },
                 });
                 if ((speaker.tenantId || tenantId) === 'spacemountainlive') {
-                    const { reactStellaLoungeEvent } = await import('./stella-lounge-host');
-                    void reactStellaLoungeEvent({ kind: 'social', actor: actualUsername, text: `${cmdName}${actualMessage.substring(cmdName.length + 2).trim() ? ' ' + actualMessage.substring(cmdName.length + 2).trim() : ''}`, metadata: { command: cmdName, target: actualMessage.substring(cmdName.length + 2).trim() || undefined } }).catch((error) => console.warn('[Stella Lounge Host] Social reaction failed:', error));
+                    void queueTtsOverlay(response, speaker.tenantId || tenantId)
+                        .catch((error) => console.warn('[Stella Lounge Host] Social TTS failed:', error));
                 }
             }
             await sendStructuredDiscordReply({
@@ -3137,17 +3139,20 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
     }
     
-    // Allow !t translation commands from broadcaster/mods before other checks
-    if (isCommand && actualMessage.toLowerCase().startsWith('!t ')) {
+    // Translation is a public utility. Anyone may translate a phrase or configure
+    // themselves; only mods/broadcaster may configure another viewer.
+    if (isCommand && /^!t(?:\s|$)/i.test(actualMessage)) {
         if (!tenantId) {
             console.warn('[Dispatcher] Ignoring translation command without tenant context');
             return;
         }
-        const args = actualMessage.substring(3).trim().split(/\s+/);
-        const translated = await handleOneOffTranslation(args, tenantId);
-        if (translated) {
-            await reply(translated, 'bot').catch(() => {});
-        }
+        const rawArgs = actualMessage.replace(/^!t\s*/i, '').trim();
+        const args = rawArgs ? rawArgs.split(/\s+/).filter(Boolean) : [];
+        const translated = await handleOneOffTranslation(args, tenantId, {
+            requesterUsername: actualUsername,
+            canManageOthers: Boolean(tags.mod || tags.badges?.broadcaster),
+        });
+        if (translated) await reply(translated, 'bot').catch(() => {});
         return;
     }
     
@@ -3168,9 +3173,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (!self && !message.startsWith('[') && translationEnabled && tenantId) {
         const translated = await autoTranslateIncoming(actualMessage, actualUsername, tenantId);
         if (translated) {
-            console.log(`[Dispatcher] Auto-translated incoming: ${translated}`);
-            // Show translation in chat as bot to prevent loops
-            await reply(`[${actualUsername}]: ${translated}`, 'bot').catch(() => {});
+            console.log(`[Dispatcher] Auto-translated incoming → ${translated.targetLanguage}: ${translated.translatedText}`);
+            await reply(`🌐 @${actualUsername} → ${translated.targetLanguage.toUpperCase()}: ${translated.translatedText}`, 'bot').catch(() => {});
+            publishTranslationSubtitleEvent({
+                tenantId,
+                username: actualUsername,
+                displayName,
+                sourceText: actualMessage,
+                translatedText: translated.translatedText,
+                targetLanguage: translated.targetLanguage,
+                durationMs: 9000,
+            });
         }
     }
     
@@ -3355,19 +3368,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        // Handle !t one-off translation for mods
-        if (actualMessage.toLowerCase().startsWith('!t ')) {
-            if (!tenantId) {
-                console.warn('[Dispatcher] Ignoring translation command without tenant context');
-                return;
-            }
-            const args = actualMessage.substring(3).trim().split(/\s+/);
-            const translated = await handleOneOffTranslation(args, tenantId);
-            if (translated) {
-                await reply(translated, 'bot').catch(() => {});
-                return;
-            }
-        }
+        // !t is handled above before generic command dispatch.
         
 
         // Handle !addpoints command (mod/broadcaster only)
@@ -4833,13 +4834,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             actor: { name: actualUsername },
                             ...(target ? { target: { name: target } } : {}),
                             bot: { name: botName },
+                            reaction: response,
                             animation: {
                                 theme: cmdName,
-                                durationMs: cmdName === 'love' ? 10_000 : 7_000,
+                                durationMs: cmdName === 'love' ? 10_000 : 9_000,
                                 particleCount: cmdName === 'love' ? 48 : 32,
                                 reducedMotionSafe: true,
                             },
                         });
+                    }
+                    if (tenantId === 'spacemountainlive') {
+                        void queueTtsOverlay(response, tenantId)
+                            .catch((error) => console.warn('[Stella Lounge Host] Social TTS failed:', error));
                     }
                     await reply(response, 'bot').catch(() => {});
                     return;
@@ -5666,17 +5672,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.error('[Dispatcher] Cross-bot interaction failed:', err);
             }
 
-            const isStellaLounge = (responseTenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
-            let continuedStellaThread = false;
-            if (isStellaLounge) {
-                const { consumeStellaThread } = await import('./stella-thought-board');
-                const thread = consumeStellaThread(actualUsername);
-                if (thread) {
-                    continuedStellaThread = true;
-                    console.log(`[Dispatcher] Stella continuing open thread with ${actualUsername}`);
-                }
-            }
-            let mentionsBot = continuedStellaThread || mentionTriggers.some(trigger => lowerMessage.includes(trigger));
+            let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
             if (!mentionsBot && responseTenantId) {
                 const { hasPendingResearchMode } = await import('./research-mode');
                 mentionsBot = hasPendingResearchMode({
@@ -5699,22 +5695,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const botInterests = getBotInterests(tenantId) || '';
                 if (botInterests) {
                     const interests = botInterests.toLowerCase().split(',').map((i: string) => i.trim()).filter(Boolean);
-                    const matchedInterest = interests.find((interest: string) => lowerMessage.split(/[^a-z0-9]+/).includes(interest) || (interest.includes(' ') && lowerMessage.includes(interest)));
+                    const matchedInterest = interests.find((interest: string) => lowerMessage.includes(interest));
                     if (matchedInterest) {
                         const isStella = (responseTenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
-                        let eligible = true;
-                        if (isStella) {
-                            const { interestCanChime } = await import('./stella-thought-board');
-                            eligible = interestCanChime(matchedInterest);
-                        }
                         const baseChance = isStella ? 0.46 : 0.5;
-                        if (eligible && Math.random() < baseChance) {
+                        if (Math.random() < baseChance) {
                             console.log(`[Dispatcher] Interest ${matchedInterest} invited ${botName} into message from ${actualUsername}`);
                             mentionsBot = true;
                             if (isStella) {
-                                const { rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                                const { rememberStellaThought } = await import('./stella-thought-board');
                                 rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Interest ${matchedInterest}: ${actualMessage}`, ttlMs: 20 * 60_000 });
-                                recordStellaDecision('speak', `interest:${matchedInterest}`);
                             }
                         }
                     }
@@ -5750,12 +5740,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         console.log('[Dispatcher] Chat-with-memory reply:', aiReply);
                         
                         if (aiReply) {
-                            if (isStellaLounge) {
-                                const { openStellaThread, rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
-                                rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella replied: ${aiReply}`, ttlMs: 25 * 60_000 });
-                                recordStellaDecision('speak', continuedStellaThread ? 'conversation-thread' : 'direct-chat');
-                                if (/\?\s*$/.test(aiReply)) openStellaThread(actualUsername, aiReply);
-                            }
                             // Send the chat message
                             const responseChannel = await resolveTwitchReplyChannel({
                                 sourceChannel: replyChannel,
@@ -5943,6 +5927,17 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         return { commandHandled: true };
     }
 
+    if (!msg.author?.bot && /^!t(?:\s|$)/i.test(normalizedContent)) {
+        if (!tenantId) return { commandHandled: true };
+        const args = normalizedContent.slice(2).trim().split(/\s+/).filter(Boolean);
+        const translated = await handleOneOffTranslation(args, tenantId, {
+            requesterUsername: sourceUserName,
+            canManageOthers: await hasEffectiveDiscordModAccess(msg),
+        });
+        if (translated) await sendDiscordMessage(sourceChannelId, translated).catch(() => {});
+        return { commandHandled: true };
+    }
+
     if (!msg.author?.bot) {
         const commandHandled = await executeDiscordCommandMessage({
             ...msg,
@@ -5950,6 +5945,29 @@ export async function handleDiscordMessage(msg: any, tenantId?: string, options:
         }, tenantId, options);
         if (commandHandled) {
             return { commandHandled: true };
+        }
+    }
+
+    if (
+        tenantId
+        && !msg.author?.bot
+        && normalizedContent
+        && !normalizedContent.startsWith('!')
+        && !normalizedContent.startsWith('[')
+        && await isUserAutoTranslate(sourceUserName, tenantId)
+    ) {
+        const translated = await autoTranslateIncoming(normalizedContent, sourceUserName, tenantId);
+        if (translated) {
+            await sendDiscordMessage(sourceChannelId, `🌐 @${sourceUserName} → ${translated.targetLanguage.toUpperCase()}: ${translated.translatedText}`).catch(() => {});
+            publishTranslationSubtitleEvent({
+                tenantId,
+                username: sourceUserName,
+                displayName: sourceUserName,
+                sourceText: normalizedContent,
+                translatedText: translated.translatedText,
+                targetLanguage: translated.targetLanguage,
+                durationMs: 9000,
+            });
         }
     }
 
