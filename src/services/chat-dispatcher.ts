@@ -3139,13 +3139,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         }
     }
     
-    // Allow !t translation commands from broadcaster/mods before other checks
-    if (isCommand && actualMessage.toLowerCase().startsWith('!t ')) {
+    // Translation is a public utility. Anyone may translate a phrase or configure
+    // themselves; only mods/broadcaster may configure another viewer.
+    if (isCommand && /^!t(?:\s|$)/i.test(actualMessage)) {
         if (!tenantId) {
             console.warn('[Dispatcher] Ignoring translation command without tenant context');
             return;
         }
-        const args = actualMessage.substring(3).trim().split(/\s+/).filter(Boolean);
+        const rawArgs = actualMessage.replace(/^!t\s*/i, '').trim();
+        const args = rawArgs ? rawArgs.split(/\s+/).filter(Boolean) : [];
         const translated = await handleOneOffTranslation(args, tenantId, {
             requesterUsername: actualUsername,
             canManageOthers: Boolean(tags.mod || tags.badges?.broadcaster),
@@ -3366,19 +3368,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        // Handle !t one-off translation for mods
-        if (actualMessage.toLowerCase().startsWith('!t ')) {
-            if (!tenantId) {
-                console.warn('[Dispatcher] Ignoring translation command without tenant context');
-                return;
-            }
-            const args = actualMessage.substring(3).trim().split(/\s+/);
-            const translated = await handleOneOffTranslation(args, tenantId);
-            if (translated) {
-                await reply(translated, 'bot').catch(() => {});
-                return;
-            }
-        }
+        // !t is handled above before generic command dispatch.
         
 
         // Handle !addpoints command (mod/broadcaster only)
