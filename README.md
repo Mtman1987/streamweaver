@@ -1,4 +1,5 @@
 # StreamWeaver
+<!-- deploy refresh: Stella Lounge transcript 2026-09-25 -->
 
 StreamWeaver is a multi-tenant streaming automation platform built with Node.js and Next.js. It runs on Fly.io and provides each streamer with their own isolated environment for Twitch chat bots, AI features, overlays, game systems, and automation flows.
 
