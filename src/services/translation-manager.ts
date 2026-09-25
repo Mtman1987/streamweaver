@@ -3,10 +3,12 @@ import path from 'path';
 import { tenantPath } from '@/lib/tenant';
 import { detectLanguage, translateToLanguage, type TargetLanguage } from './translation';
 
+type TranslationLanguage = TargetLanguage | 'en';
+
 type TranslationState = {
   translationModeActive: boolean;
   detectedLanguage: TargetLanguage | null;
-  autoTranslateUsers: Set<string>;
+  autoTranslateUsers: Map<string, TranslationLanguage>;
   loaded: boolean;
 };
 
@@ -27,7 +29,7 @@ function stateFor(tenantId: string): TranslationState {
     state = {
       translationModeActive: false,
       detectedLanguage: null,
-      autoTranslateUsers: new Set<string>(),
+      autoTranslateUsers: new Map<string, TranslationLanguage>(),
       loaded: false,
     };
     states.set(key, state);
@@ -52,9 +54,13 @@ async function loadAutoTranslateUsers(tenantId: string): Promise<void> {
       const raw = await fs.readFile(autoTranslatePath(key), 'utf-8');
       const parsed = JSON.parse(raw) as { users?: unknown };
       const users = Array.isArray(parsed.users) ? parsed.users : [];
-      state.autoTranslateUsers = new Set(
-        users.map((user) => String(user || '').trim().toLowerCase()).filter(Boolean),
-      );
+      const entries = users.map((entry: any) => {
+        if (typeof entry === 'string') return [entry.trim().toLowerCase(), 'en'] as const;
+        const username = String(entry?.username || entry?.user || '').trim().toLowerCase();
+        const language = normalizeLanguage(entry?.language || entry?.targetLanguage || 'en');
+        return username ? [username, language] as const : null;
+      }).filter(Boolean) as Array<readonly [string, TranslationLanguage]>;
+      state.autoTranslateUsers = new Map(entries);
     } catch (error: any) {
       if (error?.code !== 'ENOENT') throw error;
     }
@@ -72,16 +78,20 @@ async function saveAutoTranslateUsers(tenantId: string): Promise<void> {
   const filePath = autoTranslatePath(key);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  await fs.writeFile(tempPath, JSON.stringify({ users: Array.from(state.autoTranslateUsers).sort() }, null, 2), 'utf-8');
+  const users = Array.from(state.autoTranslateUsers.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([username, language]) => ({ username, language }));
+  await fs.writeFile(tempPath, JSON.stringify({ users }, null, 2), 'utf-8');
   await fs.rename(tempPath, filePath);
 }
 
-export async function addUserToAutoTranslate(username: string, tenantId: string): Promise<void> {
+export async function addUserToAutoTranslate(username: string, tenantId: string, language: TranslationLanguage = 'en'): Promise<void> {
   await loadAutoTranslateUsers(tenantId);
   const state = stateFor(tenantId);
-  state.autoTranslateUsers.add(username.toLowerCase());
+  const targetLanguage = normalizeLanguage(language);
+  state.autoTranslateUsers.set(username.toLowerCase(), targetLanguage);
   await saveAutoTranslateUsers(tenantId);
-  console.log(`[TranslationManager] Auto-translate enabled for ${username} in tenant ${tenantId}`);
+  console.log(`[TranslationManager] Auto-translate enabled for ${username} → ${targetLanguage} in tenant ${tenantId}`);
 }
 
 export async function removeUserFromAutoTranslate(username: string, tenantId: string): Promise<void> {
@@ -99,7 +109,7 @@ export async function isUserAutoTranslate(username: string, tenantId: string): P
 
 export async function getAutoTranslateUsers(tenantId: string): Promise<string[]> {
   await loadAutoTranslateUsers(tenantId);
-  return Array.from(stateFor(tenantId).autoTranslateUsers);
+  return Array.from(stateFor(tenantId).autoTranslateUsers.keys());
 }
 
 export function setTranslationMode(active: boolean, tenantId: string): void {
@@ -127,8 +137,12 @@ export async function autoTranslateIncoming(message: string, username: string | 
   const state = stateFor(tenantId);
 
   if (username && state.autoTranslateUsers.has(username.toLowerCase())) {
-    const result = await translateToLanguage(message, 'en');
-    if (!result.error) return result.translatedText;
+    const targetLanguage = state.autoTranslateUsers.get(username.toLowerCase()) || 'en';
+    const detected = await detectLanguage(message);
+    if (detected.language === targetLanguage) return null;
+    const result = await translateToLanguage(message, targetLanguage);
+    if (!result.error && result.translatedText.trim() && result.translatedText.trim() !== message.trim()) return result.translatedText;
+    return null;
   }
 
   if (!state.translationModeActive) return null;
@@ -147,29 +161,64 @@ export async function autoTranslateIncoming(message: string, username: string | 
   return null;
 }
 
-export async function handleOneOffTranslation(args: string[], tenantId: string): Promise<string | null> {
+export async function getAutoTranslateLanguage(username: string, tenantId: string): Promise<TranslationLanguage | null> {
+  await loadAutoTranslateUsers(tenantId);
+  return stateFor(tenantId).autoTranslateUsers.get(username.toLowerCase()) || null;
+}
+
+export async function handleOneOffTranslation(
+  args: string[],
+  tenantId: string,
+  options: { actorUsername?: string; canManageOthers?: boolean } = {},
+): Promise<string | null> {
   await loadAutoTranslateUsers(tenantId);
   const state = stateFor(tenantId);
+  const cleanArgs = args.map((value) => String(value || '').trim()).filter(Boolean);
+  if (!cleanArgs.length) return 'Usage: !t es hello | !t hello | !t @user en | !t @user off';
 
-  if (args.length === 1 && args[0].startsWith('@')) {
-    const username = args[0].substring(1);
-    if (state.autoTranslateUsers.has(username.toLowerCase())) {
-      await removeUserFromAutoTranslate(username, tenantId);
-      return `Auto-translate disabled for @${username}`;
+  if (cleanArgs[0].startsWith('@')) {
+    const username = cleanArgs[0].substring(1).trim().toLowerCase();
+    if (!username) return 'Usage: !t @user en | !t @user off';
+    const actor = String(options.actorUsername || '').trim().toLowerCase();
+    const managingSelf = actor && actor === username;
+    if (!managingSelf && options.canManageOthers !== true) {
+      return 'Only the streamer or a moderator can set auto-translation for someone else.';
     }
 
-    await addUserToAutoTranslate(username, tenantId);
-    return `Auto-translate enabled for @${username} - their messages will be translated to English`;
+    const mode = String(cleanArgs[1] || '').toLowerCase();
+    if (['off', 'stop', 'none'].includes(mode)) {
+      await removeUserFromAutoTranslate(username, tenantId);
+      return `Stella auto-translation is off for @${username}.`;
+    }
+
+    const targetLanguage = normalizeLanguage(mode || 'en');
+    await addUserToAutoTranslate(username, tenantId, targetLanguage);
+    return `Stella will auto-translate @${username} into ${languageName(targetLanguage)}. Use !t @${username} off to stop.`;
   }
 
-  if (args.length < 2) return null;
-
-  const lang = args[0].toLowerCase();
-  if (!['es', 'fr', 'ru', 'en'].includes(lang)) return null;
-
-  const text = args.slice(1).join(' ');
-  const result = await translateToLanguage(text, lang as TargetLanguage);
+  let targetLanguage: TranslationLanguage = 'en';
+  let textArgs = cleanArgs;
+  if (isLanguageCode(cleanArgs[0])) {
+    targetLanguage = normalizeLanguage(cleanArgs[0]);
+    textArgs = cleanArgs.slice(1);
+  }
+  const text = textArgs.join(' ').trim();
+  if (!text) return 'Usage: !t es hello | !t hello | !t @user en | !t @user off';
+  const result = await translateToLanguage(text, targetLanguage);
   return result.error ? null : result.translatedText;
+}
+
+function isLanguageCode(value: unknown): boolean {
+  return ['en', 'es', 'fr', 'ru', 'de', 'ja'].includes(String(value || '').trim().toLowerCase());
+}
+
+function normalizeLanguage(value: unknown): TranslationLanguage {
+  const code = String(value || '').trim().toLowerCase();
+  return isLanguageCode(code) ? code as TranslationLanguage : 'en';
+}
+
+function languageName(language: TranslationLanguage): string {
+  return ({ en: 'English', es: 'Spanish', fr: 'French', ru: 'Russian', de: 'German', ja: 'Japanese' } as const)[language];
 }
 
 export function clearTranslationStateForTests(): void {
