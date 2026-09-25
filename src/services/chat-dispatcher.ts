@@ -1848,14 +1848,14 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                     reaction: response,
                     animation: {
                         theme: cmdName,
-                        durationMs: cmdName === 'love' ? 10_000 : 7_000,
+                        durationMs: cmdName === 'love' ? 10_000 : 9_000,
                         particleCount: cmdName === 'love' ? 48 : 32,
                         reducedMotionSafe: true,
                     },
                 });
                 if ((speaker.tenantId || tenantId) === 'spacemountainlive') {
-                    const { reactStellaLoungeEvent } = await import('./stella-lounge-host');
-                    void reactStellaLoungeEvent({ kind: 'social', actor: actualUsername, text: `${cmdName}${actualMessage.substring(cmdName.length + 2).trim() ? ' ' + actualMessage.substring(cmdName.length + 2).trim() : ''}`, metadata: { command: cmdName, target: actualMessage.substring(cmdName.length + 2).trim() || undefined } }).catch((error) => console.warn('[Stella Lounge Host] Social reaction failed:', error));
+                    void queueTtsOverlay(response, speaker.tenantId || tenantId)
+                        .catch((error) => console.warn('[Stella Lounge Host] Social TTS failed:', error));
                 }
             }
             await sendStructuredDiscordReply({
@@ -4848,11 +4848,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             reaction: response,
                             animation: {
                                 theme: cmdName,
-                                durationMs: cmdName === 'love' ? 10_000 : 7_000,
+                                durationMs: cmdName === 'love' ? 10_000 : 9_000,
                                 particleCount: cmdName === 'love' ? 48 : 32,
                                 reducedMotionSafe: true,
                             },
                         });
+                    }
+                    if (tenantId === 'spacemountainlive') {
+                        void queueTtsOverlay(response, tenantId)
+                            .catch((error) => console.warn('[Stella Lounge Host] Social TTS failed:', error));
                     }
                     await reply(response, 'bot').catch(() => {});
                     return;
