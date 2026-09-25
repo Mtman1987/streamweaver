@@ -57,6 +57,24 @@ type ClipPlaybackWaiter = {
 };
 
 const clipPlaybackWaiters = new Map<string, ClipPlaybackWaiter>();
+type PendingClip = { type: 'shoutout-play-clip'; payload: {
+    eventId: string; clipUrl: string; thumbnailUrl: string; user: string;
+    profileImage: string; duration: number;
+} };
+const pendingClips = new Map<string, { message: PendingClip; expiresAt: number }>();
+
+// An overlay can reconnect after the one-shot broadcast. Keep only the current
+// tenant's clip until playback completes or the playback deadline passes.
+export function getPendingShoutoutClip(tenantId?: string): PendingClip | null {
+    const key = tenantId || '__global__';
+    const pending = pendingClips.get(key);
+    if (!pending) return null;
+    if (Date.now() >= pending.expiresAt) {
+        pendingClips.delete(key);
+        return null;
+    }
+    return pending.message;
+}
 const shoutoutSequenceTails = new Map<string, Promise<void>>();
 
 export function acknowledgeShoutoutClip(
@@ -257,7 +275,7 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
 
     try {
         if (typeof (global as any).broadcast !== 'function') return false;
-        (global as any).broadcast({
+        const message: PendingClip = {
             type: 'shoutout-play-clip',
             payload: {
                 eventId,
@@ -266,8 +284,13 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
                 user: displayName,
                 profileImage,
                 duration: clip.duration,
-            }
-        }, broadcastTenantId);
+            },
+        };
+        pendingClips.set(broadcastTenantId || '__global__', {
+            message,
+            expiresAt: Date.now() + Math.max(27_000, Math.floor(clip.duration * 1000) + 27_000),
+        });
+        (global as any).broadcast(message, broadcastTenantId);
 
         // Do not hold Stella silent for a clip that never appeared. The player
         // confirms actual playback after Twitch returns a playable source.
@@ -288,6 +311,8 @@ async function playClip(clip: TwitchClip, displayName: string, profileImage: str
         return true;
     } finally {
         clipPlaybackWaiters.delete(eventId);
+        const key = broadcastTenantId || '__global__';
+        if (pendingClips.get(key)?.message.payload.eventId === eventId) pendingClips.delete(key);
     }
 }
 

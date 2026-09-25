@@ -108,6 +108,11 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
         (ws as any).__authorizedTenantId = cookieTenantId || '';
         if (resolvedTenantId) {
             (ws as any).__tenantId = resolvedTenantId;
+            // Replay the active clip if this overlay missed the broadcast while
+            // its socket was down. It can only receive its own tenant's clip.
+            const { getPendingShoutoutClip } = require('../services/walk-on-shoutout');
+            const pendingClip = getPendingShoutoutClip(resolvedTenantId);
+            if (pendingClip) ws.send(JSON.stringify(pendingClip));
         }
         
         // Do not load global chat history before tenant identification.
@@ -148,6 +153,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                             return;
                         }
                         (ws as any).__tenantId = tid;
+                        const { getPendingShoutoutClip } = require('../services/walk-on-shoutout');
+                        const pendingClip = getPendingShoutoutClip(tid);
+                        if (pendingClip) ws.send(JSON.stringify(pendingClip));
 
                         // Send tenant-specific Twitch status after identify.
                         const { getTwitchStatus } = require('../services/twitch-client');
@@ -185,6 +193,18 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                                 payload: history
                             }));
                         }
+                    }
+                    return;
+                }
+
+                // A read-only overlay can recover an event even if its socket
+                // stayed open while the one-shot broadcast was lost.
+                if (message.type === 'shoutout-clip-sync') {
+                    const tenantId = (ws as any).__tenantId;
+                    if (tenantId) {
+                        const { getPendingShoutoutClip } = require('../services/walk-on-shoutout');
+                        const pendingClip = getPendingShoutoutClip(tenantId);
+                        if (pendingClip) ws.send(JSON.stringify(pendingClip));
                     }
                     return;
                 }

@@ -10,6 +10,8 @@ export default function ShoutoutPlayer() {
   const activeEventIdRef = useRef<string>('');
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallbackDurationRef = useRef(30);
+  const fallbackEmbedUrlRef = useRef('');
+  const fallbackStartedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [fallbackEmbedUrl, setFallbackEmbedUrl] = useState('');
@@ -28,6 +30,8 @@ export default function ShoutoutPlayer() {
     activeEventIdRef.current = '';
     if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
     fallbackTimerRef.current = null;
+    fallbackEmbedUrlRef.current = '';
+    fallbackStartedRef.current = false;
     setTimeout(() => {
       if (activeEventIdRef.current && activeEventIdRef.current !== completedEventId) return;
       if (videoRef.current) videoRef.current.src = '';
@@ -37,8 +41,18 @@ export default function ShoutoutPlayer() {
   };
 
   const playClip = async (eventId: string, clipUrl: string, thumbnailUrl: string, user: string, profileImage: string, duration = 30) => {
+    if (eventId && activeEventIdRef.current === eventId) {
+      // The server replays an active clip on reconnect. Keep its current time
+      // and repeat the acknowledgement if the prior socket closed mid-send.
+      if ((videoRef.current && !videoRef.current.paused) || fallbackStartedRef.current) {
+        acknowledgePlayback(eventId, 'started');
+      }
+      return;
+    }
     setError(null);
     setFallbackEmbedUrl('');
+    fallbackEmbedUrlRef.current = '';
+    fallbackStartedRef.current = false;
     activeEventIdRef.current = eventId;
     let match = clipUrl.match(/clip=([^&]+)/);
     if (!match) {
@@ -100,7 +114,9 @@ export default function ShoutoutPlayer() {
       // clip embed remains the reliable fallback for OBS browser sources.
       const parent = window.location.hostname;
       fallbackDurationRef.current = Math.max(1, duration);
-      setFallbackEmbedUrl(`https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=false`);
+      const fallbackUrl = `https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=false`;
+      fallbackEmbedUrlRef.current = fallbackUrl;
+      setFallbackEmbedUrl(fallbackUrl);
       setVisible(true);
     }
   };
@@ -111,13 +127,27 @@ export default function ShoutoutPlayer() {
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnect: NodeJS.Timeout;
+    let syncTimer: ReturnType<typeof setInterval>;
+    let stopped = false;
 
     const connect = () => {
+      if (stopped) return;
       try {
         ws = new WebSocket(getBrowserWebSocketUrl(getOverlayTenantId() || undefined));
         websocketRef.current = ws;
-        ws.onclose = () => { reconnect = setTimeout(connect, 3000); };
-        ws.onerror = () => {};
+        ws.onopen = () => {
+          ws?.send(JSON.stringify({ type: 'shoutout-clip-sync' }));
+          syncTimer = setInterval(() => {
+            if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'shoutout-clip-sync' }));
+          }, 4000);
+        };
+        ws.onclose = () => {
+          clearInterval(syncTimer);
+          if (stopped) return;
+          if (websocketRef.current === ws) websocketRef.current = null;
+          reconnect = setTimeout(connect, 1000);
+        };
+        ws.onerror = () => { console.warn('[Shoutout] Overlay WebSocket disconnected'); };
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
@@ -134,7 +164,9 @@ export default function ShoutoutPlayer() {
 
     connect();
     return () => {
+      stopped = true;
       clearTimeout(reconnect);
+      clearInterval(syncTimer);
       if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
       ws?.close();
       websocketRef.current = null;
@@ -171,6 +203,7 @@ export default function ShoutoutPlayer() {
           allow="autoplay; fullscreen"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: visible ? 'block' : 'none' }}
           onLoad={() => {
+            fallbackStartedRef.current = true;
             acknowledgePlayback(activeEventIdRef.current, 'started');
             if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
             fallbackTimerRef.current = setTimeout(finishPlayback, fallbackDurationRef.current * 1000);
