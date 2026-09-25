@@ -20,6 +20,7 @@ test('live social commands use durable no-repeat AI copy and the social overlay 
   assert.match(events, /reaction\?: string/);
   assert.match(events, /'dance'/);
   assert.match(dispatcher, /reaction: response/);
+  assert.match(dispatcher, /queueTtsOverlay\(response/);
   assert.match(overlay, /social-astronaut/);
   assert.match(overlay, /🧑‍🚀/);
   assert.match(overlay, /social-reaction/);
