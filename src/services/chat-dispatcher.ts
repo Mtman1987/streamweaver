@@ -1851,6 +1851,10 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                         reducedMotionSafe: true,
                     },
                 });
+                if ((speaker.tenantId || tenantId) === 'spacemountainlive') {
+                    const { reactStellaLoungeEvent } = await import('./stella-lounge-host');
+                    void reactStellaLoungeEvent({ kind: 'social', actor: actualUsername, text: `${cmdName}${actualMessage.substring(cmdName.length + 2).trim() ? ' ' + actualMessage.substring(cmdName.length + 2).trim() : ''}`, metadata: { command: cmdName, target: actualMessage.substring(cmdName.length + 2).trim() || undefined } }).catch((error) => console.warn('[Stella Lounge Host] Social reaction failed:', error));
+                }
             }
             await sendStructuredDiscordReply({
                 channelId: sourceChannelId,
