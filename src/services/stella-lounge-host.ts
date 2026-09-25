@@ -71,6 +71,7 @@ let nextAmbientAt = Date.now() + randomDelay(AMBIENT_MIN_MS, AMBIENT_MAX_MS);
 let lastSpokeAt = 0;
 let lastPromoAt = 0;
 const recentHostTopics: string[] = [];
+const recentEventFingerprints = new Map<string, number>();
 
 function randomDelay(minimum: number, maximum: number): number {
   return minimum + Math.floor(Math.random() * Math.max(1, maximum - minimum + 1));
@@ -311,6 +312,11 @@ async function deliverStellaHostLine(prompt: string, now = Date.now()): Promise<
 }
 
 export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Date.now()): Promise<{ delivered: boolean; reason: string; text?: string }> {
+  const fingerprint = [event.kind, event.actor || '', event.text || '', event.viewers || '', event.amount || ''].join('|').toLowerCase();
+  const seenAt = recentEventFingerprints.get(fingerprint) || 0;
+  if (now - seenAt < 90_000) return { delivered: false, reason: 'duplicate-event' };
+  recentEventFingerprints.set(fingerprint, now);
+  for (const [key, at] of recentEventFingerprints) if (now - at > 10 * 60_000) recentEventFingerprints.delete(key);
   const policy = eventInstruction(event);
   const interrupt = policy.priority >= 90;
   if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) return { delivered: false, reason: 'speech-cooldown' };
@@ -369,4 +375,5 @@ export function resetStellaLoungeHostForTests(now = Date.now()): void {
   lastSpokeAt = 0;
   lastPromoAt = 0;
   recentHostTopics.splice(0);
+  recentEventFingerprints.clear();
 }
