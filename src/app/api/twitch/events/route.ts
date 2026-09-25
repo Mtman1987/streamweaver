@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addPoints, getPointSettings } from '@/services/points';
 import { getStoredTokens } from '@/lib/token-utils.server';
-import { listTenants } from '@/lib/tenant';
+import { listTenants, SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
+import { reactStellaLoungeEvent } from '@/services/stella-lounge-host';
 import {
   getInternalServiceSecrets,
   hasInternalServiceAccess,
@@ -153,6 +154,23 @@ export async function POST(request: NextRequest) {
         tenantId: tenant.tenantId,
         reason: 'zero-configured-points',
       });
+    }
+
+    if (tenant.tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+      const kind = type === 'raid' ? 'raid'
+        : (type === 'subscribe' || type === 'subscription' || type === 'sub' || type === 'resub' || type === 'gift_sub' || type === 'gifted_subscription' || type === 'subgift') ? 'subscribe'
+        : (type === 'cheer' || type === 'bits') ? 'cheer'
+        : type === 'follow' ? 'follow'
+        : null;
+      if (kind) {
+        void reactStellaLoungeEvent({
+          kind,
+          actor: user,
+          viewers: kind === 'raid' ? positiveInt(body.viewers, 0) : undefined,
+          amount: kind === 'cheer' ? positiveInt(body.bits, 0) : kind === 'subscribe' ? quantity : undefined,
+          metadata: { tier, months: positiveInt(body.months, 0) },
+        }).catch((error) => console.warn('[Stella Lounge Host] Twitch event reaction failed:', error));
+      }
     }
 
     const result = await addPoints(user, Math.floor(points), reason, ctx);
