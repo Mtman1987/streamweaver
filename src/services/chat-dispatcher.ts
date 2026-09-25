@@ -5666,7 +5666,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 console.error('[Dispatcher] Cross-bot interaction failed:', err);
             }
 
-            let mentionsBot = mentionTriggers.some(trigger => lowerMessage.includes(trigger));
+            const isStellaLounge = (responseTenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+            let continuedStellaThread = false;
+            if (isStellaLounge) {
+                const { consumeStellaThread } = await import('./stella-thought-board');
+                const thread = consumeStellaThread(actualUsername);
+                if (thread) {
+                    continuedStellaThread = true;
+                    console.log(`[Dispatcher] Stella continuing open thread with ${actualUsername}`);
+                }
+            }
+            let mentionsBot = continuedStellaThread || mentionTriggers.some(trigger => lowerMessage.includes(trigger));
             if (!mentionsBot && responseTenantId) {
                 const { hasPendingResearchMode } = await import('./research-mode');
                 mentionsBot = hasPendingResearchMode({
@@ -5689,16 +5699,22 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const botInterests = getBotInterests(tenantId) || '';
                 if (botInterests) {
                     const interests = botInterests.toLowerCase().split(',').map((i: string) => i.trim()).filter(Boolean);
-                    const matchedInterest = interests.find((interest: string) => lowerMessage.includes(interest));
+                    const matchedInterest = interests.find((interest: string) => lowerMessage.split(/[^a-z0-9]+/).includes(interest) || (interest.includes(' ') && lowerMessage.includes(interest)));
                     if (matchedInterest) {
                         const isStella = (responseTenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+                        let eligible = true;
+                        if (isStella) {
+                            const { interestCanChime } = await import('./stella-thought-board');
+                            eligible = interestCanChime(matchedInterest);
+                        }
                         const baseChance = isStella ? 0.46 : 0.5;
-                        if (Math.random() < baseChance) {
+                        if (eligible && Math.random() < baseChance) {
                             console.log(`[Dispatcher] Interest ${matchedInterest} invited ${botName} into message from ${actualUsername}`);
                             mentionsBot = true;
                             if (isStella) {
-                                const { rememberStellaThought } = await import('./stella-thought-board');
+                                const { rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
                                 rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Interest ${matchedInterest}: ${actualMessage}`, ttlMs: 20 * 60_000 });
+                                recordStellaDecision('speak', `interest:${matchedInterest}`);
                             }
                         }
                     }
@@ -5734,6 +5750,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         console.log('[Dispatcher] Chat-with-memory reply:', aiReply);
                         
                         if (aiReply) {
+                            if (isStellaLounge) {
+                                const { openStellaThread, rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                                rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella replied: ${aiReply}`, ttlMs: 25 * 60_000 });
+                                recordStellaDecision('speak', continuedStellaThread ? 'conversation-thread' : 'direct-chat');
+                                if (/\?\s*$/.test(aiReply)) openStellaThread(actualUsername, aiReply);
+                            }
                             // Send the chat message
                             const responseChannel = await resolveTwitchReplyChannel({
                                 sourceChannel: replyChannel,
