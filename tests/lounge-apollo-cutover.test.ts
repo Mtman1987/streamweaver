@@ -50,14 +50,14 @@ test('live Stella translation supports one-shot and target-aware auto translatio
 
 test('translation subtitles are a dedicated shell-free overlay', () => {
   const events = read('src/services/translation-subtitle-events.ts');
-  const route = read('src/app/api/overlay/translation-subtitle/route.ts');
-  const overlay = read('src/app/overlay/translation-subtitle/page.tsx');
+  const route = read('src/app/api/overlay/translation/route.ts');
+  const overlay = read('src/app/overlay/translation/page.tsx');
 
   assert.match(events, /translation-subtitle/);
   assert.match(events, /sourceText/);
   assert.match(events, /translatedText/);
   assert.match(route, /resolveOverlayTenantId/);
-  assert.match(overlay, /STELLA LIVE TRANSLATION/);
+  assert.match(overlay, /translation-subtitle/);
   assert.match(overlay, /background:transparent/);
   assert.doesNotMatch(overlay, /workspace|sidebar|navigation/i);
 });
