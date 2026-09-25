@@ -31,7 +31,7 @@ const DISCORD_UTILITY_COMMANDS = [
   '!commands', '!s <user>', '!so <user>', '!trade @user', '!offer <card>',
   '!givepoints @user <amount>', '!stealpoints @user <amount>',
   '!gamble <amount>', '!roll <amount>', '!double <amount>', '!coinflip',
-  '!botshare', '!raidmessage <msg>',
+  '!botshare', '!raidmessage <msg>', '!t es <message>', '!t @user en',
 ];
 
 const DISCORD_ADMIN_COMMANDS = [
