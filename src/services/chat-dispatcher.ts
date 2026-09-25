@@ -76,7 +76,7 @@ import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
-import { overrideLoungeMediaLayout, voteLoungeMediaLayout } from './lounge-media-layout';
+import { getLoungeMediaLayout, overrideLoungeMediaLayout, voteLoungeMediaLayout } from './lounge-media-layout';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
@@ -3782,6 +3782,47 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         // HearMeOut service adapter sends these legacy command shapes to the
         // isolated Apollo Lounge player; it must not mutate the retired global
         // HearMeOut sessions.
+        if (/^!votebump$/i.test(actualMessage.trim())) {
+            try {
+                const current = await getLoungeMediaLayout();
+                const target = current.mode === 'media' ? 'stream' : 'media';
+                const result = await voteLoungeMediaLayout(target, String(tags['user-id'] || tags.username || actualUsername));
+                if (!result.accepted) {
+                    await reply(`🔒 The Lounge bump vote is locked by a moderator. Mods can use !layout auto to reopen voting.`, 'bot').catch(() => {});
+                } else if (result.changed) {
+                    await reply(`🚀 Vote passed — ${target === 'media' ? 'HearMeOut moved to the main stage and the current Spotlight moved to the media box' : 'the current Spotlight returned to the main stage and HearMeOut moved back to the media box'}.`, 'bot').catch(() => {});
+                } else {
+                    const count = result.votes[target];
+                    await reply(`🗳️ @${actualUsername} voted to bump ${target === 'media' ? 'HearMeOut' : 'the current Spotlight'}. ${count}/${result.votes.required} votes.`, 'bot').catch(() => {});
+                }
+            } catch (error) {
+                await reply(`❌ Lounge bump vote failed: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
+        if (/^!bump$/i.test(actualMessage.trim())) {
+            if (!canControlHearMeOut) {
+                await reply(`@${actualUsername}, only the broadcaster or a moderator can use !bump.`, 'bot').catch(() => {});
+                return;
+            }
+            try {
+                const current = await getLoungeMediaLayout();
+                const target = current.mode === 'media' ? 'stream' : 'media';
+                await overrideLoungeMediaLayout(target, actualUsername);
+                await overrideLoungeMediaLayout('auto', actualUsername);
+                await reply(
+                    target === 'media'
+                        ? '✅ HearMeOut bumped to the main stage; the current Spotlight moved to the media box.'
+                        : '✅ The current Spotlight bumped back to the main stage; HearMeOut moved to the media box.',
+                    'bot',
+                ).catch(() => {});
+            } catch (error) {
+                await reply(`❌ Lounge bump failed: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
         const loungeLayoutVote = actualMessage.trim().match(/^!bump(media|stream)$/i);
         if (loungeLayoutVote) {
             const target = loungeLayoutVote[1].toLowerCase() === 'media' ? 'media' : 'stream';
@@ -3790,7 +3831,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 if (!result.accepted) {
                     await reply(`🔒 The Lounge layout is locked by a moderator. Mods can use !layout auto to reopen voting.`, 'bot').catch(() => {});
                 } else if (result.changed) {
-                    await reply(`🚀 Vote passed — ${target === 'media' ? 'HearMeOut is now on the main stage and the live stream is in the media box' : 'the live stream is back on the main stage and HearMeOut is in the media box'}.`, 'bot').catch(() => {});
+                    await reply(`🚀 Vote passed — ${target === 'media' ? 'HearMeOut is now on the main stage and the current Spotlight is in the media box' : 'the current Spotlight is back on the main stage and HearMeOut is in the media box'}.`, 'bot').catch(() => {});
                 } else {
                     const count = result.votes[target];
                     await reply(`🗳️ @${actualUsername} voted to bump ${target}. ${count}/${result.votes.required} votes.`, 'bot').catch(() => {});
@@ -3815,8 +3856,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const message = target === 'auto'
                     ? 'Lounge layout voting is open again.'
                     : target === 'media'
-                        ? 'HearMeOut is locked to the main stage; the live stream is in the media box.'
-                        : 'The live stream is locked to the main stage; HearMeOut is in the media box.';
+                        ? 'HearMeOut is locked to the main stage; the current Spotlight is in the media box.'
+                        : 'The current Spotlight is locked to the main stage; HearMeOut is in the media box.';
                 await reply(`✅ ${message}`, 'bot').catch(() => {});
             } catch (error) {
                 await reply(`❌ Lounge layout override failed: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
