@@ -289,6 +289,10 @@ async function endBattle(winner: string, tenantId?: string): Promise<void> {
   if (!st.battle) return;
   const isChallenger = winner.toLowerCase() === st.battle.challenger.username.toLowerCase();
   bc({ type: 'gym-battle-end', payload: { winner, isChallenger, ...buildBattleState(tenantId) } }, tenantId);
+  if (normalizeTenantId(tenantId) === 'spacemountainlive') {
+    const { reactStellaLoungeEvent } = await import('./stella-lounge-host');
+    void reactStellaLoungeEvent({ kind: 'game-winner', actor: winner, text: 'Gym Battle winner', metadata: { game: 'Gym Battle', isChallenger, challenger: st.battle.challenger.username, gymLeader: st.battle.gymLeader.username, turnCount: st.battle.turnCount } }).catch((error: unknown) => console.warn('[Stella Lounge Host] Game winner reaction failed:', error));
+  }
   if (isChallenger) {
     const { awardGymBadge } = require('./user-stats');
     if (!tenantId) throw new Error('Gym badge award requires tenant context');
