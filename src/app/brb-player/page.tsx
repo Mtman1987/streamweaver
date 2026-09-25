@@ -8,6 +8,7 @@ export default function BRBPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [active, setActive] = useState(false);
   const [clipUser, setClipUser] = useState('');
+  const [spotlight, setSpotlight] = useState(false);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -15,7 +16,7 @@ export default function BRBPlayer() {
 
     const playClip = async (clipUrl: string, thumbnailUrl: string) => {
       const match = clipUrl.match(/clip=([^&]+)/);
-      if (!match) return;
+      if (!match) { setActive(false); return; }
       const clipId = match[1].split('/').pop()!;
 
       try {
@@ -29,10 +30,10 @@ export default function BRBPlayer() {
           })
         });
 
-        if (!response.ok) return;
+        if (!response.ok) throw new Error(`Clip lookup failed: ${response.status}`);
         const clipInfo = await response.json();
         const clipData = clipInfo.data?.clip;
-        if (!clipData?.videoQualities?.[0]?.sourceURL) return;
+        if (!clipData?.videoQualities?.[0]?.sourceURL) throw new Error('Clip source unavailable');
 
         const src = `${clipData.videoQualities[0].sourceURL}?sig=${clipData.playbackAccessToken.signature}&token=${encodeURIComponent(clipData.playbackAccessToken.value)}`;
 
@@ -41,11 +42,14 @@ export default function BRBPlayer() {
           videoRef.current.muted = true;
           videoRef.current.load();
           videoRef.current.play().then(() => {
+            setSpotlight(false);
+            setActive(true);
             if (videoRef.current) videoRef.current.muted = false;
-          }).catch(() => {});
+          }).catch(err => { console.warn('[BRB] Clip playback failed:', err); setActive(false); });
         }
       } catch (err) {
         console.error('[BRB] Clip load failed:', err);
+        setActive(false);
       }
     };
 
@@ -58,15 +62,22 @@ export default function BRBPlayer() {
           try {
             const msg = JSON.parse(e.data);
             if (msg.type === 'brb-start') {
-              setActive(true);
+              setActive(false);
+              setSpotlight(false);
             }
             if (msg.type === 'brb-clip' && msg.payload) {
-              setActive(true);
               setClipUser(msg.payload.user || '');
               playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl);
             }
-            if (msg.type === 'brb-stop') {
+            if (msg.type === 'brb-spotlight') {
+              if (videoRef.current) videoRef.current.src = '';
+              setClipUser('');
+              setSpotlight(true);
+              setActive(true);
+            }
+            if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
               setActive(false);
+              setSpotlight(false);
               if (videoRef.current) videoRef.current.src = '';
             }
           } catch {}
@@ -87,10 +98,18 @@ export default function BRBPlayer() {
     }}>
       <video
         ref={videoRef}
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        style={{ width: '100%', height: '100%', objectFit: 'contain', display: spotlight ? 'none' : 'block' }}
         autoPlay
       />
-      {active && clipUser && (
+      {active && spotlight && (
+        <iframe
+          src="https://discord-stream-hub-new.fly.dev/headless/community-spotlight?parent=spmt.live"
+          title="Live Community Spotlight"
+          allow="autoplay; fullscreen"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
+        />
+      )}
+      {active && !spotlight && clipUser && (
         <div style={{
           position: 'absolute', bottom: 20, left: 20,
           background: 'rgba(0,0,0,0.7)', color: 'white',

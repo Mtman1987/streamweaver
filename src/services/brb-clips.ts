@@ -133,11 +133,13 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
   const scene = obsConfig?.scenes?.brb || 'BRB';
   const liveScene = obsConfig?.scenes?.live || 'Live';
 
-  bc({ type: 'obs-switch-scene', payload: { sceneName: scene } }, tenantId);
+  const loungeBRB = tenantId === 'spacemountainlive';
+  if (!loungeBRB) bc({ type: 'obs-switch-scene', payload: { sceneName: scene } }, tenantId);
   bc({ type: 'brb-start', payload: { scene } }, tenantId);
 
   await new Promise(r => setTimeout(r, 2000));
 
+  let spotlightActive = false;
   while (!runtime.stopRequested) {
     const useViewerClips = await getClipModeFromStorage(tenantId);
     let targetUsers: string[];
@@ -152,17 +154,19 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
       console.log(`[BRB] Broadcaster mode: ${broadcasterName}`);
     }
 
+    let playedClip = false;
     for (const user of targetUsers) {
       if (runtime.stopRequested) break;
 
       console.log(`[BRB] Fetching clips for ${user}...`);
       const clips = await fetchClipsForUser(user);
       if (clips.length === 0) {
-        console.log(`[BRB] No clips for ${user}, waiting 5s`);
-        await new Promise(r => setTimeout(r, 5000));
+        console.log(`[BRB] No clips for ${user}`);
         continue;
       }
 
+      playedClip = true;
+      spotlightActive = false;
       const clip = clips[Math.floor(Math.random() * clips.length)];
       const embedUrl = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
       const duration = Math.floor((clip.duration || 30) * 1000) + 700;
@@ -179,10 +183,42 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
         await new Promise(r => setTimeout(r, 1000));
       }
     }
+
+    if (!playedClip && !runtime.stopRequested && loungeBRB) {
+      let liveSpotlight = false;
+      try {
+        const response = await fetch('https://discord-stream-hub-new.fly.dev/api/community-spotlight', {
+          signal: AbortSignal.timeout(5000),
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const data = await response.json();
+          liveSpotlight = Boolean(data?.spotlight?.twitchLogin);
+        }
+      } catch (error) {
+        console.warn('[BRB] Community Spotlight lookup failed:', error);
+      }
+      if (liveSpotlight && !spotlightActive) {
+        bc({ type: 'brb-spotlight' }, tenantId);
+        spotlightActive = true;
+        console.log('[BRB] No clips available; showing live Community Spotlight');
+      } else if (!liveSpotlight && spotlightActive) {
+        bc({ type: 'brb-no-media' }, tenantId);
+        spotlightActive = false;
+      } else if (!liveSpotlight) {
+        console.warn('[BRB] No clips or live Spotlight; keeping the Lounge visible');
+      }
+      const retryAt = Date.now() + 15_000;
+      while (Date.now() < retryAt && !runtime.stopRequested) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } else if (!playedClip && !runtime.stopRequested) {
+      await new Promise(r => setTimeout(r, 5000));
+    }
   }
 
   bc({ type: 'brb-stop' }, tenantId);
-  bc({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
+  if (!loungeBRB) bc({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
 
   runtime.isPlaying = false;
   console.log('[BRB] Stopped');

@@ -3714,7 +3714,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const broadcasterName = broadcasterUsername;
                 startBRB(broadcasterName, tenantId).catch(err => console.error('[BRB] Error:', err));
-                await reply('🎬 Starting BRB clip player...', 'bot').catch(() => {});
+                await reply('🎬 Checking BRB clips and the live Community Spotlight...', 'bot').catch(() => {});
             }
             return;
         }
@@ -3726,12 +3726,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 // Immediately stop overlay and switch scene back
                 if (typeof (global as any).broadcast === 'function') {
                     (global as any).broadcast({ type: 'brb-stop' }, tenantId);
-                    try {
-                        const { getConfigSection: gcs } = require('../lib/local-config/service');
-                        const obsConfig = await gcs('obs', tenantId);
-                        const liveScene = obsConfig?.scenes?.live || 'Live';
-                        (global as any).broadcast({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
-                    } catch {}
+                    if (tenantId !== 'spacemountainlive') {
+                        try {
+                            const { getConfigSection: gcs } = require('../lib/local-config/service');
+                            const obsConfig = await gcs('obs', tenantId);
+                            const liveScene = obsConfig?.scenes?.live || 'Live';
+                            (global as any).broadcast({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
+                        } catch {}
+                    }
                 }
                 await reply('👋 Welcome back!', 'bot').catch(() => {});
             }
