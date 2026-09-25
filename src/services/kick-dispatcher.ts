@@ -143,7 +143,10 @@ export async function handleKickMessage(msg: KickMessage, tenantId: string) {
         return;
       }
       case 't': {
-        const translated = await handleOneOffTranslation(args.split(/\s+/).filter(Boolean), tenantId);
+        const translated = await handleOneOffTranslation(args.split(/\s+/).filter(Boolean), tenantId, {
+          requesterUsername: username,
+          canManageOthers: isPrivileged,
+        });
         if (translated) await reply(translated);
         return;
       }
