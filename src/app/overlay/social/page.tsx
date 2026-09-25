@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 type SocialCommand =
-  | 'hug' | 'boop' | 'cuddle' | 'fistbump' | 'headpat' | 'highfive'
+  | 'hug' | 'boop' | 'cuddle' | 'dance' | 'fistbump' | 'headpat' | 'highfive'
   | 'love' | 'tickle' | 'hover' | 'lurk' | 'unlurk';
 
 type SocialOverlayEvent = {
@@ -22,6 +22,7 @@ const EMOTES: Record<SocialCommand, string[]> = {
   hug: ['🤗', '🫂', '💞'],
   boop: ['👉', '✨', '😸'],
   cuddle: ['🧸', '☁️', '💗'],
+  dance: ['🪩', '🎵', '✨', '🚀'],
   fistbump: ['👊', '💥', '⚡'],
   headpat: ['🫳', '✨', '🥰'],
   highfive: ['🙌', '👏', '⭐'],
@@ -121,11 +122,18 @@ function SocialOverlayContent() {
 
   const target = event.target?.name || event.bot.name;
   const reaction = String(event.reaction || '').trim();
+  const actionLabel = event.command === 'fistbump' ? 'fist bumps'
+    : event.command === 'highfive' ? 'high fives'
+    : event.command === 'headpat' ? 'gives headpats to'
+    : event.command === 'hover' ? 'is hovering near'
+    : event.command === 'love' ? 'sends love to'
+    : event.command === 'dance' ? 'dances with'
+    : `${event.command}s`;
   return (
     <main className={`social-overlay social-${event.command}`} aria-label={`${event.command} animation`}>
       <div className="social-astronaut" aria-hidden="true">🧑‍🚀</div>
       <section className="social-banner">
-        <div className="social-action"><strong>{event.actor.name}</strong><span>{event.command === 'hover' ? 'is hovering near' : `${event.command}s`}</span><strong>{target}</strong></div>
+        <div className="social-action"><strong>{event.actor.name}</strong><span>{actionLabel}</span><strong>{target}</strong></div>
         {reaction ? <p className="social-reaction">{reaction}</p> : null}
       </section>
       {particles.map((particle) => (
@@ -244,6 +252,7 @@ function SocialOverlayContent() {
         }
         @media (prefers-reduced-motion: reduce) {
           .social-particle { animation: reduced-pulse 1.5s ease-in-out infinite; }
+          .social-astronaut { animation: none; }
           @keyframes reduced-pulse {
             0%,100% { transform: scale(.9); opacity: .45; }
             50% { transform: scale(1.08); opacity: 1; }
