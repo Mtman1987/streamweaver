@@ -108,6 +108,38 @@ test('Lounge card reveals scale to fit the main stage', () => {
   assert.match(overlay, /loungeMain \? 'scale\(0\.69\)'/);
 });
 
+test('Lounge social alerts use one unique public reaction for overlay, chat and Stella TTS', () => {
+  const replies = fs.readFileSync('src/services/social-command-replies.ts', 'utf8');
+  const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+  const overlay = fs.readFileSync('src/app/overlay/social/page.tsx', 'utf8');
+  assert.match(replies, /social-reaction-history\.json/);
+  assert.match(replies, /Never repeat an exact previous reaction/);
+  assert.match(replies, /generateAIResponse\(/);
+  assert.doesNotMatch(replies, /api\/ai\/chat-with-memory/);
+  assert.match(dispatcher, /reaction: response/);
+  assert.match(dispatcher, /queueTtsOverlay\(response/);
+  assert.doesNotMatch(dispatcher, /reactStellaLoungeEvent\(\{ kind: 'social'/);
+  assert.match(overlay, /social-astronaut/);
+  assert.match(overlay, /social-reaction/);
+  assert.match(overlay, /'dance'/);
+});
+
+test('Lounge translation supports one-shot, per-viewer targets and signed subtitle overlay output', () => {
+  const manager = fs.readFileSync('src/services/translation-manager.ts', 'utf8');
+  const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+  const subtitle = fs.readFileSync('src/app/overlay/translation/page.tsx', 'utf8');
+  const route = fs.readFileSync('src/app/api/overlay/translation/route.ts', 'utf8');
+  assert.match(manager, /!t es hello \| !t hello \| !t @user en \| !t @user off/);
+  assert.match(manager, /autoTranslateTargets/);
+  assert.match(manager, /targetLanguage = 'en'/);
+  assert.match(dispatcher, /publishTranslationSubtitleEvent\(/);
+  assert.match(dispatcher, /translated\.targetLanguage/);
+  assert.match(dispatcher, /translated\.translatedText/);
+  assert.match(subtitle, /translation-subtitle/);
+  assert.match(subtitle, /translatedText/);
+  assert.match(route, /getTranslationSubtitleEvents/);
+});
+
 test('Twitch social commands publish an overlay event before replying', () => {
   const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
   const twitchSocial = dispatcher.slice(dispatcher.indexOf("platform: 'twitch'"));
