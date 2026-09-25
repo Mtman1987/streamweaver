@@ -1,6 +1,6 @@
 import { generateAIResponse } from '@/services/ai-provider';
 import { extractAvatarGesture } from '@/lib/avatar-gestures';
-import { rememberAvatarGesture } from '@/lib/avatar-gesture-runtime';
+import { stageStellaPhysicalReaction } from './stella-physical-director';
 import { appendPublicChatMessages, readPublicChatMessages } from '@/lib/public-chat-store';
 import { readDashboardActivity } from '@/lib/dashboard-activity-store';
 import { getStellaEnergy, isStreamerSpeaking, markStellaDoNotRepeat, recordStellaDecision, rememberCallback, rememberProducerOpportunity, rememberStellaThought, setStellaEnergy, stellaThoughtBoard } from './stella-thought-board';
@@ -303,7 +303,7 @@ async function deliverStellaHostLine(prompt: string, now = Date.now()): Promise<
   const parsed = extractAvatarGesture(String(generated || '').replace(/^Stella:\\s*/i, '').trim());
   const text = parsed.text.slice(0, 500).trim();
   if (!text) return { delivered: false, reason: 'empty-generation' };
-  if (parsed.gesture) rememberAvatarGesture(SPACEMOUNTAIN_SYSTEM_TENANT_ID, text, parsed.gesture);
+  if (parsed.gesture) stageStellaPhysicalReaction(SPACEMOUNTAIN_SYSTEM_TENANT_ID, text, parsed.gesture, now);
   await sendChatMessage(text, 'bot', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   if (hasActiveTtsConsumer(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) await queueTtsOverlay(text, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   await appendPublicChatMessages([{ type: 'ai', username: SPACEMOUNTAIN_SYSTEM_BOT_NAME, message: text, timestamp: new Date(now).toISOString() }], 100, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
