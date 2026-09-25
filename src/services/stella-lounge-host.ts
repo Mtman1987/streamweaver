@@ -1,8 +1,9 @@
 import { generateAIResponse } from '@/services/ai-provider';
 import { extractAvatarGesture } from '@/lib/avatar-gestures';
 import { rememberAvatarGesture } from '@/lib/avatar-gesture-runtime';
-import { appendPublicChatMessages } from '@/lib/public-chat-store';
-import { getStellaEnergy, isStreamerSpeaking, recordStellaDecision, rememberStellaThought, setStellaEnergy, stellaThoughtBoard } from './stella-thought-board';
+import { appendPublicChatMessages, readPublicChatMessages } from '@/lib/public-chat-store';
+import { readDashboardActivity } from '@/lib/dashboard-activity-store';
+import { getStellaEnergy, isStreamerSpeaking, markStellaDoNotRepeat, recordStellaDecision, rememberCallback, rememberProducerOpportunity, rememberStellaThought, setStellaEnergy, stellaThoughtBoard } from './stella-thought-board';
 import {
   SPACEMOUNTAIN_SYSTEM_BOT_NAME,
   SPACEMOUNTAIN_SYSTEM_BOT_PERSONALITY,
@@ -308,6 +309,7 @@ async function deliverStellaHostLine(prompt: string, now = Date.now()): Promise<
   await appendPublicChatMessages([{ type: 'ai', username: SPACEMOUNTAIN_SYSTEM_BOT_NAME, message: text, timestamp: new Date(now).toISOString() }], 100, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   lastSpokeAt = now;
   recentHostTopics.push(text.slice(0, 120));
+  markStellaDoNotRepeat(text.slice(0, 120), 35 * 60_000, now);
   if (recentHostTopics.length > 12) recentHostTopics.splice(0, recentHostTopics.length - 12);
   return { delivered: true, reason: 'delivered', text };
 }
@@ -321,11 +323,12 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
   const policy = eventInstruction(event);
   const interrupt = policy.priority >= 90;
   if (isStreamerSpeaking(now) && !interrupt) { recordStellaDecision('silence', 'streamer-speaking', now); return { delivered: false, reason: 'streamer-speaking' }; }
-  if (event.kind === 'raid') setStellaEnergy('excited');
+  if (event.kind === 'raid') { setStellaEnergy('excited'); rememberCallback(`A raid arrived from ${event.actor || 'the community'}`, event.actor, 75 * 60_000, now); }
+  if (event.kind === 'game-winner') rememberCallback(`${event.actor || 'A player'} won ${String(event.metadata?.game || 'a Lounge game')}`, event.actor, 75 * 60_000, now);
   else if (event.kind === 'game-winner' || event.kind === 'milestone') setStellaEnergy('playful');
   rememberStellaThought({ kind: event.kind === 'upcoming-event' ? 'plan' : 'event', actor: event.actor, text: [event.kind, event.actor, event.text].filter(Boolean).join(': '), ttlMs: interrupt ? 60 * 60_000 : 30 * 60_000 }, now);
   if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) { recordStellaDecision('silence', 'speech-cooldown', now); return { delivered: false, reason: 'speech-cooldown' }; }
-  if (event.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) return { delivered: false, reason: 'promo-cooldown' };
+  if (event.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) { rememberProducerOpportunity(event.text || 'Upcoming community event', 60 * 60_000, now); return { delivered: false, reason: 'promo-cooldown' }; }
   const snapshot = await buildStellaLoungeSnapshot();
   const facts = JSON.stringify({ event, energy: getStellaEnergy(), thoughtBoard: stellaThoughtBoard(now), live: { media: snapshot.media, nebula: snapshot.nebula, community: snapshot.community } });
   const result = await deliverStellaHostLine(policy.instruction + '\nLive facts: ' + facts + '\nSuggested physical reaction: ' + policy.gesture, now);
@@ -345,6 +348,18 @@ function scheduleNextAmbient(now = Date.now()): void {
   nextAmbientAt = now + randomDelay(AMBIENT_MIN_MS, AMBIENT_MAX_MS);
 }
 
+async function buildRoomAwareness(now = Date.now()) {
+  const recent = await readPublicChatMessages(40, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+  const cutoff = now - 5 * 60_000;
+  const fresh = recent.filter((entry) => Date.parse(entry.timestamp) >= cutoff);
+  const human = fresh.filter((entry) => entry.type === 'user');
+  const unique = new Set(human.map((entry) => entry.username.toLowerCase())).size;
+  const pace = human.length >= 20 ? 'busy' : human.length >= 7 ? 'conversational' : human.length ? 'quiet' : 'idle';
+  const activity = readDashboardActivity(SPACEMOUNTAIN_SYSTEM_TENANT_ID, 30)
+    .filter((entry) => Date.parse(entry.timestamp) >= cutoff).length;
+  return { pace, messages5m: human.length, activePeople5m: unique, activity5m: activity };
+}
+
 export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ delivered: boolean; reason: string }> {
   if (ambientRunning) return { delivered: false, reason: 'already-running' };
   if (now < nextAmbientAt) return { delivered: false, reason: 'not-due' };
@@ -357,9 +372,15 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
   scheduleNextAmbient(now);
   try {
     const snapshot = await buildStellaLoungeSnapshot();
+    const room = await buildRoomAwareness(now);
+    if (snapshot.nebula.games.length && snapshot.nebula.playerCount === 0) rememberProducerOpportunity('Nebula Arcade has games available and the shared player pool is empty.', 20 * 60_000, now);
+    if (snapshot.media.queueCount === 0) rememberProducerOpportunity('HearMeOut queue is empty; a natural opening may exist for a music request invitation.', 20 * 60_000, now);
     const prompt = [
       chooseAmbientTopic(snapshot),
       'Current co-host state: ' + JSON.stringify(stellaThoughtBoard(now)),
+      'Room activity: ' + JSON.stringify(room),
+      'When chat is busy, prefer restraint unless you have a strong reason. When it is quiet or idle, a useful producer opportunity or callback may be appropriate.',
+      'Treat NOW, OPEN THREADS, MAYBE LATER, CALLBACKS, and DO NOT REPEAT as continuity controls. Never force a callback merely because one exists.',
       'Create one spontaneous Lounge-host line in one or two short spoken sentences.',
       'Sound present, interested, and specific—not like a generic engagement bot.',
       'Do not say you checked a system. Do not invent viewers, events, memories, scores, media, or failures.',
