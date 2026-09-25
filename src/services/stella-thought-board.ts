@@ -17,6 +17,7 @@ let streamerSpeakingUntil = 0;
 let energyChangedAt = Date.now();
 const topicCooldowns = new Map<string, number>();
 const decisions: Array<{ at: number; decision: 'speak' | 'silence'; reason: string }> = [];
+const doNotRepeat = new Map<string, number>();
 
 function clean(now = Date.now()) {
   for (let i = thoughts.length - 1; i >= 0; i--) if (thoughts[i].expiresAt <= now) thoughts.splice(i, 1);
@@ -52,6 +53,19 @@ export function recordStellaDecision(decision: 'speak' | 'silence', reason: stri
 
 export function getStellaDecisionTelemetry() { return decisions.slice(-30); }
 
+export function markStellaDoNotRepeat(topic: string, ttlMs = 45 * 60_000, now = Date.now()) {
+  const key = topic.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 160);
+  if (key) doNotRepeat.set(key, now + ttlMs);
+}
+
+export function rememberProducerOpportunity(text: string, ttlMs = 45 * 60_000, now = Date.now()) {
+  rememberStellaThought({ kind: 'producer', text, ttlMs }, now);
+}
+
+export function rememberCallback(text: string, actor?: string, ttlMs = 60 * 60_000, now = Date.now()) {
+  rememberStellaThought({ kind: 'callback', text, actor, ttlMs }, now);
+}
+
 export function noteStreamerSpeech(transcript: string, now = Date.now()) {
   const text = String(transcript || '').replace(/\s+/g, ' ').trim().slice(0, 500);
   if (!text) return;
@@ -79,7 +93,11 @@ export function stellaThoughtBoard(now = Date.now()) {
     energy: getStellaEnergy(now),
     streamerSpeaking: isStreamerSpeaking(now),
     recent: thoughts.slice(-10).map(({ kind, text, actor }) => ({ kind, text, actor })),
+    now: thoughts.filter((item) => item.kind === 'event' || item.kind === 'conversation').slice(-6).map(({ kind, text, actor }) => ({ kind, text, actor })),
     openThreads: [...threads.values()].slice(-6).map(({ user, prompt }) => ({ user, prompt })),
+    maybeLater: thoughts.filter((item) => item.kind === 'producer' || item.kind === 'plan').slice(-5).map(({ kind, text }) => ({ kind, text })),
+    callbacks: thoughts.filter((item) => item.kind === 'callback').slice(-5).map(({ text, actor }) => ({ text, actor })),
+    doNotRepeat: [...doNotRepeat.entries()].filter(([, expiresAt]) => expiresAt > now).slice(-8).map(([topic]) => topic),
   };
 }
 
@@ -91,4 +109,5 @@ export function resetStellaThoughtBoard() {
   streamerSpeakingUntil = 0;
   topicCooldowns.clear();
   decisions.splice(0);
+  doNotRepeat.clear();
 }
