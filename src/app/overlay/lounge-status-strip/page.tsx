@@ -5,6 +5,7 @@ import { AutoFitText } from '@/components/overlay/auto-fit-text';
 
 type StatusPayload = {
   games: Array<{ id: string; name: string; command: string }>;
+  events: Array<{ id: string; title: string; startsAt: string }>;
   spotlight: null | { login: string; displayName: string; avatarUrl: string };
   media: null | { kind: 'music' | 'movie'; title: string; thumbnailUrl: string };
 };
@@ -21,7 +22,7 @@ function clockParts(now: Date | null) {
 }
 
 export default function LoungeStatusStrip() {
-  const [payload, setPayload] = React.useState<StatusPayload>({ games: [], spotlight: null, media: null });
+  const [payload, setPayload] = React.useState<StatusPayload>({ games: [], events: [], spotlight: null, media: null });
   const [rotationIndex, setRotationIndex] = React.useState(0);
   const [now, setNow] = React.useState<Date | null>(null);
 
@@ -32,7 +33,12 @@ export default function LoungeStatusStrip() {
         const response = await fetch('/api/lounge/status-strip', { cache: 'no-store' });
         if (!response.ok) return;
         const next = await response.json();
-        if (active) setPayload({ games: Array.isArray(next?.games) ? next.games : [], spotlight: next?.spotlight || null, media: next?.media || null });
+        if (active) setPayload({
+          games: Array.isArray(next?.games) ? next.games : [],
+          events: Array.isArray(next?.events) ? next.events : [],
+          spotlight: next?.spotlight || null,
+          media: next?.media || null,
+        });
       } catch {}
     };
     void load();
@@ -47,7 +53,7 @@ export default function LoungeStatusStrip() {
     return () => window.clearInterval(clock);
   }, []);
 
-  const rotationCount = payload.games.length + (payload.spotlight ? 1 : 0) + (payload.media ? 1 : 0) + 1;
+  const rotationCount = payload.games.length + payload.events.length + (payload.spotlight ? 1 : 0) + (payload.media ? 1 : 0) + 1;
 
   React.useEffect(() => {
     setRotationIndex((current) => rotationCount ? current % rotationCount : 0);
@@ -59,12 +65,19 @@ export default function LoungeStatusStrip() {
   const spotlight = payload.spotlight;
   const media = payload.media;
   const activeIndex = rotationIndex % Math.max(1, rotationCount);
-  const showSpotlight = Boolean(spotlight) && activeIndex === payload.games.length;
-  const mediaIndex = payload.games.length + (spotlight ? 1 : 0);
+  const eventIndex = activeIndex - payload.games.length;
+  const event = eventIndex >= 0 ? payload.events[eventIndex] || null : null;
+  const spotlightIndex = payload.games.length + payload.events.length;
+  const showSpotlight = Boolean(spotlight) && activeIndex === spotlightIndex;
+  const mediaIndex = spotlightIndex + (spotlight ? 1 : 0);
   const showMedia = Boolean(media) && activeIndex === mediaIndex;
   const clockIndex = mediaIndex + (media ? 1 : 0);
   const showClock = activeIndex === clockIndex;
-  const game = showSpotlight || showMedia || showClock ? null : payload.games[activeIndex] || null;
+  const game = event || showSpotlight || showMedia || showClock ? null : payload.games[activeIndex] || null;
+  const eventTime = event ? new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  }).format(new Date(event.startsAt)) : '';
   const initial = spotlight?.displayName.charAt(0).toUpperCase() || '✦';
   const clock = clockParts(now);
 
@@ -84,7 +97,14 @@ export default function LoungeStatusStrip() {
         .clockValue span:last-child { color:#d8d2ff; }
         @keyframes swap { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
       `}</style>
-      {game && !showSpotlight && !showMedia && !showClock ? (
+      {event ? (
+        <section className="strip" key={event.id || event.startsAt}>
+          <div className="gameIcon">📅</div>
+          <div className="copy"><div className="label">UPCOMING COMMUNITY EVENT</div>
+            <AutoFitText className="value" minFontSize={8} maxFontSize={20}>{`${event.title} · ${eventTime}`}</AutoFitText>
+          </div>
+        </section>
+      ) : game && !showSpotlight && !showMedia && !showClock ? (
         <section className="strip" key={game.id}><div className="gameIcon">🎮</div><div className="copy"><div className="label">NOW PLAYING</div><AutoFitText className="value" minFontSize={8} maxFontSize={20}>{`${game.name}${game.command ? ` · !${game.command}` : ''}`}</AutoFitText></div></section>
       ) : showMedia && media ? (
         <section className="strip" key={`${media.kind}:${media.title}`}>
