@@ -385,6 +385,15 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             return;
         }
         
+        // Feed the authenticated broadcaster transcript into Stella's Lounge
+        // short-term context. This is context only; it does not post the words
+        // to Twitch or make Stella answer automatically.
+        void fetch('/api/lounge/streamer-transcript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: transcription }),
+        }).catch((error) => console.warn('[VoiceCommander] Lounge transcript context failed:', error));
+
         const lowerTranscription = transcription.toLowerCase();
         
         // Check for voice commands (translation on/off)
