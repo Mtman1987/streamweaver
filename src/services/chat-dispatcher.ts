@@ -2846,7 +2846,21 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const title = String(result?.request?.item?.title || query);
             const confirmation = String(result?.message || 'Added to the 24-Hour Lounge queue.').replace(/[.]+$/, '');
             await reply(`✅ @${actualUsername} 24-Hour Lounge: ${title} — ${confirmation}.`, 'bot').catch(() => {});
-            console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`);
+            if (isHearMeOutOwner && result?.debugTrace) {
+                const trace = result.debugTrace as Record<string, unknown>;
+                const endpoint = String(trace.submitEndpoint || '');
+                const jobId = String(trace.jobId || '');
+                const owner = String(trace.executionOwner || '');
+                const target = String(trace.executionTarget || '');
+                const requestedRoom = String(trace.requestedRoomId || '');
+                const actualRoom = String(trace.actualRoomId || '');
+                const sessionId = String(trace.sessionId || '');
+                await reply(
+                    `🔎 TRACE !${command}: ${endpoint} → job ${jobId || '?'} → ${owner || '?'}@${target || '?'} → requested ${requestedRoom || '?'} → actual ${actualRoom || '?'}${sessionId ? ` / session ${sessionId}` : ''}`,
+                    'bot',
+                ).catch(() => {});
+            }
+            console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`, result?.debugTrace || 'no-trace');
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[Dispatcher] SML !${command} HearMeOut request failed:`, error);

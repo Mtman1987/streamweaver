@@ -19,6 +19,9 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
   assert.match(dispatcher, /lane = command === 'wr' \? 'movie' : 'music'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /HearMeOut could not queue/);
+  assert.match(dispatcher, /TRACE !/);
+  assert.match(dispatcher, /requestedRoomId/);
+  assert.match(dispatcher, /actualRoomId/);
 });
 
 test('SML media keeps separate permanent music and movie sessions', () => {
