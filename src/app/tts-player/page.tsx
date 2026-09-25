@@ -31,6 +31,10 @@ const STELLA_GESTURES: Record<AvatarGestureName, { url: string; weight: number }
   wave_gesture: { url: 'https://gcdn.picsart.com/editing-temp/79b8a5fb-a2ba-472f-be22-87cda5637cc8.mp4', weight: 1.0 },
   playful_tilt_gesture: { url: 'https://gcdn.picsart.com/editing-temp/438968c2-f62a-439a-b830-f98b39868087.mp4', weight: 0.8 },
   laugh_gesture: { url: 'https://gcdn.picsart.com/editing-temp/0fb155ac-e8bd-4568-a98f-a36c9985235b.mp4', weight: 0.9 },
+  // Reuse the closest proven clips until dedicated art exists for the newer gesture tags.
+  dance_gesture: { url: 'https://gcdn.picsart.com/editing-temp/bb1acf70-0ffd-4da8-8e73-d025533d3f1c.mp4', weight: 0.55 },
+  look_gesture: { url: 'https://gcdn.picsart.com/editing-temp/438968c2-f62a-439a-b830-f98b39868087.mp4', weight: 0.7 },
+  applaud_gesture: { url: 'https://gcdn.picsart.com/editing-temp/912dd45e-a6fa-4fff-8cd7-73fe1f0b4eb8.mp4', weight: 0.8 },
 };
 
 const ALL_GESTURES = Object.keys(STELLA_GESTURES) as AvatarGestureName[];
