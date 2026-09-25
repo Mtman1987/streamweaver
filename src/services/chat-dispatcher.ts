@@ -5684,15 +5684,23 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (mentionsBot) {
                 console.log(`[Dispatcher] ${botName} mentioned by ${actualUsername}: ${actualMessage}`);
             } else {
-                // Check if message contains bot interests (50% chance to respond)
+                // Interests are optional invitations, not hard triggers. Match first,
+                // then let Stella decide whether this is a moment worth joining.
                 const botInterests = getBotInterests(tenantId) || '';
-                if (botInterests && Math.random() < 0.5) {
-                    const interests = botInterests.toLowerCase().split(',').map((i: string) => i.trim());
-                    const hasInterest = interests.some((interest: string) => lowerMessage.includes(interest));
-                    
-                    if (hasInterest) {
-                        console.log(`[Dispatcher] Interest detected in message from ${actualUsername}: ${actualMessage}`);
-                        mentionsBot = true;
+                if (botInterests) {
+                    const interests = botInterests.toLowerCase().split(',').map((i: string) => i.trim()).filter(Boolean);
+                    const matchedInterest = interests.find((interest: string) => lowerMessage.includes(interest));
+                    if (matchedInterest) {
+                        const isStella = (responseTenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+                        const baseChance = isStella ? 0.46 : 0.5;
+                        if (Math.random() < baseChance) {
+                            console.log(`[Dispatcher] Interest ${matchedInterest} invited ${botName} into message from ${actualUsername}`);
+                            mentionsBot = true;
+                            if (isStella) {
+                                const { rememberStellaThought } = await import('./stella-thought-board');
+                                rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Interest ${matchedInterest}: ${actualMessage}`, ttlMs: 20 * 60_000 });
+                            }
+                        }
                     }
                 }
             }
