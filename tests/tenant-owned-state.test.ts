@@ -12,10 +12,11 @@ test('translation and classic gamble state stay isolated by tenant', async () =>
     const translation = await import('../src/services/translation-manager');
     translation.clearTranslationStateForTests();
 
-    await translation.addUserToAutoTranslate('ViewerOne', 'tenant-a');
+    await translation.addUserToAutoTranslate('ViewerOne', 'tenant-a', 'es');
     translation.setTranslationMode(true, 'tenant-a');
 
     assert.equal(await translation.isUserAutoTranslate('viewerone', 'tenant-a'), true);
+    assert.equal(await translation.getAutoTranslateTarget('viewerone', 'tenant-a'), 'es');
     assert.equal(await translation.isUserAutoTranslate('viewerone', 'tenant-b'), false);
     assert.equal(translation.isTranslationActive('tenant-a'), true);
     assert.equal(translation.isTranslationActive('tenant-b'), false);
@@ -29,6 +30,28 @@ test('translation and classic gamble state stay isolated by tenant', async () =>
       'utf-8',
     ));
     assert.deepEqual(persistedTranslation.users, ['viewerone']);
+    assert.equal(persistedTranslation.targets.viewerone, 'es');
+
+    const selfEnable = await translation.handleOneOffTranslation(['@viewerone', 'en'], 'tenant-a', {
+      requesterUsername: 'viewerone',
+      canManageOthers: false,
+    });
+    assert.match(selfEnable || '', /auto-translate @viewerone into English/);
+    await assert.rejects(
+      async () => {
+        const response = await translation.handleOneOffTranslation(['@someoneelse', 'en'], 'tenant-a', {
+          requesterUsername: 'viewerone',
+          canManageOthers: false,
+        });
+        if (response?.includes('Only the streamer')) throw new Error(response);
+      },
+      /Only the streamer or a moderator/,
+    );
+    const disable = await translation.handleOneOffTranslation(['@viewerone', 'off'], 'tenant-a', {
+      requesterUsername: 'viewerone',
+      canManageOthers: false,
+    });
+    assert.match(disable || '', /off for @viewerone/);
 
     const gamble = await import('../src/services/gamble/classic-gamble');
     await gamble.updateSettings({ currencyName: 'Moon Rocks', minBet: 25 }, 'tenant-a');
