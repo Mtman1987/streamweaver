@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 type SocialCommand =
-  | 'hug' | 'boop' | 'cuddle' | 'fistbump' | 'headpat' | 'highfive'
+  | 'hug' | 'boop' | 'cuddle' | 'dance' | 'fistbump' | 'headpat' | 'highfive'
   | 'love' | 'tickle' | 'hover' | 'lurk' | 'unlurk';
 
 type SocialOverlayEvent = {
@@ -14,6 +14,7 @@ type SocialOverlayEvent = {
   actor: { name: string; avatarUrl?: string };
   target?: { name: string; avatarUrl?: string };
   bot: { name: string; avatarUrl?: string };
+  reaction?: string;
   animation: { durationMs: number; particleCount: number };
 };
 
@@ -21,6 +22,7 @@ const EMOTES: Record<SocialCommand, string[]> = {
   hug: ['🤗', '🫂', '💞'],
   boop: ['👉', '✨', '😸'],
   cuddle: ['🧸', '☁️', '💗'],
+  dance: ['🪩', '🎵', '✨', '🚀'],
   fistbump: ['👊', '💥', '⚡'],
   headpat: ['🫳', '✨', '🥰'],
   highfive: ['🙌', '👏', '⭐'],
@@ -119,12 +121,20 @@ function SocialOverlayContent() {
   if (!event) return null;
 
   const target = event.target?.name || event.bot.name;
+  const reaction = String(event.reaction || '').trim();
+  const actionLabel = event.command === 'fistbump' ? 'fist bumps'
+    : event.command === 'highfive' ? 'high fives'
+    : event.command === 'headpat' ? 'gives headpats to'
+    : event.command === 'hover' ? 'is hovering near'
+    : event.command === 'love' ? 'sends love to'
+    : event.command === 'dance' ? 'dances with'
+    : `${event.command}s`;
   return (
     <main className={`social-overlay social-${event.command}`} aria-label={`${event.command} animation`}>
+      <div className="social-astronaut" aria-hidden="true">🧑‍🚀</div>
       <section className="social-banner">
-        <strong>{event.actor.name}</strong>
-        <span>{event.command === 'hover' ? 'is hovering near' : `${event.command}s`}</span>
-        <strong>{target}</strong>
+        <div className="social-action"><strong>{event.actor.name}</strong><span>{actionLabel}</span><strong>{target}</strong></div>
+        {reaction ? <p className="social-reaction">{reaction}</p> : null}
       </section>
       {particles.map((particle) => (
         <span key={particle.key} className="social-particle" style={particle.style}>
@@ -146,25 +156,33 @@ function SocialOverlayContent() {
           pointer-events: none;
           font-family: Inter, system-ui, sans-serif;
         }
+        .social-astronaut {
+          position: absolute;
+          left: 8%;
+          bottom: 12%;
+          z-index: 4;
+          font-size: clamp(76px, 13vw, 190px);
+          filter: drop-shadow(0 0 28px rgba(103,232,249,.7));
+          animation: astronaut-float 1.1s ease-in-out infinite alternate;
+        }
         .social-banner {
           position: absolute;
           left: 50%;
           bottom: 8%;
           z-index: 3;
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
+          width: min(76vw, 980px);
           transform: translateX(-50%);
-          padding: 0.8rem 1.2rem;
-          border: 2px solid rgba(255,255,255,.82);
-          border-radius: 999px;
-          background: rgba(20, 20, 32, .78);
-          box-shadow: 0 14px 44px rgba(0,0,0,.4);
+          padding: 1rem 1.4rem;
+          border: 2px solid rgba(125,211,252,.82);
+          border-radius: 24px;
+          background: linear-gradient(135deg, rgba(6,27,57,.94), rgba(23,37,84,.92) 52%, rgba(49,46,129,.9));
+          box-shadow: 0 18px 70px rgba(0,0,0,.56), 0 0 50px rgba(56,189,248,.28);
           color: white;
-          font-size: clamp(20px, 2vw, 34px);
-          backdrop-filter: blur(8px);
+          backdrop-filter: blur(10px);
           animation: banner-in .45s cubic-bezier(.2,.9,.2,1);
         }
+        .social-action { display:flex; gap:.5rem; align-items:center; justify-content:center; font-size:clamp(18px,2vw,32px); }
+        .social-reaction { margin:.55rem 0 0; text-align:center; font-size:clamp(18px,2.7vw,42px); line-height:1.08; font-weight:800; color:#fff; text-shadow:0 2px 12px #000; }
         .social-particle {
           position: absolute;
           display: block;
@@ -192,6 +210,15 @@ function SocialOverlayContent() {
         .social-hover .social-particle {
           animation-name: hover;
         }
+        @keyframes astronaut-float {
+          to { transform: translateY(-14px) rotate(4deg) scale(1.04); }
+        }
+        .social-boop .social-astronaut { animation-name: astronaut-boop; }
+        .social-fistbump .social-astronaut, .social-highfive .social-astronaut { animation-name: astronaut-bump; }
+        .social-dance .social-astronaut { animation-name: astronaut-dance; }
+        @keyframes astronaut-boop { to { transform: translateX(24px) rotate(8deg) scale(1.08); } }
+        @keyframes astronaut-bump { to { transform: translateX(20px) scale(1.1); } }
+        @keyframes astronaut-dance { to { transform: translateY(-10px) rotate(-10deg); } }
         @keyframes banner-in {
           from { opacity: 0; transform: translate(-50%, 40px) scale(.88); }
           to { opacity: 1; transform: translate(-50%, 0) scale(1); }
@@ -225,6 +252,7 @@ function SocialOverlayContent() {
         }
         @media (prefers-reduced-motion: reduce) {
           .social-particle { animation: reduced-pulse 1.5s ease-in-out infinite; }
+          .social-astronaut { animation: none; }
           @keyframes reduced-pulse {
             0%,100% { transform: scale(.9); opacity: .45; }
             50% { transform: scale(1.08); opacity: 1; }

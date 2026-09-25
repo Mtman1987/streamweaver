@@ -325,7 +325,7 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
   if (isStreamerSpeaking(now) && !interrupt) { recordStellaDecision('silence', 'streamer-speaking', now); return { delivered: false, reason: 'streamer-speaking' }; }
   if (event.kind === 'raid') { setStellaEnergy('excited'); rememberCallback(`A raid arrived from ${event.actor || 'the community'}`, event.actor, 75 * 60_000, now); }
   if (event.kind === 'game-winner') rememberCallback(`${event.actor || 'A player'} won ${String(event.metadata?.game || 'a Lounge game')}`, event.actor, 75 * 60_000, now);
-  else if (event.kind === 'game-winner' || event.kind === 'milestone') setStellaEnergy('playful');
+  if (event.kind === 'game-winner' || event.kind === 'milestone') setStellaEnergy('playful');
   rememberStellaThought({ kind: event.kind === 'upcoming-event' ? 'plan' : 'event', actor: event.actor, text: [event.kind, event.actor, event.text].filter(Boolean).join(': '), ttlMs: interrupt ? 60 * 60_000 : 30 * 60_000 }, now);
   if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) { recordStellaDecision('silence', 'speech-cooldown', now); return { delivered: false, reason: 'speech-cooldown' }; }
   if (event.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) { rememberProducerOpportunity(event.text || 'Upcoming community event', 60 * 60_000, now); return { delivered: false, reason: 'promo-cooldown' }; }

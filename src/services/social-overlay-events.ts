@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 
 export const SOCIAL_OVERLAY_COMMANDS = [
-  'hug', 'boop', 'cuddle', 'fistbump', 'headpat', 'highfive', 'love', 'tickle',
+  'hug', 'boop', 'cuddle', 'dance', 'fistbump', 'headpat', 'highfive', 'love', 'tickle',
   'hover', 'lurk', 'unlurk',
 ] as const;
 
@@ -27,6 +27,7 @@ export type SocialOverlayEvent = {
     name: string;
     avatarUrl?: string;
   };
+  reaction?: string;
   animation: {
     theme: SocialOverlayCommand;
     durationMs: number;
