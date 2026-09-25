@@ -12,7 +12,8 @@ import { handleWalkOnShoutout } from './walk-on-shoutout';
 import { handleVoiceShoutout } from './voice-shoutout';
 import { extractShoutoutRequestTarget, matchShoutoutTarget } from './shoutout-matcher';
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
-import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
+import { autoTranslateIncoming, getAutoTranslateLanguage, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
+import { publishTranslationSubtitleEvent } from './translation-subtitle-events';
 import { handleLeaderboardCommand } from './leaderboard-commands';
 import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
@@ -3144,11 +3145,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             console.warn('[Dispatcher] Ignoring translation command without tenant context');
             return;
         }
-        const args = actualMessage.substring(3).trim().split(/\s+/);
-        const translated = await handleOneOffTranslation(args, tenantId);
-        if (translated) {
-            await reply(translated, 'bot').catch(() => {});
-        }
+        const args = actualMessage.substring(3).trim().split(/\s+/).filter(Boolean);
+        const translated = await handleOneOffTranslation(args, tenantId, {
+            actorUsername: actualUsername,
+            canManageOthers: Boolean(tags.mod || tags.badges?.broadcaster),
+        });
+        if (translated) await reply(translated, 'bot').catch(() => {});
         return;
     }
     
@@ -3169,9 +3171,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (!self && !message.startsWith('[') && translationEnabled && tenantId) {
         const translated = await autoTranslateIncoming(actualMessage, actualUsername, tenantId);
         if (translated) {
-            console.log(`[Dispatcher] Auto-translated incoming: ${translated}`);
-            // Show translation in chat as bot to prevent loops
-            await reply(`[${actualUsername}]: ${translated}`, 'bot').catch(() => {});
+            const targetLanguage = await getAutoTranslateLanguage(actualUsername, tenantId) || 'en';
+            console.log(`[Dispatcher] Auto-translated incoming → ${targetLanguage}: ${translated}`);
+            await reply(`🌐 @${actualUsername} → ${targetLanguage.toUpperCase()}: ${translated}`, 'bot').catch(() => {});
+            publishTranslationSubtitleEvent({
+                tenantId,
+                username: actualUsername,
+                displayName,
+                sourceText: actualMessage,
+                translatedText: translated,
+                targetLanguage,
+                durationMs: 9000,
+            });
         }
     }
     
