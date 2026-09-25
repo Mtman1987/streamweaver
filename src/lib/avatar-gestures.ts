@@ -5,6 +5,9 @@ export const AVATAR_GESTURES = [
   'playful_tilt_gesture',
   'laugh_gesture',
   'happy_gesture',
+  'dance_gesture',
+  'look_gesture',
+  'applaud_gesture',
 ] as const;
 
 export type AvatarGestureName = typeof AVATAR_GESTURES[number];
@@ -14,8 +17,8 @@ const GESTURE_SET = new Set<string>(AVATAR_GESTURES);
 export const AVATAR_GESTURE_PROMPT = [
   'You may optionally choose one avatar gesture for the end of this reply.',
   'If a gesture fits naturally, append exactly one tag as the final token of the reply.',
-  'Allowed tags: [wave_gesture], [blow_kiss_gesture], [spin_gesture], [playful_tilt_gesture], [laugh_gesture], [happy_gesture].',
-  'Use wave_gesture for greetings/goodbyes/acknowledgement; blow_kiss_gesture for affection or warm appreciation; spin_gesture for strong excitement or celebration; playful_tilt_gesture for curiosity, teasing, or playful uncertainty; laugh_gesture for genuine amusement; happy_gesture for general happiness, praise, or positive excitement.',
+  'Allowed tags: [wave_gesture], [blow_kiss_gesture], [spin_gesture], [playful_tilt_gesture], [laugh_gesture], [happy_gesture], [dance_gesture], [look_gesture], [applaud_gesture].',
+  'Use dance_gesture for raids or unusually energetic celebrations; applaud_gesture for wins and milestones; look_gesture for reacting to media, alerts, or on-screen context; wave_gesture for greetings/goodbyes/acknowledgement; blow_kiss_gesture for affection or warm appreciation; spin_gesture for strong excitement or celebration; playful_tilt_gesture for curiosity, teasing, or playful uncertainty; laugh_gesture for genuine amusement; happy_gesture for general happiness, praise, or positive excitement.',
   'Do not use a gesture on every reply. Use no tag when a gesture would feel forced.',
   'Never place a gesture tag anywhere except the very end.',
 ].join(' ');
