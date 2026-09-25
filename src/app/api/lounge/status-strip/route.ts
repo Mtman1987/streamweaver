@@ -6,6 +6,7 @@ export const revalidate = 0;
 
 const CHAT_TAG_URL = String(process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_CHAT_TAG_URL || 'https://chat-tag-new.fly.dev').replace(/\/+$/, '');
 const SPOTLIGHT_URL = String(process.env.DSH_COMMUNITY_SPOTLIGHT_URL || 'https://discord-stream-hub-new.fly.dev/api/community-spotlight');
+const EVENTS_URL = String(process.env.DSH_COMMUNITY_EVENTS_URL || 'https://discord-stream-hub-new.fly.dev/api/community-events');
 const HEARMEOUT_URL = String(process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev').replace(/\/+$/, '');
 
 async function json(url: string): Promise<any> {
@@ -29,10 +30,11 @@ async function loungeState() {
 }
 
 export async function GET() {
-  const [gameResult, spotlightResult, mediaResult] = await Promise.allSettled([
+  const [gameResult, spotlightResult, mediaResult, eventsResult] = await Promise.allSettled([
     json(`${CHAT_TAG_URL}/api/game-hub/channel?channel=spacemountainlive`),
     json(SPOTLIGHT_URL),
     loungeState(),
+    json(EVENTS_URL),
   ]);
   const gamePayload = gameResult.status === 'fulfilled' ? gameResult.value : {};
   const spotlightPayload = spotlightResult.status === 'fulfilled' ? spotlightResult.value : {};
@@ -50,7 +52,17 @@ export async function GET() {
   const login = String(source?.twitchLogin || user?.twitchLogin || user?.login || '').replace(/^@/, '').trim();
   const mediaState = mediaResult.status === 'fulfilled' ? mediaResult.value : null;
   const mediaItem = mediaState?.current?.item || null;
+  const eventPayload = eventsResult.status === 'fulfilled' ? eventsResult.value : {};
+  const events = (Array.isArray(eventPayload?.events) ? eventPayload.events : [])
+    .filter((event: any) => event?.title && Number.isFinite(Date.parse(String(event?.startsAt || ''))))
+    .slice(0, 3)
+    .map((event: any) => ({
+      id: String(event.id || ''),
+      title: String(event.title).trim(),
+      startsAt: String(event.startsAt),
+    }));
   return NextResponse.json({
+    events,
     games,
     spotlight: login ? {
       login,
