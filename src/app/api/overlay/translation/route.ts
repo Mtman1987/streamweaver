@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiOk } from '@/lib/api-response';
-import { getTranslationOverlayEvents } from '@/services/translation-overlay-events';
+import { getTranslationSubtitleEvents } from '@/services/translation-subtitle-events';
 import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const after = request.nextUrl.searchParams.get('after') || undefined;
   const limit = Number(request.nextUrl.searchParams.get('limit') || 20);
   return apiOk({
-    events: getTranslationOverlayEvents({ tenantId, after, limit }),
+    events: getTranslationSubtitleEvents({ tenantId, after, limit }),
     serverTime: new Date().toISOString(),
   });
 }
