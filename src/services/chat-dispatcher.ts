@@ -1844,6 +1844,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                         ? { target: { name: actualMessage.substring(cmdName.length + 2).trim() } }
                         : {}),
                     bot: { name: speaker.botName },
+                    reaction: response,
                     animation: {
                         theme: cmdName,
                         durationMs: cmdName === 'love' ? 10_000 : 7_000,
@@ -4833,6 +4834,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             actor: { name: actualUsername },
                             ...(target ? { target: { name: target } } : {}),
                             bot: { name: botName },
+                            reaction: response,
                             animation: {
                                 theme: cmdName,
                                 durationMs: cmdName === 'love' ? 10_000 : 7_000,
