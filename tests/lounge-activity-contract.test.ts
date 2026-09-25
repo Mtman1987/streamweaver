@@ -208,12 +208,14 @@ test('Lounge media bump supports viewer votes and broadcaster or moderator overr
   const state = fs.readFileSync('src/services/lounge-media-layout.ts', 'utf8');
   const route = fs.readFileSync('src/app/api/lounge/media-layout/route.ts', 'utf8');
   const middleware = fs.readFileSync('src/middleware.ts', 'utf8');
-  assert.match(dispatcher, /!bump\(media\|stream\)/);
+  assert.match(dispatcher, /\^!votebump\$/);
+  assert.match(dispatcher, /\^!bump\$/);
+  assert.match(dispatcher, /getLoungeMediaLayout/);
   assert.match(dispatcher, /!\(media\|hmo\|stream\|live\).*big/);
   assert.match(dispatcher, /!layout\\s\+auto/);
   assert.match(dispatcher, /if \(!canControlHearMeOut\)/);
   assert.match(dispatcher, /voteLoungeMediaLayout/);
-  assert.match(dispatcher, /overrideLoungeMediaLayout/);
+  assert.match(dispatcher, /overrideLoungeMediaLayout\('auto'/);
   assert.match(state, /LOUNGE_MEDIA_BUMP_VOTES/);
   assert.match(state, /VOTE_WINDOW_MS = 5 \* 60 \* 1000/);
   assert.match(route, /access-control-allow-origin/);
