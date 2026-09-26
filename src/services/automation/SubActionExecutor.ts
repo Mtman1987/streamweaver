@@ -8,6 +8,7 @@ import { getActionById } from '@/lib/actions-store';
 import { generateTTS } from '@/services/tts-provider';
 import { sendChatMessage } from '@/services/twitch';
 import { addPoints, getPoints, setPoints } from '@/services/points';
+import { normalizeCardPackEvent } from '@/lib/card-pack-event';
 import {
   listGlobalVariables,
   listUserVariables,
@@ -721,12 +722,19 @@ export class SubActionExecutor {
       
       const { cards } = await response.json();
       
-      // Broadcast cards to WebSocket for overlay display
+      // Broadcast cards to the requesting tenant's overlay.
       if (typeof (global as any).broadcast === 'function') {
+        const canonical = normalizeCardPackEvent({
+          game: 'pokemon',
+          cards,
+          username,
+          setName: 'Pokemon',
+        });
+        (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, context.tenantId);
         (global as any).broadcast({
           type: 'pokemon-pack-opened',
-          payload: { username, cards }
-        });
+          payload: { username, cards, game: 'pokemon', eventId: canonical.eventId }
+        }, context.tenantId);
       }
       
       return { success: true, variables: { pokemonCards: cards } };
