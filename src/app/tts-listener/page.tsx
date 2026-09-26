@@ -23,6 +23,26 @@ export default function TTSListenerPage() {
   const hideTimer = useRef<NodeJS.Timeout | null>(null);
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
+  const stellaMixGain = useRef(1);
+  useEffect(() => {
+    if (!(overlayTenant === 'spacemountainlive')) return;
+    let stopped = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/lounge/audio-mix', { cache: 'no-store' });
+        if (!response.ok) return;
+        const level = Number((await response.json())?.levels?.stella);
+        if (!stopped && Number.isInteger(level) && level >= 1 && level <= 100) {
+          stellaMixGain.current = level / 100;
+          if (audioRef.current) audioRef.current.volume = stellaMixGain.current;
+        }
+      } catch {}
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 3000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [overlayTenant === 'spacemountainlive']);
+
 
   useEffect(() => {
     if (!overlayTenant) return;
@@ -126,7 +146,7 @@ export default function TTSListenerPage() {
 
       audio.src = audioUrl;
       audio.muted = false;
-      audio.volume = 1.0;
+      audio.volume = stellaMixGain.current;
       audio.preload = 'auto';
       try {
         await applySavedSink(audio);

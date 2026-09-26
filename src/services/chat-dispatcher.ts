@@ -78,6 +78,7 @@ import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES }
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { getLoungeMediaLayout, overrideLoungeMediaLayout, voteLoungeMediaLayout } from './lounge-media-layout';
+import { getLoungeAudioMix, selectLoungeMixOutput, setLoungeMixVolume, type LoungeMixOutput } from './lounge-audio-mix';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
@@ -2786,6 +2787,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const isHearMeOutOwner = Boolean(
         tags.badges?.broadcaster
         || isSpaceMountainBroadcasterCommand
+        || (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && actualUsername.toLowerCase() === 'mtman1987')
         || actualUsername.toLowerCase() === broadcasterUsername.toLowerCase()
     );
     const canControlHearMeOut = Boolean(tags.mod || isHearMeOutOwner);
@@ -2812,6 +2814,38 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // The dedicated Count client is send-only, so its echo arrives through the
     // tenant listener as another bot message and must be stopped explicitly.
     if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;
+
+    const volumeCommand = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        && replyChannel.toLowerCase() === 'spacemountainlive'
+        ? actualMessage.trim().match(/^!(?:vol|volume)(?:\s+(.*))?$/i)
+        : null;
+    if (volumeCommand) {
+        if (!canControlHearMeOut) {
+            await reply(`@${actualUsername}, only the broadcaster or a moderator can adjust the broadcast mix.`, 'bot').catch(() => {});
+            return;
+        }
+        const args = String(volumeCommand[1] || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const output = /^(stella|spotlight|media)$/.test(args[0] || '') ? args[0] as LoungeMixOutput : null;
+        try {
+            if (args.length === 0) {
+                const mix = await getLoungeAudioMix();
+                await reply(`Broadcast mix: Stella ${mix.levels.stella}% · Spotlight ${mix.levels.spotlight}% · Media ${mix.levels.media}%.`, 'bot').catch(() => {});
+            } else if (args.length === 1 && output) {
+                const mix = await selectLoungeMixOutput(output);
+                await reply(`${output} volume selected: ${mix.levels[output]}%.`, 'bot').catch(() => {});
+            } else if ((args.length === 1 && /^\d{1,3}$/.test(args[0]))
+                || (args.length === 2 && output && /^\d{1,3}$/.test(args[1]))) {
+                const value = Number(args[output ? 1 : 0]);
+                const mix = await setLoungeMixVolume(output, value);
+                await reply(`${mix.selected} volume set to ${mix.levels[mix.selected]}%.`, 'bot').catch(() => {});
+            } else {
+                await reply('Usage: !vol [stella|spotlight|media] [1-100]', 'bot').catch(() => {});
+            }
+        } catch (error) {
+            await reply(`Volume unchanged: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
+        }
+        return;
+    }
 
     // SML media requests are production-critical Lounge commands. Handle them
     // before imported JSON actions and general bot/command filters so stale

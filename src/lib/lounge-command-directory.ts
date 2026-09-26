@@ -87,7 +87,7 @@ export const LOUNGE_COMMAND_CATEGORIES: LoungeCommandCategory[] = [
       entry('!pause / !stop [music|movie]', 'Pause a media lane.', 'HearMeOut', 'Twitch', 'moderator'),
       entry('!skip / !next [music|movie]', 'Advance a media lane.', 'HearMeOut', 'Twitch', 'moderator'),
       entry('!clear [music|movie]', 'Clear a media lane.', 'HearMeOut', 'Twitch', 'moderator'),
-      entry('!volume 0-100 / !mute / !unmute', 'Adjust HearMeOut playback controls.', 'HearMeOut', 'Twitch', 'moderator'),
+      entry('!vol / !volume [stella|spotlight|media] [1-100]', 'Adjust the single OBS broadcast mix for Stella, Spotlight, and media.', 'Lounge', 'Twitch', 'moderator'),
     ],
   },
   {
