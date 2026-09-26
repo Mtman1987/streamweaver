@@ -49,7 +49,7 @@ ENV GH_SHA=$GH_SHA
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y python3 python3-pip python3-venv ca-certificates curl && \
     python3 -m venv /opt/piper && \
-    /opt/piper/bin/pip install --no-cache-dir piper-tts && \
+    /opt/piper/bin/pip install --no-cache-dir piper-tts yt-dlp && \
     curl -fsSL "https://public.cdn.seaspark.ai/ai-tool/release/${SEAART_CLI_VERSION}/seaart-linux-amd64.tar.gz" -o /tmp/seaart.tar.gz && \
     echo "${SEAART_CLI_SHA256}  /tmp/seaart.tar.gz" | sha256sum -c - && \
     tar -xzf /tmp/seaart.tar.gz -C /tmp && \
