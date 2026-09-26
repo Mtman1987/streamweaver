@@ -16,6 +16,7 @@ export default function BRBPlayer() {
   const [active, setActive] = useState(false);
   const [clipUser, setClipUser] = useState('');
   const [spotlight, setSpotlight] = useState(false);
+  const [testStream, setTestStream] = useState(false);
   const [gifUrl, setGifUrl] = useState('');
   const [embedUrl, setEmbedUrl] = useState('');
   const [videoPlaying, setVideoPlaying] = useState(false);
@@ -35,6 +36,8 @@ export default function BRBPlayer() {
     let playbackEpoch = 0;
     let embedTimer: ReturnType<typeof setTimeout>;
     let lastGif: { url: string; user: string } | undefined;
+    let testTimer: ReturnType<typeof setTimeout>;
+    let testGeneration = 0;
 
     const showGif = (gif?: { url: string; user: string }) => {
       clearTimeout(embedTimer);
@@ -129,10 +132,16 @@ export default function BRBPlayer() {
       }
     };
 
-    const notifyParent = (on: boolean, mode: 'clip' | 'gif' | 'vod' = 'clip', vod?: { videoId: string; vodOffset: number }) => {
+    const notifyParent = (on: boolean, mode: 'clip' | 'gif' | 'vod' | 'stream' = 'clip', vod?: { videoId: string; vodOffset: number }) => {
       if (window.parent !== window) {
         window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: on, mode, ...vod }, 'https://spmt.live');
       }
+    };
+
+    const stopTest = () => {
+      testGeneration++;
+      clearTimeout(testTimer);
+      setTestStream(false);
     };
 
     const stopAutomatic = () => {
@@ -207,7 +216,39 @@ export default function BRBPlayer() {
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
+            if (msg.type === 'testbrb-start') {
+              const users = Array.isArray(msg.payload?.users)
+                ? msg.payload.users.filter((user: unknown): user is string => typeof user === 'string' && /^[a-z0-9_]{3,25}$/.test(user)).slice(0, 24)
+                : [];
+              if (!users.length) return;
+              stopTest();
+              if (automatic) stopAutomatic();
+              manual = true;
+              playbackEpoch++;
+              clearTimeout(embedTimer);
+              videoRef.current?.pause();
+              setEmbedUrl('');
+              setVideoPlaying(false);
+              setGifUrl('');
+              setSpotlight(true);
+              setTestStream(true);
+              setActive(true);
+              notifyParent(true, 'stream');
+              const generation = testGeneration;
+              const duration = Math.max(10_000, Math.min(120_000, Number(msg.payload.duration) || 30_000));
+              let index = 0;
+              const next = () => {
+                if (stopped || generation !== testGeneration) return;
+                const channel = users[index++ % users.length];
+                setClipUser(channel);
+                window.parent.postMessage({ type: 'spmt-lounge-testbrb', channel }, 'https://spmt.live');
+                testTimer = setTimeout(next, duration);
+              };
+              next();
+              return;
+            }
             if (msg.type === 'brb-start') {
+              stopTest();
               if (automatic) stopAutomatic();
               manual = true;
               playbackEpoch++;
@@ -222,17 +263,20 @@ export default function BRBPlayer() {
               notifyParent(true, 'gif');
             }
             if (msg.type === 'brb-clip' && msg.payload) {
+              stopTest();
               manual = true;
               setClipUser(msg.payload.user || '');
               notifyParent(true, 'clip');
               playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl, msg.payload.gifUrl ? { url: msg.payload.gifUrl, user: msg.payload.user } : undefined, msg.payload);
             }
             if (msg.type === 'brb-gif' && msg.payload) {
+              stopTest();
               manual = true;
               playbackEpoch++;
               showGif(msg.payload);
             }
             if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
+              stopTest();
               if (msg.type === 'brb-stop') manual = false;
               playbackEpoch++;
               clearTimeout(embedTimer);
@@ -253,7 +297,7 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(autoTimer); clearTimeout(embedTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
+    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(autoTimer); clearTimeout(embedTimer); clearTimeout(testTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
   }, []);
 
   return (
@@ -269,13 +313,13 @@ export default function BRBPlayer() {
       />
       {embedUrl && <iframe key={`${embedUrl}:${spotlightLevel === 0}`} src={embedUrl.replace('muted=false', `muted=${spotlightLevel === 0}`)} title="Twitch BRB clip" allow="autoplay; fullscreen" onLoad={() => embedLoadedRef.current()} onError={() => embedFailedRef.current()} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />}
       {active && gifUrl && <img onError={() => { setGifUrl(''); setClipUser(''); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
-      {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: 999, background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>BE RIGHT BACK</div>}
+      {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: '999px', background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{testStream ? 'TEST BRB' : 'BE RIGHT BACK'}</div>}
       {active && !embedUrl && !gifUrl && !videoPlaying && <div style={{ position: 'absolute', zIndex: 2, color: '#c4eefe', font: '600 18px system-ui, sans-serif', textAlign: 'center', pointerEvents: 'none' }}>Community clips are coming up</div>}
       {active && spotlight && (
         <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
           background: 'rgba(5,12,30,.83)', border: '1px solid rgba(103,232,249,.65)',
           color: '#e8fbff', font: '700 16px system-ui, sans-serif', pointerEvents: 'none' }}>
-          BRB - Community Spotlight
+          {testStream ? `Testing @${clipUser}` : 'BRB - Community Spotlight'}
         </div>
       )}
       {active && !spotlight && clipUser && (
