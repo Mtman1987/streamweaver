@@ -1,5 +1,4 @@
 import { createDiscordDmChannel, sendDiscordMessage } from './discord-local';
-import { startBRB } from './brb-clips';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 
 export type LoungeDiagnosticEntry = { at: string; level: 'info' | 'warn' | 'critical'; subsystem: string; event: string; detail: string };
@@ -32,11 +31,8 @@ async function reportPlaybackFailure(key: string, detail: string) {
   failures.set(key, count);
   record({ level: count >= FAILURE_THRESHOLD ? 'critical' : 'warn', subsystem: key, event: 'playback-failed', detail: `${detail} (check ${count}/${FAILURE_THRESHOLD})` });
   if (count === FAILURE_THRESHOLD) {
-    record({ level: 'critical', subsystem: key, event: 'brb-fallback-start', detail: 'Holding the Lounge on BRB while playback is unhealthy.' });
-    void startBRB('spacemountainlive', 'spacemountainlive').catch(error =>
-      record({ level: 'critical', subsystem: key, event: 'brb-fallback-error', detail: error instanceof Error ? error.message : String(error) })
-    );
-    await alertOwner(key, `${detail}\nBRB has been started to hold the program. Suggested checks: inspect HearMeOut's current music session, Lounge renderer status and playback errors. I will keep hosting chat while BRB runs; use !back after playback is repaired.`);
+    record({ level: 'critical', subsystem: key, event: 'playback-alert', detail: 'Music playback needs attention; BRB remains under broadcaster control.' });
+    await alertOwner(key, `${detail}\nSuggested checks: inspect HearMeOut's current music session, Lounge renderer status and playback errors. BRB has not been started automatically.`);
   }
 }
 
