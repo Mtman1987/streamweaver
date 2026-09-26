@@ -164,3 +164,12 @@ test('Pokemon Discord pack no longer posts the old three-at-a-time image gallery
   assert.doesNotMatch(source, /row-edit reveal/);
   assert.match(source, /sendStructuredDiscordReply\(buildPackReply/);
 });
+
+
+test('Discord embed builder preserves attachment URLs so Pokemon GIF stays inside the embed', async () => {
+  const branding = await read('src/services/discord-branding.ts');
+  const reveal = await read('src/services/discord-pack-reveal.ts');
+  assert.match(branding, /\^attachment:\\\/\\\//i);
+  assert.match(branding, /embedMediaUrl = \/\^attachment:/);
+  assert.match(reveal, /imageUrl: state === 'ready' \? 'attachment:\/\/pack-animation\.gif'/);
+});

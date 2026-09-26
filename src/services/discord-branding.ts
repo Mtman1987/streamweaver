@@ -284,7 +284,10 @@ export async function buildDiscordBotEmbed(input: {
     const configuredMediaUrl = input.includeConfiguredMedia
         ? getConfiguredDiscordEmbedMediaUrl(resolvedTenantId, input.mediaSlot)
         : '';
-    const embedMediaUrl = firstUrl(input.imageUrl, configuredMediaUrl);
+    const directImageUrl = typeof input.imageUrl === 'string' ? input.imageUrl.trim() : '';
+    const embedMediaUrl = /^attachment:\/\//i.test(directImageUrl)
+        ? directImageUrl
+        : firstUrl(directImageUrl, configuredMediaUrl);
     const responseType = input.responseType || inferResponseType(input.sourceMessage);
     const title = truncateDiscordText(
         input.title || `${defaultBotName || owner.name || STREAMWEAVER_BRAND_NAME} • ${responseType}`,
