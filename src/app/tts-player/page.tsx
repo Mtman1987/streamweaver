@@ -357,9 +357,11 @@ export default function TTSPlayer() {
   const overlayTenant = getOverlayTenantId();
   const tenantQuery = overlayTenant ? `tenant=${encodeURIComponent(overlayTenant)}` : '';
   const isStella = overlayTenant === 'spacemountainlive';
+  const loungePlacement = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('placement') === 'lounge';
   const stellaMixGain = useRef(1);
   useEffect(() => {
-    if (!(isStella)) return;
+    if (!isStella || !loungePlacement) return;
     let stopped = false;
     const refresh = async () => {
       try {
@@ -375,10 +377,7 @@ export default function TTSPlayer() {
     void refresh();
     const timer = window.setInterval(refresh, 3000);
     return () => { stopped = true; window.clearInterval(timer); };
-  }, [isStella]);
-
-  const loungePlacement = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('placement') === 'lounge';
+  }, [isStella, loungePlacement]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -555,7 +554,7 @@ export default function TTSPlayer() {
       if (!audio) return false;
       audio.src = audioUrl;
       audio.muted = false;
-      audio.volume = stellaMixGain.current;
+      if (isStella && loungePlacement) audio.volume = stellaMixGain.current;
       audio.preload = 'auto';
       try { await applySavedSink(audio); } catch {}
       audio.load();
