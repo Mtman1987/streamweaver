@@ -16,12 +16,13 @@ import {
 import { canUsePublicImageGeneration, runImageCommand } from '@/services/image-command';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
+import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -202,6 +203,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['bridge HearMeOut to Discord VC General', 'make the voice bridge listen only', 'stop the Discord voice bridge'],
   },
   {
+    id: 'sw.lounge.volume',
+    title: 'Set the live Lounge mixer volume for Stella, Spotlight, or media',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['turn the media volume down to 30 percent', 'set Spotlight volume to 45', 'make Stella volume 80 percent'],
+  },
+  {
     id: 'sw.image.generate',
     title: 'Generate images with the tenant StreamWeaver settings',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'member',
@@ -316,6 +323,11 @@ function extractApplicationDecision(message: string) {
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
+
+  const loungeVolume = value.match(/\b(?:set|change|turn|make|lower|raise)\b.*\b(stella|spotlight|media)\b.*\b(?:volume|audio|sound)?\b.*?\b(\d{1,3})\s*(?:%|percent)?\b/);
+  if (loungeVolume) {
+    return { action: 'sw.lounge.volume', args: { output: loungeVolume[1], value: loungeVolume[2] }, detection: 'explicit' };
+  }
 
   const imagePrompt = extractImagePrompt(message);
   if (imagePrompt) {
@@ -483,6 +495,7 @@ function formatDate(value: unknown): string {
 }
 
 function formatResult(action: BotActionId, result: Record<string, any>): string {
+  if (action === 'sw.lounge.volume') return `✅ Lounge ${clean(result.output, 20)} volume is now ${Number(result.value)}%.`;
   if (action === 'sw.image.generate') {
     const images = Array.isArray(result.images) ? result.images.filter(Boolean) : [];
     if (!images.length) return 'Image generation completed but returned no image URL.';
@@ -621,11 +634,20 @@ export async function executeBotAction(
   if (request.action === 'hmo.voice.bridge.control' && request.args.control === 'profile' && !request.args.audioProfile) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Choose the voice bridge profile: low-latency, balanced, or resilient.' };
   }
+  if (request.action === 'sw.lounge.volume' && (!/^(stella|spotlight|media)$/.test(request.args.output || '') || !/^\d{1,3}$/.test(request.args.value || ''))) {
+    return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me Stella, Spotlight, or media and a volume from 1 to 100.' };
+  }
   if (request.action === 'sw.image.generate' && !request.args.prompt) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me what image to generate.' };
   }
 
   try {
+    if (request.action === 'sw.lounge.volume') {
+      const value = Number(request.args.value);
+      const output = request.args.output as 'stella' | 'spotlight' | 'media';
+      const mix = await setLoungeMixVolume(output, value);
+      return { handled: true, action: request.action, status: 'completed', response: formatResult(request.action, { output, value: mix.levels[output] }), result: { output, value: mix.levels[output], mix } };
+    }
     if (request.action === 'sw.image.generate') {
       const scope = context.visibility || (context.source === 'mountainview' || context.source === 'spmt' ? 'private' : 'public');
       if (scope === 'public') {
