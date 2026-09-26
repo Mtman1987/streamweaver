@@ -14,6 +14,7 @@ import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { sendTwitchChatMessage } from '@/services/twitch';
 import { getLoungeDiagnosticJournal } from './lounge-diagnostic-journal';
 import { LOUNGE_COMMAND_CATEGORIES } from '@/lib/lounge-command-directory';
+import { getStellaChaosMode } from './stella-chaos-mode';
 
 export type StellaLoungeIntent =
   | 'overview'
@@ -373,7 +374,7 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
   if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) { recordStellaDecision('silence', 'speech-cooldown', now); return { delivered: false, reason: 'speech-cooldown' }; }
   if (event.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) { rememberProducerOpportunity(event.text || 'Upcoming community event', 60 * 60_000, now); return { delivered: false, reason: 'promo-cooldown' }; }
   const snapshot = await buildStellaLoungeSnapshot();
-  const facts = JSON.stringify({ event, energy: getStellaEnergy(), thoughtBoard: stellaThoughtBoard(now), live: { media: snapshot.media, nebula: snapshot.nebula, community: snapshot.community } });
+  const facts = JSON.stringify({ event, energy: getStellaEnergy(), stellaMode: getStellaChaosMode(), thoughtBoard: stellaThoughtBoard(now), live: { media: snapshot.media, nebula: snapshot.nebula, community: snapshot.community } });
   const result = await deliverStellaHostLine(policy.instruction + '\nLive facts: ' + facts + '\nSuggested physical reaction: ' + policy.gesture, now);
   if (result.delivered) recordStellaDecision('speak', `event:${event.kind}`, now);
   if (result.delivered && event.kind === 'upcoming-event') lastPromoAt = now;
@@ -434,6 +435,7 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
     const prompt = [
       chooseAmbientTopic(snapshot),
       'Current co-host state: ' + JSON.stringify(stellaThoughtBoard(now)),
+      'Experimental Stella mode: ' + JSON.stringify(getStellaChaosMode()) + '. Chill means restrained and mellow. Higher intensity permits more theatrical, weird, competitive, spontaneous energy, but never overrides truth, safety, permissions, cooldowns, or the rule that silence is allowed. WTF-million is deliberately absurd performance energy, not permission to fabricate outcomes or spam.',
       'Room activity: ' + JSON.stringify(room),
       'Ambient speech needs a believable conversational reason. Prefer responding to or following up with one of recentPeople when their message gives you something natural to build on. You may address that person by name.',
       'If recentPeople is empty or none of their messages gives you a genuine hook, prefer an observation, callback, producer opportunity, or silence over dropping a random open-ended question into the room.',
