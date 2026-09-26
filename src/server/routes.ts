@@ -320,6 +320,21 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             return;
                         }
 
+                        if (requestedIdentity === 'bot'
+                            && tid === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                            && channel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL) {
+                            const messageId = await twitchClientModule.sendConfirmedLoungeStellaMessage(message.trim());
+                            await mirrorOutboundTwitchMessageToDiscord({
+                                bridgeToDiscord,
+                                tenantId: tid,
+                                message,
+                                displayName: 'stellabot87',
+                            });
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, messageId }));
+                            return;
+                        }
+
                         if (!channel && tid) {
                             try {
                                 const { getStoredTokens } = require('../lib/token-utils.server');
