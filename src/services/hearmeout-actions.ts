@@ -8,6 +8,7 @@ import type { ActionBotPersona } from '@/services/bot-persona-catalog';
 export type HearMeOutBotAction =
   | 'hmo.media.state.read'
   | 'hmo.media.request'
+  | 'hmo.media.search'
   | 'hmo.media.control'
   | 'hmo.rooms.read'
   | 'hmo.bot.control'
@@ -25,6 +26,7 @@ export type HearMeOutBotActionPayload = {
   actorName?: string;
   actorRole?: string;
   query?: string;
+  itemId?: string;
   lane?: 'music' | 'movie';
   channelId?: string;
   control?: string;
