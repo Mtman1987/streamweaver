@@ -26,6 +26,13 @@ async function alertOwner(key: string, detail: string) {
     record({ level: 'critical', subsystem: key, event: 'owner-dm-sent', detail });
   } catch (error) { console.warn('[Lounge Journal] Owner DM failed:', error); }
 }
+async function reportPlaybackFailure(key: string, detail: string) {
+  const count = (failures.get(key) || 0) + 1;
+  failures.set(key, count);
+  record({ level: count >= FAILURE_THRESHOLD ? 'critical' : 'warn', subsystem: key, event: 'playback-failed', detail: `${detail} (check ${count}/${FAILURE_THRESHOLD})` });
+  if (count === FAILURE_THRESHOLD) await alertOwner(key, `${detail}\nSuggested checks: inspect HearMeOut's current music session, the Lounge renderer status and its playback errors. BRB can hold the program while the source is repaired.`);
+}
+
 async function checkUrl(key: string, url: string, label: string) {
   try {
     const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
@@ -46,6 +53,29 @@ export async function runLoungeDiagnosticTick() {
   const base = getConfiguredAppUrl();
   const status = await checkUrl('lounge-overlay-state', `${base}/api/lounge/status-strip`, 'Lounge overlay state');
   await checkUrl('spotlight-player', 'https://spmt.live/lounge-live-spotlight.html?v=direct-twitch-1', 'Direct Spotlight player');
+  // Queue success alone cannot prove that the song reached the broadcast.
+  // Check the renderer only while the music lane is supposed to be playing.
+  try {
+    const [sessionResponse, rendererResponse] = await Promise.all([
+      fetch('https://hearmeout-main.fly.dev/api/watch/sessions/watch-room-system-spacemountainlive-lounge-music/state', { cache: 'no-store', signal: AbortSignal.timeout(8000) }),
+      fetch('https://hearmeout-main.fly.dev/api/lounge-media/status', { cache: 'no-store', signal: AbortSignal.timeout(8000) }),
+    ]);
+    if (!sessionResponse.ok || !rendererResponse.ok) throw new Error(`music state HTTP ${sessionResponse.status}; renderer HTTP ${rendererResponse.status}`);
+    const session: any = await sessionResponse.json();
+    const renderer: any = await rendererResponse.json();
+    const key = 'lounge-music-playback';
+    if (session?.current && session?.playback?.status === 'playing') {
+      const title = String(session.current.item?.title || '').trim();
+      if (!renderer?.ready || !renderer?.mediaHealthy || (title && renderer.mediaTitle !== title)) {
+        await reportPlaybackFailure(key, `Music is playing in the queue (${title || 'unknown'}) but the Lounge renderer reports ${renderer?.mediaTitle || 'no title'}, ready=${Boolean(renderer?.ready)}, healthy=${Boolean(renderer?.mediaHealthy)}, mode=${renderer?.playerMode || 'unknown'}, error=${renderer?.error || 'none'}.`);
+      } else if (failures.get(key)) {
+        failures.set(key, 0);
+        record({ level: 'info', subsystem: key, event: 'recovered', detail: `Lounge renderer is playing ${title}.` });
+      }
+    } else failures.set(key, 0);
+  } catch (error) {
+    record({ level: 'warn', subsystem: 'lounge-music-playback', event: 'probe-unavailable', detail: error instanceof Error ? error.message : String(error) });
+  }
   if (!status) return;
   try {
     const payload: any = await status.json(); const data = payload?.data || payload;
