@@ -31,17 +31,6 @@ function cleanText(value: unknown, fallback = '', max = 120): string {
   return String(value || fallback).trim().slice(0, max);
 }
 
-function rarityScore(value: unknown): number {
-  const rarity = String(value || '').toLowerCase();
-  if (rarity.includes('secret') || rarity.includes('legendary')) return 7;
-  if (rarity.includes('hyper')) return 6;
-  if (rarity.includes('ultra') || rarity.includes('epic')) return 5;
-  if (rarity.includes('holo')) return 4;
-  if (rarity.includes('rare')) return 3;
-  if (rarity.includes('uncommon')) return 2;
-  return 1;
-}
-
 export function normalizeCardPackEvent(input: any): CardPackOpenedEvent {
   const rawCards = Array.isArray(input?.cards || input?.pack) ? (input.cards || input.pack) : [];
   const cards: CardPackCard[] = rawCards.map((card: any) => ({
