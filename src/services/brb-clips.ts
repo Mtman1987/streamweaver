@@ -137,7 +137,7 @@ const CHAT_TAG_URL = String(process.env.CHAT_TAG_BASE_URL || 'https://chat-tag-n
 const DSH_URL = 'https://discord-stream-hub-new.fly.dev';
 
 export type BRBMedia = {
-  clips: { clipUrl: string; thumbnailUrl: string; user: string; duration: number }[];
+  clips: { clipUrl: string; thumbnailUrl: string; user: string; duration: number; videoId?: string; vodOffset?: number }[];
   gifs: { url: string; user: string }[];
 };
 
@@ -206,6 +206,8 @@ export async function getBRBMediaPlaylist(broadcasterName: string, tenantId: str
       thumbnailUrl: clip.thumbnail_url || '',
       user: clip.broadcaster_name || user,
       duration: Math.floor((clip.duration || 30) * 1000) + 700,
+      videoId: String(clip.video_id || ''),
+      vodOffset: Number.isFinite(clip.vod_offset) && clip.vod_offset >= 0 ? clip.vod_offset : undefined,
     });
   }
   };
@@ -264,6 +266,8 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
         thumbnailUrl: clip.thumbnail_url || '',
         user: clip.broadcaster_name || broadcasterName,
         duration: Math.floor((clip.duration || 30) * 1000) + 700,
+        videoId: String(clip.video_id || ''),
+        vodOffset: Number.isFinite(clip.vod_offset) && clip.vod_offset >= 0 ? clip.vod_offset : undefined,
       }));
     }
 
