@@ -69,6 +69,7 @@ const PROMO_GAP_MS = 30 * 60_000;
 let cachedSnapshot: { expiresAt: number; value: StellaLoungeSnapshot } | null = null;
 let ambientRunning = false;
 let lastAmbientTopic = -1;
+const recentAmbientTopicFamilies: number[] = [];
 let nextAmbientAt = Date.now() + randomDelay(AMBIENT_MIN_MS, AMBIENT_MAX_MS);
 let lastSpokeAt = 0;
 let lastPromoAt = 0;
@@ -348,9 +349,17 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
 }
 
 function chooseAmbientTopic(snapshot: StellaLoungeSnapshot): string {
-  let index = Math.floor(Math.random() * AMBIENT_TOPICS.length);
-  if (AMBIENT_TOPICS.length > 1 && index === lastAmbientTopic) index = (index + 1) % AMBIENT_TOPICS.length;
+  const cooled = new Set(recentAmbientTopicFamilies.slice(-Math.min(3, Math.max(0, AMBIENT_TOPICS.length - 1))));
+  const candidates = AMBIENT_TOPICS.map((_, index) => index).filter((index) => !cooled.has(index));
+  const pool = candidates.length ? candidates : AMBIENT_TOPICS.map((_, index) => index);
+  let index = pool[Math.floor(Math.random() * pool.length)] ?? 0;
+  if (AMBIENT_TOPICS.length > 1 && index === lastAmbientTopic) {
+    index = pool.find((candidate) => candidate !== lastAmbientTopic)
+      ?? ((index + 1) % AMBIENT_TOPICS.length);
+  }
   lastAmbientTopic = index;
+  recentAmbientTopicFamilies.push(index);
+  if (recentAmbientTopicFamilies.length > 6) recentAmbientTopicFamilies.splice(0, recentAmbientTopicFamilies.length - 6);
   return AMBIENT_TOPICS[index](snapshot);
 }
 
@@ -400,6 +409,7 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
       'Questions should be pointed and answerable. Prefer a follow-up to a specific active person over asking nobody in particular. Never invent what that person said or meant.',
       'When chat is busy, prefer restraint unless you have a strong reason. When it is quiet or idle, a useful producer opportunity or callback may be appropriate.',
       'Treat NOW, OPEN THREADS, MAYBE LATER, CALLBACKS, and DO NOT REPEAT as continuity controls. Never force a callback merely because one exists.',
+      'DO NOT REPEAT contains Stella lines that actually reached Twitch. Do not reuse their question, premise, punchline, scenario, or a close paraphrase. If your first idea resembles one, choose a different subject or stay quiet.',
       'Create one spontaneous Lounge-host line in one or two short spoken sentences.',
       'Sound present, interested, and specific—not like a generic engagement bot.',
       'Do not say you checked a system. Do not invent viewers, events, memories, scores, media, or failures.',
@@ -421,6 +431,7 @@ export function resetStellaLoungeHostForTests(now = Date.now()): void {
   cachedSnapshot = null;
   ambientRunning = false;
   lastAmbientTopic = -1;
+  recentAmbientTopicFamilies.splice(0);
   nextAmbientAt = now + AMBIENT_MIN_MS;
   lastSpokeAt = 0;
   lastPromoAt = 0;
