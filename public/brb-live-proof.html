@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BRB live autoplay proof</title>
+<style>
+html,body{margin:0;background:#071127;color:#e8fbff;font:16px system-ui}
+main{max-width:760px;margin:auto;padding:16px}
+video{width:100%;aspect-ratio:16/9;background:#000}
+#state{padding:12px 0;min-height:2em}
+button{font:inherit;padding:9px 15px}
+</style>
+</head>
+<body>
+<main>
+<h1>Live muted autoplay test</h1>
+<video id="feed" autoplay muted playsinline webkit-playsinline controls></video>
+<p id="state">Loading live channel…</p>
+<button id="retry" type="button">Retry playback</button>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
+<script>
+(() => {
+  const video = document.getElementById('feed');
+  const state = document.getElementById('state');
+  const login = new URLSearchParams(location.search).get('channel') || 'kyouya66';
+  if (!/^[a-z0-9_]{3,25}$/i.test(login)) { state.textContent = 'Invalid channel'; return; }
+  const playlist = '/api/brb-live?channel=' + encodeURIComponent(login.toLowerCase());
+  const status = value => { state.textContent = value; console.info('[BRB live proof]', value); };
+  video.muted = true;
+  video.defaultMuted = true;
+  video.addEventListener('playing', () => status('PLAYING muted without a click: ' + video.muted));
+  video.addEventListener('error', () => status('Video error: ' + (video.error?.message || 'unknown')));
+  async function play() {
+    video.muted = true;
+    try {
+      await video.play();
+      status('play() accepted; waiting for video frames…');
+    } catch (error) {
+      status('Autoplay rejected: ' + (error?.name || error));
+    }
+  }
+  document.getElementById('retry').addEventListener('click', play);
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = playlist;
+    video.addEventListener('loadedmetadata', play, { once: true });
+  } else if (window.Hls?.isSupported()) {
+    const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) status('HLS error: ' + data.type + ' / ' + data.details);
+    });
+    hls.on(Hls.Events.MANIFEST_PARSED, play);
+    hls.loadSource(playlist);
+    hls.attachMedia(video);
+  } else {
+    status('This browser cannot play this live feed; HLS support unavailable.');
+  }
+})();
+</script>
+</body>
+</html>
