@@ -53,7 +53,13 @@ function broadcast(message: object, tenantId?: string) {
         });
     }
     const messageType = String((message as any)?.type || '');
-    if (messageType === 'pokemon-pack-opened' || messageType === 'quackverse-pack-opened' || messageType === 'public-image-generated') {
+    if (tenantId && ['card-pack-opened', 'pokemon-pack-opened', 'quackverse-pack-opened'].includes(messageType)) {
+        try {
+            const { rememberPendingCardPack } = require('./src/services/card-pack-overlay-state');
+            rememberPendingCardPack(tenantId, message);
+        } catch {}
+    }
+    if (messageType === 'card-pack-opened' || messageType === 'pokemon-pack-opened' || messageType === 'quackverse-pack-opened' || messageType === 'public-image-generated') {
         console.log(`[Overlay Broadcast] type=${messageType} tenant=${tenantId || 'global'} delivered=${count}`);
     }
     return count;
