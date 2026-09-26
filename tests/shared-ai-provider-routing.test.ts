@@ -28,23 +28,22 @@ test('only the shared AI provider owns the EdenAI text endpoint', () => {
   assert.doesNotMatch(provider, legacyEdenChat);
 });
 
-test('the shared provider repairs incomplete completions instead of returning cut-off bot replies', () => {
+test('the shared provider retains usable EdenAI text when output reaches its limit', () => {
   const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
   const memoryChat = readFileSync(new URL('../src/app/api/ai/chat-with-memory/route.ts', import.meta.url), 'utf8');
 
   assert.match(provider, /finish_reason/);
-  assert.match(provider, /looksIncompleteCompletion/);
   assert.match(provider, /requesting continuation/);
   assert.match(provider, /Continue exactly where your previous answer stopped/);
-  assert.match(provider, /EdenAI returned an incomplete response after/);
+  assert.doesNotMatch(provider, /EdenAI returned an incomplete response after/);
   assert.match(memoryChat, /Never end mid-sentence or with a dangling ellipsis/);
   assert.match(memoryChat, /maxCharacters:\s*context === 'discord'/);
 });
 
-test('EdenAI is primary, configured OpenAI is secondary, and local Qwen is final fallback', () => {
+test('EdenAI is primary, OpenAI is secondary, and local Qwen is opt-in', () => {
   const provider = readFileSync(new URL('../src/services/ai-provider.ts', import.meta.url), 'utf8');
   const local = readFileSync(new URL('../src/services/spmt-local-llm.ts', import.meta.url), 'utf8');
-  assert.match(local, /SPMT_LOCAL_LLM_ENABLED !== 'false'/);
+  assert.match(local, /SPMT_LOCAL_LLM_ENABLED === 'true'/);
   const edenCall = provider.indexOf('await generateEdenAIFallbackResponse(');
   const openAiCall = provider.indexOf('await generateOpenAiFallbackResponse(');
   const qwenCall = provider.indexOf('await requestSpmtLocalLlm(');

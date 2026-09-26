@@ -97,6 +97,8 @@ patchFile('src/services/ai-provider.ts', (source) => {
 });
 
 patchFile('src/app/api/private-chat/respond/route.ts', (source) => {
+  // The shared EdenAI/OpenAI path already handles private replies when Qwen is offline.
+  if (source.includes('const rawPrimary = await generateAIResponse(')) return source;
   const importMarker = "import { generateEdenAIFallbackResponse } from '@/services/ai-provider';\n";
   const openAiImport = "import { isOpenAiFallbackConfigured, requestOpenAiFallback } from '@/services/openai-fallback';\n";
   if (!source.includes(openAiImport)) {

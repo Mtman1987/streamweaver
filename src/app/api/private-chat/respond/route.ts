@@ -25,7 +25,8 @@ import {
   requestQwenPrivateChatCompletion,
   sanitizeQwenReply,
 } from '@/services/qwen-private-chat';
-import { generateEdenAIFallbackResponse } from '@/services/ai-provider';
+import { generateAIResponse } from '@/services/ai-provider';
+import { isSpmtLocalLlmEnabled } from '@/services/spmt-local-llm';
 import {
   extractPrivateLtmDirective,
   isPrivateReplyRepetitive,
@@ -59,7 +60,7 @@ type RequestBody = {
 
 type PrivateCompletionResult = {
   text: string;
-  provider: 'edenai-primary' | 'self-hosted-qwen-adult';
+  provider: 'edenai-or-openai' | 'self-hosted-qwen-adult';
   error?: string;
 };
 
@@ -128,7 +129,7 @@ async function completePrivateTurn(input: {
   adultMode: boolean;
   tenantId: string;
 }): Promise<PrivateCompletionResult> {
-  if (input.adultMode) {
+  if (input.adultMode && isSpmtLocalLlmEnabled()) {
     const qwen = await requestQwenPrivateChatCompletion({
       baseUrl: input.baseUrl,
       model: input.model,
@@ -170,7 +171,7 @@ async function completePrivateTurn(input: {
   ].filter(Boolean).join('\n\n');
 
   try {
-    const rawPrimary = await generateEdenAIFallbackResponse(
+    const rawPrimary = await generateAIResponse(
       edenPrompt,
       edenSystem,
       input.tenantId,
@@ -182,15 +183,15 @@ async function completePrivateTurn(input: {
       botName: input.botName,
       latestUserMessage: input.message,
     }).trim();
-    if (!text) throw new Error('EdenAI returned an empty private reply.');
-    return { text, provider: 'edenai-primary' };
+    if (!text) throw new Error('AI returned an empty private reply.');
+    return { text, provider: 'edenai-or-openai' };
   } catch (error) {
-    const edenError = safeModelError(error instanceof Error ? error.message : String(error));
-    console.warn('[Private Chat API] EdenAI private chat unavailable; local Qwen remains disabled because Adult Mode is off:', edenError);
+    const aiError = safeModelError(error instanceof Error ? error.message : String(error));
+    console.warn('[Private Chat API] EdenAI and OpenAI private chat unavailable:', aiError);
     return {
       text: '',
-      provider: 'edenai-primary',
-      error: `EdenAI private chat: ${edenError}`,
+      provider: 'edenai-or-openai',
+      error: `Private AI chat: ${aiError}`,
     };
   }
 }
@@ -285,13 +286,10 @@ export async function POST(request: NextRequest) {
         : await writePrivateChatSettings({ adultMode }, tenantId);
       const effectiveMode = adultModeAction === 'status' ? privateSettings.adultMode : saved.adultMode;
       const responseText = effectiveMode
-        ? [
-            'Adult Mode is ON for private DMs.',
-            `${botName} will use the owner-hosted SPMT Qwen model with the adult private-chat policy.`,
-            'EdenAI is not used while Adult Mode is on.',
-            'This mode is only for fictional, consenting adults age 18 or older.',
-          ].join(' ')
-        : `Adult Mode is OFF. ${botName} will use EdenAI for private chat. Local Qwen is only used when Adult Mode is turned on.`;
+        ? isSpmtLocalLlmEnabled()
+          ? `Adult Mode is ON. ${botName} will use the owner-hosted local model for private DMs.`
+          : `Adult Mode is ON, but the local model is offline. ${botName} will use EdenAI or OpenAI under their provider policies.`
+        : `Adult Mode is OFF. ${botName} will use EdenAI or OpenAI for private chat.`;
 
       await savePrivateReply(tenantId, botName, responseText);
       return apiOk({ response: responseText, provider: 'private-chat-control', adultMode: effectiveMode });

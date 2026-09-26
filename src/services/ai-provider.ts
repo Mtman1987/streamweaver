@@ -12,6 +12,8 @@ const DEFAULT_EDENAI_MAX_TOKENS = 400;
 const MAX_EDENAI_CONTINUATION_TOKENS = 400;
 const MAX_EDENAI_CONTINUATION_ATTEMPTS = 2;
 const DEFAULT_AI_MAX_CHARACTERS = 12_000;
+const MAX_EDENAI_SYSTEM_CHARACTERS = 12_000;
+const MAX_EDENAI_PROMPT_CHARACTERS = 24_000;
 const LOCAL_LLM_CIRCUIT_OPEN_MS = 5 * 60 * 1000;
 
 let localLlmCircuitOpenUntil = 0;
@@ -51,7 +53,7 @@ export function getAIConfig(tenantId?: string): AIConfig {
       model = normalizeEdenAIModel(config.AI_MODEL || DEFAULT_EDENAI_MODEL);
       break;
     case 'openai':
-      apiKey = config.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+      apiKey = process.env.OPENAI_API_KEY || config.OPENAI_API_KEY || '';
       model = config.AI_MODEL || 'gpt-4o-mini';
       break;
   }
@@ -145,7 +147,7 @@ export async function generateAIResponse(
 
   let openAiFailure = '';
   const configuredProvider = getAIConfig(tenantId);
-  const configuredOpenAiKey = configuredProvider.provider === 'openai' ? configuredProvider.apiKey : '';
+  const configuredOpenAiKey = process.env.OPENAI_API_KEY || (configuredProvider.provider === 'openai' ? configuredProvider.apiKey : '');
   if (isOpenAiFallbackConfigured(configuredOpenAiKey)) {
     try {
       const response = await generateOpenAiFallbackResponse(prompt, governedPrompt(systemPrompt), {
@@ -157,7 +159,7 @@ export async function generateAIResponse(
       return response;
     } catch (error) {
       openAiFailure = error instanceof Error ? error.message : String(error);
-      console.warn(`[AI Provider] OpenAI fallback failed for tenant ${tenantId || 'global'}; trying local Qwen:`, openAiFailure);
+      console.warn(`[AI Provider] OpenAI fallback failed for tenant ${tenantId || 'global'}:`, openAiFailure);
     }
   }
 
@@ -230,15 +232,6 @@ function hitOutputLimit(finishReason: string): boolean {
   ].includes(normalizeFinishReason(finishReason));
 }
 
-function looksIncompleteCompletion(text: string, finishReason = ''): boolean {
-  const value = String(text || '').trim();
-  if (!value) return true;
-  if (hitOutputLimit(finishReason)) return true;
-  if (/(?:\.\.\.|…)[\"')\]}]*\s*$/.test(value)) return true;
-  if (/[,;:\-–—][\"')\]}]*\s*$/.test(value)) return true;
-  if (/\b(?:and|but|because|so|to|of|with|that|which|who|when|while|if|then)[\"')\]}]*\s*$/i.test(value)) return true;
-  return value.length >= 80 && !/[.!?][\"')\]}]*\s*$/.test(value);
-}
 
 function joinContinuation(existing: string, continuation: string): string {
   const left = String(existing || '').trimEnd();
@@ -264,7 +257,7 @@ function joinContinuation(existing: string, continuation: string): string {
 function maxCharacters(options?: AIResponseOptions): number {
   const requested = Number(options?.maxCharacters || DEFAULT_AI_MAX_CHARACTERS);
   if (!Number.isFinite(requested)) return DEFAULT_AI_MAX_CHARACTERS;
-  return Math.max(512, Math.min(50_000, Math.floor(requested)));
+  return Math.max(1, Math.min(50_000, Math.floor(requested)));
 }
 
 function capAtCompleteSentence(text: string, limit: number): string {
@@ -324,8 +317,9 @@ async function generateEdenAIResponse(
   options?: AIResponseOptions,
 ): Promise<string> {
   const messages: EdenAIChatMessage[] = [];
-  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-  messages.push({ role: 'user', content: prompt });
+  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt.slice(-MAX_EDENAI_SYSTEM_CHARACTERS) });
+  // Keep the newest part of conversation prompts, where the current user turn sits.
+  messages.push({ role: 'user', content: prompt.slice(-MAX_EDENAI_PROMPT_CHARACTERS) });
 
   const characterLimit = maxCharacters(options);
   const first = await requestEdenAICompletion(messages, config, options);
@@ -334,7 +328,7 @@ async function generateEdenAIResponse(
   let continuationAttempts = 0;
 
   while (
-    looksIncompleteCompletion(text, finishReason)
+    hitOutputLimit(finishReason)
     && continuationAttempts < MAX_EDENAI_CONTINUATION_ATTEMPTS
     && text.length < characterLimit - 128
   ) {
@@ -352,27 +346,29 @@ async function generateEdenAIResponse(
         Math.ceil(remainingCharacters / 3),
       ),
     );
-    const continuation = await requestEdenAICompletion(
-      [
-        ...messages,
-        { role: 'assistant', content: text },
-        {
-          role: 'user',
-          content: 'Continue exactly where your previous answer stopped. Finish the thought in complete sentences. Do not repeat earlier text, add a heading, or mention that you are continuing.',
-        },
-      ],
-      config,
-      { ...options, maxTokens: continuationMaxTokens },
-    );
+    let continuation: EdenAICompletion;
+    try {
+      continuation = await requestEdenAICompletion(
+        [
+          ...messages,
+          { role: 'assistant', content: text },
+          {
+            role: 'user',
+            content: 'Continue exactly where your previous answer stopped. Finish the thought in complete sentences. Do not repeat earlier text, add a heading, or mention that you are continuing.',
+          },
+        ],
+        config,
+        { ...options, maxTokens: continuationMaxTokens },
+      );
+    } catch {
+      console.warn('[AI Provider] EdenAI continuation unavailable; returning the usable response already received.');
+      break;
+    }
     text = joinContinuation(text, continuation.text);
     finishReason = continuation.finishReason;
   }
 
-  if (looksIncompleteCompletion(text, finishReason)) {
-    throw new Error(
-      `EdenAI returned an incomplete response after ${continuationAttempts} continuation attempt(s) (finish_reason=${finishReason || 'unknown'}).`,
-    );
-  }
-
+  // Output length and punctuation are presentation details, never provider failures.
+  // A non-empty first answer remains usable when the model reaches its token cap.
   return capAtCompleteSentence(text, characterLimit);
 }

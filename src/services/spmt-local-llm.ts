@@ -77,7 +77,7 @@ function extractText(payload: any): string {
 }
 
 export function isSpmtLocalLlmEnabled(): boolean {
-  return process.env.SPMT_LOCAL_LLM_ENABLED !== 'false';
+  return process.env.SPMT_LOCAL_LLM_ENABLED === 'true';
 }
 
 export async function requestSpmtLocalLlm(
