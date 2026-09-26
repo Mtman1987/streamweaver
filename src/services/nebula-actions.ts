@@ -23,5 +23,13 @@ export async function createNebulaStreamBattle(input:{channels:string[];createdB
 }
 
 export async function linkChatWarsStreams(input:{channels:string[];createdBy:string;active?:boolean}){
- return call('/api/game-hub/bot-overlays',{method:'PUT',body:JSON.stringify({channels:input.channels,createdBy:input.createdBy,active:input.active!==false})});
+ const channels=[...new Set(input.channels.map((value)=>String(value||'').trim().replace(/^@/,'').toLowerCase()).filter(Boolean))].slice(0,4);
+ const battle=await call('/api/game-hub/bot-overlays',{method:'PUT',body:JSON.stringify({channels,createdBy:input.createdBy,active:input.active!==false})});
+ const overlays=[];
+ for(const channel of channels){
+   const created=await manageNebulaOverlay({operation:'create',channel,name:'Chat Wars Stream Battle',gameIds:['chatwars'],layout:'focus',transparent:true}) as any;
+   const profile=created?.profile;
+   if(profile?.id) overlays.push({channel,profileId:profile.id,overlayUrl:`${NEBULA_URL}/overlay/game-hub/${encodeURIComponent(profile.id)}`});
+ }
+ return {...battle,overlays};
 }
