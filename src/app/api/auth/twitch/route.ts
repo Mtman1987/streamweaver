@@ -19,10 +19,11 @@ const TWITCH_OAUTH_ROLES = new Set<TwitchOAuthRole>([
   'community-bot',
   'the-count',
   'space-mountain-bot',
+  'space-mountain-broadcaster',
 ]);
 
 function isPrivilegedRole(role: TwitchOAuthRole): role is PrivilegedTwitchOAuthRole {
-  return role === 'community-bot' || role === 'the-count' || role === 'space-mountain-bot';
+  return role === 'community-bot' || role === 'the-count' || role === 'space-mountain-bot' || role === 'space-mountain-broadcaster';
 }
 
 export async function GET(request: NextRequest) {

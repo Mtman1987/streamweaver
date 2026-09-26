@@ -75,6 +75,12 @@ export async function GET(request: NextRequest) {
         && spaceMountainBotTokens?.botUsername
       ),
       spaceMountainBotUsername: spaceMountainBotTokens?.botUsername || null,
+      spaceMountainBroadcasterConnected: !!(
+        spaceMountainBotTokens?.broadcasterToken
+        && spaceMountainBotTokens?.broadcasterRefreshToken
+        && spaceMountainBotTokens?.broadcasterUsername?.toLowerCase() === 'spacemountainlive'
+      ),
+      spaceMountainBroadcasterUsername: spaceMountainBotTokens?.broadcasterUsername || null,
     } : {}),
   });
 }

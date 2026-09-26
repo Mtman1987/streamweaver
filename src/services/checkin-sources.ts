@@ -273,7 +273,9 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
       sourceLabel: 'Space Mountain Riders',
       selectionMode: 'bulk',
       entries: [],
-      error: 'No broadcaster auth available. Re-auth as Broadcaster on the Integrations page.',
+      error: tenantId === 'spacemountainlive'
+        ? 'SpaceMountainLive channel authorization is missing. Connect SpaceMountainLive — Broadcaster on the Integrations page.'
+        : 'No broadcaster auth available. Re-auth as Broadcaster on the Integrations page.',
     };
   }
 

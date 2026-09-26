@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     );
   }
   if (
-    (state === 'community-bot' || state === 'the-count' || state === 'space-mountain-bot')
+    (state === 'community-bot' || state === 'the-count' || state === 'space-mountain-bot' || state === 'space-mountain-broadcaster')
     && (!preflightTenantId || !isAdmin(preflightTenantId))
   ) {
     const appOrigin = getConfiguredAppUrl(request.nextUrl.origin);
@@ -276,6 +276,7 @@ export async function GET(request: NextRequest) {
     const isCommunityBot = state === 'community-bot';
     const isTheCount = state === 'the-count';
     const isSpaceMountainBot = state === 'space-mountain-bot';
+    const isSpaceMountainBroadcaster = state === 'space-mountain-broadcaster';
 
     if (isTheCount) {
       const login = String(userInfo?.login || '').trim().toLowerCase();
@@ -329,6 +330,35 @@ export async function GET(request: NextRequest) {
 
       return clearPrivilegedOAuthCookie(
         NextResponse.redirect(`${appOrigin}/integrations?success=space-mountain-bot`),
+      );
+    }
+
+    if (isSpaceMountainBroadcaster) {
+      // Keep the system channel's broadcaster grant separate from Stella's
+      // bot grant and the owner's personal Twitch tenant.
+      const username = String(userInfo?.login || '').trim().toLowerCase();
+      if (username !== 'spacemountainlive' || !userInfo?.id) {
+        return clearPrivilegedOAuthCookie(
+          NextResponse.redirect(
+            `${appOrigin}/integrations?error=wrong_space_mountain_account&msg=Authorize+the+spacemountainlive+Twitch+account+only.`,
+          ),
+        );
+      }
+
+      await bootstrapTenant(SPACEMOUNTAIN_SYSTEM_TENANT_ID, username);
+      await updateStoredTokens({
+        broadcasterToken: tokenData.access_token,
+        broadcasterRefreshToken: tokenData.refresh_token,
+        broadcasterTokenExpiry: tokenExpiry,
+        broadcasterUsername: username,
+        broadcasterProfileImageUrl: userInfo.profile_image_url,
+        broadcasterAvatarUrl: userInfo.profile_image_url,
+        lastUpdated: new Date().toISOString(),
+      }, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+
+      await reconnectTwitchTenant(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+      return clearPrivilegedOAuthCookie(
+        NextResponse.redirect(`${appOrigin}/integrations?success=space-mountain-broadcaster`),
       );
     }
 

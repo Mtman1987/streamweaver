@@ -68,12 +68,14 @@ export default function IntegrationsPage() {
     communityBotConnected: boolean;
     theCountConnected: boolean;
     spaceMountainBotConnected: boolean;
+    spaceMountainBroadcasterConnected: boolean;
     owner: boolean;
     broadcasterUsername: string | null;
     botUsername: string | null;
     communityBotUsername: string | null;
     theCountUsername: string | null;
     spaceMountainBotUsername: string | null;
+    spaceMountainBroadcasterUsername: string | null;
   }>({
     loading: true,
     broadcasterConnected: false,
@@ -81,12 +83,14 @@ export default function IntegrationsPage() {
     communityBotConnected: false,
     theCountConnected: false,
     spaceMountainBotConnected: false,
+    spaceMountainBroadcasterConnected: false,
     owner: false,
     broadcasterUsername: null,
     botUsername: null,
     communityBotUsername: null,
     theCountUsername: null,
     spaceMountainBotUsername: null,
+    spaceMountainBroadcasterUsername: null,
   });
 
   const [kickStatus, setKickStatus] = useState<{
@@ -145,12 +149,14 @@ export default function IntegrationsPage() {
         communityBotConnected: !!data?.communityBotConnected,
         theCountConnected: !!data?.theCountConnected,
         spaceMountainBotConnected: !!data?.spaceMountainBotConnected,
+        spaceMountainBroadcasterConnected: !!data?.spaceMountainBroadcasterConnected,
         owner: data?.owner === true,
         broadcasterUsername: data?.broadcasterUsername ?? null,
         botUsername: data?.botUsername ?? null,
         communityBotUsername: data?.communityBotUsername ?? null,
         theCountUsername: data?.theCountUsername ?? null,
         spaceMountainBotUsername: data?.spaceMountainBotUsername ?? null,
+        spaceMountainBroadcasterUsername: data?.spaceMountainBroadcasterUsername ?? null,
       });
     } catch {
       setTwitchStatus((prev) => ({ ...prev, loading: false }));
@@ -170,7 +176,7 @@ export default function IntegrationsPage() {
   }, []);
 
   // --- Actions ---
-  const connectTwitch = (role: "broadcaster" | "bot" | "community-bot" | "the-count" | "space-mountain-bot") => {
+  const connectTwitch = (role: "broadcaster" | "bot" | "community-bot" | "the-count" | "space-mountain-bot" | "space-mountain-broadcaster") => {
     if (!twitchConfigured) {
       toast({ variant: "destructive", title: "Twitch not configured", description: "Missing NEXT_PUBLIC_TWITCH_CLIENT_ID" });
       return;
@@ -189,6 +195,9 @@ export default function IntegrationsPage() {
         title: "Authorize Stella",
         description: "On Twitch, sign in with Stella's Twitch account. This connects her only to the SpaceMountainLive system tenant.",
       });
+    }
+    if (role === "space-mountain-broadcaster") {
+      toast({ title: "Authorize SpaceMountainLive", description: "On Twitch, sign in as spacemountainlive. This grant reads channel information; Stella remains signed in as the chat bot." });
     }
     window.location.href = `/api/auth/twitch?role=${role}`;
   };
@@ -393,6 +402,22 @@ export default function IntegrationsPage() {
                   onClick={() => connectTwitch("the-count")}
                 >
                   {twitchStatus.theCountConnected ? "Re-authorize Same Account" : "Authorize The Count"}
+                </Button>
+              </AccountRow>
+
+              <AccountRow
+                connected={twitchStatus.spaceMountainBroadcasterConnected}
+                label="SpaceMountainLive — Broadcaster"
+                username={twitchStatus.spaceMountainBroadcasterUsername || "spacemountainlive"}
+                description="Channel grant for rider and moderator lookups. Separate from Stella's chat bot token."
+              >
+                <Button
+                  size="sm"
+                  variant={twitchStatus.spaceMountainBroadcasterConnected ? "ghost" : "default"}
+                  className={twitchStatus.spaceMountainBroadcasterConnected ? "text-xs" : ""}
+                  onClick={() => connectTwitch("space-mountain-broadcaster")}
+                >
+                  {twitchStatus.spaceMountainBroadcasterConnected ? "Re-authorize Channel" : "Authorize Channel"}
                 </Button>
               </AccountRow>
 

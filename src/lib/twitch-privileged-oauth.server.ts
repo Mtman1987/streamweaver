@@ -3,7 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 export const TWITCH_PRIVILEGED_OAUTH_COOKIE = 'streamweaver-twitch-privileged-oauth';
 export const TWITCH_PRIVILEGED_OAUTH_MAX_AGE = 10 * 60;
 
-export type PrivilegedTwitchOAuthRole = 'community-bot' | 'the-count' | 'space-mountain-bot';
+export type PrivilegedTwitchOAuthRole = 'community-bot' | 'the-count' | 'space-mountain-bot' | 'space-mountain-broadcaster';
 
 type PrivilegedTwitchOAuthTransaction = {
   role: PrivilegedTwitchOAuthRole;
@@ -69,7 +69,8 @@ export function readPrivilegedTwitchOAuthTransaction(
     if (
       (transaction.role !== 'community-bot'
         && transaction.role !== 'the-count'
-        && transaction.role !== 'space-mountain-bot') ||
+        && transaction.role !== 'space-mountain-bot'
+        && transaction.role !== 'space-mountain-broadcaster') ||
       transaction.ownerId !== ownerId ||
       transaction.nonce !== returnedState ||
       !transaction.expiresAt ||
