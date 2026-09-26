@@ -67,13 +67,24 @@ export default function BRBPlayer() {
       setEmbedUrl(url);
     };
 
-    const playClip = async (clipUrl: string, thumbnailUrl: string, fallback?: { url: string; user: string }) => {
+    const playClip = async (clipUrl: string, thumbnailUrl: string, fallback?: { url: string; user: string }, vod?: { videoId?: string; vodOffset?: number; user?: string }) => {
       const epoch = ++playbackEpoch;
       lastGif = fallback;
       clearTimeout(embedTimer);
       setEmbedUrl('');
       setVideoPlaying(false);
       setGifUrl('');
+      // Twitch's interactive player can switch to the source VOD without
+      // replacing the iframe that owns the broadcaster's click.
+      if (/^\d+$/.test(String(vod?.videoId || '')) && Number.isFinite(vod?.vodOffset) && Number(vod?.vodOffset) >= 0) {
+        videoRef.current?.pause();
+        setClipUser(vod?.user || fallback?.user || '');
+        setSpotlight(true);
+        setActive(true);
+        notifyParent(true, 'vod', { videoId: vod!.videoId!, vodOffset: vod!.vodOffset! });
+        return;
+      }
+      setSpotlight(false);
       const match = clipUrl.match(/clip=([^&]+)/);
       if (!match) { showGif(fallback); return; }
       const clipId = match[1].split('/').pop()!;
@@ -118,9 +129,9 @@ export default function BRBPlayer() {
       }
     };
 
-    const notifyParent = (on: boolean, mode: 'clip' | 'gif' = 'clip') => {
+    const notifyParent = (on: boolean, mode: 'clip' | 'gif' | 'vod' = 'clip', vod?: { videoId: string; vodOffset: number }) => {
       if (window.parent !== window) {
-        window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: on, mode }, 'https://spmt.live');
+        window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: on, mode, ...vod }, 'https://spmt.live');
       }
     };
 
@@ -133,6 +144,7 @@ export default function BRBPlayer() {
       setEmbedUrl('');
       setVideoPlaying(false);
       setGifUrl('');
+      setSpotlight(false);
       setActive(false);
       notifyParent(false);
     };
@@ -164,7 +176,7 @@ export default function BRBPlayer() {
       autoIndex++;
       if (clip) {
         setClipUser(clip.user || '');
-        void playClip(clip.clipUrl, clip.thumbnailUrl || '', gif);
+        void playClip(clip.clipUrl, clip.thumbnailUrl || '', gif, clip);
       } else {
         showGif(gif);
       }
@@ -213,7 +225,7 @@ export default function BRBPlayer() {
               manual = true;
               setClipUser(msg.payload.user || '');
               notifyParent(true, 'clip');
-              playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl, msg.payload.gifUrl ? { url: msg.payload.gifUrl, user: msg.payload.user } : undefined);
+              playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl, msg.payload.gifUrl ? { url: msg.payload.gifUrl, user: msg.payload.user } : undefined, msg.payload);
             }
             if (msg.type === 'brb-gif' && msg.payload) {
               manual = true;
@@ -246,7 +258,7 @@ export default function BRBPlayer() {
 
   return (
     <div style={{
-      width: '100vw', height: '100vh', background: active || embedUrl ? '#071127' : 'transparent',
+      width: '100vw', height: '100vh', background: (active || embedUrl) && !spotlight ? '#071127' : 'transparent',
       overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
     }}>
