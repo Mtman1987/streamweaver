@@ -35,6 +35,9 @@ async function isLoungeShowcaseEligible(
   if (message.startsWith('!') || message.startsWith('spmt')) return false;
 
   const senderNames = normalizedSenderNames(entry);
+  // Never let a synthetic/internal user_<id> placeholder appear as a person.
+  // Those entries have not proved a public identity and are not showcase-safe.
+  if (senderNames.some((name) => /^user_[a-z0-9_-]+$/i.test(name))) return false;
   if (senderNames.some((name) => LOUNGE_ECOSYSTEM_VOICES.has(name))) return true;
   if (entry.sender.roles.includes('bot')) return false;
 
