@@ -70,6 +70,32 @@ export async function getWebhookForChannel(channelId: string): Promise<WebhookDa
   return webhooks[channelId] || null;
 }
 
+
+export async function editWebhookMessageWithBinaryAttachment(
+  channelId: string,
+  messageId: string,
+  body: { content?: string; embeds?: Record<string, unknown>[] },
+  fileBuffer: Buffer,
+  fileName: string,
+  mimeType = 'image/gif',
+): Promise<boolean> {
+  const webhook = await getWebhookForChannel(channelId);
+  if (!webhook) return false;
+  const formData = new FormData();
+  const bytes = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength) as unknown as BlobPart;
+  const blob = new Blob([bytes], { type: mimeType });
+  formData.append('payload_json', JSON.stringify({
+    ...body,
+    attachments: [{ id: 0, filename: fileName }],
+  }));
+  formData.append('files[0]', blob, fileName);
+  const response = await fetch(`${webhook.url}/messages/${messageId}`, {
+    method: 'PATCH',
+    body: formData,
+  });
+  return response.ok;
+}
+
 export async function editWebhookMessage(
   channelId: string,
   messageId: string,
