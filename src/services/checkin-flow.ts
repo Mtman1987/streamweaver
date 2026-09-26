@@ -1,9 +1,10 @@
 import { sendChatMessage } from './twitch';
-import { recordDetailedCheckin, getEntryInviteLink } from './checkin-stats';
+import { recordDetailedCheckin } from './checkin-stats';
 import { getCheckinSource, type CheckinEntry, type CheckinKind } from './checkin-sources';
 import { getStoredTokens } from '../lib/token-utils.server';
 import { readJsonFile, writeJsonFile } from './storage';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
+import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '../lib/tenant';
 
 const FRONT_SEAT_FILE = 'space-mountain-front-seat.json';
 export const FRONT_SEAT_BONUS_POINTS = 100;
@@ -119,49 +120,89 @@ function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, un
   }, broadcastTenantId);
 }
 
-async function generateGreeting(username: string, entry: CheckinEntry, kind: CheckinKind, sourceLabel: string, tenantId?: string): Promise<string> {
-  const { getBotName, getBotPersonality } = require('../lib/bot-settings-store');
-  const botName = getBotName(tenantId);
-  const botPersonality = getBotPersonality(tenantId);
-  const copy = labels(kind);
-  let greeting = `Welcome ${entry.name}! ${username} just checked in with the ${copy.group}.`;
+const recentCheckinLines = new Map<string, string[]>();
 
-  const edenaiKey = process.env.EDENAI_API_KEY;
-  if (!edenaiKey) return greeting;
-
+async function freshCheckinLine(tenantId: string | undefined, kind: CheckinKind, prompt: string, fallbacks: string[], requiredNames: string[]): Promise<string> {
+  const key = `${tenantId || 'global'}:${kind}`;
+  const recent = recentCheckinLines.get(key) || [];
+  let line = '';
   try {
-    const response = await fetch('https://api.edenai.run/v2/text/chat', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${edenaiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        providers: 'openai',
-        text: `You are ${botName}. A viewer named ${username} just used a ${copy.title} and landed on ${entry.name}. ${entry.name} belongs to the ${sourceLabel} list. Write a short, energetic 1-2 sentence greeting that welcomes ${username} while hyping up ${entry.name} and the ${sourceLabel}. Stay fully in character.`,
-        chatbot_global_action: botPersonality,
-        temperature: 0.8,
-        max_tokens: 150,
-      }),
-    });
-    if (!response.ok) return greeting;
-
-    const data = await response.json() as any;
-    const text = data?.openai?.generated_text?.trim();
-    return text || greeting;
-  } catch {
-    return greeting;
+    const { generateAIResponse } = await import('./ai-provider');
+    const { getBotName, getBotPersonality } = require('../lib/bot-settings-store');
+    line = await generateAIResponse(
+      `${prompt} Write one fresh, playful Space Mountain themed line in Stella's voice. Use both names exactly. No statistics, numbers, URLs, parentheses, markdown, or generic "welcome" greeting. Vary the opening and imagery. Do not repeat: ${JSON.stringify(recent.slice(-8))}`,
+      `You are ${getBotName(tenantId) || 'Stella'}. ${getBotPersonality(tenantId) || ''}`,
+      tenantId,
+      { maxTokens: 110, maxCharacters: 260, temperature: 1 },
+    );
+    line = String(line || '').replace(/\s*\([^)]*\)/g, '').replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').replace(/^["'\s]+|["'\s]+$/g, '').trim().slice(0, 240);
+    if (!requiredNames.every(name => line.toLowerCase().includes(name.toLowerCase())) || recent.includes(line)) line = '';
+  } catch (error) {
+    console.warn('[Checkin] Stella line generation fell back:', error);
   }
+  if (!line) {
+    const choices = fallbacks.filter(candidate => !recent.includes(candidate));
+    const pool = choices.length ? choices : fallbacks;
+    line = pool[Math.floor(Math.random() * pool.length)];
+  }
+  recentCheckinLines.set(key, [...recent, line].slice(-12));
+  return line;
 }
 
-async function playGreeting(greeting: string, tenantId?: string, twitchReceiptSpeaks = false): Promise<void> {
+async function generateGreeting(username: string, entry: CheckinEntry, kind: CheckinKind, sourceLabel: string, tenantId?: string): Promise<string> {
+  const actor = `@${username}`;
+  const name = entry.name;
+  const fallbacks: Record<CheckinKind, string[]> = {
+    partner: [
+      `${actor}, you found ${name} on the partner deck. Give this mountain connection a proper salute!`,
+      `The partner beacon just lit up for ${actor} and ${name}. That's a crew-up worth celebrating!`,
+      `${actor} and ${name} are sharing a seat on the partner shuttle. Let the good adventures begin!`,
+    ],
+    crew: [
+      `${actor}, your crew seat is beside ${name}! Keep that mountain energy rolling.`,
+      `Crew doors open for ${actor} and ${name}. This ride just got a little brighter!`,
+      `${name} has a new crewmate in ${actor}. Everybody make some room on the launch deck!`,
+    ],
+    mod: [
+      `${actor} just linked up with mod ${name}. The command deck is in good hands!`,
+      `Mod squad check-in complete for ${actor} and ${name}. Shields up, smiles on!`,
+      `${name} welcomes ${actor} aboard the mod deck. Keep the mountain humming!`,
+    ],
+    'space-mountain': [
+      `${actor} grabbed a Space Mountain seat with ${name}. Buckle up, crew!`,
+      `Launch lights are on for ${actor} and ${name}. Here comes the mountain!`,
+      `${name} saved ${actor} a seat on the ride. Everybody hold on!`,
+    ],
+  };
+  return freshCheckinLine(tenantId, kind,
+    `${actor} selected ${name} for a ${sourceLabel} check-in. Celebrate that specific pairing in one or two short sentences.`,
+    fallbacks[kind], [username, name]);
+}
+
+async function generateBulkGreeting(username: string, frontSeat: string, kind: CheckinKind, tenantId?: string): Promise<string> {
+  const actor = `@${username}`;
+  const fallbacks = [
+    `${actor} sent the mountain crew into orbit, and ${frontSeat} claimed the front seat. Hold on tight!`,
+    `The ride is rolling, ${actor}! ${frontSeat} has the front seat and the whole crew is along for the climb.`,
+    `Launch doors sealed for ${actor}'s crew. ${frontSeat} is up front—let's make this a ride to remember!`,
+  ];
+  return freshCheckinLine(tenantId, kind,
+    `${actor} launched a Space Mountain group check-in and ${frontSeat} got the front seat. Celebrate the ride and front-seat rider in one or two short sentences.`,
+    fallbacks, [username, frontSeat]);
+}
+
+async function playGreeting(greeting: string, tenantId?: string): Promise<void> {
   const { markTtsHandled } = require('./chat-dispatcher');
   markTtsHandled(greeting);
   await sendChatMessage(greeting, 'bot', undefined, tenantId);
   // Space Mountain's confirmed Stella chat receipt queues its own TTS.
-  if (twitchReceiptSpeaks) return;
+  if (normalizeTenantId(tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID) return;
 
   try {
     const { textToSpeech } = await import('../ai/flows/text-to-speech');
     const ttsTenantId = normalizeTenantId(tenantId);
-    const ttsResult = await textToSpeech({ text: greeting, tenantId: ttsTenantId });
+    const spokenGreeting = greeting.replace(/\s*\([^)]*\)/g, '').trim();
+    const ttsResult = await textToSpeech({ text: spokenGreeting, tenantId: ttsTenantId });
     if (!ttsResult.audioDataUri) return;
 
     const useTTSPlayer = process.env.USE_TTS_PLAYER !== 'false';
@@ -170,7 +211,7 @@ async function playGreeting(greeting: string, tenantId?: string, twitchReceiptSp
       await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/tts/current${tenantQuery}`, {
         method: 'POST',
         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri, text: greeting }),
+        body: JSON.stringify({ audioUrl: ttsResult.audioDataUri, text: spokenGreeting }),
       }).catch(() => {});
     } else if (typeof (global as any).broadcast === 'function') {
       (global as any).broadcast({ type: 'play-tts', payload: { audioDataUri: ttsResult.audioDataUri } }, ttsTenantId);
@@ -244,19 +285,25 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
   }
 
   const stats = recordDetailedCheckin(username, entry.key, entry.name, kind, tenantId);
-  const inviteLink = entry.inviteLink || getEntryInviteLink(entry.key, tenantId);
-
-  let broadcasterMsg = `@${username} just checked in with ${entry.name}'s ${copy.title.toLowerCase()}!`;
-  if (inviteLink) broadcasterMsg += ` Join here: ${inviteLink}`;
-  broadcasterMsg += ` (${username}: ${stats.userTotal} total | ${entry.name}: ${stats.entryTotal} total)`;
+  broadcastCheckin('reveal', {
+    kind,
+    username,
+    sourceLabel,
+    accentColor: copy.color,
+    emoji: copy.emoji,
+    selectionNumber,
+    entry: {
+      ...entry,
+      imageUrl: entry.imageUrl,
+    },
+  }, tenantId);
+  const greeting = await generateGreeting(username, entry, kind, sourceLabel, tenantId);
+  const statsParts = [`${username}: ${stats.userTotal} total`, `${entry.name}: ${stats.entryTotal} total`];
   if (pointCost > 0) {
     const balance = await getBalance(username, tenantId);
-    if (typeof balance === 'number') broadcasterMsg += ` | Balance: ${balance} pts`;
+    if (typeof balance === 'number') statsParts.push(`Balance: ${balance} pts`);
   }
-  await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
-
-  const greeting = await generateGreeting(username, entry, kind, sourceLabel, tenantId);
-  await playGreeting(greeting, tenantId, kind === 'space-mountain');
+  await playGreeting(`${greeting} (${statsParts.join(' | ')})`, tenantId);
 
   // Post to tenant's shoutout Discord channel if bridge is enabled
   try {
@@ -270,18 +317,6 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
     }
   } catch {}
 
-  broadcastCheckin('reveal', {
-    kind,
-    username,
-    sourceLabel,
-    accentColor: copy.color,
-    emoji: copy.emoji,
-    selectionNumber,
-    entry: {
-      ...entry,
-      imageUrl: entry.imageUrl,
-    },
-  }, tenantId);
 }
 
 export async function runBulkCheckin(kind: CheckinKind, username: string, pointCost: number, tenantId?: string): Promise<void> {
@@ -315,17 +350,6 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     await addPoints(frontSeatRider.name, FRONT_SEAT_BONUS_POINTS, 'space-mountain-front-seat', await resolvePointsCtx(tenantId));
   }
 
-  if (kind !== 'space-mountain') {
-    const names = checkedIn.slice(0, 8).map((entry) => entry.name).join(', ');
-    const suffix = checkedIn.length > 8 ? ` and ${checkedIn.length - 8} more` : '';
-    let broadcasterMsg = `@${username} launched ${copy.title} with ${checkedIn.length} riders: ${names}${suffix} | 🎢 Front seat: ${frontSeatRider.name} (+${FRONT_SEAT_BONUS_POINTS} pts)!`;
-    if (pointCost > 0) {
-      const balance = await getBalance(username, tenantId);
-      if (typeof balance === 'number') broadcasterMsg += ` | Balance: ${balance} pts`;
-    }
-    await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
-  }
-
   // Show the result immediately; speech generation can take longer than the
   // reveal window and must not make the card disappear before it ever displays.
   broadcastCheckin('reveal', {
@@ -342,6 +366,11 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     entry: frontSeatRider,
   }, tenantId);
 
-  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${frontSeatRider.name} with ${FRONT_SEAT_BONUS_POINTS} bonus points! 🎢`;
-  await playGreeting(greeting, tenantId, kind === 'space-mountain');
+  const greeting = await generateBulkGreeting(username, frontSeatRider.name, kind, tenantId);
+  const statsParts = [`Riders: ${checkedIn.length}`, `Front seat: ${frontSeatRider.name}`, `Bonus: ${FRONT_SEAT_BONUS_POINTS} pts`];
+  if (pointCost > 0) {
+    const balance = await getBalance(username, tenantId);
+    if (typeof balance === 'number') statsParts.push(`Balance: ${balance} pts`);
+  }
+  await playGreeting(`${greeting} (${statsParts.join(' | ')})`, tenantId);
 }

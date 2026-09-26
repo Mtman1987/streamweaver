@@ -1,4 +1,3 @@
-import { getAllPartners } from './partner-checkin';
 import { getPartnerInviteLink } from './checkin-stats';
 import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
 import { getConfigSection } from '../lib/local-config/service';
@@ -116,28 +115,34 @@ export function includeRequiredSpaceMountainChatters(
 
 async function fetchPartnerSource(tenantId?: string): Promise<CheckinSourceResult> {
   const redeemsConfig = await getConfigSection('redeems', tenantId);
-  const guildId = redeemsConfig.partnerCheckin.discordGuildId;
-  const roleName = redeemsConfig.partnerCheckin.discordRoleName;
-  if (!guildId || !roleName) {
-    return { kind: 'partner', label: 'Partner Check-In', sourceLabel: 'Partners', selectionMode: 'pick', entries: [] };
+  const configuredGuildId = String(redeemsConfig.partnerCheckin?.discordGuildId || redeemsConfig.crewCheckin?.discordGuildId || '').trim();
+  try {
+    const guildId = configuredGuildId || await getDiscordStreamHubDefaultGuildId();
+    // Use the same DiscordStreamHub membership source as Crew. Its Partners
+    // group is populated from the server's role mapping.
+    const members = await getDiscordStreamHubCheckinMembers(guildId, 'Partners');
+    const entries = sortAndAssignIds(members
+      .map((member) => {
+        const name = String(member.displayName || member.username || '').trim();
+        if (!name) return null;
+        const discordUserId = String(member.discordUserId || member.id || '');
+        return {
+          key: toEntryKey('partner', discordUserId, name),
+          name,
+          imageUrl: String(member.avatarUrl || ''),
+          inviteLink: getPartnerInviteLink(discordUserId, tenantId),
+          discordUserId,
+        };
+      })
+      .filter(Boolean) as Omit<CheckinEntry, 'id'>[]);
+    return { kind: 'partner', label: 'Partner Check-In', sourceLabel: 'Partners', selectionMode: 'pick', entries };
+  } catch (error) {
+    console.warn('[Partner Checkin] Source fetch failed:', error);
+    return {
+      kind: 'partner', label: 'Partner Check-In', sourceLabel: 'Partners', selectionMode: 'pick', entries: [],
+      error: error instanceof Error ? error.message : 'Partner lookup failed',
+    };
   }
-
-  const partners = await getAllPartners(guildId, roleName);
-  const entries = sortAndAssignIds(partners.map((partner) => ({
-    key: toEntryKey('partner', partner.discordUserId, partner.name),
-    name: partner.name,
-    imageUrl: partner.avatarUrl,
-    inviteLink: getPartnerInviteLink(partner.discordUserId, tenantId),
-    discordUserId: partner.discordUserId,
-  })));
-
-  return {
-    kind: 'partner',
-    label: 'Partner Check-In',
-    sourceLabel: 'Partners',
-    selectionMode: 'pick',
-    entries,
-  };
 }
 
 async function fetchCrewSource(tenantId?: string): Promise<CheckinSourceResult> {
@@ -205,42 +210,46 @@ async function fetchModSource(tenantId?: string): Promise<CheckinSourceResult> {
   }
 
   try {
-    const moderatorsResponse = await fetch(
-      `https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=${encodeURIComponent(auth.broadcasterId)}&first=100`,
-      {
+    const moderators: any[] = [];
+    let after = '';
+    do {
+      const url = new URL('https://api.twitch.tv/helix/moderation/moderators');
+      url.searchParams.set('broadcaster_id', auth.broadcasterId);
+      url.searchParams.set('first', '100');
+      if (after) url.searchParams.set('after', after);
+      const moderatorsResponse = await fetch(url, {
         headers: {
           Authorization: `Bearer ${auth.accessToken}`,
           'Client-ID': auth.clientId,
         },
+      });
+      if (!moderatorsResponse.ok) {
+        const errText = await moderatorsResponse.text().catch(() => '');
+        console.warn('[Mod Checkin] Failed to fetch moderators:', moderatorsResponse.status, errText);
+        const hint = moderatorsResponse.status === 401 || moderatorsResponse.status === 403
+          ? `Twitch returned ${moderatorsResponse.status}. Re-auth as Broadcaster with the moderation:read scope.`
+          : `Twitch API error ${moderatorsResponse.status}: ${errText.slice(0, 120)}`;
+        return { kind: 'mod', label: 'Mod Check-In', sourceLabel: 'Mods', selectionMode: 'pick', entries: [], error: hint };
       }
-    );
-    if (!moderatorsResponse.ok) {
-      const errText = await moderatorsResponse.text().catch(() => '');
-      console.warn('[Mod Checkin] Failed to fetch moderators:', moderatorsResponse.status, errText);
-      const hint = moderatorsResponse.status === 401 || moderatorsResponse.status === 403
-        ? `Twitch returned ${moderatorsResponse.status}. Re-auth as Broadcaster with the moderator scope.`
-        : `Twitch API error ${moderatorsResponse.status}: ${errText.slice(0, 120)}`;
-      return { kind: 'mod', label: 'Mod Check-In', sourceLabel: 'Mods', selectionMode: 'pick', entries: [], error: hint };
-    }
-
-    const moderatorsPayload = await moderatorsResponse.json() as any;
-    const moderators = Array.isArray(moderatorsPayload?.data) ? moderatorsPayload.data : [];
-    const ids = moderators.map((mod: any) => String(mod?.user_id || '')).filter(Boolean);
+      const payload = await moderatorsResponse.json() as any;
+      moderators.push(...(Array.isArray(payload?.data) ? payload.data : []));
+      after = String(payload?.pagination?.cursor || '');
+    } while (after);
 
     const profileMap = new Map<string, string>();
-    if (ids.length > 0) {
-      const params = ids.map((id: string) => `id=${encodeURIComponent(id)}`).join('&');
+    const ids = moderators.map((mod: any) => String(mod?.user_id || '')).filter(Boolean);
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const params = ids.slice(offset, offset + 100).map((id: string) => `id=${encodeURIComponent(id)}`).join('&');
       const usersResponse = await fetch(`https://api.twitch.tv/helix/users?${params}`, {
         headers: {
           Authorization: `Bearer ${auth.accessToken}`,
           'Client-ID': auth.clientId,
         },
       });
-      if (usersResponse.ok) {
-        const usersPayload = await usersResponse.json() as any;
-        for (const user of usersPayload?.data || []) {
-          profileMap.set(String(user?.id || ''), String(user?.profile_image_url || ''));
-        }
+      if (!usersResponse.ok) continue;
+      const usersPayload = await usersResponse.json() as any;
+      for (const user of usersPayload?.data || []) {
+        profileMap.set(String(user?.id || ''), String(user?.profile_image_url || ''));
       }
     }
 

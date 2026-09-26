@@ -54,6 +54,10 @@ const REAUTH_NOTICE_INTERVAL_MS = 60_000;
 const spokenLoungeStellaMessageIds = new Set<string>();
 // IRC can arrive before the Helix response; defer that echo's audio to the prepared send.
 const pendingLoungeStellaTexts = new Map<string, { ircMessageId?: string }>();
+function spokenLoungeStellaText(message: string): string {
+  // Parenthesized check-in counts, points, and levels stay visible in Twitch.
+  return message.replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+}
 function speakLoungeStellaChatMessage(channel: string, tenantId: string | undefined, tags: Record<string, any>, message: string): void {
   if (channel !== SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
     || tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID
@@ -66,7 +70,7 @@ function speakLoungeStellaChatMessage(channel: string, tenantId: string | undefi
   if (spokenLoungeStellaMessageIds.size > 512) {
     spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
   }
-  void queueTtsOverlay(message, SPACEMOUNTAIN_SYSTEM_TENANT_ID).then((result) => {
+  void queueTtsOverlay(spokenLoungeStellaText(message), SPACEMOUNTAIN_SYSTEM_TENANT_ID).then((result) => {
     if (!result.queued) console.warn('[Stella Lounge TTS] Chat line was not spoken:', result.error || 'not queued');
   }).catch((error) => console.error('[Stella Lounge TTS] Chat line failed:', error));
 }
@@ -78,7 +82,8 @@ export async function sendConfirmedLoungeStellaMessage(message: string): Promise
   const tenantId = SPACEMOUNTAIN_SYSTEM_TENANT_ID;
   // Synthesis happens before the Twitch post; the prepared audio cannot play
   // until Twitch confirms delivery. The chat highlighter has no TTS dependency.
-  const preparedPromise = prepareTtsOverlay(message, tenantId);
+  const spokenMessage = spokenLoungeStellaText(message);
+  const preparedPromise = prepareTtsOverlay(spokenMessage, tenantId);
   const pending = { ircMessageId: undefined as string | undefined };
   pendingLoungeStellaTexts.set(message, pending);
   try {
@@ -130,7 +135,7 @@ export async function sendConfirmedLoungeStellaMessage(message: string): Promise
     }
     // Queue immediately after Twitch accepts; do not wait for IRC or the highlighter.
     if (prepared.audioUrl) {
-      void queuePreparedTtsOverlay(message, prepared.audioUrl, tenantId).then(result => {
+      void queuePreparedTtsOverlay(spokenMessage, prepared.audioUrl, tenantId).then(result => {
         if (!result.queued) console.warn('[Stella Lounge TTS] Confirmed line could not play:', messageId, result.error);
       });
     } else console.warn('[Stella Lounge TTS] Confirmed line has no audio:', messageId, prepared.result.error);
@@ -142,7 +147,7 @@ export async function sendConfirmedLoungeStellaMessage(message: string): Promise
       const prepared = await preparedPromise;
       spokenLoungeStellaMessageIds.add(pending.ircMessageId);
       if (prepared.audioUrl) {
-        void queuePreparedTtsOverlay(message, prepared.audioUrl, tenantId).then(result => {
+        void queuePreparedTtsOverlay(spokenMessage, prepared.audioUrl, tenantId).then(result => {
           if (!result.queued) console.warn('[Stella Lounge TTS] IRC-received line could not play:', pending.ircMessageId, result.error);
         });
       }

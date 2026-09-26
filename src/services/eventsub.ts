@@ -350,8 +350,12 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                                     return;
                                 }
 
-                                if (source.entries.length > 0) {
-                                    sendChatMessage(formatCheckinList(matchedCheckin.kind, source.entries), 'broadcaster', undefined, tenantId).catch(() => {});
+                                if (source.entries.length === 0) {
+                                    sendChatMessage(source.error
+                                        ? `@${userLogin}, ${source.sourceLabel} lookup failed: ${source.error}`
+                                        : `@${userLogin}, no ${source.sourceLabel.toLowerCase()} found right now.`,
+                                        'broadcaster', undefined, tenantId).catch(() => {});
+                                    return;
                                 }
 
                                 // Check for recent chat message or text input
@@ -368,6 +372,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                                 }
 
                                 if (!squareNum || isNaN(squareNum) || squareNum < 1) {
+                                    sendChatMessage(formatCheckinList(matchedCheckin.kind, source.entries), 'broadcaster', undefined, tenantId).catch(() => {});
                                     let tenantSelections = pendingCheckins.get(tKey);
                                     if (!tenantSelections) {
                                         tenantSelections = new Map();

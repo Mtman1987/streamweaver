@@ -3088,9 +3088,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             { triggers: ['!checkin', '!partner'], kind: 'partner' },
             { triggers: ['!crew', '!crewcheckin'], kind: 'crew' },
             { triggers: ['!mod', '!modcheckin'], kind: 'mod' },
-            { triggers: ['!spacemountain', '!space', '!spacecheckin'], kind: 'space-mountain' },
+            { triggers: ['!spmt', '!spacemountain', '!space', '!spacecheckin'], kind: 'space-mountain' },
         ];
-        const matchedCheckin = checkinCommandKinds.find((entry) => entry.triggers.some((trigger) => lowerMessage.startsWith(trigger)));
+        const matchedCheckin = checkinCommandKinds.find((entry) => entry.triggers.some((trigger) => lowerMessage === trigger || lowerMessage.startsWith(`${trigger} `)));
         if (matchedCheckin) {
             console.log(`[Dispatcher] Processing ${matchedCheckin.kind} checkin command from ${actualUsername}`);
             const cmd = actualMessage.split(' ')[0];
@@ -3127,16 +3127,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 }
 
                 if (source.entries.length === 0) {
-                    await replyMaybeKick(`@${actualUsername}, no ${source.sourceLabel.toLowerCase()} found right now.`, 'broadcaster').catch(() => {});
+                    await replyMaybeKick(source.error ? `@${actualUsername}, ${source.sourceLabel} lookup failed: ${source.error}` : `@${actualUsername}, no ${source.sourceLabel.toLowerCase()} found right now.`, 'broadcaster').catch(() => {});
                     return;
                 }
                 
-                const listMessage = formatCheckinList(matchedCheckin.kind, source.entries);
-                console.log(`[Dispatcher] Check-in list message:`, listMessage);
-                    await replyMaybeKick(listMessage, 'broadcaster').catch(() => {});
-
-
                 const selectionId = parseInt(numArg, 10);
+                // A selection already has its list. Only the initial list is
+                // broadcaster data; the selected result belongs to Stella.
+                if (!selectionId || isNaN(selectionId) || selectionId < 1) {
+                    const listMessage = formatCheckinList(matchedCheckin.kind, source.entries);
+                    console.log(`[Dispatcher] Check-in list message:`, listMessage);
+                    await replyMaybeKick(listMessage, 'broadcaster').catch(() => {});
+                }
                 if (!selectionId || isNaN(selectionId) || selectionId < 1) {
                     console.log(`[Dispatcher] Invalid ${matchedCheckin.kind} ID: ${numArg}, waiting for valid selection`);
                     const { pendingCheckins } = require('./eventsub');
