@@ -19,12 +19,14 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
+import { executeNebulaCommand, manageNebulaOverlay } from '@/services/nebula-actions';
+import { setStellaChaosMode } from '@/services/stella-chaos-mode';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -205,6 +207,24 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['bridge HearMeOut to Discord VC General', 'make the voice bridge listen only', 'stop the Discord voice bridge'],
   },
   {
+    id: 'nebula.command',
+    title: 'Run a Nebula Arcade game or controller command privately',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['Nebula run spmt join', 'run spmt instructions bingo', 'Nebula start chicken royale'],
+  },
+  {
+    id: 'nebula.overlay.manage',
+    title: 'Create or change a Nebula Arcade games overlay',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['create a Nebula overlay with bingo and mosaic', 'set my Nebula overlay to auto grid'],
+  },
+  {
+    id: 'stella.mode',
+    title: 'Set the experimental Stella behavior intensity from chill to WTF one million',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['Stella chill vibes', 'Stella mode 500', 'Stella WTF one million'],
+  },
+  {
     id: 'sw.lounge.brb',
     title: 'Start or stop the tenant Lounge BRB player',
     app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
@@ -337,6 +357,17 @@ function extractApplicationDecision(message: string) {
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
+
+  const stellaMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?|\d{1,7})\b/);
+  if (stellaMode) {
+    const raw=stellaMode[1]; const numeric=/^\d+$/.test(raw)?raw:'';
+    const mode = /chill/.test(raw)?'chill':/playful/.test(raw)?'playful':/(?:chaos|ludicrous|insanity)/.test(raw)?'chaos':/wtf/.test(raw)?'wtf-million':'normal';
+    return {action:'stella.mode',args:{mode,intensity:numeric},detection:'explicit'};
+  }
+  const nebulaRun=message.match(/\b(?:nebula|stella)\s+(?:run|do|execute)\s+((?:!?spmt|!mosaic)\b[^\n]{0,380})/i);
+  if(nebulaRun) return {action:'nebula.command',args:{command:nebulaRun[1].trim()},detection:'explicit'};
+  const overlayCreate=value.match(/\b(?:create|make|build)\b.*\bnebula\b.*\boverlay\b/);
+  if(overlayCreate) return {action:'nebula.overlay.manage',args:{operation:'create'},detection:'explicit'};
 
   if (/\b(?:restart|reboot|power[- ]?cycle|turn off and (?:back )?on)\b.*\bspotlight\b|\bspotlight\b.*\b(?:restart|reboot|power[- ]?cycle)\b/.test(value)) {
     return { action: 'sw.lounge.spotlight.restart', args: {}, detection: 'explicit' };
@@ -669,6 +700,20 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'stella.mode') {
+      const result=setStellaChaosMode(request.args.mode as any, request.args.intensity?Number(request.args.intensity):undefined);
+      return {handled:true,action:request.action,status:'completed',response:`✅ Stella mode: ${result.mode} (${result.intensity}).`,result};
+    }
+    if (request.action === 'nebula.command') {
+      const command=clean(request.args.command,400); if(!command) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula command to run.'};
+      const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
+      const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:command});
+      return {handled:true,action:request.action,status:'completed',response:clean((result as any).reply,500)||'✅ Nebula command completed.',result};
+    }
+    if (request.action === 'nebula.overlay.manage') {
+      const result=await manageNebulaOverlay({operation:(request.args.operation as any)||'create',channel:context.tenantId,name:request.args.name});
+      return {handled:true,action:request.action,status:'completed',response:'✅ Nebula overlay operation completed.',result};
+    }
     if (request.action === 'sw.lounge.spotlight.restart') {
       const result = requestSpotlightRestart();
       return { handled: true, action: request.action, status: 'completed', response: '✅ Spotlight player restart requested.', result };
