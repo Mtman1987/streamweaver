@@ -4,7 +4,6 @@ import type { StoredTokens } from '../lib/token-utils.server';
 import {
   listTenants,
   communityBotTokensPath,
-  getAdminTwitchId,
   SPACEMOUNTAIN_SYSTEM_TENANT_ID,
   SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
 } from '../lib/tenant';
@@ -591,15 +590,10 @@ async function tryDeliverReauthNotice(tenantId: string, channel: string): Promis
     }
   }
 
-  const adminTenantId = getAdminTwitchId();
-  const adminTenant = tenantClients.get(adminTenantId);
-  if (adminTenant?.botClient && await sendMessageWithClient(adminTenant.botClient, normalizedChannel, message)) {
-    lastReauthNotice.set(key, now);
-    return;
-  }
-  if (adminTenant?.broadcasterClient && await sendMessageWithClient(adminTenant.broadcasterClient, normalizedChannel, message)) {
-    lastReauthNotice.set(key, now);
-  }
+  // Never borrow the owner's credentials for a different channel's reauth
+  // notice. If this tenant and the read-only community listener cannot send,
+  // retry when its own bot is available instead.
+  console.warn(`[Twitch:${tenantId}] Reauth notice could not be sent to #${normalizedChannel} with tenant credentials`);
 }
 
 function scheduleRetry(tenantId: string) {
