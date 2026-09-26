@@ -163,10 +163,10 @@ export default function BRBPlayer() {
               setEmbedUrl('');
               setVideoPlaying(false);
               setGifUrl('');
-              setSpotlight(false);
+              setSpotlight(true);
               setTestStream(true);
               setActive(true);
-              notifyParent(true, 'clip');
+              notifyParent(true, 'stream');
               const generation = testGeneration;
               const duration = Math.max(10_000, Math.min(120_000, Number(msg.payload.duration) || 30_000));
               let index = 0;
@@ -174,9 +174,8 @@ export default function BRBPlayer() {
                 if (stopped || generation !== testGeneration) return;
                 const channel = users[index++ % users.length];
                 setClipUser(channel);
-                // Exercise the same BRB iframe path used by clips with a live stream URL.
-                const url = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${encodeURIComponent(window.location.hostname)}&autoplay=true&muted=false`;
-                setEmbedUrl(url);
+                // Switch channels inside the already mounted Spotlight Twitch player.
+                window.parent.postMessage({ type: 'spmt-lounge-testbrb', channel }, 'https://spmt.live');
                 testTimer = setTimeout(next, duration);
               };
               next();
@@ -245,7 +244,7 @@ export default function BRBPlayer() {
         style={{ width: '100%', height: '100%', objectFit: 'contain', display: videoPlaying && !spotlight && !gifUrl && !embedUrl ? 'block' : 'none' }}
         autoPlay
       />
-      {embedUrl && <iframe key={`${embedUrl}:${spotlightLevel === 0}`} src={embedUrl.replace('muted=false', `muted=${spotlightLevel === 0}`)} title={testStream ? "Twitch BRB test stream" : "Twitch BRB clip"} allow="autoplay; fullscreen" onLoad={() => embedLoadedRef.current()} onError={() => embedFailedRef.current()} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />}
+      {embedUrl && <iframe key={`${embedUrl}:${spotlightLevel === 0}`} src={embedUrl.replace('muted=false', `muted=${spotlightLevel === 0}`)} title="Twitch BRB clip" allow="autoplay; fullscreen" onLoad={() => embedLoadedRef.current()} onError={() => embedFailedRef.current()} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />}
       {active && gifUrl && <img onError={() => { setGifUrl(''); setClipUser(''); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
       {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: '999px', background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{testStream ? 'TEST BRB' : 'BE RIGHT BACK'}</div>}
       {active && !embedUrl && !gifUrl && !videoPlaying && <div style={{ position: 'absolute', zIndex: 2, color: '#c4eefe', font: '600 18px system-ui, sans-serif', textAlign: 'center', pointerEvents: 'none' }}>Community clips are coming up</div>}
