@@ -21,6 +21,7 @@ export interface TTSConfig {
   voice: string;
   apiKey: string;
   deepgramApiKey: string;
+  openaiApiKey: string;
 }
 
 export type GenerateTTSOptions = {
@@ -48,6 +49,7 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
     voice,
     apiKey: resolveTTSApiKey(tenantId),
     deepgramApiKey: config.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || '',
+    openaiApiKey: process.env.OPENAI_API_KEY || config.OPENAI_API_KEY || '',
   };
 }
 
@@ -152,6 +154,9 @@ export async function generateTTS(
       if (voice.provider === 'deepgram') {
         return await generatePortableDeepgramTTS(normalizedText, voice, config, tenantId);
       }
+      if (voice.edenaiProvider === 'openai' && config.openaiApiKey) {
+        return await generateOpenAITTS(normalizedText, voice, config.openaiApiKey);
+      }
       if (!config.apiKey) throw new Error('Eden AI TTS is not configured');
       return await generateEdenAITTS(normalizedText, voice, config.apiKey);
     } catch (error) {
@@ -252,6 +257,39 @@ async function generateEdenAIDeepgramTTS(text: string, voice: TTSVoiceOption, ap
   }
   const audioBuffer = await audioResponse.arrayBuffer();
   if (!audioBuffer.byteLength) throw new Error('Eden AI returned empty audio');
+  return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
+}
+
+export async function generateOpenAITTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
+  if (voice.edenaiProvider !== 'openai' || !['nova', 'shimmer', 'echo', 'fable', 'onyx'].includes(voice.edenaiVoiceModel)) {
+    throw new Error('Unsupported OpenAI speech voice');
+  }
+  const response = await fetchWithRetry('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'audio/mpeg',
+    },
+    body: JSON.stringify({
+      model: 'tts-1',
+      voice: voice.edenaiVoiceModel,
+      input: text.slice(0, 4096),
+      response_format: 'mp3',
+    }),
+  }, { attempts: 1 });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    let reason = '';
+    try { reason = String(JSON.parse(body)?.error?.message || ''); } catch {}
+    throw new Error(`OpenAI TTS failed: ${response.status} ${reason.slice(0, 200)}`);
+  }
+  const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (contentType && !contentType.startsWith('audio/') && !['application/octet-stream', 'binary/octet-stream'].includes(contentType)) {
+    throw new Error('OpenAI TTS returned non-audio content');
+  }
+  const audioBuffer = await response.arrayBuffer();
+  if (!audioBuffer.byteLength) throw new Error('OpenAI TTS returned empty audio');
   return `data:audio/mpeg;base64,${Buffer.from(audioBuffer).toString('base64')}`;
 }
 
