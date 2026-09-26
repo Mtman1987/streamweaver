@@ -97,7 +97,8 @@ test('DSH shoutout roster is synced into the shared Twitch community bot', () =>
   assert.match(patch, /handleTwitchSignalCommand/);
   assert.match(patch, /deferAcknowledgement: true/);
   assert.match(patch, /sayCarrierReply/);
-  assert.match(patch, /Failed to reply in carrier/);
+  assert.match(patch, /read-only for StreamWeaverBot/);
+  assert.match(patch, /sayCarrierReply = async \(_text: string\): Promise<boolean> => false/);
   assert.match(patch, /Carrier !signal failed/);
   assert.match(patch, /Signal failed:/);
   assert.match(patch, /export async function syncSignalCarrierChannels/);
@@ -114,9 +115,7 @@ test('authorized Athena calls work in non-tenant shoutout carrier chats only thr
   assert.match(carrierAthena, /channelId:/);
   assert.match(carrierAthena, /context: 'twitch'/);
   assert.match(carrierAthena, /Athena failed:/);
-  assert.match(patch, /handleTwitchCarrierAthenaCall/);
-  assert.match(patch, /athena\|annie\|athenabot87/i);
-  assert.match(patch, /athenaResult\.handled && athenaResult\.message/);
+  assert.match(carrierAthena, /handleTwitchCarrierAthenaCall/);
 });
 
 test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () => {

@@ -12,6 +12,7 @@ import {
 } from '@/lib/tenant';
 import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { sendTwitchChatMessage } from '@/services/twitch';
+import { getLoungeDiagnosticJournal } from './lounge-diagnostic-journal';
 
 export type StellaLoungeIntent =
   | 'overview'
@@ -290,6 +291,8 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
     snapshot.overlay.available
       ? `- What the Lounge overlay currently knows: Spotlight ${snapshot.overlay.spotlight || 'none'}; visible media ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}.`
       : '- Lounge overlay state is unavailable; do not guess what is on screen.',
+    `- Recent Lounge diagnostic journal: ${getLoungeDiagnosticJournal(12).length ? getLoungeDiagnosticJournal(12).map((entry) => `[${entry.level}] ${entry.subsystem}/${entry.event}: ${entry.detail}`).join(' | ') : 'no recorded faults or transitions yet'}.`,
+    '- Use the diagnostic journal for why/how questions. State only causes the journal actually proves; if it records symptoms but not a cause, say the cause is not yet proven.',
     '- The universal Nebula Arcade join command is: spmt join.',
     '- The human support handoff begins with: !mtfixit.',
   ].join('\n');
