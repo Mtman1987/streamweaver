@@ -31,17 +31,6 @@ function cleanText(value: unknown, fallback = '', max = 120): string {
   return String(value || fallback).trim().slice(0, max);
 }
 
-function rarityScore(value: unknown): number {
-  const rarity = String(value || '').toLowerCase();
-  if (rarity.includes('secret') || rarity.includes('legendary')) return 7;
-  if (rarity.includes('hyper')) return 6;
-  if (rarity.includes('ultra') || rarity.includes('epic')) return 5;
-  if (rarity.includes('holo')) return 4;
-  if (rarity.includes('rare')) return 3;
-  if (rarity.includes('uncommon')) return 2;
-  return 1;
-}
-
 export function normalizeCardPackEvent(input: any): CardPackOpenedEvent {
   const rawCards = Array.isArray(input?.cards || input?.pack) ? (input.cards || input.pack) : [];
   const cards: CardPackCard[] = rawCards.map((card: any) => ({
@@ -52,9 +41,9 @@ export function normalizeCardPackEvent(input: any): CardPackOpenedEvent {
     setCode: cleanText(card?.setCode, '', 40) || undefined,
     imageUrl: cleanText(card?.imageUrl || card?.cardImageUrl, '', 1000),
   })).filter((card: CardPackCard) => card.imageUrl).slice(0, 12);
-  const featureCard = cards.length
-    ? [...cards].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0]
-    : undefined;
+  // The pack animation always builds to the final card. Rarity never gates
+  // the feature phase; even an all-common pack gets a large final reveal.
+  const featureCard = cards.length ? cards[cards.length - 1] : undefined;
   const game = resolveCardPackGame(input);
   const eventId = cleanText(input?.eventId || input?.packId || `${game}-${Date.now()}`, '', 120).replace(/[^a-zA-Z0-9._:-]+/g, '-');
   return {

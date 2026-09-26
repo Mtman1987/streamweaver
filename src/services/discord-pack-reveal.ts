@@ -1,4 +1,3 @@
-import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { normalizeCardPackEvent, type CardPackGame } from '@/lib/card-pack-event';
 import { queueCardPackGif, waitForCardPackGif } from './card-pack-render-client';
 import { editDiscordMessage, editDiscordMessageWithBinaryAttachment } from './discord-local';
@@ -48,29 +47,18 @@ export function formatPackGrid(cards: PackRevealCard[], highlightRow: number): s
   return ['```ansi', rows, '```'].join('\n');
 }
 
-function formatCardInfoGrid(cards: PackRevealCard[]) {
-  const cell = (card: PackRevealCard, index: number) => {
-    const nameRaw = `${index + 1}. ${String(card?.name || 'Unknown')}`;
-    const name = (nameRaw.length > 18 ? nameRaw.slice(0, 17) + '…' : nameRaw).padEnd(18, ' ');
-    const rarity = String(card?.rarity || '?').slice(0, 1).toUpperCase();
-    const set = String(card?.setCode || '').slice(0, 5);
-    const number = String(card?.number || '?');
-    const metaRaw = [rarity, set, `#${number}`].filter(Boolean).join(' · ');
-    const meta = (metaRaw.length > 18 ? metaRaw.slice(0, 17) + '…' : metaRaw).padEnd(18, ' ');
-    return { name, meta };
-  };
-  const lines: string[] = [];
-  for (let index = 0; index < cards.length; index += 3) {
-    const row = cards.slice(index, index + 3).map((card, offset) => cell(card, index + offset));
-    lines.push(row.map((entry) => entry.name).join(' │ ').trimEnd());
-    lines.push(row.map((entry) => entry.meta).join(' │ ').trimEnd());
-    if (index + 3 < cards.length) lines.push('');
-  }
-  return ['```text', ...lines, '```'].join('\n');
-}
-
-function galleryEmbeds(cards: PackRevealCard[], embedUrl: string): Record<string, unknown>[] {
-  return cards.slice(1).filter((card) => card?.imageUrl).map((card) => ({ url: embedUrl, image: { url: card.imageUrl } }));
+function cardColumnFields(cards: PackRevealCard[]) {
+  const columns = [0, 1, 2].map((column) => cards.filter((_, index) => index % 3 === column));
+  return columns.map((cardsInColumn) => ({
+    name: '\u200B',
+    value: cardsInColumn.map((card) => {
+      const number = card.number ? `#${card.number}` : '';
+      const set = card.setCode ? String(card.setCode) : '';
+      const meta = [card.rarity || 'Unknown', set, number].filter(Boolean).join(' · ');
+      return `**${cards.indexOf(card) + 1}. ${card.name}**\n${meta || 'Card'}`;
+    }).join('\n\n') || '\u200B',
+    inline: true,
+  }));
 }
 
 type PackRevealInput = Omit<StructuredDiscordReplyInput, 'message' | 'imageUrl' | 'extraEmbeds' | 'embedUrl'> & {
@@ -83,40 +71,46 @@ type PackRevealInput = Omit<StructuredDiscordReplyInput, 'message' | 'imageUrl' 
   setName?: string;
 };
 
-function revealStep(input: PackRevealInput, highlightRow: number, speaker: DiscordReplySpeaker): StructuredDiscordReplyInput {
-  const rows = packRevealRows(input.cards);
-  const rowCards = highlightRow >= 0 ? rows[highlightRow] || [] : [];
-  const spotlight = rowCards.length ? rowCards : [input.featureCard].filter(Boolean) as PackRevealCard[];
-  const embedUrl = `${getConfiguredAppUrl()}/pokedex`;
+function buildPackReply(
+  input: PackRevealInput,
+  speaker: DiscordReplySpeaker,
+  state: 'pending' | 'ready' | 'unavailable',
+): StructuredDiscordReplyInput {
+  const finalCard = input.cards[input.cards.length - 1];
   return {
     ...input,
     speaker,
-    message: formatPackGrid(input.cards, highlightRow),
-    imageUrl: spotlight[0]?.imageUrl,
-    embedUrl,
-    extraEmbeds: galleryEmbeds(spotlight, embedUrl),
+    message: [
+      `🃏 **${input.setName || input.title || 'Booster Pack'} opened**`,
+      state === 'pending' ? '🎞️ **PACK ANIMATION INCOMING…**' : '',
+      state === 'ready' && finalCard ? `⭐ Final card: **${finalCard.name}** — ${finalCard.rarity || 'Card'}` : '',
+      state === 'unavailable' ? '🎞️ Pack animation unavailable for this opening.' : '',
+    ].filter(Boolean).join('\n'),
+    fields: [
+      ...cardColumnFields(input.cards),
+      ...(Array.isArray(input.fields) ? input.fields : []),
+    ],
+    imageUrl: state === 'ready' ? 'attachment://pack-animation.gif' : undefined,
+    extraEmbeds: [],
+    embedUrl: undefined,
   };
 }
 
-async function applyStep(channelId: string, messageId: string, step: StructuredDiscordReplyInput): Promise<void> {
-  const payload = await buildStructuredDiscordReplyPayload(step);
-  const patched = await editWebhookMessage(channelId, messageId, { content: '', embeds: payload.embeds }).catch(() => false);
-  if (!patched) await editDiscordMessage(channelId, messageId, { content: '', embeds: payload.embeds });
+async function applyStaticReply(
+  input: PackRevealInput,
+  messageId: string,
+  speaker: DiscordReplySpeaker,
+  state: 'pending' | 'unavailable',
+) {
+  const payload = await buildStructuredDiscordReplyPayload(buildPackReply(input, speaker, state));
+  const patched = await editWebhookMessage(input.channelId, messageId, { content: '', embeds: payload.embeds }).catch(() => false);
+  if (!patched) {
+    await editDiscordMessage(input.channelId, messageId, { content: '', embeds: payload.embeds });
+  }
 }
 
 async function applyGif(input: PackRevealInput, messageId: string, speaker: DiscordReplySpeaker, gifUrl: string) {
-  const feature = input.featureCard;
-  const step: StructuredDiscordReplyInput = {
-    ...revealStep({ ...input, featureCard: feature }, -1, speaker),
-    message: [
-      feature ? `⭐ **${feature.name}** — ${feature.rarity || 'Rare'}` : 'Pack opened.',
-      formatCardInfoGrid(input.cards),
-    ].join('\n'),
-    fields: Array.isArray(input.fields) ? input.fields : [],
-    imageUrl: 'attachment://pack-animation.gif',
-    extraEmbeds: [],
-  };
-  const payload = await buildStructuredDiscordReplyPayload(step);
+  const payload = await buildStructuredDiscordReplyPayload(buildPackReply(input, speaker, 'ready'));
   const media = await fetch(gifUrl).catch(() => null);
   if (!media?.ok) throw new Error(`Could not fetch rendered pack GIF: ${media?.status || 'network error'}`);
   const fileBuffer = Buffer.from(await media.arrayBuffer());
@@ -138,23 +132,6 @@ async function applyGif(input: PackRevealInput, messageId: string, speaker: Disc
   }
 }
 
-async function legacyFallback(input: PackRevealInput, messageId: string, speaker: DiscordReplySpeaker) {
-  const rowCount = packRevealRows(input.cards).length;
-  const stepMs = input.stepMs ?? PACK_REVEAL_STEP_MS;
-  for (let row = 1; row < rowCount; row += 1) {
-    await new Promise((resolve) => setTimeout(resolve, stepMs));
-    await applyStep(input.channelId, messageId, revealStep(input, row, speaker));
-  }
-  await new Promise((resolve) => setTimeout(resolve, stepMs));
-  const feature = input.featureCard;
-  await applyStep(input.channelId, messageId, {
-    ...revealStep({ ...input, featureCard: feature }, -1, speaker),
-    message: feature
-      ? `${formatPackGrid(input.cards, -1)}\n⭐ **${feature.name}** — ${feature.rarity || 'Rare'}`
-      : formatPackGrid(input.cards, -1),
-  });
-}
-
 /**
  * Posts immediately, then asks DSH to record the shared browser reveal and
  * edits this same Discord message with the resulting GIF. Pack inventory is
@@ -162,21 +139,15 @@ async function legacyFallback(input: PackRevealInput, messageId: string, speaker
  * row-edit reveal remains as the safe fallback.
  */
 export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<void> {
-  const rowCount = packRevealRows(input.cards).length;
-  const first = revealStep(input, 0, {
+  if (!input.cards.length) return;
+  const speaker = {
     botName: input.botName || 'StreamWeaver',
     tenantId: input.tenantId,
     stableId: `${input.tenantId || 'global'}:${(input.botName || 'streamweaver').toLowerCase()}`,
-  });
-  first.message = [
-    `🃏 **Opening ${input.setName || input.title || 'booster pack'}...**`,
-    '🎞️ **PACK ANIMATION INCOMING…**',
-    formatCardInfoGrid(input.cards),
-  ].join('\n');
-  first.fields = Array.isArray(input.fields) ? input.fields : [];
-  const sent = await sendStructuredDiscordReply(first);
+  };
+  const sent = await sendStructuredDiscordReply(buildPackReply(input, speaker, 'pending'));
   const messageId = sent.messageId;
-  if (!messageId || rowCount < 1) return;
+  if (!messageId) return;
 
   void (async () => {
     try {
@@ -194,15 +165,15 @@ export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<vo
         await applyGif(input, messageId, sent.speaker, gifUrl);
         return;
       }
-      console.warn(`[Pack Reveal] GIF render did not finish for ${event.eventId}; using edit fallback.`);
+      console.warn(`[Pack Reveal] GIF render did not finish for ${event.eventId}.`);
     } catch (error) {
-      console.warn('[Pack Reveal] GIF render unavailable; using edit fallback:', error instanceof Error ? error.message : error);
+      console.warn('[Pack Reveal] GIF render unavailable:', error instanceof Error ? error.message : error);
     }
 
     try {
-      await legacyFallback(input, messageId, sent.speaker);
+      await applyStaticReply(input, messageId, sent.speaker, 'unavailable');
     } catch (error) {
-      console.error('[Pack Reveal] Failed to animate pack reveal:', error);
+      console.error('[Pack Reveal] Failed to update unavailable pack state:', error);
     }
   })();
 }

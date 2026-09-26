@@ -46,10 +46,9 @@ function legacyToEvent(data: any): CardPackOpenedEvent | null {
     imageUrl: String(card?.imageUrl || card?.cardImageUrl || ''),
   })).filter((card: any) => card.imageUrl);
   if (!normalizedCards.length) return null;
-  const featureCard = [...normalizedCards].sort((a: any, b: any) => {
-    const score = (rarity: string) => /secret|legendary/i.test(rarity) ? 7 : /ultra|epic/i.test(rarity) ? 5 : /holo/i.test(rarity) ? 4 : /rare/i.test(rarity) ? 3 : /uncommon/i.test(rarity) ? 2 : 1;
-    return score(b.rarity) - score(a.rarity);
-  })[0];
+  // Legacy live events still end on the actual final card in the pack.
+  // Rarity never gates the featured close-up.
+  const featureCard = normalizedCards[normalizedCards.length - 1];
   return {
     eventId: String(payload?.eventId || payload?.packId || `${game}-${Date.now()}`),
     type: 'card-pack-opened',
@@ -91,12 +90,16 @@ export default function CardPackOverlay() {
       if (image.complete) resolve();
     }));
     const ready = Promise.all(images);
-    const timeout = new Promise<void>((resolve) => later(resolve, 15_000));
-    void Promise.all([new Promise<void>((resolve) => later(resolve, 1_400)), Promise.race([ready, timeout])]).then(() => {
+    const preloadTimeoutMs = captureMode ? 2_500 : 15_000;
+    const packHoldMs = captureMode ? 900 : 1_400;
+    const timeout = new Promise<void>((resolve) => later(resolve, preloadTimeoutMs));
+    void Promise.all([new Promise<void>((resolve) => later(resolve, packHoldMs)), Promise.race([ready, timeout])]).then(() => {
       if (sequence.current !== current) return;
       setPhase('deal');
-      later(() => setPhase('flip'), 3_000);
-      later(() => setPhase('feature'), 13_000);
+      later(() => setPhase('flip'), captureMode ? 1_600 : 3_000);
+      // DSH records capture-mode packs for 14 seconds total. Put the final
+      // featured card on screen early enough that every GIF ends on it.
+      later(() => setPhase('feature'), captureMode ? 6_500 : 13_000);
       if (!captureMode) later(() => { setPhase('hidden'); setEvent(null); }, 27_000);
     });
   };
