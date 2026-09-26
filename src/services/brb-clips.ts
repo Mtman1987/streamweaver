@@ -140,6 +140,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
   await new Promise(r => setTimeout(r, 2000));
 
   let spotlightActive = false;
+  let noMediaNotified = false;
   while (!runtime.stopRequested) {
     const useViewerClips = await getClipModeFromStorage(tenantId);
     let targetUsers: string[];
@@ -166,6 +167,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
       }
 
       playedClip = true;
+      noMediaNotified = false;
       spotlightActive = false;
       const clip = clips[Math.floor(Math.random() * clips.length)];
       const embedUrl = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
@@ -201,11 +203,15 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
       if (liveSpotlight && !spotlightActive) {
         bc({ type: 'brb-spotlight' }, tenantId);
         spotlightActive = true;
+        noMediaNotified = false;
         console.log('[BRB] No clips available; showing live Community Spotlight');
       } else if (!liveSpotlight && spotlightActive) {
         bc({ type: 'brb-no-media' }, tenantId);
         spotlightActive = false;
-      } else if (!liveSpotlight) {
+        noMediaNotified = true;
+      } else if (!liveSpotlight && !noMediaNotified) {
+        bc({ type: 'brb-no-media' }, tenantId);
+        noMediaNotified = true;
         console.warn('[BRB] No clips or live Spotlight; keeping the Lounge visible');
       }
       const retryAt = Date.now() + 15_000;

@@ -13,10 +13,11 @@ export default function BRBPlayer() {
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnect: NodeJS.Timeout;
+    let stopped = false;
 
     const playClip = async (clipUrl: string, thumbnailUrl: string) => {
       const match = clipUrl.match(/clip=([^&]+)/);
-      if (!match) { setActive(false); return; }
+      if (!match) { setActive(false); notifyParent(false); return; }
       const clipId = match[1].split('/').pop()!;
 
       try {
@@ -45,18 +46,25 @@ export default function BRBPlayer() {
             setSpotlight(false);
             setActive(true);
             if (videoRef.current) videoRef.current.muted = false;
-          }).catch(err => { console.warn('[BRB] Clip playback failed:', err); setActive(false); });
+          }).catch(err => { console.warn('[BRB] Clip playback failed:', err); setActive(false); notifyParent(false); });
         }
       } catch (err) {
         console.error('[BRB] Clip load failed:', err);
         setActive(false);
+        notifyParent(false);
+      }
+    };
+
+    const notifyParent = (on: boolean, mode: 'clip' | 'spotlight' = 'clip') => {
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: on, mode }, 'https://spmt.live');
       }
     };
 
     const connect = () => {
       try {
         ws = new WebSocket(getBrowserWebSocketUrl(getOverlayTenantId() || undefined));
-        ws.onclose = () => { reconnect = setTimeout(connect, 3000); };
+        ws.onclose = () => { if (stopped) return; setActive(false); setSpotlight(false); notifyParent(false); reconnect = setTimeout(connect, 3000); };
         ws.onerror = () => {};
         ws.onmessage = (e) => {
           try {
@@ -64,9 +72,11 @@ export default function BRBPlayer() {
             if (msg.type === 'brb-start') {
               setActive(false);
               setSpotlight(false);
+              notifyParent(false);
             }
             if (msg.type === 'brb-clip' && msg.payload) {
               setClipUser(msg.payload.user || '');
+              notifyParent(true, 'clip');
               playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl);
             }
             if (msg.type === 'brb-spotlight') {
@@ -74,10 +84,12 @@ export default function BRBPlayer() {
               setClipUser('');
               setSpotlight(true);
               setActive(true);
+              notifyParent(true, 'spotlight');
             }
             if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
               setActive(false);
               setSpotlight(false);
+              notifyParent(false);
               if (videoRef.current) videoRef.current.src = '';
             }
           } catch {}
@@ -88,12 +100,12 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { clearTimeout(reconnect); ws?.close(); };
+    return () => { stopped = true; clearTimeout(reconnect); ws?.close(); notifyParent(false); };
   }, []);
 
   return (
     <div style={{
-      width: '100vw', height: '100vh', background: active ? '#0e0e10' : 'transparent',
+      width: '100vw', height: '100vh', background: active && !spotlight ? '#0e0e10' : 'transparent',
       display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
     }}>
       <video
@@ -101,14 +113,6 @@ export default function BRBPlayer() {
         style={{ width: '100%', height: '100%', objectFit: 'contain', display: spotlight ? 'none' : 'block' }}
         autoPlay
       />
-      {active && spotlight && (
-        <iframe
-          src="https://hearmeout-main.fly.dev/spotlight-media/player?v=live-spotlight-3"
-          title="Live Community Spotlight"
-          allow="autoplay; fullscreen"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
-        />
-      )}
       {active && spotlight && (
         <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
           background: 'rgba(5,12,30,.83)', border: '1px solid rgba(103,232,249,.65)',
