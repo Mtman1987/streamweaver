@@ -15,7 +15,7 @@ import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { autoTranslateIncoming, isTranslationActive, handleOneOffTranslation, isUserAutoTranslate } from './translation-manager';
 import { publishTranslationSubtitleEvent } from './translation-subtitle-events';
 import { handleLeaderboardCommand } from './leaderboard-commands';
-import { startBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
+import { startBRB, startTestBRB, stopBRB, toggleClipMode, getClipMode } from './brb-clips';
 import { handleGamble as handleClassicGamble, handleRoll, handleDouble } from './gamble/classic-gamble';
 import { getPoints, getPointBalance, setPoints, settleWager } from './points';
 import { getAIConfig } from './ai-provider';
@@ -3754,6 +3754,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         
 
         
+        // Exercise the BRB overlay with live community streams. The browser
+        // keeps one Twitch.Player and rotates its channel every 30 seconds.
+        if (actualMessage.toLowerCase() === '!testbrb') {
+            if (tenantId === 'spacemountainlive' && (tags.mod || tags.badges?.broadcaster)) {
+                const count = await startTestBRB(broadcasterUsername, tenantId).catch(err => {
+                    console.error('[TestBRB] Error:', err);
+                    return 0;
+                });
+                await reply(count ? '🎬 Testing community streams. Use !back to stop.' : 'No live community streams found for the BRB test.', 'bot').catch(() => {});
+            }
+            return;
+        }
+
         // Handle !brb command
         if (actualMessage.toLowerCase().includes('be right back') || actualMessage.toLowerCase() === '!brb') {
             if (tags.mod || tags.badges?.broadcaster) {
