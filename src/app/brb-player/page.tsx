@@ -10,6 +10,9 @@ export default function BRBPlayer() {
   const [clipUser, setClipUser] = useState('');
   const [spotlight, setSpotlight] = useState(false);
   const [gifUrl, setGifUrl] = useState('');
+  const [embedUrl, setEmbedUrl] = useState('');
+  const embedLoadedRef = useRef<() => void>(() => {});
+  const embedFailedRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -22,9 +25,12 @@ export default function BRBPlayer() {
     let autoIndex = 0;
     let autoPlaylist: { clips: any[]; gifs: { url: string; user: string }[] } = { clips: [], gifs: [] };
     let playbackEpoch = 0;
+    let embedTimer: ReturnType<typeof setTimeout>;
     let lastGif: { url: string; user: string } | undefined;
 
     const showGif = (gif?: { url: string; user: string }) => {
+      clearTimeout(embedTimer);
+      setEmbedUrl('');
       if (!gif?.url) { setActive(false); notifyParent(false); return; }
       videoRef.current?.pause();
       setClipUser(gif.user || '');
@@ -34,9 +40,27 @@ export default function BRBPlayer() {
       notifyParent(true, 'gif');
     };
 
+    const playEmbed = (clipId: string, epoch: number, fallback?: { url: string; user: string }) => {
+      if (epoch !== playbackEpoch || stopped) return;
+      const url = `https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(window.location.hostname)}&autoplay=true&muted=false`;
+      embedLoadedRef.current = () => {
+        if (epoch !== playbackEpoch || stopped) return;
+        clearTimeout(embedTimer);
+        setActive(true);
+        notifyParent(true, 'clip');
+      };
+      embedFailedRef.current = () => { if (epoch === playbackEpoch && !stopped) showGif(fallback); };
+      clearTimeout(embedTimer);
+      embedTimer = setTimeout(() => embedFailedRef.current(), 8_000);
+      videoRef.current?.pause();
+      setEmbedUrl(url);
+    };
+
     const playClip = async (clipUrl: string, thumbnailUrl: string, fallback?: { url: string; user: string }) => {
       const epoch = ++playbackEpoch;
       lastGif = fallback;
+      clearTimeout(embedTimer);
+      setEmbedUrl('');
       setGifUrl('');
       const match = clipUrl.match(/clip=([^&]+)/);
       if (!match) { showGif(fallback); return; }
@@ -73,11 +97,11 @@ export default function BRBPlayer() {
             setActive(true);
             notifyParent(true, 'clip');
             if (videoRef.current) videoRef.current.muted = false;
-          }).catch((err: unknown) => { console.warn('[BRB] Clip playback failed:', err); if (epoch === playbackEpoch) showGif(fallback); });
+          }).catch((err: unknown) => { console.warn('[BRB] Clip playback failed:', err); if (epoch === playbackEpoch) playEmbed(clipId, epoch, fallback); });
         }
       } catch (err) {
         console.error('[BRB] Clip load failed:', err);
-        if (epoch === playbackEpoch) showGif(fallback);
+        if (epoch === playbackEpoch) playEmbed(clipId, epoch, fallback);
       }
     };
 
@@ -91,7 +115,9 @@ export default function BRBPlayer() {
       automatic = false;
       clearTimeout(autoTimer);
       playbackEpoch++;
+      clearTimeout(embedTimer);
       videoRef.current?.pause();
+      setEmbedUrl('');
       setGifUrl('');
       setActive(false);
       notifyParent(false);
@@ -158,6 +184,11 @@ export default function BRBPlayer() {
             if (msg.type === 'brb-start') {
               if (automatic) stopAutomatic();
               manual = true;
+              playbackEpoch++;
+              clearTimeout(embedTimer);
+              videoRef.current?.pause();
+              setEmbedUrl('');
+              setGifUrl('');
               setActive(false);
               setSpotlight(false);
               notifyParent(false);
@@ -176,6 +207,8 @@ export default function BRBPlayer() {
             if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
               if (msg.type === 'brb-stop') manual = false;
               playbackEpoch++;
+              clearTimeout(embedTimer);
+              setEmbedUrl('');
               setGifUrl('');
               setActive(false);
               setSpotlight(false);
@@ -190,7 +223,7 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(autoTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
+    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(autoTimer); clearTimeout(embedTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
   }, []);
 
   return (
@@ -200,9 +233,10 @@ export default function BRBPlayer() {
     }}>
       <video
         ref={videoRef}
-        style={{ width: '100%', height: '100%', objectFit: 'contain', display: spotlight || gifUrl ? 'none' : 'block' }}
+        style={{ width: '100%', height: '100%', objectFit: 'contain', display: spotlight || gifUrl || embedUrl ? 'none' : 'block' }}
         autoPlay
       />
+      {embedUrl && <iframe src={embedUrl} title="Twitch BRB clip" allow="autoplay; fullscreen" onLoad={() => embedLoadedRef.current()} onError={() => embedFailedRef.current()} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />}
       {active && gifUrl && <img onError={() => { setGifUrl(''); setActive(false); if (window.parent !== window) window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: false, mode: 'gif' }, 'https://spmt.live'); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
       {active && spotlight && (
         <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
