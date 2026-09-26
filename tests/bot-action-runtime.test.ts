@@ -20,6 +20,7 @@ test('publishes a persona-neutral suite action catalog', () => {
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'hmo.voice.bridge.control'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'sw.image.generate'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'nebula.chatwars.stream-battle'));
+  assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'nebula.wordgame.stream-battle'));
   assert.equal(BOT_ACTION_CATALOG.find((entry) => entry.id === 'hmo.bot.control')?.minimumRole, 'member');
   assert.equal(BOT_ACTION_CATALOG.find((entry) => entry.id === 'hmo.voice.bridge.control')?.minimumRole, 'member');
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Athena'), false);
@@ -39,6 +40,25 @@ test('detects explicit Chat Wars battle setup without requiring @ prefixes', asy
   });
   const question = await detectBotAction('Stella show me the Chat Wars battle between @alpha and @beta');
   assert.notEqual(question?.action, 'nebula.chatwars.stream-battle');
+});
+
+test('detects Phrase Guess and Word Chain stream battles safely', async () => {
+  assert.deepEqual(await detectBotAction('Stella start Phrase Guess against @alpha'), {
+    action: 'nebula.wordgame.stream-battle',
+    args: { gameId: 'phraseguess', channels: 'alpha' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella start Word Chain with alpha and beta'), {
+    action: 'nebula.wordgame.stream-battle',
+    args: { gameId: 'wordchain', channels: 'alpha,beta' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella start Word Guess against beta'), {
+    action: 'nebula.wordgame.stream-battle',
+    args: { gameId: 'wordchain', channels: 'beta' },
+    detection: 'explicit',
+  });
+  assert.notEqual((await detectBotAction('Stella show me the Phrase Guess battle with @alpha'))?.action, 'nebula.wordgame.stream-battle');
 });
 
 test('detects remaining button-equivalent actions before conversational AI', async () => {
