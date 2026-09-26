@@ -10,6 +10,7 @@ import { readSharedChatReplay } from './shared-chat-ingestion';
 import { recentTwitchChatters } from './brb-viewer-targets';
 
 const runtimeByTenant = new Map<string, { isPlaying: boolean; stopRequested: boolean }>();
+const testBRBActiveTenants = new Set<string>();
 
 const CLIP_MODE_FILE = 'brb-clip-mode.json';
 
@@ -220,6 +221,17 @@ export async function getBRBMediaPlaylist(broadcasterName: string, tenantId: str
   return { clips, gifs };
 }
 
+export async function startTestBRB(broadcasterName: string, tenantId: string): Promise<number> {
+  if (tenantId !== 'spacemountainlive') throw new Error('The stream test is only available in the SpaceMountain lounge');
+  const users = await getCommunityClipTargets(broadcasterName, tenantId);
+  if (!users.length) return 0;
+  stopBRB(tenantId);
+  testBRBActiveTenants.add(tenantId);
+  bc({ type: 'testbrb-start', payload: { users, duration: 30_000 } }, tenantId);
+  console.log(`[TestBRB:${tenantId}] Trying ${users.length} live community channels`);
+  return users.length;
+}
+
 export async function startBRB(broadcasterName: string, tenantId?: string): Promise<void> {
   // Resolve tenant from broadcaster name if not provided
   if (!tenantId) {
@@ -233,6 +245,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
     } catch {}
   }
   if (!tenantId) throw new Error('BRB playback requires tenant context');
+  testBRBActiveTenants.delete(tenantId);
   const runtime = runtimeByTenant.get(tenantId) || { isPlaying: false, stopRequested: false };
   runtimeByTenant.set(tenantId, runtime);
   if (runtime.isPlaying) { console.log(`[BRB:${tenantId}] Already playing`); return; }
@@ -296,7 +309,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
     }
   }
 
-  bc({ type: 'brb-stop' }, tenantId);
+  if (!testBRBActiveTenants.has(tenantId)) bc({ type: 'brb-stop' }, tenantId);
   if (!loungeBRB) bc({ type: 'obs-switch-scene', payload: { sceneName: liveScene } }, tenantId);
 
   runtime.isPlaying = false;
@@ -308,6 +321,7 @@ export function stopBRB(tenantId?: string): void {
     if (process.env.NODE_ENV === 'production') throw new Error('Stopping BRB requires tenant context');
     return;
   }
+  testBRBActiveTenants.delete(tenantId);
   const runtime = runtimeByTenant.get(tenantId);
   if (runtime) runtime.stopRequested = true;
 }
