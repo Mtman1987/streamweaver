@@ -97,7 +97,8 @@ test('DSH shoutout roster is synced into the shared Twitch community bot', () =>
   assert.match(patch, /handleTwitchSignalCommand/);
   assert.match(patch, /deferAcknowledgement: true/);
   assert.match(patch, /sayCarrierReply/);
-  assert.match(patch, /Failed to reply in carrier/);
+  assert.match(patch, /read-only for StreamWeaverBot/);
+  assert.match(patch, /sayCarrierReply = async \(_text: string\): Promise<boolean> => false/);
   assert.match(patch, /Carrier !signal failed/);
   assert.match(patch, /Signal failed:/);
   assert.match(patch, /export async function syncSignalCarrierChannels/);
