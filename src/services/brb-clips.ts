@@ -133,6 +133,91 @@ async function getEligibleViewerClipTargets(chatters: string[], broadcasterName:
   return [...new Set(eligible.map(u => u.toLowerCase()))];
 }
 
+const CHAT_TAG_URL = String(process.env.CHAT_TAG_BASE_URL || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
+const DSH_URL = 'https://discord-stream-hub-new.fly.dev';
+
+export type BRBMedia = {
+  clips: { clipUrl: string; thumbnailUrl: string; user: string; duration: number }[];
+  gifs: { url: string; user: string }[];
+};
+
+async function getCommunityClipTargets(broadcasterName: string, tenantId: string): Promise<string[]> {
+  let logins: string[] = [];
+  try {
+    const response = await fetch(`${CHAT_TAG_URL}/api/discord/live-members`, {
+      signal: AbortSignal.timeout(5_000), cache: 'no-store',
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data.liveMembers)) {
+        logins = data.liveMembers.map((row: any) => String(row.twitchUsername || row.username || '').toLowerCase());
+      }
+    }
+  } catch (error) {
+    console.warn('[BRB] Live community list unavailable:', error);
+  }
+  if (!logins.length) {
+    try {
+      const response = await fetch(`${DSH_URL}/api/community-spotlight`, {
+        signal: AbortSignal.timeout(5_000), cache: 'no-store',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        logins = (Array.isArray(data.users) ? data.users : [])
+          .map((row: any) => String(row.twitchLogin || '').toLowerCase());
+      }
+    } catch (error) {
+      console.warn('[BRB] Community roster unavailable:', error);
+    }
+  }
+  return getEligibleViewerClipTargets(logins.filter((login) => /^[a-z0-9_]{3,25}$/.test(login)), broadcasterName, tenantId);
+}
+
+async function getStoredShoutoutGifs(users: string[]): Promise<BRBMedia['gifs']> {
+  try {
+    const query = users.length ? `?users=${encodeURIComponent(users.slice(0, 20).join(','))}` : '';
+    const response = await fetch(`${DSH_URL}/api/lounge/brb-gifs${query}`, {
+      signal: AbortSignal.timeout(5_000), cache: 'no-store',
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (Array.isArray(data.gifs) ? data.gifs : [])
+      .filter((gif: any) => typeof gif.url === 'string' && gif.url.startsWith(`${DSH_URL}/api/media/`))
+      .map((gif: any) => ({ url: gif.url, user: String(gif.user || '') })).slice(0, 100);
+  } catch (error) {
+    console.warn('[BRB] Stored shoutout GIF lookup unavailable:', error);
+    return [];
+  }
+}
+
+export async function getBRBMediaPlaylist(broadcasterName: string, tenantId: string): Promise<BRBMedia> {
+  const chatters = await getEligibleViewerClipTargets(await getChatters(tenantId, broadcasterName), broadcasterName, tenantId);
+  const community = await getCommunityClipTargets(broadcasterName, tenantId);
+  const chatTargets = [...new Set(chatters)].slice(0, 12);
+  const communityTargets = [...new Set(community)].filter((user) => !chatTargets.includes(user)).slice(0, 12);
+  const clips: BRBMedia['clips'] = [];
+  const fetchTargetClips = async (targets: string[]) => {
+  for (const user of targets) {
+    const userClips = await fetchClipsForUser(user);
+    const clip = userClips[Math.floor(Math.random() * userClips.length)];
+    if (!clip?.url) continue;
+    clips.push({
+      clipUrl: clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip='),
+      thumbnailUrl: clip.thumbnail_url || '',
+      user: clip.broadcaster_name || user,
+      duration: Math.floor((clip.duration || 30) * 1000) + 700,
+    });
+  }
+  };
+  await fetchTargetClips(chatTargets);
+  if (!clips.length) await fetchTargetClips(communityTargets);
+  // GIFs are a second media source if clip discovery or browser playback fails.
+  const gifs = await getStoredShoutoutGifs([...chatTargets, ...communityTargets]);
+  if (!gifs.length) gifs.push(...await getStoredShoutoutGifs([]));
+  console.log(`[BRB] Media: ${chatters.length} chatters, ${community.length} live community creators, ${clips.length} clips, ${gifs.length} stored GIFs`);
+  return { clips, gifs };
+}
+
 export async function startBRB(broadcasterName: string, tenantId?: string): Promise<void> {
   // Resolve tenant from broadcaster name if not provided
   if (!tenantId) {
@@ -165,87 +250,45 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
 
   await new Promise(r => setTimeout(r, 2000));
 
-  let spotlightActive = false;
   let noMediaNotified = false;
+  let gifIndex = 0;
   while (!runtime.stopRequested) {
-    const useViewerClips = await getClipModeFromStorage(tenantId);
-    let targetUsers: string[];
-
-    if (useViewerClips) {
-      const chatters = await getChatters(tenantId, broadcasterName);
-      const viewers = await getEligibleViewerClipTargets(chatters, broadcasterName, tenantId);
-      targetUsers = viewers.length > 0 ? viewers : [broadcasterName];
-      console.log(`[BRB] Viewer mode: ${targetUsers.length} targets`);
-    } else {
-      targetUsers = [broadcasterName];
-      console.log(`[BRB] Broadcaster mode: ${broadcasterName}`);
+    const useViewerClips = loungeBRB || await getClipModeFromStorage(tenantId);
+    const playlist: BRBMedia = useViewerClips
+      ? await getBRBMediaPlaylist(broadcasterName, tenantId)
+      : { clips: [], gifs: [] };
+    if (!useViewerClips) {
+      const ownClips = await fetchClipsForUser(broadcasterName);
+      playlist.clips = ownClips.slice(0, 1).map((clip: any) => ({
+        clipUrl: clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip='),
+        thumbnailUrl: clip.thumbnail_url || '',
+        user: clip.broadcaster_name || broadcasterName,
+        duration: Math.floor((clip.duration || 30) * 1000) + 700,
+      }));
     }
 
-    let playedClip = false;
-    for (const user of targetUsers) {
+    let played = false;
+    for (const clip of playlist.clips) {
       if (runtime.stopRequested) break;
-
-      console.log(`[BRB] Fetching clips for ${user}...`);
-      const clips = await fetchClipsForUser(user);
-      if (clips.length === 0) {
-        console.log(`[BRB] No clips for ${user}`);
-        continue;
-      }
-
-      playedClip = true;
+      played = true;
       noMediaNotified = false;
-      spotlightActive = false;
-      const clip = clips[Math.floor(Math.random() * clips.length)];
-      const embedUrl = clip.url.replace('twitch.tv/', 'twitch.tv/embed?clip=');
-      const duration = Math.floor((clip.duration || 30) * 1000) + 700;
-
-      console.log(`[BRB] Playing clip: ${clip.title} (${clip.duration}s) for ${user}`);
-
-      bc({
-        type: 'brb-clip',
-        payload: { clipUrl: embedUrl, thumbnailUrl: clip.thumbnail_url, user: clip.broadcaster_name || user, duration }
-      }, tenantId);
-
-      const endTime = Date.now() + duration + 2000;
-      while (Date.now() < endTime && !runtime.stopRequested) {
-        await new Promise(r => setTimeout(r, 1000));
-      }
+      bc({ type: 'brb-clip', payload: { ...clip, gifUrl: playlist.gifs[gifIndex++ % (playlist.gifs.length || 1)]?.url || '' } }, tenantId);
+      const endTime = Date.now() + clip.duration + 2000;
+      while (Date.now() < endTime && !runtime.stopRequested) await new Promise(r => setTimeout(r, 1000));
     }
-
-    if (!playedClip && !runtime.stopRequested && loungeBRB) {
-      let liveSpotlight = false;
-      try {
-        const response = await fetch('https://discord-stream-hub-new.fly.dev/api/community-spotlight', {
-          signal: AbortSignal.timeout(5000),
-          cache: 'no-store',
-        });
-        if (response.ok) {
-          const data = await response.json();
-          liveSpotlight = Boolean(data?.spotlight?.twitchLogin);
-        }
-      } catch (error) {
-        console.warn('[BRB] Community Spotlight lookup failed:', error);
-      }
-      if (liveSpotlight && !spotlightActive) {
-        bc({ type: 'brb-spotlight' }, tenantId);
-        spotlightActive = true;
-        noMediaNotified = false;
-        console.log('[BRB] No clips available; showing live Community Spotlight');
-      } else if (!liveSpotlight && spotlightActive) {
-        bc({ type: 'brb-no-media' }, tenantId);
-        spotlightActive = false;
-        noMediaNotified = true;
-      } else if (!liveSpotlight && !noMediaNotified) {
+    if (!played && playlist.gifs.length && !runtime.stopRequested) {
+      const gif = playlist.gifs[gifIndex++ % playlist.gifs.length];
+      noMediaNotified = false;
+      bc({ type: 'brb-gif', payload: gif }, tenantId);
+      const endTime = Date.now() + 12_000;
+      while (Date.now() < endTime && !runtime.stopRequested) await new Promise(r => setTimeout(r, 1000));
+    } else if (!played && !runtime.stopRequested) {
+      if (!noMediaNotified) {
         bc({ type: 'brb-no-media' }, tenantId);
         noMediaNotified = true;
-        console.warn('[BRB] No clips or live Spotlight; keeping the Lounge visible');
+        console.warn('[BRB] No chat or community clips and no stored shoutout GIFs');
       }
-      const retryAt = Date.now() + 15_000;
-      while (Date.now() < retryAt && !runtime.stopRequested) {
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    } else if (!playedClip && !runtime.stopRequested) {
-      await new Promise(r => setTimeout(r, 5000));
+      await new Promise(r => setTimeout(r, 5_000));
     }
   }
 
