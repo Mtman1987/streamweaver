@@ -7,7 +7,6 @@ import {
 } from '@/services/shared-chat-operator-state';
 import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
 import { isKnownBot } from '@/services/known-bots';
-import { hasStellaHighlightTtsReceipt } from '@/services/stella-highlight-receipts';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,8 +32,14 @@ async function isLoungeShowcaseEligible(
   tenantId: string,
 ): Promise<boolean> {
   if (entry.type === 'system' || entry.deletedAt || !(entry.text.trim() || entry.media.length)) return false;
-  // Historical tmi.js self echoes were recorded before Twitch accepted them.
-  if (tenantId === 'spacemountainlive' && entry.platform === 'twitch' && entry.meta.self === true) return false;
+  // The Lounge chat highlighter shows actual Twitch IRC messages only.
+  // A successful Helix send, an internal line, or TTS synthesis cannot insert one.
+  if (tenantId === 'spacemountainlive' && (
+    entry.platform !== 'twitch'
+    || entry.meta.self === true
+    || entry.meta.rawProvider !== 'tmi'
+    || !entry.upstreamId
+  )) return false;
 
   const message = entry.text.trim().toLowerCase();
   if (message.startsWith('!') || message.startsWith('spmt')) return false;
@@ -43,13 +48,6 @@ async function isLoungeShowcaseEligible(
   // Never let a synthetic/internal user_<id> placeholder appear as a person.
   // Those entries have not proved a public identity and are not showcase-safe.
   if (senderNames.some((name) => /^user_[a-z0-9_-]+$/i.test(name))) return false;
-  if (tenantId === 'spacemountainlive' && senderNames.includes('stellabot87')) {
-    // The room may receive a Twitch line while synthesis or queueing fails.
-    // Keep that line in the replay but never claim it was spoken in the showcase.
-    return entry.platform === 'twitch'
-      && ['tmi', 'helix-confirmed'].includes(String(entry.meta.rawProvider || ''))
-      && await hasStellaHighlightTtsReceipt(entry.upstreamId, tenantId);
-  }
   if (senderNames.some((name) => LOUNGE_ECOSYSTEM_VOICES.has(name))) return true;
   if (entry.sender.roles.includes('bot')) return false;
 
