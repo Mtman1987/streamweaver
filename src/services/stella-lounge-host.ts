@@ -12,7 +12,7 @@ import {
 } from '@/lib/tenant';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
 import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
-import { sendChatMessage } from '@/services/twitch';
+import { sendTwitchChatMessage } from '@/services/twitch';
 
 export type StellaLoungeIntent =
   | 'overview'
@@ -304,7 +304,9 @@ async function deliverStellaHostLine(prompt: string, now = Date.now()): Promise<
   const text = parsed.text.slice(0, 500).trim();
   if (!text) return { delivered: false, reason: 'empty-generation' };
   if (parsed.gesture) stageStellaPhysicalReaction(SPACEMOUNTAIN_SYSTEM_TENANT_ID, text, parsed.gesture, now);
-  await sendChatMessage(text, 'bot', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+  // The real Twitch send is the commit point. Do not publish Stella into any
+  // local/overlay history until Twitch has accepted the message.
+  await sendTwitchChatMessage(text, 'bot', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   if (hasActiveTtsConsumer(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) await queueTtsOverlay(text, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   await appendPublicChatMessages([{ type: 'ai', username: SPACEMOUNTAIN_SYSTEM_BOT_NAME, message: text, timestamp: new Date(now).toISOString() }], 100, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
   lastSpokeAt = now;
