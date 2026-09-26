@@ -103,11 +103,18 @@ export default function BRBPlayer() {
       />
       {active && spotlight && (
         <iframe
-          src="https://discord-stream-hub-new.fly.dev/headless/community-spotlight?parent=spmt.live"
+          src="https://hearmeout-main.fly.dev/spotlight-media/player?v=live-spotlight-3"
           title="Live Community Spotlight"
           allow="autoplay; fullscreen"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
         />
+      )}
+      {active && spotlight && (
+        <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
+          background: 'rgba(5,12,30,.83)', border: '1px solid rgba(103,232,249,.65)',
+          color: '#e8fbff', font: '700 16px system-ui, sans-serif', pointerEvents: 'none' }}>
+          BRB - Community Spotlight
+        </div>
       )}
       {active && !spotlight && clipUser && (
         <div style={{

@@ -3088,13 +3088,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         tenantPackRedeems = new Map();
                         pendingPackRedeems.set(tenantKey, tenantPackRedeems);
                     }
-                    tenantPackRedeems.set(actualUsername.toLowerCase(), { timestamp: Date.now(), pointCost });
+                    tenantPackRedeems.set(actualUsername.toLowerCase(), { timestamp: Date.now(), pointCost, chatChannel: replyChannel });
                     return;
                 }
 
                 console.log(`[Dispatcher] Opening monthly pool pack ${setNumber} for ${actualUsername}`);
                 const { handlePackOpenCmd } = require('./eventsub');
-                await handlePackOpenCmd(actualUsername, setNumber, pointCost, tenantId);
+                await handlePackOpenCmd(actualUsername, setNumber, pointCost, tenantId, replyChannel);
             } catch (error) {
                 console.error('[Dispatcher] !pack command failed:', error);
                 await reply(`@${actualUsername}, pack system error! Contact a mod.`, 'broadcaster').catch(() => {});

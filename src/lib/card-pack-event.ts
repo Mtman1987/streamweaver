@@ -20,6 +20,13 @@ export type CardPackOpenedEvent = {
   openedAt: string;
 };
 
+export function resolveCardPackGame(message: any): CardPackGame {
+  const payload = message?.payload || message;
+  return message?.type === 'quackverse-pack-opened' ||
+    [payload?.game, payload?.source].some((value) => String(value || '').toLowerCase().includes('quack'))
+    ? 'quackverse' : 'pokemon';
+}
+
 function cleanText(value: unknown, fallback = '', max = 120): string {
   return String(value || fallback).trim().slice(0, max);
 }
@@ -48,7 +55,7 @@ export function normalizeCardPackEvent(input: any): CardPackOpenedEvent {
   const featureCard = cards.length
     ? [...cards].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0]
     : undefined;
-  const game: CardPackGame = String(input?.game || input?.source || '').toLowerCase().includes('quack') ? 'quackverse' : 'pokemon';
+  const game = resolveCardPackGame(input);
   const eventId = cleanText(input?.eventId || input?.packId || `${game}-${Date.now()}`, '', 120).replace(/[^a-zA-Z0-9._:-]+/g, '-');
   return {
     eventId,

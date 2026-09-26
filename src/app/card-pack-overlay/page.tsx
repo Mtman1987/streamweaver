@@ -3,9 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
-import type { CardPackOpenedEvent } from '@/lib/card-pack-event';
+import { resolveCardPackGame, type CardPackOpenedEvent, type CardPackCard } from '@/lib/card-pack-event';
 
 type Phase = 'hidden' | 'pack' | 'deal' | 'flip' | 'feature';
+
+function CardFace({ card, className }: { card: CardPackCard; className: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative h-full w-full bg-slate-900">
+      {!loaded && <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-sm font-bold text-white/80">{card.name}</div>}
+      <img src={card.imageUrl} alt={card.name} className={className} style={{ opacity: loaded ? 1 : 0 }}
+        onLoad={() => setLoaded(true)} onError={() => setLoaded(false)} />
+    </div>
+  );
+}
 
 function decodeEvent(value: string | null): CardPackOpenedEvent | null {
   if (!value) return null;
@@ -24,7 +35,7 @@ function legacyToEvent(data: any): CardPackOpenedEvent | null {
   const payload = data?.payload || data;
   const cards = Array.isArray(payload?.cards || payload?.pack) ? (payload.cards || payload.pack) : [];
   if (!cards.length) return null;
-  const game = data?.type === 'quackverse-pack-opened' || payload?.source === 'quackverse' ? 'quackverse' : 'pokemon';
+  const game = resolveCardPackGame(data);
   const normalizedCards = cards.map((card: any) => ({
     id: String(card?.id || ''),
     number: String(card?.number || ''),
@@ -54,23 +65,38 @@ export default function CardPackOverlay() {
   const [event, setEvent] = useState<CardPackOpenedEvent | null>(null);
   const [phase, setPhase] = useState<Phase>('hidden');
   const lastEventId = useRef('');
+  const sequence = useRef(0);
+  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const captureMode = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1', []);
   const loungeMain = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('placement') === 'lounge-main', []);
 
   const play = (next: CardPackOpenedEvent) => {
     if (!next?.cards?.length || (next.eventId && next.eventId === lastEventId.current && !captureMode)) return;
     lastEventId.current = next.eventId;
+    const current = ++sequence.current;
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+    const later = (callback: () => void, delay: number) => {
+      timers.current.push(window.setTimeout(() => { if (sequence.current === current) callback(); }, delay));
+    };
     setEvent(next);
     setPhase('pack');
-    window.setTimeout(() => setPhase('deal'), 900);
-    window.setTimeout(() => setPhase('flip'), 2600);
-    window.setTimeout(() => setPhase('feature'), 7600);
-    if (!captureMode) {
-      window.setTimeout(() => {
-        setPhase('hidden');
-        setEvent(null);
-      }, 13_500);
-    }
+    const images = next.cards.map((card) => new Promise<void>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve();
+      image.onerror = () => resolve();
+      image.src = card.imageUrl;
+      if (image.complete) resolve();
+    }));
+    const ready = Promise.all(images);
+    const timeout = new Promise<void>((resolve) => later(resolve, 15_000));
+    void Promise.all([new Promise<void>((resolve) => later(resolve, 1_400)), Promise.race([ready, timeout])]).then(() => {
+      if (sequence.current !== current) return;
+      setPhase('deal');
+      later(() => setPhase('flip'), 3_000);
+      later(() => setPhase('feature'), 13_000);
+      if (!captureMode) later(() => { setPhase('hidden'); setEvent(null); }, 27_000);
+    });
   };
 
   useEffect(() => {
@@ -106,6 +132,8 @@ export default function CardPackOverlay() {
     connect();
     return () => {
       stopped = true;
+      sequence.current++;
+      timers.current.forEach(clearTimeout);
       if (reconnect) clearTimeout(reconnect);
       socket?.close();
     };
@@ -137,7 +165,7 @@ export default function CardPackOverlay() {
               <div className={`flex h-72 w-52 rotate-[-4deg] items-center justify-center rounded-3xl border-4 text-center shadow-[0_30px_90px_rgba(0,0,0,.7)] animate-in zoom-in duration-500 ${isQuackverse ? 'border-cyan-300 bg-gradient-to-br from-cyan-950 via-slate-900 to-fuchsia-950' : 'border-yellow-300 bg-gradient-to-br from-red-900 via-slate-900 to-yellow-900'}`}>
                 <div>
                   <div className="text-5xl">{isQuackverse ? '🦆' : '⚡'}</div>
-                  <div className="mt-4 text-2xl font-black uppercase">{isQuackverse ? 'Quackverse' : 'Pokemon'}</div>
+                  <div className="mt-4 text-2xl font-black uppercase">{isQuackverse ? 'Quackverse' : 'Space Mountain'}</div>
                   <div className="mt-2 text-xs uppercase tracking-[.25em] text-white/70">Booster Pack</div>
                 </div>
               </div>
@@ -158,7 +186,7 @@ export default function CardPackOverlay() {
                   {phase === 'deal' ? (
                     <div className={`flex h-full items-center justify-center text-4xl ${isQuackverse ? 'bg-cyan-950' : 'bg-red-950'}`}>{isQuackverse ? '🦆' : '⚡'}</div>
                   ) : (
-                    <img src={card.imageUrl} alt={card.name} className="h-full w-full object-contain" />
+                    <CardFace key={`${event.eventId}-${index}`} card={card} className="h-full w-full object-contain" />
                   )}
                 </div>
               ))}
@@ -169,7 +197,7 @@ export default function CardPackOverlay() {
             <div className="absolute inset-0 z-20 flex items-center justify-center">
               <div className={`absolute h-80 w-64 rounded-3xl blur-2xl ${isQuackverse ? 'bg-cyan-400/35' : 'bg-yellow-300/35'}`} />
               <div className="relative flex items-center gap-8 rounded-3xl border border-white/20 bg-black/65 p-6 shadow-[0_30px_100px_rgba(0,0,0,.8)] animate-in zoom-in duration-700">
-                <img src={feature.imageUrl} alt={feature.name} className="h-[320px] w-[230px] rounded-xl object-contain" />
+                <div className="h-[320px] w-[230px] overflow-hidden rounded-xl"><CardFace key={`${event.eventId}-feature`} card={feature} className="h-full w-full object-contain" /></div>
                 <div className="max-w-[360px]">
                   <div className={`text-sm font-black uppercase tracking-[.24em] ${isQuackverse ? 'text-cyan-200' : 'text-yellow-200'}`}>Featured Pull</div>
                   <div className="mt-3 text-4xl font-black leading-tight">{feature.name}</div>

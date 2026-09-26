@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { normalizeCardPackEvent, buildCardPackRenderUrl } from '../src/lib/card-pack-event';
+import { normalizeCardPackEvent, buildCardPackRenderUrl, resolveCardPackGame } from '../src/lib/card-pack-event';
 
 const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -24,6 +24,13 @@ test('Pokemon and Quackverse normalize to one card-pack-opened contract', () => 
   assert.equal(quackverse.game, 'quackverse');
   assert.equal(quackverse.cards[0].imageUrl, 'https://example.test/q.png');
   assert.match(buildCardPackRenderUrl(quackverse), /\/overlay\/card-pack\?/);
+});
+
+test('Quackverse canonical broadcast retains its own card backs', () => {
+  const canonical = normalizeCardPackEvent({ source: 'quackverse', cards: [{ name: 'Duck', imageUrl: 'https://example.test/q.png' }] });
+  assert.equal(resolveCardPackGame({ type: 'card-pack-opened', payload: canonical }), 'quackverse');
+  assert.equal(resolveCardPackGame({ type: 'quackverse-pack-opened', payload: canonical }), 'quackverse');
+  assert.equal(resolveCardPackGame({ type: 'card-pack-opened', payload: { game: 'pokemon' } }), 'pokemon');
 });
 
 test('one overlay accepts canonical and legacy pack events during migration', async () => {

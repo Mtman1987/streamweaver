@@ -7,6 +7,7 @@ import { formatCheckinList, createPendingPayload, runCheckin, runBulkCheckin } f
 
 import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
+import { getPointsWalletContext } from './points-wallet-context';
 
 const eventSubSockets = new Map<string, WebSocket>();
 const CHAT_TAG_API_BASE = String(process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
@@ -18,15 +19,16 @@ function normalizeTenantId(tenantId?: string): string | undefined {
     return tenantId;
 }
 
-async function resolvePointsCtx(tenantId?: string): Promise<{ tenantId: string; username: string } | undefined> {
+async function resolvePointsCtx(tenantId?: string, chatChannel?: string): Promise<{ tenantId: string; username: string } | undefined> {
     tenantId = normalizeTenantId(tenantId);
     if (!tenantId) return undefined;
+    // Points are stored under the Twitch channel name, not the chatter name or
+    // an empty directory when this tenant's broadcaster OAuth is unavailable.
+    let broadcasterUsername = '';
     try {
-        const tokens = await getStoredTokens(tenantId);
-        return { tenantId, username: tokens?.broadcasterUsername || '' };
-    } catch {
-        return { tenantId, username: '' };
-    }
+        broadcasterUsername = (await getStoredTokens(tenantId))?.broadcasterUsername || '';
+    } catch {}
+    return getPointsWalletContext(tenantId, chatChannel, broadcasterUsername);
 }
 const eventSubReconnectTimeouts = new Map<string, NodeJS.Timeout>();
 const recentChatMessages = new Map<string, { message: string; timestamp: number }>();
@@ -500,7 +502,7 @@ function scheduleEventSubReconnect(url: string, delayMs = 2000, tenantId?: strin
 
 // Pending partner check-ins: viewer redeemed but hasn't typed a number yet
 export const pendingCheckins = new Map<string, Map<string, PendingCheckin>>();
-export const pendingPackRedeems = new Map<string, Map<string, { timestamp: number; pointCost: number }>>();
+export const pendingPackRedeems = new Map<string, Map<string, { timestamp: number; pointCost: number; chatChannel?: string }>>();
 
 // Export function to track chat messages for redemptions
 export function trackChatMessageForRedemption(username: string, message: string, tenantId?: string): boolean {
@@ -528,7 +530,7 @@ export function trackChatMessageForRedemption(username: string, message: string,
         const num = parseInt(message.trim(), 10);
         if (num >= 1) {
             tenantPackRedeems.delete(key);
-            handlePackOpen(username, num, pendingPack.pointCost, tenantId).catch(err => {
+            handlePackOpen(username, num, pendingPack.pointCost, tenantId, pendingPack.chatChannel).catch(err => {
                 console.error('[EventSub] Pending pack open error:', err);
             });
             return true;
@@ -574,12 +576,12 @@ export async function fallbackCheckinCommand(kind: string, username: string, ten
 export { runCheckin as handlePartnerCheckinCmd };
 
 export { handlePackOpen as handlePackOpenCmd };
-async function handlePackOpen(username: string, setNumber: number, pointCost: number, tenantId?: string): Promise<void> {
+async function handlePackOpen(username: string, setNumber: number, pointCost: number, tenantId?: string, chatChannel?: string): Promise<void> {
     console.log(`[PokePack] ${username} opening set ${setNumber}`);
     try {
         const { openPack } = require('./pokemon-packs');
         const { getUserPoints, addPoints } = require('./points');
-        const pointsCtx = await resolvePointsCtx(tenantId);
+        const pointsCtx = await resolvePointsCtx(tenantId, chatChannel);
 
         if (pointCost > 0) {
             const points = await getUserPoints(username, pointsCtx);
