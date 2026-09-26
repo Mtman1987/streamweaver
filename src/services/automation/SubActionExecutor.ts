@@ -733,7 +733,7 @@ export class SubActionExecutor {
         });
         const aliases = cardPackOverlayAliases({
           tenantId: context?.tenantId,
-          channel: context?.channel,
+          channel: (context as any)?.channel,
           platform: context?.platform,
         });
         for (const tenantId of aliases) {
