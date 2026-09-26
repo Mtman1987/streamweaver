@@ -92,3 +92,28 @@ test('Pokemon automation paths fan out to Twitch channel aliases', async () => {
   assert.match(executor, /cardPackOverlayAliases/);
   assert.match(executor, /context\?\.channel/);
 });
+
+
+test('Discord Pokemon pack reveal starts with three-column card fields and later edits in the GIF', async () => {
+  const source = await read('src/services/discord-pack-reveal.ts');
+  assert.match(source, /function cardInfoFields/);
+  assert.match(source, /inline: true/);
+  assert.match(source, /first\.fields/);
+  assert.match(source, /imageUrl: gifUrl/);
+});
+
+test('Twitch Pokemon pack openings queue GIF recording with the broadcaster alias', async () => {
+  const legacy = await read('src/services/automation/subactions/PokemonHandlers.ts');
+  const executor = await read('src/services/automation/SubActionExecutor.ts');
+  assert.match(legacy, /queueCardPackGif\(canonical, captureTenant\)/);
+  assert.match(executor, /queueCardPackGif\(canonical, captureTenant\)/);
+});
+
+test('captured pack render can carry the broadcaster tenant and pack front prefers the avatar', async () => {
+  const event = await read('src/lib/card-pack-event.ts');
+  const overlay = await read('src/app/card-pack-overlay/page.tsx');
+  assert.match(event, /tenantParam/);
+  assert.match(event, /buildCardPackRenderUrl\(event: CardPackOpenedEvent, tenantId\?: string\)/);
+  assert.match(overlay, /avatarUrl \? \(/);
+  assert.match(overlay, /rounded-full/);
+});
