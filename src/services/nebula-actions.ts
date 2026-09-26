@@ -17,3 +17,7 @@ export function nebulaSystemOverlayId(channel:string, surface:'activity'|'main'=
 export async function reshapeNebulaLiveOverlay(input:{channel:string;surface?:'activity'|'main';gameIds:string[];layout?:string}){
  return manageNebulaOverlay({operation:'update',channel:input.channel,id:nebulaSystemOverlayId(input.channel,input.surface||'activity'),gameIds:input.gameIds,layout:input.layout||'rotation',transparent:true});
 }
+
+export async function createNebulaStreamBattle(input:{channels:string[];createdBy:string;active?:boolean}){
+ return call('/api/game-hub/bot-overlays',{method:'PUT',body:JSON.stringify(input)});
+}
