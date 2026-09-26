@@ -19,14 +19,14 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
-import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle } from '@/services/nebula-actions';
+import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -210,7 +210,7 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     id: 'nebula.chatwars.stream-battle',
     title: 'Link multiple streams into a Chat Wars battle',
     app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
-    examples: ['battle @alpha against @beta in Chat Wars', 'start a stream vs stream Chat Wars with alpha and beta'],
+    examples: ['start Chat Wars between @alpha and @beta', 'start a stream vs stream Chat Wars with alpha and beta'],
   },
   {
     id: 'stella.role',
@@ -382,10 +382,19 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
 
-  const battleMatch=message.match(/\b(?:start\s+)?(?:a\s+)?(?:stream\s*(?:vs|versus)\s*stream|chat\s+wars\s+battle|battle)\b[^\n]{0,220}/i);
-  if(battleMatch&&/chat\s*wars|stream\s*(?:vs|versus)\s*stream/i.test(battleMatch[0])){
-    const channels=[...battleMatch[0].matchAll(/@([a-z0-9_]{2,80})/gi)].map(match=>match[1].toLowerCase());
-    if(channels.length>=1) return {action:'nebula.chatwars.stream-battle',args:{channels:channels.join(',')},detection:'explicit'};
+  const battleIntent=/\b(?:start|create|make|link|launch|begin)\b/.test(value)
+    && /\b(?:chat wars|stream\s*(?:vs|versus)\s*stream|stream battle)\b/.test(value);
+  if(battleIntent){
+    let channels=[...message.matchAll(/@([a-z0-9_]{2,80})/gi)].map(match=>match[1].toLowerCase());
+    if(!channels.length){
+      const tail=value.match(/\b(?:with|between|against|vs\.?|versus)\s+(.{2,180})$/)?.[1]||'';
+      channels=tail
+        .replace(/\b(?:in|for)\s+chat\s+wars\b.*$/,'')
+        .split(/\s*(?:,|\band\b|\bvs\.?\b|\bversus\b|\bagainst\b)\s*/i)
+        .map(part=>part.replace(/^@/,'').match(/^([a-z0-9_]{2,80})\b/)?.[1]||'')
+        .filter(Boolean);
+    }
+    if(channels.length>=1) return {action:'nebula.chatwars.stream-battle',args:{channels:[...new Set(channels)].join(',')},detection:'explicit'};
   }
   const roleMatch=value.match(/\bstella\b.*\b(collab|producer|host|(?:arcade\s+)?steward)\b(?:\s+(?:with|for)\s+@?([a-z0-9_]{2,80}))?/);
   if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
@@ -745,8 +754,11 @@ export async function executeBotAction(
       const requested=String(request.args.channels||'').split(',').map(v=>v.trim().replace(/^@/,'').toLowerCase()).filter(Boolean);
       const channels=[...new Set([context.tenantId,...requested])].slice(0,4);
       if(channels.length<2) return {handled:true,action:request.action,status:'needs_input',response:'Name at least one other stream for the Chat Wars battle.'};
-      const result=await linkChatWarsStreams({channels,createdBy:context.tenantId,active:true});
-      return {handled:true,action:request.action,status:'completed',response:`✅ Chat Wars stream battle linked: ${channels.map(v=>'@'+v).join(' vs ')}.`,result};
+      const result=await linkChatWarsStreams({channels,createdBy:context.tenantId,active:true}) as any;
+      const ownOverlay=Array.isArray(result?.overlays)?result.overlays.find((entry:any)=>entry.channel===context.tenantId):null;
+      const overlayLine=ownOverlay?.overlayUrl?` Overlay: ${ownOverlay.overlayUrl}`:'';
+      const rules=' How to play: viewers choose a team with spmt red, spmt blue, spmt green, or spmt yellow, then talk normally. Useful words claim territory; longer words score more, levels increase with participation, and level 6+ can steal opponent tiles. The first field ends at halftime, then the second field opens.';
+      return {handled:true,action:request.action,status:'completed',response:`✅ Chat Wars stream battle linked: ${channels.map(v=>'@'+v).join(' vs ')}.${overlayLine}${rules}`,result};
     }
     if (request.action === 'stella.role') {
       const result=setStellaRoleMode(request.args.role as any,request.args.partner);
