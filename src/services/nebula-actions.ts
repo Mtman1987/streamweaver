@@ -21,3 +21,7 @@ export async function reshapeNebulaLiveOverlay(input:{channel:string;surface?:'a
 export async function createNebulaStreamBattle(input:{channels:string[];createdBy:string;active?:boolean}){
  return call('/api/game-hub/bot-overlays',{method:'PUT',body:JSON.stringify(input)});
 }
+
+export async function linkChatWarsStreams(input:{channels:string[];createdBy:string;active?:boolean}){
+ return call('/api/game-hub/bot-overlays',{method:'PUT',body:JSON.stringify({channels:input.channels,createdBy:input.createdBy,active:input.active!==false})});
+}
