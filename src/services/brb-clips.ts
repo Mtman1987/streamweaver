@@ -6,6 +6,8 @@ import { readUserConfig } from '../lib/user-config';
 import { isKnownBot } from './known-bots';
 import { getExcludedUsers } from './welcome-wagon-tracker';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
+import { readSharedChatReplay } from './shared-chat-ingestion';
+import { recentTwitchChatters } from './brb-viewer-targets';
 
 const runtimeByTenant = new Map<string, { isPlaying: boolean; stopRequested: boolean }>();
 
@@ -74,15 +76,39 @@ async function fetchClipsForUser(username: string): Promise<any[]> {
   }
 }
 
-async function getChatters(tenantId?: string): Promise<string[]> {
+async function getChatters(tenantId: string, broadcasterName: string): Promise<string[]> {
+  // IRC messages, including !brb itself, are already recorded for this tenant
+  // before command dispatch. This path works when broadcaster OAuth is absent.
+  const recent = recentTwitchChatters(
+    await readSharedChatReplay(tenantId, { limit: 500 }).catch(() => []),
+    broadcasterName,
+  );
+
+  // The Twitch chatters API can also include quiet viewers when authorized.
+  // Avoid calling its auth path if this tenant has no broadcaster credentials.
+  const tokens = await getStoredTokens(tenantId).catch(() => null);
+  if (!tokens?.broadcasterToken && !tokens?.broadcasterRefreshToken) {
+    console.log(`[BRB] Using ${recent.length} recent Twitch chatters; broadcaster token unavailable`);
+    return recent;
+  }
+
   try {
-    const res = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/chat/chatters?tenant=${tenantId || ''}`, {
+    const res = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/chat/chatters?tenant=${encodeURIComponent(tenantId)}`, {
       headers: internalServiceHeaders(),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[BRB] Chatters API returned ${res.status}; using ${recent.length} recent Twitch chatters`);
+      return recent;
+    }
     const data = await res.json();
-    return (data.chatters || []).map((c: any) => c.user_login).filter(Boolean);
-  } catch { return []; }
+    const apiChatters = Array.isArray(data.chatters)
+      ? data.chatters.map((c: any) => String(c.user_login || '').toLowerCase()).filter(Boolean)
+      : [];
+    return [...new Set([...recent, ...apiChatters])];
+  } catch {
+    console.warn(`[BRB] Chatters API unavailable; using ${recent.length} recent Twitch chatters`);
+    return recent;
+  }
 }
 
 async function getEligibleViewerClipTargets(chatters: string[], broadcasterName: string, tenantId?: string): Promise<string[]> {
@@ -146,7 +172,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
     let targetUsers: string[];
 
     if (useViewerClips) {
-      const chatters = await getChatters(tenantId);
+      const chatters = await getChatters(tenantId, broadcasterName);
       const viewers = await getEligibleViewerClipTargets(chatters, broadcasterName, tenantId);
       targetUsers = viewers.length > 0 ? viewers : [broadcasterName];
       console.log(`[BRB] Viewer mode: ${targetUsers.length} targets`);
