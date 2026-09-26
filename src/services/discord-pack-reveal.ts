@@ -4,6 +4,7 @@ import { editDiscordMessage, editDiscordMessageWithBinaryAttachment } from './di
 import { editWebhookMessage, editWebhookMessageWithBinaryAttachment } from './discord-webhooks';
 import {
   buildStructuredDiscordReplyPayload,
+  resolveStructuredDiscordReplySpeaker,
   sendStructuredDiscordReply,
   type DiscordReplySpeaker,
   type StructuredDiscordReplyInput,
@@ -111,13 +112,16 @@ async function applyStaticReply(
 
 async function applyGif(input: PackRevealInput, messageId: string, speaker: DiscordReplySpeaker, gifUrl: string) {
   const payload = await buildStructuredDiscordReplyPayload(buildPackReply(input, speaker, 'ready'));
+  const finalEmbeds = payload.embeds.map((embed, index) => index === 0
+    ? { ...embed, image: { url: 'attachment://pack-animation.gif' } }
+    : embed);
   const media = await fetch(gifUrl).catch(() => null);
   if (!media?.ok) throw new Error(`Could not fetch rendered pack GIF: ${media?.status || 'network error'}`);
   const fileBuffer = Buffer.from(await media.arrayBuffer());
   const patched = await editWebhookMessageWithBinaryAttachment(
     input.channelId,
     messageId,
-    { content: '', embeds: payload.embeds },
+    { content: '', embeds: finalEmbeds },
     fileBuffer,
     'pack-animation.gif',
   ).catch(() => false);
@@ -125,7 +129,7 @@ async function applyGif(input: PackRevealInput, messageId: string, speaker: Disc
     await editDiscordMessageWithBinaryAttachment(
       input.channelId,
       messageId,
-      { content: '', embeds: payload.embeds },
+      { content: '', embeds: finalEmbeds },
       fileBuffer,
       'pack-animation.gif',
     );
@@ -140,11 +144,12 @@ async function applyGif(input: PackRevealInput, messageId: string, speaker: Disc
  */
 export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<void> {
   if (!input.cards.length) return;
-  const speaker = {
-    botName: input.botName || 'StreamWeaver',
+  const speaker = await resolveStructuredDiscordReplySpeaker({
     tenantId: input.tenantId,
-    stableId: `${input.tenantId || 'global'}:${(input.botName || 'streamweaver').toLowerCase()}`,
-  };
+    botName: input.botName,
+    rotateSpeaker: true,
+    isPrivate: false,
+  });
   const sent = await sendStructuredDiscordReply(buildPackReply(input, speaker, 'pending'));
   const messageId = sent.messageId;
   if (!messageId) return;
