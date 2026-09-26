@@ -52,9 +52,9 @@ export function normalizeCardPackEvent(input: any): CardPackOpenedEvent {
     setCode: cleanText(card?.setCode, '', 40) || undefined,
     imageUrl: cleanText(card?.imageUrl || card?.cardImageUrl, '', 1000),
   })).filter((card: CardPackCard) => card.imageUrl).slice(0, 12);
-  const featureCard = cards.length
-    ? [...cards].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0]
-    : undefined;
+  // The pack animation always builds to the final card. Rarity never gates
+  // the feature phase; even an all-common pack gets a large final reveal.
+  const featureCard = cards.length ? cards[cards.length - 1] : undefined;
   const game = resolveCardPackGame(input);
   const eventId = cleanText(input?.eventId || input?.packId || `${game}-${Date.now()}`, '', 120).replace(/[^a-zA-Z0-9._:-]+/g, '-');
   return {
