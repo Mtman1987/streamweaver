@@ -207,6 +207,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['bridge HearMeOut to Discord VC General', 'make the voice bridge listen only', 'stop the Discord voice bridge'],
   },
   {
+    id: 'nebula.chatwars.stream-battle',
+    title: 'Link multiple streams into a Chat Wars battle',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['battle @alpha against @beta in Chat Wars', 'start a stream vs stream Chat Wars with alpha and beta'],
+  },
+  {
     id: 'stella.role',
     title: 'Set Stella host, producer, collab, or Arcade Steward role',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
@@ -376,6 +382,11 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
 
+  const battleMatch=message.match(/\b(?:start\s+)?(?:a\s+)?(?:stream\s*(?:vs|versus)\s*stream|chat\s+wars\s+battle|battle)\b[^\n]{0,220}/i);
+  if(battleMatch&&/chat\s*wars|stream\s*(?:vs|versus)\s*stream/i.test(battleMatch[0])){
+    const channels=[...battleMatch[0].matchAll(/@([a-z0-9_]{2,80})/gi)].map(match=>match[1].toLowerCase());
+    if(channels.length>=1) return {action:'nebula.chatwars.stream-battle',args:{channels:channels.join(',')},detection:'explicit'};
+  }
   const roleMatch=value.match(/\bstella\b.*\b(collab|producer|host|(?:arcade\s+)?steward)\b(?:\s+(?:with|for)\s+@?([a-z0-9_]{2,80}))?/);
   if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
   const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse'};
@@ -730,6 +741,13 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'nebula.chatwars.stream-battle') {
+      const requested=String(request.args.channels||'').split(',').map(v=>v.trim().replace(/^@/,'').toLowerCase()).filter(Boolean);
+      const channels=[...new Set([context.tenantId,...requested])].slice(0,4);
+      if(channels.length<2) return {handled:true,action:request.action,status:'needs_input',response:'Name at least one other stream for the Chat Wars battle.'};
+      const result=await linkChatWarsStreams({channels,createdBy:context.tenantId,active:true});
+      return {handled:true,action:request.action,status:'completed',response:`✅ Chat Wars stream battle linked: ${channels.map(v=>'@'+v).join(' vs ')}.`,result};
+    }
     if (request.action === 'stella.role') {
       const result=setStellaRoleMode(request.args.role as any,request.args.partner);
       return {handled:true,action:request.action,status:'completed',response:`✅ Stella role: ${result.role}${result.collabWith?' with @'+result.collabWith:''}.`,result};
