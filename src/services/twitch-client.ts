@@ -253,7 +253,7 @@ async function dispatchIncomingTwitchMessage(
   await handleTwitchMessage(effectiveChannel, tags, message, self);
 }
 
-function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
+export function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
   return Boolean(client && communityBotClient && client === communityBotClient);
 }
 
@@ -519,6 +519,7 @@ export async function reconnectTheCountTwitchClient(): Promise<tmi.Client | null
 }
 
 async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {
+  if (isSharedCommunityBotClient(client)) return;
   const key = `${tenantId}:${String(username || 'chat').toLowerCase()}`;
   const now = Date.now();
   if (now - (lastReauthNotice.get(key) || 0) < REAUTH_NOTICE_INTERVAL_MS) return;
@@ -529,6 +530,7 @@ async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: s
 }
 
 async function sendMessageWithClient(client: tmi.Client, channel: string, message: string): Promise<boolean> {
+  if (isSharedCommunityBotClient(client)) return false;
   try {
     const channelLogin = channel.replace(/^#/, '').toLowerCase();
     try {
