@@ -5,6 +5,7 @@ import { applySavedSink } from '@/services/audio-sink';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import type { AvatarGestureName } from '@/lib/avatar-gestures';
+import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 import { LoungeAttributionMarquee } from '@/components/overlay/lounge-attribution-marquee';
 
 type AvatarSettings = {
@@ -360,24 +361,12 @@ export default function TTSPlayer() {
   const loungePlacement = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('placement') === 'lounge';
   const stellaMixGain = useRef(1);
+  const stellaLevel = useLoungeBroadcastVolume('stella');
   useEffect(() => {
-    if (!isStella || !loungePlacement) return;
-    let stopped = false;
-    const refresh = async () => {
-      try {
-        const response = await fetch('/api/lounge/audio-mix', { cache: 'no-store' });
-        if (!response.ok) return;
-        const level = Number((await response.json())?.levels?.stella);
-        if (!stopped && Number.isInteger(level) && level >= 1 && level <= 100) {
-          stellaMixGain.current = level / 100;
-          if (audioRef.current) audioRef.current.volume = stellaMixGain.current;
-        }
-      } catch {}
-    };
-    void refresh();
-    const timer = window.setInterval(refresh, 3000);
-    return () => { stopped = true; window.clearInterval(timer); };
-  }, [isStella, loungePlacement]);
+    if (!isStella || !loungePlacement || stellaLevel === null) return;
+    stellaMixGain.current = stellaLevel;
+    if (audioRef.current) audioRef.current.volume = stellaLevel;
+  }, [isStella, loungePlacement, stellaLevel]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

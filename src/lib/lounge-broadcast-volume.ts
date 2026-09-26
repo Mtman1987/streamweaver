@@ -5,12 +5,20 @@ import { useEffect, useState } from 'react';
 /** The broadcast source reads the three saved Lounge levels; ordinary player pages keep local volume. */
 export function useLoungeBroadcastVolume(output: 'stella' | 'spotlight' | 'media'): number | null {
   const [level, setLevel] = useState<number | null>(null);
+  const [source, setSource] = useState({ volume: 1, muted: false });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('placement') !== 'lounge'
       || (params.get('tenant') || params.get('tenantId')) !== 'spacemountainlive') return;
 
+    const onAudio = (event: MessageEvent) => {
+      if (event.origin !== 'https://spmt.live' || event.source !== window.parent || event.data?.type !== 'spmt.obspmt.audio') return;
+      const volume = Number(event.data.volume);
+      if (!Number.isFinite(volume) || volume < 0 || volume > 1 || typeof event.data.muted !== 'boolean') return;
+      setSource({ volume, muted: event.data.muted });
+    };
+    window.addEventListener('message', onAudio);
     let stopped = false;
     setLevel(output === 'spotlight' ? 0.58 : output === 'media' ? 0.85 : 1);
     const refresh = async () => {
@@ -23,8 +31,8 @@ export function useLoungeBroadcastVolume(output: 'stella' | 'spotlight' | 'media
     };
     void refresh();
     const timer = window.setInterval(refresh, 3000);
-    return () => { stopped = true; window.clearInterval(timer); };
+    return () => { stopped = true; window.clearInterval(timer); window.removeEventListener('message', onAudio); };
   }, [output]);
 
-  return level;
+  return level === null ? null : level * (source.muted ? 0 : source.volume);
 }
