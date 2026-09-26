@@ -30,6 +30,8 @@ async function isLoungeShowcaseEligible(
   tenantId: string,
 ): Promise<boolean> {
   if (entry.type === 'system' || entry.deletedAt || !(entry.text.trim() || entry.media.length)) return false;
+  // Historical tmi.js self echoes were recorded before Twitch accepted them.
+  if (tenantId === 'spacemountainlive' && entry.platform === 'twitch' && entry.meta.self === true) return false;
 
   const message = entry.text.trim().toLowerCase();
   if (message.startsWith('!') || message.startsWith('spmt')) return false;
