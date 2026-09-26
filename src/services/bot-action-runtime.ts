@@ -19,14 +19,14 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
-import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams } from '@/services/nebula-actions';
+import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -213,6 +213,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['start Chat Wars between @alpha and @beta', 'start a stream vs stream Chat Wars with alpha and beta'],
   },
   {
+    id: 'nebula.wordgame.stream-battle',
+    title: 'Link multiple streams into Phrase Guess or Word Chain',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['start Phrase Guess against @alpha', 'start Word Chain with alpha and beta'],
+  },
+  {
     id: 'stella.role',
     title: 'Set Stella host, producer, collab, or Arcade Steward role',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
@@ -381,6 +387,17 @@ function extractApplicationDecision(message: string) {
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
+
+  const wordBattle=value.match(/\b(?:start|create|make|link|launch|begin)\b.*\b(phrase guess|word chain|word guess)\b.*\b(?:with|between|against|vs\.?|versus)\b\s+(.{2,180})$/);
+  if(wordBattle){
+    const gameId=/phrase/.test(wordBattle[1])?'phraseguess':'wordchain';
+    const channels=[...message.matchAll(/@([a-z0-9_]{2,80})/gi)].map(match=>match[1].toLowerCase());
+    const parsed=channels.length?channels:wordBattle[2]
+      .split(/\s*(?:,|\band\b|\bvs\.?\b|\bversus\b|\bagainst\b)\s*/i)
+      .map(part=>part.replace(/^@/,'').match(/^([a-z0-9_]{2,80})\b/)?.[1]||'')
+      .filter(Boolean);
+    if(parsed.length) return {action:'nebula.wordgame.stream-battle',args:{gameId,channels:[...new Set(parsed)].join(',')},detection:'explicit'};
+  }
 
   const battleIntent=/\b(?:start|create|make|link|launch|begin)\b/.test(value)
     && /\b(?:chat wars|stream\s*(?:vs|versus)\s*stream|stream battle)\b/.test(value);
@@ -750,6 +767,20 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'nebula.wordgame.stream-battle') {
+      const gameId=request.args.gameId==='phraseguess'?'phraseguess':'wordchain';
+      const requested=String(request.args.channels||'').split(',').map(v=>v.trim().replace(/^@/,'').toLowerCase()).filter(Boolean);
+      const channels=[...new Set([context.tenantId,...requested])].slice(0,4);
+      if(channels.length<2) return {handled:true,action:request.action,status:'needs_input',response:'Name at least one other stream.'};
+      const result=await linkWordGameStreams({gameId,channels,createdBy:context.tenantId,active:true}) as any;
+      const ownOverlay=Array.isArray(result?.overlays)?result.overlays.find((entry:any)=>entry.channel===context.tenantId):null;
+      const overlayLine=ownOverlay?.overlayUrl?` Overlay: ${ownOverlay.overlayUrl}`:'';
+      const label=gameId==='phraseguess'?'Phrase Guess':'Word Chain';
+      const rules=gameId==='phraseguess'
+        ? ' How to play: everyone sees the same hidden phrase and guesses normally in chat. The first linked stream to solve it wins the round; shared hints reveal more of the same phrase for everyone.'
+        : ' How to play: every linked chat extends the same word chain. A valid word must start with the previous word’s final letter; accepted words add points to the stream that supplied them, and unknown words can go to the shared YES/NO vote.';
+      return {handled:true,action:request.action,status:'completed',response:`✅ ${label} stream battle linked: ${channels.map(v=>'@'+v).join(' vs ')}.${overlayLine}${rules}`,result};
+    }
     if (request.action === 'nebula.chatwars.stream-battle') {
       const requested=String(request.args.channels||'').split(',').map(v=>v.trim().replace(/^@/,'').toLowerCase()).filter(Boolean);
       const channels=[...new Set([context.tenantId,...requested])].slice(0,4);
