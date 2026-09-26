@@ -68,6 +68,83 @@ function speakLoungeStellaChatMessage(channel: string, tenantId: string | undefi
   }).catch((error) => console.error('[Stella Lounge TTS] Chat line failed:', error));
 }
 
+const STELLA_LOUNGE_LOGIN = 'stellabot87';
+let loungeChatUserIds: { broadcaster: string; sender: string; expiresAt: number } | null = null;
+
+export async function sendConfirmedLoungeStellaMessage(message: string): Promise<string> {
+  const tenantId = SPACEMOUNTAIN_SYSTEM_TENANT_ID;
+  const clientId = process.env.TWITCH_CLIENT_ID || process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Twitch client credentials are not configured');
+  const tokens = await getStoredTokens(tenantId);
+  if (String(tokens?.botUsername || '').toLowerCase() !== STELLA_LOUNGE_LOGIN || !tokens?.botToken) {
+    throw new Error('Stella bot OAuth is unavailable for the SpaceMountain lounge');
+  }
+  const accessToken = (await ensureValidToken(clientId, clientSecret, 'bot', tokens, tenantId)).replace(/^oauth:/, '');
+  const headers = { 'Client-Id': clientId, Authorization: `Bearer ${accessToken}` };
+  let ids = loungeChatUserIds;
+  if (!ids || ids.expiresAt < Date.now()) {
+    const usersUrl = new URL('https://api.twitch.tv/helix/users');
+    usersUrl.searchParams.append('login', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL);
+    usersUrl.searchParams.append('login', STELLA_LOUNGE_LOGIN);
+    const usersResponse = await fetch(usersUrl, { headers, signal: AbortSignal.timeout(7000) });
+    if (!usersResponse.ok) throw new Error(`Twitch chat user lookup failed (${usersResponse.status})`);
+    const users = await usersResponse.json() as { data?: Array<{ id: string; login: string }> };
+    const broadcaster = users.data?.find(user => user.login.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL)?.id;
+    const sender = users.data?.find(user => user.login.toLowerCase() === STELLA_LOUNGE_LOGIN)?.id;
+    if (!broadcaster || !sender) throw new Error('Twitch could not resolve the lounge channel or Stella account');
+    ids = { broadcaster, sender, expiresAt: Date.now() + 60 * 60_000 };
+    loungeChatUserIds = ids;
+  }
+
+  // Start speaking while Twitch processes the send; only the visual chat
+  // receipt waits for Twitch to confirm acceptance.
+  void queueTtsOverlay(message, tenantId).then(result => {
+    if (!result.queued) console.warn('[Stella Lounge TTS] Chat line was not spoken:', result.error || 'not queued');
+  }).catch(error => console.error('[Stella Lounge TTS] Chat line failed:', error));
+
+  const response = await fetch('https://api.twitch.tv/helix/chat/messages', {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ broadcaster_id: ids.broadcaster, sender_id: ids.sender, message }),
+    signal: AbortSignal.timeout(7000),
+  });
+  const payload = await response.json().catch(() => null) as {
+    data?: Array<{ message_id?: string; is_sent?: boolean; drop_reason?: { code?: string; message?: string } | null }>;
+    message?: string;
+  } | null;
+  const receipt = payload?.data?.[0];
+  if (!response.ok || receipt?.is_sent !== true || !receipt.message_id) {
+    const reason = receipt?.drop_reason?.message || receipt?.drop_reason?.code || payload?.message || `HTTP ${response.status}`;
+    throw new Error(`Twitch did not send Stella's lounge chat message: ${reason}`);
+  }
+  const messageId = receipt.message_id;
+  spokenLoungeStellaMessageIds.add(messageId);
+  if (spokenLoungeStellaMessageIds.size > 512) {
+    spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
+  }
+  try {
+    const event = normalizeTwitchSharedChatEvent({
+      tenantId,
+      channel: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
+      tags: {
+        id: messageId,
+        username: STELLA_LOUNGE_LOGIN,
+        'display-name': STELLA_LOUNGE_LOGIN,
+        'user-id': ids.sender,
+        'room-id': ids.broadcaster,
+        'tmi-sent-ts': String(Date.now()),
+      },
+      message,
+      self: false,
+    });
+    await recordSharedChatEvent({ ...event, meta: { ...event.meta, rawProvider: 'helix-confirmed' } });
+  } catch (error) {
+    console.error('[Stella Lounge Chat] Confirmed Twitch message could not be recorded for the overlay:', error);
+  }
+  return messageId;
+}
+
 export type TwitchSendIdentity = 'bot' | 'broadcaster' | 'count';
 
 export function resolveOutboundTwitchRoute(input: {
@@ -116,6 +193,10 @@ async function dispatchIncomingTwitchMessage(
 ): Promise<void> {
   const channelName = channel.replace('#', '').toLowerCase();
   const msgTenantId = channelToTenant.get(channelName) || fallbackTenantId;
+  // tmi.js emits a local "self" message before Twitch accepts the write.
+  // Do not treat that echo as a received chat message in this lounge.
+  if (self && msgTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+    && channelName === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL) return;
 
   const { isMirroredSharedMessage, resolveRoomIdToLogin, shouldIgnoreMirrored } = await import('./shared-chat');
   if (shouldIgnoreMirrored(tags, msgTenantId)) return;
