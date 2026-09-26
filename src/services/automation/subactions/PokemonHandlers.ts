@@ -2,6 +2,7 @@ import { openBoosterPack, loadSetData, type PokemonCard } from '../../pokemon-bo
 import { sendChatMessage } from '../../twitch';
 import { addPoints, formatCompactPointAmount, getPoints } from '../../points';
 import { normalizeCardPackEvent } from '@/lib/card-pack-event';
+import { cardPackOverlayAliases } from '@/services/card-pack-overlay-state';
 
 export async function handlePokemonPackOpen(context: any, params: any): Promise<void> {
   const { username, args } = context;
@@ -26,18 +27,24 @@ export async function handlePokemonPackOpen(context: any, params: any): Promise<
     const result = await openBoosterPack(setCode, username);
     
     if (result && typeof (global as any).broadcast === 'function') {
-      const tenantId = String(context?.tenantId || '').trim() || undefined;
+      const aliases = cardPackOverlayAliases({
+        tenantId: context?.tenantId,
+        channel: context?.channel,
+        platform: context?.platform,
+      });
       const canonical = normalizeCardPackEvent({
         game: 'pokemon',
         pack: result.pack,
         setName: result.setName,
         username,
       });
-      (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, tenantId);
-      (global as any).broadcast({
-        type: 'pokemon-pack-opened',
-        payload: { ...result, username, game: 'pokemon', eventId: canonical.eventId }
-      }, tenantId);
+      for (const tenantId of aliases) {
+        (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, tenantId);
+        (global as any).broadcast({
+          type: 'pokemon-pack-opened',
+          payload: { ...result, username, game: 'pokemon', eventId: canonical.eventId }
+        }, tenantId);
+      }
       
       // Show all cards with names and rarities
       const cardList = result.pack.map((card: PokemonCard) => `${card.name} (${card.rarity})`).join(', ');
