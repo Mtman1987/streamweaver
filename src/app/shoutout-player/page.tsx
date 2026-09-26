@@ -204,7 +204,8 @@ export default function ShoutoutPlayer() {
       />
       {fallbackEmbedUrl && (
         <iframe
-          src={fallbackEmbedUrl}
+          key={`${fallbackEmbedUrl}:${spotlightLevel === 0}`}
+          src={fallbackEmbedUrl.replace('muted=false', `muted=${spotlightLevel === 0}`)}
           title="Twitch shoutout clip"
           allow="autoplay; fullscreen"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: visible ? 'block' : 'none' }}
