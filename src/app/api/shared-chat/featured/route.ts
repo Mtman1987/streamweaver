@@ -11,7 +11,13 @@ import { isKnownBot } from '@/services/known-bots';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const FALLBACK_MAX_AGE_MS = 45_000;
+const LOUNGE_ECOSYSTEM_VOICES = new Set([
+  'stellabot87',
+  'athenabot87',
+  'spacemountainlive',
+  'streamweaverbot',
+  'streamweaver87',
+]);
 
 function normalizedSenderNames(entry: Awaited<ReturnType<typeof readSharedChatReplay>>[number]): string[] {
   return [entry.sender.login, entry.sender.displayName]
@@ -32,6 +38,7 @@ async function isLoungeShowcaseEligible(
   // Never let a synthetic/internal user_<id> placeholder appear as a person.
   // Those entries have not proved a public identity and are not showcase-safe.
   if (senderNames.some((name) => /^user_[a-z0-9_-]+$/i.test(name))) return false;
+  if (senderNames.some((name) => LOUNGE_ECOSYSTEM_VOICES.has(name))) return true;
   if (entry.sender.roles.includes('bot')) return false;
 
   for (const senderName of senderNames) {
@@ -75,8 +82,6 @@ export async function GET(request: NextRequest) {
   let latestShowcaseEvent = null;
   if (fallbackToLatest) {
     for (const entry of replay.slice().reverse()) {
-      const seenAt = Date.parse(entry.originalTimestamp || entry.receivedTimestamp || '');
-      if (!Number.isFinite(seenAt) || Date.now() - seenAt > FALLBACK_MAX_AGE_MS) continue;
       if (await isLoungeShowcaseEligible(entry, tenantId)) {
         latestShowcaseEvent = entry;
         break;
