@@ -45,6 +45,7 @@ import {
     listTenants,
     tenantPath,
     SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+    SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
 } from '../lib/tenant';
 import { SPACEMOUNTAIN_LOUNGE_ROOM_ID } from '../lib/spacemountain-lounge';
 import { queueTtsOverlay } from './tts-overlay-queue';
