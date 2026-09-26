@@ -2520,7 +2520,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: replyChannel } : undefined;
     
     // Helper: send chat message to Twitch (shared-chat aware)
-    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => sendChatMessage(msg, as, replyChannel, tenantId);
+    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') =>
+        sendChatMessage(
+            msg,
+            tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                && replyChannel.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+                ? 'broadcaster' : as,
+            replyChannel,
+            tenantId,
+        );
 
     // Mirror Twitch dispatcher outputs to Kick for duel-stream mode.
     // Enable with: KICK_MIRROR_CHAT=true
@@ -2884,12 +2892,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             });
             const title = String(result?.request?.item?.title || query);
             const confirmation = String(result?.message || 'Added to the 24-Hour Lounge queue.').replace(/[.]+$/, '');
-            await reply(`✅ @${actualUsername} 24-Hour Lounge: ${title} — ${confirmation}.`, 'bot').catch(() => {});
+            await reply(`✅ @${actualUsername} 24-Hour Lounge: ${title} — ${confirmation}.`, 'broadcaster').catch(() => {});
             console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[Dispatcher] SML !${command} HearMeOut request failed:`, error);
-            await reply(`❌ @${actualUsername} HearMeOut could not queue !${command}: ${message.slice(0, 240)}`, 'bot').catch(() => {});
+            await reply(`❌ @${actualUsername} HearMeOut could not queue !${command}: ${message.slice(0, 240)}`, 'broadcaster').catch(() => {});
         }
         return;
     }
