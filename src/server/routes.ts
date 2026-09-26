@@ -433,7 +433,8 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
 
                         // The shared community listener is present for points and
                         // activity, never as a speaking bot in another channel.
-                        if (twitchClientModule.isSharedCommunityBotClient(client)) {
+                        if (twitchClientModule.isSharedCommunityBotClient(client)
+                            && !twitchClientModule.isCommunityBotOwnChannel(client, finalChannel)) {
                             console.warn(`[HTTP /api/twitch/send-message] Read-only community bot suppressed an outbound message in #${finalChannel}`);
                             res.writeHead(200, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ success: true, skipped: true, reason: 'community-bot-read-only' }));
