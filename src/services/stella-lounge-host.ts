@@ -357,7 +357,12 @@ async function buildRoomAwareness(now = Date.now()) {
   const pace = human.length >= 20 ? 'busy' : human.length >= 7 ? 'conversational' : human.length ? 'quiet' : 'idle';
   const activity = readDashboardActivity(SPACEMOUNTAIN_SYSTEM_TENANT_ID, 30)
     .filter((entry) => Date.parse(entry.timestamp) >= cutoff).length;
-  return { pace, messages5m: human.length, activePeople5m: unique, activity5m: activity };
+  const recentPeople = [...new Map(human.slice().reverse().map((entry) => [entry.username.toLowerCase(), {
+    username: entry.username,
+    message: entry.message,
+    timestamp: entry.timestamp,
+  }])).values()].slice(0, 5);
+  return { pace, messages5m: human.length, activePeople5m: unique, activity5m: activity, recentPeople };
 }
 
 export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ delivered: boolean; reason: string }> {
@@ -379,12 +384,16 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
       chooseAmbientTopic(snapshot),
       'Current co-host state: ' + JSON.stringify(stellaThoughtBoard(now)),
       'Room activity: ' + JSON.stringify(room),
+      'Ambient speech needs a believable conversational reason. Prefer responding to or following up with one of recentPeople when their message gives you something natural to build on. You may address that person by name.',
+      'If recentPeople is empty or none of their messages gives you a genuine hook, prefer an observation, callback, producer opportunity, or silence over dropping a random open-ended question into the room.',
+      'When you do introduce a fresh curiosity, briefly connect it to something real in the current Lounge state, a recent conversation/callback, or your own Stella perspective so it sounds like a thought with a reason, not a timer prompt.',
+      'Questions should be pointed and answerable. Prefer a follow-up to a specific active person over asking nobody in particular. Never invent what that person said or meant.',
       'When chat is busy, prefer restraint unless you have a strong reason. When it is quiet or idle, a useful producer opportunity or callback may be appropriate.',
       'Treat NOW, OPEN THREADS, MAYBE LATER, CALLBACKS, and DO NOT REPEAT as continuity controls. Never force a callback merely because one exists.',
       'Create one spontaneous Lounge-host line in one or two short spoken sentences.',
       'Sound present, interested, and specific—not like a generic engagement bot.',
       'Do not say you checked a system. Do not invent viewers, events, memories, scores, media, or failures.',
-      'Do not start with "Hey everyone" and do not end every line with a question.',
+      'Do not start with "Hey everyone". Do not end every line with a question, and do not ask a generic engagement question merely because an ambient turn became due.',
       'You may add one allowed avatar gesture tag at the very end.',
     ].join('\n');
     const result = await deliverStellaHostLine(prompt, now);
