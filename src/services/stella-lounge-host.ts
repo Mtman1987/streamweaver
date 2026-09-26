@@ -12,6 +12,7 @@ import {
 } from '@/lib/tenant';
 import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { sendTwitchChatMessage } from '@/services/twitch';
+import { getLoungeDiagnosticJournal } from './lounge-diagnostic-journal';
 
 export type StellaLoungeIntent =
   | 'overview'
