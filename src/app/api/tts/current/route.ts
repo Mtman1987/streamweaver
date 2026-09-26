@@ -38,6 +38,15 @@ type TenantTtsState = {
 
 type TtsStateMap = Record<string, TenantTtsState>;
 
+const TTS_MAX_AGE_MS = 2 * 60 * 1000;
+
+function recentTtsItems(queue: TtsQueueItem[], nowMs = Date.now()): TtsQueueItem[] {
+  return queue.filter((item) => {
+    const addedMs = Date.parse(item.addedAt);
+    return Number.isFinite(addedMs) && addedMs <= nowMs && nowMs - addedMs <= TTS_MAX_AGE_MS;
+  }).slice(-20);
+}
+
 function getTtsStateMap(): TtsStateMap {
   const g = globalThis as any;
   if (!g.__streamweaver_tts_queue_by_tenant) {
@@ -67,7 +76,7 @@ async function loadTenantState(tenantKey: string): Promise<TenantTtsState> {
       try {
         const parsed = JSON.parse(await readFile(stateFile(tenantKey), 'utf8')) as TenantTtsState;
         map[tenantKey] = {
-          queue: Array.isArray(parsed?.queue) ? parsed.queue.slice(-20) : [],
+          queue: Array.isArray(parsed?.queue) ? recentTtsItems(parsed.queue) : [],
           lastServedAt: parsed?.lastServedAt || null,
         };
       } catch {
@@ -106,6 +115,9 @@ export async function GET(request: NextRequest) {
     touchTtsConsumer(tenantKey, 'overlay');
   }
   const state = await getTenantState(request);
+  // An OBS reconnect should never replay days of stored speech. Keep a short
+  // shared window for independent live listeners, without consuming their audio.
+  state.queue = recentTtsItems(state.queue);
   const { searchParams } = new URL(request.url);
 
   // ?poll=1 returns whether there's anything queued (lightweight check)
@@ -172,6 +184,7 @@ export async function POST(request: NextRequest) {
     const { audioUrl, text, gesture, viewerPrompt } = parsed.data;
     const tenantKey = getTenantKey(request);
     const state = await getTenantState(request);
+    state.queue = recentTtsItems(state.queue);
     const addedAt = new Date().toISOString();
 
     const cursor = crypto.randomUUID();

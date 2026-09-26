@@ -117,6 +117,8 @@ export default function TTSListenerPage() {
     let isPlaying = false;
     const cursorKey = `streamweaver:tts-cursor:${overlayTenant || 'global'}`;
     let cursor = window.localStorage.getItem(cursorKey) || '';
+    let initialized = false;
+    let cancelled = false;
 
     const playTTS = async (audioUrl: string): Promise<boolean> => {
       const audio = audioRef.current;
@@ -143,7 +145,7 @@ export default function TTSListenerPage() {
     };
 
     const fetchNext = async () => {
-      if (isPlaying) return;
+      if (!initialized || isPlaying) return;
       try {
         const sep = tenantQuery ? `&${tenantQuery}` : '';
         const after = cursor ? `&after=${encodeURIComponent(cursor)}` : '';
@@ -187,9 +189,25 @@ export default function TTSListenerPage() {
       audio.addEventListener('pause', onPause);
     }
 
+    const initialize = async () => {
+      try {
+        const sep = tenantQuery ? `&${tenantQuery}` : '';
+        const res = await fetch(`/api/tts/current?latest=1${sep}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.cursor) {
+            cursor = String(data.cursor);
+            window.localStorage.setItem(cursorKey, cursor);
+          }
+        }
+      } catch {}
+      initialized = true;
+      if (!cancelled) fetchNext();
+    };
     const interval = setInterval(fetchNext, 500);
-    fetchNext();
+    initialize();
     return () => {
+      cancelled = true;
       clearInterval(interval);
       if (audio) {
         audio.removeEventListener('ended', onEnded);
