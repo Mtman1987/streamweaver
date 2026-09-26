@@ -73,10 +73,11 @@ function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, un
   const broadcast = (global as any).broadcast;
   const broadcastTenantId = normalizeTenantId(tenantId);
 
-  broadcast({
+  const delivered = broadcast({
     type: type === 'pending' ? 'checkin-pending' : 'checkin-reveal',
     payload,
   }, broadcastTenantId);
+  console.log(`[CheckinOverlay] ${type} tenant=${broadcastTenantId || 'global'} clients=${typeof delivered === 'number' ? delivered : 'unknown'}`);
 
   // Keep the legacy partner overlay event stream alive so older /partner-checkin
   // browser tabs still render crew/mod/space mountain check-ins without needing a
@@ -125,12 +126,15 @@ const recentCheckinLines = new Map<string, string[]>();
 async function freshCheckinLine(tenantId: string | undefined, kind: CheckinKind, prompt: string, fallbacks: string[], requiredNames: string[]): Promise<string> {
   const key = `${tenantId || 'global'}:${kind}`;
   const recent = recentCheckinLines.get(key) || [];
+  const namesInstruction = new Set(requiredNames.map(name => name.toLowerCase())).size === 1
+    ? 'Use the viewer name once; this is one person.'
+    : 'Use both names exactly.';
   let line = '';
   try {
     const { generateAIResponse } = await import('./ai-provider');
     const { getBotName, getBotPersonality } = require('../lib/bot-settings-store');
     line = await generateAIResponse(
-      `${prompt} Write one fresh, playful Space Mountain themed line in Stella's voice. Use both names exactly. No statistics, numbers, URLs, parentheses, markdown, or generic "welcome" greeting. Vary the opening and imagery. Do not repeat: ${JSON.stringify(recent.slice(-8))}`,
+      `${prompt} Write one fresh, playful Space Mountain themed line in Stella's voice. ${namesInstruction} No statistics, numbers, URLs, parentheses, markdown, or generic "welcome" greeting. Vary the opening and imagery. Do not repeat: ${JSON.stringify(recent.slice(-8))}`,
       `You are ${getBotName(tenantId) || 'Stella'}. ${getBotPersonality(tenantId) || ''}`,
       tenantId,
       { maxTokens: 110, maxCharacters: 260, temperature: 1 },
@@ -174,9 +178,17 @@ async function generateGreeting(username: string, entry: CheckinEntry, kind: Che
       `${name} saved ${actor} a seat on the ride. Everybody hold on!`,
     ],
   };
-  return freshCheckinLine(tenantId, kind,
-    `${actor} selected ${name} for a ${sourceLabel} check-in. Celebrate that specific pairing in one or two short sentences.`,
-    fallbacks[kind], [username, name]);
+  const checkingInWithSelf = username.toLowerCase() === name.toLowerCase();
+  const prompt = checkingInWithSelf
+    ? `${actor} landed on their own name for a ${sourceLabel} check-in. Celebrate the funny solo match without repeating their name or implying there are two people.`
+    : `${actor} selected ${name} for a ${sourceLabel} check-in. Celebrate that specific pairing in one or two short sentences.`;
+  const soloFallbacks = [
+    `${actor}, the ${sourceLabel} roster just pointed straight back at you. That's a star turn!`,
+    `Plot twist, ${actor}: you're the ${sourceLabel} pick this time. Take your bow on the launch deck!`,
+    `The ${sourceLabel} beacon found ${actor} right where it started. Own that spotlight!`,
+  ];
+  return freshCheckinLine(tenantId, kind, prompt,
+    checkingInWithSelf ? soloFallbacks : fallbacks[kind], [username, name]);
 }
 
 async function generateBulkGreeting(username: string, frontSeat: string, kind: CheckinKind, tenantId?: string): Promise<string> {

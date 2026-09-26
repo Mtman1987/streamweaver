@@ -2686,6 +2686,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     if (!self && !message.startsWith('!') && !message.startsWith('[')) {
         const { trackChatMessageForRedemption } = require('./eventsub');
         consumedByRedemption = trackChatMessageForRedemption(username, message, tenantId);
+        // A pending check-in or pack selection has already started its own
+        // result flow. Never also treat that number as ordinary Stella chat.
+        if (consumedByRedemption) return;
     }
     
     // Extract actual message if it came from Discord
