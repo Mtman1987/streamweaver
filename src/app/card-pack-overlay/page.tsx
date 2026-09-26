@@ -175,7 +175,11 @@ export default function CardPackOverlay() {
             <div className="absolute inset-0 flex items-center justify-center">
               <div className={`flex h-72 w-52 rotate-[-4deg] items-center justify-center rounded-3xl border-4 text-center shadow-[0_30px_90px_rgba(0,0,0,.7)] animate-in zoom-in duration-500 ${isQuackverse ? 'border-cyan-300 bg-gradient-to-br from-cyan-950 via-slate-900 to-fuchsia-950' : 'border-yellow-300 bg-gradient-to-br from-red-900 via-slate-900 to-yellow-900'}`}>
                 <div>
-                  <div className="text-5xl">{isQuackverse ? '🦆' : '⚡'}</div>
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="" className="mx-auto h-20 w-20 rounded-full border-4 border-white/50 object-cover shadow-2xl" />
+                  ) : (
+                    <div className="text-5xl">{isQuackverse ? '🦆' : '⚡'}</div>
+                  )}
                   <div className="mt-4 text-2xl font-black uppercase">{isQuackverse ? 'Quackverse' : 'Space Mountain'}</div>
                   <div className="mt-2 text-xs uppercase tracking-[.25em] text-white/70">Booster Pack</div>
                 </div>
