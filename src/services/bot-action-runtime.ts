@@ -19,14 +19,14 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
-import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay } from '@/services/nebula-actions';
+import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -213,6 +213,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['Stella collab with me', 'Stella producer mode', 'call Stella as Arcade Steward'],
   },
   {
+    id: 'nebula.stream-battle',
+    title: 'Link streamer channels into a Nebula stream battle',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['start Chat Wars against @otherstreamer', 'link my stream with @otherstreamer for Chat Wars'],
+  },
+  {
     id: 'nebula.live-overlay',
     title: 'Reshape the existing live Nebula overlay URL in place',
     app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
@@ -377,6 +383,8 @@ function detectExplicitAction(message: string): BotActionRequest | null {
     const ids=Object.entries(gameNames).filter(([name])=>value.includes(name)).map(([,id])=>id);
     if(ids.length) return {action:'nebula.live-overlay',args:{gameIds:ids.join(','),layout:/\bgrid\b/.test(value)?'auto-grid':/\bstack\b/.test(value)?'stack':'rotation'},detection:'explicit'};
   }
+  const battle=value.match(/\b(?:start|make|create|link)\b.*\b(?:chat wars|stream battle|stream vs stream)\b.*(?:against|with|versus|vs\.?)[\s@]+([a-z0-9_]{2,80})\b/);
+  if(battle) return {action:'nebula.stream-battle',args:{opponent:battle[1]},detection:'explicit'};
   const gameStartStop=value.match(/\b(?:stella\s+)?(start|stop|end|turn on|turn off)\s+(?:the\s+)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/);
   if(gameStartStop){ const action=/^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start'; return {action:'nebula.command',args:{command:`spmt ${gameNames[gameStartStop[2]]} ${action}`},detection:'explicit'}; }
 
@@ -725,6 +733,12 @@ export async function executeBotAction(
     if (request.action === 'stella.role') {
       const result=setStellaRoleMode(request.args.role as any,request.args.partner);
       return {handled:true,action:request.action,status:'completed',response:`✅ Stella role: ${result.role}${result.collabWith?' with @'+result.collabWith:''}.`,result};
+    }
+    if (request.action === 'nebula.stream-battle') {
+      const opponent=String(request.args.opponent||'').trim().replace(/^@/,'').toLowerCase();
+      if(!opponent) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which streamer to battle.'};
+      const result=await createNebulaStreamBattle({channels:[context.tenantId,opponent],createdBy:context.tenantId,active:true});
+      return {handled:true,action:request.action,status:'completed',response:`⚔️ Chat Wars stream battle linked: #${context.tenantId} vs #${opponent}.`,result};
     }
     if (request.action === 'nebula.live-overlay') {
       const gameIds=String(request.args.gameIds||'').split(',').map(v=>v.trim()).filter(Boolean);
