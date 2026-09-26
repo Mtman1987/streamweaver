@@ -10,6 +10,7 @@ import { sendChatMessage } from '@/services/twitch';
 import { addPoints, getPoints, setPoints } from '@/services/points';
 import { normalizeCardPackEvent } from '@/lib/card-pack-event';
 import { cardPackOverlayAliases } from '@/services/card-pack-overlay-state';
+import { queueCardPackGif } from '@/services/card-pack-render-client';
 import {
   listGlobalVariables,
   listUserVariables,
@@ -743,6 +744,10 @@ export class SubActionExecutor {
             payload: { username, cards, game: 'pokemon', eventId: canonical.eventId }
           }, tenantId);
         }
+        const captureTenant = aliases.find((value) => !/^\d+$/.test(value)) || aliases[0];
+        void queueCardPackGif(canonical, captureTenant).catch((error) => {
+          console.warn('[Pokemon] Pack GIF queue failed:', error instanceof Error ? error.message : error);
+        });
       }
       
       return { success: true, variables: { pokemonCards: cards } };
