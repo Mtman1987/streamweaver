@@ -26,14 +26,14 @@ async function request(path: string, init: RequestInit) {
   return response.json() as Promise<any>;
 }
 
-export async function queueCardPackGif(event: CardPackOpenedEvent) {
+export async function queueCardPackGif(event: CardPackOpenedEvent, tenantId?: string) {
   const data = await request('/api/internal/card-pack/render', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       eventId: event.eventId,
       source: event.game,
-      renderUrl: buildCardPackRenderUrl(event),
+      renderUrl: buildCardPackRenderUrl(event, tenantId),
     }),
   });
   return data.job as { id: string; status: string; gifUrl?: string };
