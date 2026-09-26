@@ -12,6 +12,7 @@ import { handleTwitchMessage } from './chat-dispatcher';
 import { recordSharedChatEvent } from './shared-chat-ingestion';
 import { normalizeTwitchSharedChatEvent } from './shared-chat-normalizers';
 import { queueTtsOverlay } from './tts-overlay-queue';
+import { recordStellaHighlightTtsReceipt } from './stella-highlight-receipts';
 import { promises as fsp } from 'fs';
 import { getConfiguredAppUrl } from '../lib/runtime-origin';
 import {
@@ -63,8 +64,9 @@ function speakLoungeStellaChatMessage(channel: string, tenantId: string | undefi
   if (spokenLoungeStellaMessageIds.size > 512) {
     spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
   }
-  void queueTtsOverlay(message, SPACEMOUNTAIN_SYSTEM_TENANT_ID).then((result) => {
-    if (!result.queued) console.warn('[Stella Lounge TTS] Chat line was not spoken:', result.error || 'not queued');
+  void queueTtsOverlay(message, SPACEMOUNTAIN_SYSTEM_TENANT_ID).then(async (result) => {
+    if (result.queued) await recordStellaHighlightTtsReceipt(messageId, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+    else console.warn('[Stella Lounge TTS] Chat line was not spoken:', result.error || 'not queued');
   }).catch((error) => console.error('[Stella Lounge TTS] Chat line failed:', error));
 }
 
@@ -120,8 +122,9 @@ export async function sendConfirmedLoungeStellaMessage(message: string): Promise
     if (spokenLoungeStellaMessageIds.size > 512) {
       spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
     }
-    void queueTtsOverlay(message, tenantId).then(result => {
-      if (!result.queued) console.warn('[Stella Lounge TTS] Confirmed chat line was not spoken:', messageId, result.error || 'not queued');
+    void queueTtsOverlay(message, tenantId).then(async result => {
+      if (result.queued) await recordStellaHighlightTtsReceipt(messageId, tenantId);
+      else console.warn('[Stella Lounge TTS] Confirmed chat line was not spoken:', messageId, result.error || 'not queued');
     }).catch(error => console.error('[Stella Lounge TTS] Confirmed chat line failed:', messageId, error));
   }
   try {

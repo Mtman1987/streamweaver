@@ -7,9 +7,12 @@ import {
 } from '@/services/shared-chat-operator-state';
 import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
 import { isKnownBot } from '@/services/known-bots';
+import { hasStellaHighlightTtsReceipt } from '@/services/stella-highlight-receipts';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const LATEST_FALLBACK_MAX_AGE_MS = 60_000;
 
 const LOUNGE_ECOSYSTEM_VOICES = new Set([
   'stellabot87',
@@ -40,6 +43,13 @@ async function isLoungeShowcaseEligible(
   // Never let a synthetic/internal user_<id> placeholder appear as a person.
   // Those entries have not proved a public identity and are not showcase-safe.
   if (senderNames.some((name) => /^user_[a-z0-9_-]+$/i.test(name))) return false;
+  if (tenantId === 'spacemountainlive' && senderNames.includes('stellabot87')) {
+    // The room may receive a Twitch line while synthesis or queueing fails.
+    // Keep that line in the replay but never claim it was spoken in the showcase.
+    return entry.platform === 'twitch'
+      && ['tmi', 'helix-confirmed'].includes(String(entry.meta.rawProvider || ''))
+      && await hasStellaHighlightTtsReceipt(entry.upstreamId, tenantId);
+  }
   if (senderNames.some((name) => LOUNGE_ECOSYSTEM_VOICES.has(name))) return true;
   if (entry.sender.roles.includes('bot')) return false;
 
@@ -84,6 +94,8 @@ export async function GET(request: NextRequest) {
   let latestShowcaseEvent = null;
   if (fallbackToLatest) {
     for (const entry of replay.slice().reverse()) {
+      const receivedAt = Date.parse(entry.receivedTimestamp);
+      if (!Number.isFinite(receivedAt) || Date.now() - receivedAt > LATEST_FALLBACK_MAX_AGE_MS) break;
       if (await isLoungeShowcaseEligible(entry, tenantId)) {
         latestShowcaseEvent = entry;
         break;
