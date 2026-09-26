@@ -204,6 +204,7 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
         .clean-shell .stage { width: 100%; height: 100vh; aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: none; }
         .player, .player :global(iframe), .frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
         .waiting { display: grid; place-items: center; height: 100%; color: #a9b9d7; text-align: center; padding: 20px; }
+        .creator-label { position: absolute; right: 20px; bottom: 20px; z-index: 5; max-width: calc(100% - 40px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; background: rgba(0,0,0,.75); border-radius: 8px; padding: 8px 16px; color: white; font: 700 clamp(14px,2vw,18px) system-ui, sans-serif; }
         .now { display: flex; justify-content: space-between; gap: 10px; margin: 14px 3px; color: #e4efff; font-weight: 800; }
         .now span { color: #76f3ff; }
         .foot { color: #93a6cb; font-size: 13px; line-height: 1.5; }
@@ -224,6 +225,7 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
           ) : (
             <iframe className="frame" key={`${method}-${active.username}-${activeIndex}`} src={method === 'multitwitch' ? multiTwitchUrl : playerUrl} allow="autoplay; fullscreen" allowFullScreen title={`${copy.title}: ${active.username}`} />
           )}
+          {started && active && <div className="creator-label">📹 @{active.username}</div>}
         </div>
         {!clean && <><div className="now"><span>NOW TESTING</span><strong>{active ? `@${active.username} • next change in 30 seconds` : 'Waiting for live creators'}</strong></div>
         <p className="foot">For a fair comparison, click play once if Twitch asks. The important difference is what happens after the first 30-second change.{quality ? ` Twitch quality: ${quality}.` : ''}</p></>}
