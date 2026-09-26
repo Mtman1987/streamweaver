@@ -79,7 +79,8 @@ export const LOUNGE_COMMAND_CATEGORIES: LoungeCommandCategory[] = [
     description: 'Request and inspect the Lounge’s single HearMeOut media player.',
     commands: [
       entry('!sr <song or URL>', 'Request music for the shared Lounge player.', 'HearMeOut'),
-      entry('!wr <movie, show or video>', 'Request something to watch.', 'HearMeOut'),
+      entry('!wr <movie title> / !wr 1-3', 'Search playable watch choices, then queue a numbered result.', 'HearMeOut'),
+      entry('!follow @creator', 'Post the creator’s Twitch channel link in chat.', 'Lounge', 'Twitch'),
       entry('!np / !nowplaying', 'Show the current music and movie state.', 'HearMeOut'),
       entry('!votebump', 'Vote to swap HearMeOut with the current Spotlight.', 'Lounge', 'Twitch'),
       entry('!bump', 'Immediately swap HearMeOut with the current Spotlight.', 'Lounge', 'Twitch', 'moderator'),
