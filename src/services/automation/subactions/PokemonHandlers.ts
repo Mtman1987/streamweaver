@@ -1,6 +1,7 @@
 import { openBoosterPack, loadSetData, type PokemonCard } from '../../pokemon-booster-packs';
 import { sendChatMessage } from '../../twitch';
 import { addPoints, formatCompactPointAmount, getPoints } from '../../points';
+import { normalizeCardPackEvent } from '@/lib/card-pack-event';
 
 export async function handlePokemonPackOpen(context: any, params: any): Promise<void> {
   const { username, args } = context;
@@ -25,10 +26,19 @@ export async function handlePokemonPackOpen(context: any, params: any): Promise<
     const result = await openBoosterPack(setCode, username);
     
     if (result && typeof (global as any).broadcast === 'function') {
+      const tenantId = String(context?.tenantId || '').trim() || undefined;
+      const canonical = normalizeCardPackEvent({
+        eventId: result.eventId,
+        game: 'pokemon',
+        pack: result.pack,
+        setName: result.setName,
+        username,
+      });
+      (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, tenantId);
       (global as any).broadcast({
         type: 'pokemon-pack-opened',
-        payload: result
-      });
+        payload: { ...result, username, game: 'pokemon', eventId: canonical.eventId }
+      }, tenantId);
       
       // Show all cards with names and rarities
       const cardList = result.pack.map((card: PokemonCard) => `${card.name} (${card.rarity})`).join(', ');
