@@ -2874,8 +2874,17 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // SML media requests are production-critical Lounge commands. Handle them
     // before imported JSON actions and general bot/command filters so stale
     // Streamer.bot actions cannot swallow !sr or !wr.
+    const watchChoiceKey = `${replyChannel}:${String(tags['user-id'] || tags.username || actualUsername).toLowerCase()}`;
+    // A viewer can answer the three-choice movie prompt with just 1, 2, or 3.
+    // Only consume a bare digit when this same viewer has a pending !wr search;
+    // !commands category choices have already been handled above.
+    const bareWatchChoice = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        && !self
+        && /^[1-3]$/.test(actualMessage.trim())
+        && pendingWatchChoices.has(watchChoiceKey);
     const smlMediaRequest = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
         ? actualMessage.trim().match(/^!(sr|wr)(?:\s+(.+))?$/i)
+            || (bareWatchChoice ? ['', 'wr', actualMessage.trim()] : null)
         : null;
     if (smlMediaRequest) {
         const command = smlMediaRequest[1].toLowerCase();
@@ -2890,7 +2899,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
         const roomId = SPACEMOUNTAIN_LOUNGE_ROOM_ID;
         const lane = command === 'wr' ? 'movie' : 'music';
-        const choiceKey = `${replyChannel}:${String(tags['user-id'] || tags.username || actualUsername).toLowerCase()}`;
+        const choiceKey = watchChoiceKey;
         let choice: { id: string; title: string; year: number | null } | undefined;
         if (command === 'wr') {
             const number = query.match(/^[1-3]$/);
@@ -2930,7 +2939,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const list = options.map((option: { title: string; year: number | null }, index: number) =>
                         `${index + 1}) ${option.title}${option.year && !option.title.includes(String(option.year)) ? ` (${option.year})` : ''}`
                     ).join(' | ');
-                    await reply(`@${actualUsername}, watch choices: ${list}. Type !wr 1, !wr 2, or !wr 3 within 5 minutes.`.slice(0, 490), 'bot').catch(() => {});
+                    await reply(`@${actualUsername}, watch choices: ${list}. Reply 1, 2, or 3 (or type !wr 1, !wr 2, or !wr 3) within 5 minutes.`.slice(0, 490), 'bot').catch(() => {});
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     console.error('[Dispatcher] SML !wr provider search failed:', error);
