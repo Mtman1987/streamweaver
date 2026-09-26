@@ -43,6 +43,14 @@ export type StellaLoungeSnapshot = {
     liveCount: number;
     liveNames: string[];
   };
+  overlay: {
+    available: boolean;
+    spotlight?: string;
+    mediaTitle?: string;
+    mediaKind?: 'music' | 'movie';
+    games: string[];
+    upcomingEvents: Array<{ title: string; startsAt: string }>;
+  };
 };
 
 type FetchLike = typeof fetch;
@@ -127,12 +135,13 @@ export async function buildStellaLoungeSnapshot(
 ): Promise<StellaLoungeSnapshot> {
   if (fetcher === fetch && cachedSnapshot && cachedSnapshot.expiresAt > now) return cachedSnapshot.value;
 
-  const [mediaResult, nebulaResult, gamesResult, communityResult] = await Promise.allSettled([
+  const [mediaResult, nebulaResult, gamesResult, communityResult, overlayResult] = await Promise.allSettled([
     fetchJson(fetcher, `${HEARMEOUT_URL}/api/music/session/state`),
     fetchJson(fetcher, `${SPMT_URL}/api/integrations/chat-tag/state`)
       .catch(() => fetchJson(fetcher, `${NEBULA_URL}/api/tag`)),
     fetchJson(fetcher, `${NEBULA_URL}/api/game-hub/channel?channel=${SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL}`),
     fetchJson(fetcher, `${SPMT_URL}/api/community/shoutouts`),
+    fetchJson(fetcher, `${process.env.STREAMWEAVER_BASE_URL || 'https://streamweaver-new.fly.dev'}/api/lounge/status-strip`),
   ]);
 
   const mediaData = mediaResult.status === 'fulfilled' ? unwrapData(mediaResult.value) : null;
@@ -158,6 +167,12 @@ export async function buildStellaLoungeSnapshot(
 
   const liveRows = communityResult.status === 'fulfilled' ? liveCommunityRows(communityResult.value) : [];
   const liveNames = liveRows.map(publicPlayerName).filter(Boolean).slice(0, 12);
+  const overlayData = overlayResult.status === 'fulfilled' ? unwrapData(overlayResult.value) : null;
+  const overlayGames = (Array.isArray(overlayData?.games) ? overlayData.games : [])
+    .map((game: any) => String(game?.name || '').trim()).filter(Boolean).slice(0, 8);
+  const overlayEvents = (Array.isArray(overlayData?.events) ? overlayData.events : [])
+    .map((event: any) => ({ title: String(event?.title || '').trim(), startsAt: String(event?.startsAt || '').trim() }))
+    .filter((event: any) => event.title && event.startsAt).slice(0, 3);
 
   const snapshot: StellaLoungeSnapshot = {
     capturedAt: new Date(now).toISOString(),
@@ -184,6 +199,14 @@ export async function buildStellaLoungeSnapshot(
       available: communityResult.status === 'fulfilled',
       liveCount: liveRows.length,
       liveNames,
+    },
+    overlay: {
+      available: overlayResult.status === 'fulfilled',
+      spotlight: overlayData?.spotlight?.displayName ? String(overlayData.spotlight.displayName) : undefined,
+      mediaTitle: overlayData?.media?.title ? String(overlayData.media.title) : undefined,
+      mediaKind: overlayData?.media?.kind === 'movie' ? 'movie' : overlayData?.media?.kind === 'music' ? 'music' : undefined,
+      games: overlayGames,
+      upcomingEvents: overlayEvents,
     },
   };
 
@@ -264,6 +287,9 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
     snapshot.community.available
       ? `- Community live count: ${snapshot.community.liveCount}${snapshot.community.liveNames.length ? ` (${snapshot.community.liveNames.join(', ')})` : ''}.`
       : '- Community live state is unavailable.',
+    snapshot.overlay.available
+      ? `- What the Lounge overlay currently knows: Spotlight ${snapshot.overlay.spotlight || 'none'}; visible media ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}.`
+      : '- Lounge overlay state is unavailable; do not guess what is on screen.',
     '- The universal Nebula Arcade join command is: spmt join.',
     '- The human support handoff begins with: !mtfixit.',
   ].join('\n');
