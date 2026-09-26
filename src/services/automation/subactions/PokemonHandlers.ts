@@ -28,7 +28,6 @@ export async function handlePokemonPackOpen(context: any, params: any): Promise<
     if (result && typeof (global as any).broadcast === 'function') {
       const tenantId = String(context?.tenantId || '').trim() || undefined;
       const canonical = normalizeCardPackEvent({
-        eventId: result.eventId,
         game: 'pokemon',
         pack: result.pack,
         setName: result.setName,
