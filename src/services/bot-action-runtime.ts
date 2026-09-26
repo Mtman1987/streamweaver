@@ -19,14 +19,14 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
-import { executeNebulaCommand, manageNebulaOverlay } from '@/services/nebula-actions';
-import { setStellaChaosMode } from '@/services/stella-chaos-mode';
+import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay } from '@/services/nebula-actions';
+import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -207,6 +207,18 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['bridge HearMeOut to Discord VC General', 'make the voice bridge listen only', 'stop the Discord voice bridge'],
   },
   {
+    id: 'stella.role',
+    title: 'Set Stella host, producer, collab, or Arcade Steward role',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['Stella collab with me', 'Stella producer mode', 'call Stella as Arcade Steward'],
+  },
+  {
+    id: 'nebula.live-overlay',
+    title: 'Reshape the existing live Nebula overlay URL in place',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['put Chat Wars and Bingo on the Lounge Nebula overlay', 'show every Nebula game in an auto grid'],
+  },
+  {
     id: 'nebula.command',
     title: 'Run a Nebula Arcade game or controller command privately',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
@@ -357,6 +369,16 @@ function extractApplicationDecision(message: string) {
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
+
+  const roleMatch=value.match(/\bstella\b.*\b(collab|producer|host|(?:arcade\s+)?steward)\b(?:\s+(?:with|for)\s+@?([a-z0-9_]{2,80}))?/);
+  if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
+  const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse'};
+  if(/\b(?:overlay|screen|stage)\b/.test(value)&&/\b(?:nebula|lounge|game)\b/.test(value)){
+    const ids=Object.entries(gameNames).filter(([name])=>value.includes(name)).map(([,id])=>id);
+    if(ids.length) return {action:'nebula.live-overlay',args:{gameIds:ids.join(','),layout:/\bgrid\b/.test(value)?'auto-grid':/\bstack\b/.test(value)?'stack':'rotation'},detection:'explicit'};
+  }
+  const gameStartStop=value.match(/\b(?:stella\s+)?(start|stop|end|turn on|turn off)\s+(?:the\s+)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/);
+  if(gameStartStop){ const action=/^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start'; return {action:'nebula.command',args:{command:`spmt ${gameNames[gameStartStop[2]]} ${action}`},detection:'explicit'}; }
 
   const stellaMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?|\d{1,7})\b/);
   if (stellaMode) {
@@ -700,6 +722,16 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'stella.role') {
+      const result=setStellaRoleMode(request.args.role as any,request.args.partner);
+      return {handled:true,action:request.action,status:'completed',response:`✅ Stella role: ${result.role}${result.collabWith?' with @'+result.collabWith:''}.`,result};
+    }
+    if (request.action === 'nebula.live-overlay') {
+      const gameIds=String(request.args.gameIds||'').split(',').map(v=>v.trim()).filter(Boolean);
+      if(!gameIds.length) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which games should be on the Nebula overlay.'};
+      const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds,layout:request.args.layout});
+      return {handled:true,action:request.action,status:'completed',response:`✅ Live Nebula overlay now carries ${gameIds.join(', ')}.`,result};
+    }
     if (request.action === 'stella.mode') {
       const result=setStellaChaosMode(request.args.mode as any, request.args.intensity?Number(request.args.intensity):undefined);
       return {handled:true,action:request.action,status:'completed',response:`✅ Stella mode: ${result.mode} (${result.intensity}).`,result};

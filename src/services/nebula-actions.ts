@@ -12,3 +12,8 @@ export async function manageNebulaOverlay(input:{operation:'list'|'create'|'upda
  if(input.operation==='list') return call('/api/game-hub/bot-overlays?channel='+encodeURIComponent(input.channel));
  const method=input.operation==='create'?'POST':'PATCH'; return call('/api/game-hub/bot-overlays',{method,body:JSON.stringify(input)});
 }
+
+export function nebulaSystemOverlayId(channel:string, surface:'activity'|'main'='activity'){ return 'system-'+String(channel||'').trim().toLowerCase().replace(/^#/,'')+'-'+surface; }
+export async function reshapeNebulaLiveOverlay(input:{channel:string;surface?:'activity'|'main';gameIds:string[];layout?:string}){
+ return manageNebulaOverlay({operation:'update',channel:input.channel,id:nebulaSystemOverlayId(input.channel,input.surface||'activity'),gameIds:input.gameIds,layout:input.layout||'rotation',transparent:true});
+}
