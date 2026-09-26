@@ -257,7 +257,7 @@ export default function BRBPlayer() {
       )}
       {active && !spotlight && clipUser && (
         <div style={{
-          position: 'absolute', bottom: 20, left: 20,
+          position: 'absolute', bottom: 20, right: 20, zIndex: 5, maxWidth: 'calc(100% - 40px)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none',
           background: 'rgba(0,0,0,0.7)', color: 'white',
           padding: '8px 16px', borderRadius: 8, fontSize: 18,
           fontFamily: 'system-ui, sans-serif'
