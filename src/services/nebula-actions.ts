@@ -33,3 +33,17 @@ export async function linkChatWarsStreams(input:{channels:string[];createdBy:str
  }
  return {...battle,overlays};
 }
+
+
+export async function linkWordGameStreams(input:{gameId:'wordchain'|'phraseguess';channels:string[];createdBy:string;active?:boolean}){
+ const channels=[...new Set(input.channels.map((value)=>String(value||'').trim().replace(/^@/,'').toLowerCase()).filter(Boolean))].slice(0,4);
+ const battle=await call('/api/game-hub/bot-overlays',{method:'PUT',body:JSON.stringify({gameId:input.gameId,channels,createdBy:input.createdBy,active:input.active!==false})});
+ const overlays=[];
+ const label=input.gameId==='phraseguess'?'Phrase Guess':'Word Chain';
+ for(const channel of channels){
+   const created=await manageNebulaOverlay({operation:'create',channel,name:`${label} Stream Battle`,gameIds:[input.gameId],layout:'focus',transparent:true}) as any;
+   const profile=created?.profile;
+   if(profile?.id) overlays.push({channel,profileId:profile.id,overlayUrl:`${NEBULA_URL}/overlay/game-hub/${encodeURIComponent(profile.id)}`});
+ }
+ return {...battle,overlays};
+}
