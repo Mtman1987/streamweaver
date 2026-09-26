@@ -18,6 +18,7 @@ export default function BRBPlayer() {
   const [spotlight, setSpotlight] = useState(false);
   const [gifUrl, setGifUrl] = useState('');
   const [embedUrl, setEmbedUrl] = useState('');
+  const [videoPlaying, setVideoPlaying] = useState(false);
   const embedLoadedRef = useRef<() => void>(() => {});
   const embedFailedRef = useRef<() => void>(() => {});
 
@@ -38,7 +39,9 @@ export default function BRBPlayer() {
     const showGif = (gif?: { url: string; user: string }) => {
       clearTimeout(embedTimer);
       setEmbedUrl('');
-      if (!gif?.url) { setActive(false); notifyParent(false); return; }
+      setVideoPlaying(false);
+      lastGif = undefined;
+      if (!gif?.url) { videoRef.current?.pause(); setClipUser(''); setGifUrl(''); setActive(true); notifyParent(true, 'gif'); return; }
       videoRef.current?.pause();
       setClipUser(gif.user || '');
       setGifUrl(gif.url);
@@ -60,6 +63,7 @@ export default function BRBPlayer() {
       clearTimeout(embedTimer);
       embedTimer = setTimeout(() => embedFailedRef.current(), 8_000);
       videoRef.current?.pause();
+      setVideoPlaying(false);
       setEmbedUrl(url);
     };
 
@@ -68,6 +72,7 @@ export default function BRBPlayer() {
       lastGif = fallback;
       clearTimeout(embedTimer);
       setEmbedUrl('');
+      setVideoPlaying(false);
       setGifUrl('');
       const match = clipUrl.match(/clip=([^&]+)/);
       if (!match) { showGif(fallback); return; }
@@ -103,6 +108,7 @@ export default function BRBPlayer() {
             setSpotlight(false);
             setGifUrl('');
             setActive(true);
+            setVideoPlaying(true);
             notifyParent(true, 'clip');
           }).catch((err: unknown) => { console.warn('[BRB] Clip playback failed:', err); if (epoch === playbackEpoch) playEmbed(clipId, epoch, fallback); });
         }
@@ -125,6 +131,7 @@ export default function BRBPlayer() {
       clearTimeout(embedTimer);
       videoRef.current?.pause();
       setEmbedUrl('');
+      setVideoPlaying(false);
       setGifUrl('');
       setActive(false);
       notifyParent(false);
@@ -177,7 +184,7 @@ export default function BRBPlayer() {
       }
     };
     window.addEventListener('message', onSpotlightHealth);
-    const onVideoError = () => { if (lastGif) showGif(lastGif); };
+    const onVideoError = () => { if ((automatic || manual) && lastGif) showGif(lastGif); };
     videoRef.current?.addEventListener('error', onVideoError);
 
     const connect = () => {
@@ -195,10 +202,12 @@ export default function BRBPlayer() {
               clearTimeout(embedTimer);
               videoRef.current?.pause();
               setEmbedUrl('');
+              setVideoPlaying(false);
               setGifUrl('');
-              setActive(false);
+              setClipUser('');
+              setActive(true);
               setSpotlight(false);
-              notifyParent(false);
+              notifyParent(true, 'gif');
             }
             if (msg.type === 'brb-clip' && msg.payload) {
               manual = true;
@@ -216,10 +225,12 @@ export default function BRBPlayer() {
               playbackEpoch++;
               clearTimeout(embedTimer);
               setEmbedUrl('');
+              setVideoPlaying(false);
               setGifUrl('');
-              setActive(false);
+              setClipUser('');
+              setActive(msg.type === 'brb-no-media');
               setSpotlight(false);
-              notifyParent(false);
+              notifyParent(msg.type === 'brb-no-media', 'gif');
               if (videoRef.current) videoRef.current.src = '';
             }
           } catch {}
@@ -235,16 +246,19 @@ export default function BRBPlayer() {
 
   return (
     <div style={{
-      width: '100vw', height: '100vh', background: active && !spotlight ? '#0e0e10' : 'transparent',
+      width: '100vw', height: '100vh', background: active || embedUrl ? '#071127' : 'transparent',
+      overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
     }}>
       <video
         ref={videoRef}
-        style={{ width: '100%', height: '100%', objectFit: 'contain', display: spotlight || gifUrl || embedUrl ? 'none' : 'block' }}
+        style={{ width: '100%', height: '100%', objectFit: 'contain', display: videoPlaying && !spotlight && !gifUrl && !embedUrl ? 'block' : 'none' }}
         autoPlay
       />
       {embedUrl && <iframe src={embedUrl} title="Twitch BRB clip" allow="autoplay; fullscreen" onLoad={() => embedLoadedRef.current()} onError={() => embedFailedRef.current()} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />}
-      {active && gifUrl && <img onError={() => { setGifUrl(''); setActive(false); if (window.parent !== window) window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: false, mode: 'gif' }, 'https://spmt.live'); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {active && gifUrl && <img onError={() => { setGifUrl(''); setClipUser(''); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: 999, background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>BE RIGHT BACK</div>}
+      {active && !embedUrl && !gifUrl && !videoPlaying && <div style={{ position: 'absolute', zIndex: 2, color: '#c4eefe', font: '600 18px system-ui, sans-serif', textAlign: 'center', pointerEvents: 'none' }}>Community clips are coming up</div>}
       {active && spotlight && (
         <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
           background: 'rgba(5,12,30,.83)', border: '1px solid rgba(103,232,249,.65)',
