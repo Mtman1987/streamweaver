@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { normalizeCardPackEvent, buildCardPackRenderUrl, resolveCardPackGame } from '../src/lib/card-pack-event';
+import { cardPackOverlayAliases, getPendingCardPack, rememberPendingCardPack } from '../src/services/card-pack-overlay-state';
 
 const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -61,4 +62,33 @@ test('Discord pack reveal queues a GIF and preserves its old edit path as fallba
   assert.match(source, /waitForCardPackGif/);
   assert.match(source, /legacyFallback/);
   assert.match(source, /imageUrl: gifUrl/);
+});
+
+
+test('card pack overlay aliases include internal tenant and Twitch channel login', () => {
+  assert.deepEqual(
+    cardPackOverlayAliases({ tenantId: '489668931', channel: '#SpaceMountainLive', platform: 'twitch' }),
+    ['489668931', 'spacemountainlive'],
+  );
+});
+
+test('recent card pack events replay to reconnecting overlay sockets', () => {
+  const event = { type: 'card-pack-opened', payload: { eventId: 'pack-replay-test' } };
+  rememberPendingCardPack('SpaceMountainLive', event);
+  assert.deepEqual(getPendingCardPack('spacemountainlive'), event);
+});
+
+test('websocket connection replays a recent pack event', async () => {
+  const socket = await read('src/server/websocket.ts');
+  assert.match(socket, /getPendingCardPack/);
+  assert.match(socket, /pendingCardPack/);
+});
+
+test('Pokemon automation paths fan out to Twitch channel aliases', async () => {
+  const legacy = await read('src/services/automation/subactions/PokemonHandlers.ts');
+  const executor = await read('src/services/automation/SubActionExecutor.ts');
+  assert.match(legacy, /cardPackOverlayAliases/);
+  assert.match(legacy, /context\?\.channel/);
+  assert.match(executor, /cardPackOverlayAliases/);
+  assert.match(executor, /context\?\.channel/);
 });
