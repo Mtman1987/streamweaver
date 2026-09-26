@@ -17,12 +17,14 @@ import { canUsePublicImageGeneration, runImageCommand } from '@/services/image-c
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
+import { startBRB, stopBRB } from '@/services/brb-clips';
+import { requestSpotlightRestart } from '@/services/lounge-player-control';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -203,6 +205,18 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['bridge HearMeOut to Discord VC General', 'make the voice bridge listen only', 'stop the Discord voice bridge'],
   },
   {
+    id: 'sw.lounge.brb',
+    title: 'Start or stop the tenant Lounge BRB player',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['start the BRB player', 'stop BRB', 'we are back from break'],
+  },
+  {
+    id: 'sw.lounge.spotlight.restart',
+    title: 'Restart the tenant Lounge Spotlight player',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['restart the Spotlight player', 'turn Spotlight off and back on'],
+  },
+  {
     id: 'sw.lounge.volume',
     title: 'Set the live Lounge mixer volume for Stella, Spotlight, or media',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
@@ -323,6 +337,16 @@ function extractApplicationDecision(message: string) {
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
+
+  if (/\b(?:restart|reboot|power[- ]?cycle|turn off and (?:back )?on)\b.*\bspotlight\b|\bspotlight\b.*\b(?:restart|reboot|power[- ]?cycle)\b/.test(value)) {
+    return { action: 'sw.lounge.spotlight.restart', args: {}, detection: 'explicit' };
+  }
+  if (/\b(?:start|show|turn on)\b.*\bbrb\b|\b(?:brb|be right back)\s+(?:player|screen)\b/.test(value)) {
+    return { action: 'sw.lounge.brb', args: { control: 'start' }, detection: 'explicit' };
+  }
+  if (/\b(?:stop|end|turn off)\b.*\bbrb\b|\bback from break\b/.test(value)) {
+    return { action: 'sw.lounge.brb', args: { control: 'stop' }, detection: 'explicit' };
+  }
 
   const loungeVolume = value.match(/\b(?:set|change|turn|make|lower|raise)\b.*\b(stella|spotlight|media)\b.*\b(?:volume|audio|sound)?\b.*?\b(\d{1,3})\s*(?:%|percent)?\b/);
   if (loungeVolume) {
@@ -634,6 +658,9 @@ export async function executeBotAction(
   if (request.action === 'hmo.voice.bridge.control' && request.args.control === 'profile' && !request.args.audioProfile) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Choose the voice bridge profile: low-latency, balanced, or resilient.' };
   }
+  if (request.action === 'sw.lounge.brb' && !/^(start|stop)$/.test(request.args.control || '')) {
+    return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me whether to start or stop BRB.' };
+  }
   if (request.action === 'sw.lounge.volume' && (!/^(stella|spotlight|media)$/.test(request.args.output || '') || !/^\d{1,3}$/.test(request.args.value || ''))) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me Stella, Spotlight, or media and a volume from 1 to 100.' };
   }
@@ -642,6 +669,19 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'sw.lounge.spotlight.restart') {
+      const result = requestSpotlightRestart();
+      return { handled: true, action: request.action, status: 'completed', response: '✅ Spotlight player restart requested.', result };
+    }
+    if (request.action === 'sw.lounge.brb') {
+      if (request.args.control === 'stop') {
+        stopBRB(context.tenantId);
+        return { handled: true, action: request.action, status: 'completed', response: '✅ BRB player stopped.', result: { control: 'stop' } };
+      }
+      const broadcaster = clean(context.actor.username || context.actor.displayName || context.tenantId, 100);
+      void startBRB(broadcaster, context.tenantId).catch((error) => console.error('[BotActionRuntime] BRB start failed:', error));
+      return { handled: true, action: request.action, status: 'completed', response: '✅ BRB player started.', result: { control: 'start' } };
+    }
     if (request.action === 'sw.lounge.volume') {
       const value = Number(request.args.value);
       const output = request.args.output as 'stella' | 'spotlight' | 'media';

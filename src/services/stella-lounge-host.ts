@@ -13,6 +13,7 @@ import {
 import { hasActiveTtsConsumer } from '@/services/tts-consumer-presence';
 import { sendTwitchChatMessage } from '@/services/twitch';
 import { getLoungeDiagnosticJournal } from './lounge-diagnostic-journal';
+import { LOUNGE_COMMAND_CATEGORIES } from '@/lib/lounge-command-directory';
 
 export type StellaLoungeIntent =
   | 'overview'
@@ -293,6 +294,8 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
       : '- Lounge overlay state is unavailable; do not guess what is on screen.',
     `- Recent Lounge diagnostic journal: ${getLoungeDiagnosticJournal(12).length ? getLoungeDiagnosticJournal(12).map((entry) => `[${entry.level}] ${entry.subsystem}/${entry.event}: ${entry.detail}`).join(' | ') : 'no recorded faults or transitions yet'}.`,
     '- Use the diagnostic journal for why/how questions. State only causes the journal actually proves; if it records symptoms but not a cause, say the cause is not yet proven.',
+    `- Installed tenant command directory: ${LOUNGE_COMMAND_CATEGORIES.flatMap((category) => category.commands.map((command) => command.command + ' = ' + command.description)).join(' | ')}.`,
+    '- Treat these as StreamWeaver tenant capabilities, not Stella-only powers. Explain the installed command when useful, and use a shared bot action when that capability is exposed there.',
     '- The universal Nebula Arcade join command is: spmt join.',
     '- The human support handoff begins with: !mtfixit.',
   ].join('\n');
