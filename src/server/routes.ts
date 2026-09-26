@@ -320,6 +320,27 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             return;
                         }
 
+                        // The lounge's bot sends conversation as Stella. Links and
+                        // machine receipts belong to the broadcaster and must not
+                        // become a Stella TTS line.
+                        const isLoungeDataMessage =
+                            tid === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                            && channel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+                            && (/https?:\/\/|www\./i.test(message)
+                                || /^\s*[✅❌]\s*(?:@\S+\s*)?(?:24-Hour Lounge|HearMeOut)\b/i.test(message));
+                        if (requestedIdentity === 'bot' && isLoungeDataMessage) {
+                            await sendSpaceMountainBroadcasterMessage(message.trim());
+                            await mirrorOutboundTwitchMessageToDiscord({
+                                bridgeToDiscord,
+                                tenantId: tid,
+                                message,
+                                displayName: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
+                            });
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, delegated: 'chat-tag', identity: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL }));
+                            return;
+                        }
+
                         if (requestedIdentity === 'bot'
                             && tid === SPACEMOUNTAIN_SYSTEM_TENANT_ID
                             && channel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL) {
@@ -408,6 +429,15 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         const finalChannel = channel || (client.getChannels?.()[0]?.replace('#', '') || '');
                         if (!finalChannel) {
                             throw new Error('No Twitch channel could be resolved for outbound message');
+                        }
+
+                        // The shared community listener is present for points and
+                        // activity, never as a speaking bot in another channel.
+                        if (twitchClientModule.isSharedCommunityBotClient(client)) {
+                            console.warn(`[HTTP /api/twitch/send-message] Read-only community bot suppressed an outbound message in #${finalChannel}`);
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, skipped: true, reason: 'community-bot-read-only' }));
+                            return;
                         }
 
                         await sendWithSharedChatAwareness({
