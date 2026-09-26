@@ -182,7 +182,6 @@ export default function BRBPlayer() {
             }
             if (msg.type === 'brb-start') {
               stopTest();
-              if (automatic) stopAutomatic();
               manual = true;
               playbackEpoch++;
               clearTimeout(embedTimer);
