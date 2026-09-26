@@ -459,6 +459,8 @@ export default function TTSPlayer() {
 
   useEffect(() => {
     let isPlaying = false;
+    let claimedCursor = '';
+    let fetchInFlight = false;
     const cursorKey = `streamweaver:tts-cursor:${overlayTenant || 'global'}`;
     let cursor = '';
     let initialized = false;
@@ -552,7 +554,8 @@ export default function TTSPlayer() {
     };
 
     const fetchNext = async () => {
-      if (isPlaying || !initialized) return;
+      if (isPlaying || claimedCursor || fetchInFlight || !initialized) return;
+      fetchInFlight = true;
       try {
         const sep = tenantQuery ? `&${tenantQuery}` : '';
         const after = cursor ? `&after=${encodeURIComponent(cursor)}` : '';
@@ -560,18 +563,29 @@ export default function TTSPlayer() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.audioUrl) {
+          const itemCursor = data.cursor ? String(data.cursor) : '';
+          if (!itemCursor || itemCursor === cursor) return;
+          claimedCursor = itemCursor;
           isPlaying = true;
           const started = await playTTS(data.audioUrl, data.text || '', data.gesture || null);
-          if (started && data.cursor) {
-            cursor = String(data.cursor);
+          if (!started) {
+            cursor = itemCursor;
             window.localStorage.setItem(cursorKey, cursor);
+            claimedCursor = '';
+            isPlaying = false;
           }
         }
       } catch {}
+      finally { fetchInFlight = false; }
     };
 
     const audio = audioRef.current;
     const onEnded = () => {
+      if (claimedCursor) {
+        cursor = claimedCursor;
+        window.localStorage.setItem(cursorKey, cursor);
+        claimedCursor = '';
+      }
       isPlaying = false;
       setPlaying(false);
       stellaControllerRef.current?.stopTalking();
@@ -580,6 +594,11 @@ export default function TTSPlayer() {
       fetchNext();
     };
     const onError = () => {
+      if (claimedCursor) {
+        cursor = claimedCursor;
+        window.localStorage.setItem(cursorKey, cursor);
+        claimedCursor = '';
+      }
       isPlaying = false;
       setPlaying(false);
       stellaControllerRef.current?.stopTalking();
@@ -588,7 +607,7 @@ export default function TTSPlayer() {
     };
     const onPause = () => {
       if (!audio || audio.ended) return;
-      isPlaying = false;
+      isPlaying = true;
       setPlaying(false);
       stellaControllerRef.current?.stopTalking();
       const duration = Number.isFinite(audio.duration) ? audio.duration.toFixed(1) : '?';
