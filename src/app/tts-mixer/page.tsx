@@ -101,25 +101,6 @@ export default function TtsMixerPage() {
   const queued = useRef<Set<string>>(new Set());
   const pending = useRef<PendingAudio[]>([]);
   const playing = useRef(false);
-  const stellaMixGain = useRef(1);
-  const currentAudio = useRef<{ audio: HTMLAudioElement; tenantId: string; localVolume: number } | null>(null);
-  useEffect(() => {
-    const refresh = async () => {
-      try {
-        const response = await fetch('/api/lounge/audio-mix', { cache: 'no-store' });
-        if (!response.ok) return;
-        const level = Number((await response.json())?.levels?.stella);
-        if (Number.isInteger(level) && level >= 1 && level <= 100) {
-          stellaMixGain.current = level / 100;
-          const current = currentAudio.current;
-          if (current?.tenantId === 'spacemountainlive') current.audio.volume = current.localVolume * stellaMixGain.current;
-        }
-      } catch {}
-    };
-    void refresh();
-    const timer = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(timer);
-  }, []);
   const playNextRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -196,14 +177,11 @@ export default function TtsMixerPage() {
     playing.current = true;
     const audio = new Audio(next.audioUrl);
     const tenantVolume = clampVolume(preferences.perTenantVolume[next.tenantId], 1);
-    const localVolume = muted ? 0 : clampVolume(preferences.volume * tenantVolume);
-    audio.volume = localVolume * (next.tenantId === 'spacemountainlive' ? stellaMixGain.current : 1);
-    currentAudio.current = { audio, tenantId: next.tenantId, localVolume };
+    audio.volume = muted ? 0 : clampVolume(preferences.volume * tenantVolume);
     setStatus(`Playing ${next.source === 'say' ? 'chat TTS' : 'bot TTS'} from ${next.tenantId}`);
     const finish = () => {
       cursors.current[`${next.source}:${next.tenantId}`] = next.id;
       playing.current = false;
-      if (currentAudio.current?.audio === audio) currentAudio.current = null;
       setStatus('Listening across selected tenant streams...');
       playNextRef.current();
     };

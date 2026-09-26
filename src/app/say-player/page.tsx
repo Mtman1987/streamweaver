@@ -22,25 +22,6 @@ export default function SayPlayer() {
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [volume, setVolume] = useState(0.6);
-  const stellaMixGain = useRef(1);
-  const currentAudio = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    if (tenantId !== 'spacemountainlive') return;
-    const refresh = async () => {
-      try {
-        const response = await fetch('/api/lounge/audio-mix', { cache: 'no-store' });
-        if (!response.ok) return;
-        const level = Number((await response.json())?.levels?.stella);
-        if (Number.isInteger(level) && level >= 1 && level <= 100) {
-          stellaMixGain.current = level / 100;
-          if (currentAudio.current) currentAudio.current.volume = volume * stellaMixGain.current;
-        }
-      } catch {}
-    };
-    void refresh();
-    const timer = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(timer);
-  }, [tenantId, volume]);
   const [voice, setVoice] = useState('');
   const [identity, setIdentity] = useState<VoiceIdentity | null>(null);
   const [voiceSaving, setVoiceSaving] = useState(false);
@@ -189,13 +170,11 @@ export default function SayPlayer() {
         if (!next) return;
         playing.current = true;
         const audio = new Audio(next.audioUrl);
-        audio.volume = volume * (tenantId === 'spacemountainlive' ? stellaMixGain.current : 1);
-        currentAudio.current = audio;
+        audio.volume = volume;
         const finish = (message: string) => {
           lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
           try { localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current)); } catch {}
           playing.current = false;
-          if (currentAudio.current === audio) currentAudio.current = null;
           setStatus(message);
         };
         audio.onended = () => finish('Listening for new public TTS…');
