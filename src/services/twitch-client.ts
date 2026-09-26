@@ -257,6 +257,12 @@ export function isSharedCommunityBotClient(client: tmi.Client | null): boolean {
   return Boolean(client && communityBotClient && client === communityBotClient);
 }
 
+export function isCommunityBotOwnChannel(client: tmi.Client | null, channel: string): boolean {
+  return isSharedCommunityBotClient(client)
+    && Boolean(communityBotUsername)
+    && channel.replace(/^#/, '').trim().toLowerCase() === communityBotUsername;
+}
+
 function isClientUsable(client: tmi.Client | null | undefined): client is tmi.Client {
   if (!client) return false;
   try {
@@ -519,7 +525,7 @@ export async function reconnectTheCountTwitchClient(): Promise<tmi.Client | null
 }
 
 async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {
-  if (isSharedCommunityBotClient(client)) return;
+  if (isSharedCommunityBotClient(client) && !isCommunityBotOwnChannel(client, channel)) return;
   const key = `${tenantId}:${String(username || 'chat').toLowerCase()}`;
   const now = Date.now();
   if (now - (lastReauthNotice.get(key) || 0) < REAUTH_NOTICE_INTERVAL_MS) return;
@@ -530,7 +536,7 @@ async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: s
 }
 
 async function sendMessageWithClient(client: tmi.Client, channel: string, message: string): Promise<boolean> {
-  if (isSharedCommunityBotClient(client)) return false;
+  if (isSharedCommunityBotClient(client) && !isCommunityBotOwnChannel(client, channel)) return false;
   try {
     const channelLogin = channel.replace(/^#/, '').toLowerCase();
     try {
