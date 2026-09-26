@@ -30,6 +30,7 @@ export type StellaLoungeSnapshot = {
     currentArtist?: string;
     queueCount: number;
     nextTitle?: string;
+    playbackState: 'playing' | 'idle' | 'unknown';
   };
   nebula: {
     available: boolean;
@@ -166,6 +167,11 @@ export async function buildStellaLoungeSnapshot(
       currentArtist: currentMedia?.artist ? String(currentMedia.artist) : undefined,
       queueCount: mediaQueue.length,
       nextTitle: mediaQueue[0]?.title ? String(mediaQueue[0].title) : undefined,
+      playbackState: mediaResult.status !== 'fulfilled'
+        ? 'unknown'
+        : currentMedia && /^(playing|active)$/i.test(String(mediaData?.playbackState || mediaData?.state || currentMedia?.state || ''))
+          ? 'playing'
+          : 'idle',
     },
     nebula: {
       available: nebulaResult.status === 'fulfilled' || gamesResult.status === 'fulfilled',
@@ -204,8 +210,11 @@ export function detectStellaLoungeIntent(message: string): StellaLoungeIntent | 
 
 function mediaLine(snapshot: StellaLoungeSnapshot): string {
   if (!snapshot.media.available) return 'HearMeOut is not reporting its player state right now.';
+  if (snapshot.media.currentTitle && snapshot.media.playbackState === 'playing') {
+    return `HearMeOut reports verified playback of ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''}, with ${snapshot.media.queueCount} queued.`;
+  }
   if (snapshot.media.currentTitle) {
-    return `HearMeOut is playing ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''}, with ${snapshot.media.queueCount} queued.`;
+    return `HearMeOut has ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''} selected, but playback is not verified. Do not say it is playing or audible.`;
   }
   if (snapshot.media.nextTitle) return `HearMeOut is idle; ${snapshot.media.nextTitle} is next in the ${snapshot.media.queueCount}-item queue.`;
   return 'HearMeOut is idle and its queue is empty.';
@@ -298,6 +307,7 @@ async function deliverStellaHostLine(prompt: string, now = Date.now()): Promise<
     'Do not announce analytics numbers unless the number itself is the event.',
     'Vary openings, sentence shape, pacing and humor. Avoid recent topics: ' + (recentHostTopics.slice(-6).join(' | ') || 'none'),
     'Do not say you checked a system. Do not invent viewers, events, scores, media, plans or memories.',
+    'Truth rule: intent is not outcome. Never turn selected/requested/queued into playing, visible, audible, completed, or successful unless supplied facts explicitly verify it.',
     'You may add one allowed avatar gesture tag at the very end.',
   ].join('\n'), SPACEMOUNTAIN_SYSTEM_BOT_PERSONALITY, SPACEMOUNTAIN_SYSTEM_TENANT_ID, { maxTokens: 180, maxCharacters: 500, temperature: 0.9 });
   const parsed = extractAvatarGesture(String(generated || '').replace(/^Stella:\\s*/i, '').trim());
@@ -395,6 +405,7 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
       'Create one spontaneous Lounge-host line in one or two short spoken sentences.',
       'Sound present, interested, and specific—not like a generic engagement bot.',
       'Do not say you checked a system. Do not invent viewers, events, memories, scores, media, or failures.',
+      'Truth rule: selected/requested/queued is not the same as loaded or playing. Only describe media as playing, visible, audible, completed, or successful when the supplied state explicitly verifies that condition.',
       'Do not start with "Hey everyone". Do not end every line with a question, and do not ask a generic engagement question merely because an ambient turn became due.',
       'You may add one allowed avatar gesture tag at the very end.',
     ].join('\n');
