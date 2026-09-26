@@ -249,10 +249,10 @@ export default function BRBPlayer() {
       {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: '999px', background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{testStream ? 'TEST BRB' : 'BE RIGHT BACK'}</div>}
       {active && !embedUrl && !gifUrl && !videoPlaying && <div style={{ position: 'absolute', zIndex: 2, color: '#c4eefe', font: '600 18px system-ui, sans-serif', textAlign: 'center', pointerEvents: 'none' }}>Community clips are coming up</div>}
       {active && spotlight && (
-        <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
+        <div style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 5, padding: '8px 14px', borderRadius: 9,
           background: 'rgba(5,12,30,.83)', border: '1px solid rgba(103,232,249,.65)',
           color: '#e8fbff', font: '700 16px system-ui, sans-serif', pointerEvents: 'none' }}>
-          {testStream ? `Testing @${clipUser}` : 'BRB - Community Spotlight'}
+          {clipUser ? `📹 @${clipUser}` : 'BRB - Community Spotlight'}
         </div>
       )}
       {active && !spotlight && clipUser && (
