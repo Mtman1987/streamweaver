@@ -11,6 +11,7 @@ import {
 import { handleTwitchMessage } from './chat-dispatcher';
 import { recordSharedChatEvent } from './shared-chat-ingestion';
 import { normalizeTwitchSharedChatEvent } from './shared-chat-normalizers';
+import { queueTtsOverlay } from './tts-overlay-queue';
 import { promises as fsp } from 'fs';
 import { getConfiguredAppUrl } from '../lib/runtime-origin';
 import {
@@ -49,6 +50,23 @@ const tenantsNeedingReauth = new Set<string>();
 const reconnectRefreshGate = new ProactiveTwitchRefreshGate();
 const lastReauthNotice = new Map<string, number>();
 const REAUTH_NOTICE_INTERVAL_MS = 60_000;
+
+// One chat receipt speaks once, even if multiple IRC connections see it.
+const spokenLoungeStellaMessageIds = new Set<string>();
+function speakLoungeStellaChatMessage(channel: string, tenantId: string | undefined, tags: Record<string, any>, message: string): void {
+  if (channel !== SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+    || tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID
+    || String(tags.username || '').toLowerCase() !== 'stellabot87') return;
+  const messageId = String(tags.id || '').trim();
+  if (!messageId || spokenLoungeStellaMessageIds.has(messageId)) return;
+  spokenLoungeStellaMessageIds.add(messageId);
+  if (spokenLoungeStellaMessageIds.size > 512) {
+    spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
+  }
+  void queueTtsOverlay(message, SPACEMOUNTAIN_SYSTEM_TENANT_ID).then((result) => {
+    if (!result.queued) console.warn('[Stella Lounge TTS] Chat line was not spoken:', result.error || 'not queued');
+  }).catch((error) => console.error('[Stella Lounge TTS] Chat line failed:', error));
+}
 
 export type TwitchSendIdentity = 'bot' | 'broadcaster' | 'count';
 
@@ -150,6 +168,7 @@ async function dispatchIncomingTwitchMessage(
     }
   }
 
+  speakLoungeStellaChatMessage(channelName, msgTenantId, tags, message);
   await handleTwitchMessage(effectiveChannel, tags, message, self);
 }
 
