@@ -56,12 +56,14 @@ test('Pokemon automation paths send tenant-scoped canonical pack events', async 
   assert.match(routes, /card-pack-opened/);
 });
 
-test('Discord pack reveal queues a GIF and preserves its old edit path as fallback', async () => {
+test('Discord pack reveal uses one message and never falls back to the old image-row reveal', async () => {
   const source = await read('src/services/discord-pack-reveal.ts');
   assert.match(source, /queueCardPackGif/);
   assert.match(source, /waitForCardPackGif/);
-  assert.match(source, /legacyFallback/);
-  assert.match(source, /imageUrl: gifUrl/);
+  assert.match(source, /cardColumnFields/);
+  assert.match(source, /PACK ANIMATION INCOMING/);
+  assert.doesNotMatch(source, /legacyFallback/);
+  assert.doesNotMatch(source, /galleryEmbeds/);
 });
 
 
@@ -94,12 +96,13 @@ test('Pokemon automation paths fan out to Twitch channel aliases', async () => {
 });
 
 
-test('Discord Pokemon pack reveal starts with three-column card fields and later edits in the GIF', async () => {
+test('Discord Pokemon pack reveal uses Spotlight-style inline columns and one-message GIF editing', async () => {
   const source = await read('src/services/discord-pack-reveal.ts');
-  assert.match(source, /function cardInfoFields/);
+  assert.match(source, /cardColumnFields/);
+  assert.match(source, /const columns = \[0, 1, 2\]/);
   assert.match(source, /inline: true/);
-  assert.match(source, /first\.fields/);
-  assert.match(source, /imageUrl: gifUrl/);
+  assert.match(source, /attachment:\/\/pack-animation\.gif/);
+  assert.doesNotMatch(source, /extraEmbeds: galleryEmbeds/);
 });
 
 test('Twitch Pokemon pack openings queue GIF recording with the broadcaster alias', async () => {
@@ -119,11 +122,12 @@ test('captured pack render can carry the broadcaster tenant and pack front prefe
 });
 
 
-test('Pokemon Discord pack uses fixed three-column grid with animation pending notice', async () => {
+test('Pokemon Discord pack uses native three-column fields with animation pending notice', async () => {
   const source = await read('src/services/discord-pack-reveal.ts');
-  assert.match(source, /formatCardInfoGrid/);
+  assert.match(source, /cardColumnFields/);
   assert.match(source, /PACK ANIMATION INCOMING/);
-  assert.doesNotMatch(source, /function cardInfoFields/);
+  assert.match(source, /inline: true/);
+  assert.doesNotMatch(source, /formatCardInfoGrid/);
 });
 
 test('Pokemon Discord GIF edit uploads a real attachment instead of external image proxying', async () => {
@@ -135,4 +139,28 @@ test('Pokemon Discord GIF edit uploads a real attachment instead of external ima
   assert.match(source, /editDiscordMessageWithBinaryAttachment/);
   assert.match(local, /files\[0\]/);
   assert.match(hooks, /files\[0\]/);
+});
+
+
+test('pack animation always features the final card and capture mode reaches it before DSH stops recording', async () => {
+  const canonical = normalizeCardPackEvent({
+    game: 'pokemon',
+    cards: [
+      { name: 'Rare First', rarity: 'Rare', imageUrl: 'https://example.test/rare.png' },
+      { name: 'Common Final', rarity: 'Common', imageUrl: 'https://example.test/final.png' },
+    ],
+  });
+  assert.equal(canonical.featureCard?.name, 'Common Final');
+  const overlay = await read('src/app/card-pack-overlay/page.tsx');
+  assert.match(overlay, /captureMode \? 6_500 : 13_000/);
+  assert.match(overlay, /captureMode \? 2_500 : 15_000/);
+  assert.match(overlay, /normalizedCards\[normalizedCards\.length - 1\]/);
+});
+
+test('Pokemon Discord pack no longer posts the old three-at-a-time image gallery', async () => {
+  const source = await read('src/services/discord-pack-reveal.ts');
+  assert.doesNotMatch(source, /galleryEmbeds/);
+  assert.doesNotMatch(source, /revealStep/);
+  assert.doesNotMatch(source, /row-edit reveal/);
+  assert.match(source, /sendStructuredDiscordReply\(buildPackReply/);
 });
