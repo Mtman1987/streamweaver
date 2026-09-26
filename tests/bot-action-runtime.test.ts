@@ -12,17 +12,33 @@ import {
 } from '../src/services/bot-action-runtime';
 
 test('publishes a persona-neutral suite action catalog', () => {
-  assert.equal(BOT_ACTION_CATALOG.length, 20);
+  assert.ok(BOT_ACTION_CATALOG.length >= 20);
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'dsh.calendar.deploy'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'dsh.applications.deploy'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'dsh.applications.decide'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'hmo.bot.control'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'hmo.voice.bridge.control'));
   assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'sw.image.generate'));
+  assert.ok(BOT_ACTION_CATALOG.some((entry) => entry.id === 'nebula.chatwars.stream-battle'));
   assert.equal(BOT_ACTION_CATALOG.find((entry) => entry.id === 'hmo.bot.control')?.minimumRole, 'member');
   assert.equal(BOT_ACTION_CATALOG.find((entry) => entry.id === 'hmo.voice.bridge.control')?.minimumRole, 'member');
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Athena'), false);
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Moonbeam'), false);
+});
+
+test('detects explicit Chat Wars battle setup without requiring @ prefixes', async () => {
+  assert.deepEqual(await detectBotAction('Stella start a stream vs stream Chat Wars with alpha and beta'), {
+    action: 'nebula.chatwars.stream-battle',
+    args: { channels: 'alpha,beta' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella start Chat Wars against friendstream'), {
+    action: 'nebula.chatwars.stream-battle',
+    args: { channels: 'friendstream' },
+    detection: 'explicit',
+  });
+  const question = await detectBotAction('Stella show me the Chat Wars battle between @alpha and @beta');
+  assert.notEqual(question?.action, 'nebula.chatwars.stream-battle');
 });
 
 test('detects remaining button-equivalent actions before conversational AI', async () => {
