@@ -153,7 +153,7 @@ export async function handleDiscordPokemonCommand(msg: any, tenantId?: string): 
     }
 
     const allCards = await getUserCards(pokemonUser);
-    const feature = [...result.pack].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0];
+    const feature = result.pack[result.pack.length - 1];
     await sendAnimatedPackReveal({
       channelId,
       tenantId,
@@ -250,7 +250,7 @@ export async function handleDiscordPokemonCommand(msg: any, tenantId?: string): 
       await reply('The Eevee booster could not be opened.', { responseType: 'Eevee Pack' });
       return true;
     }
-    const feature = [...result.pack].sort((a, b) => rarityScore(b.rarity) - rarityScore(a.rarity))[0];
+    const feature = result.pack[result.pack.length - 1];
     await sendAnimatedPackReveal({
       channelId,
       tenantId,
