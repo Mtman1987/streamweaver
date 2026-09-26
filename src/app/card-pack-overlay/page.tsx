@@ -46,10 +46,9 @@ function legacyToEvent(data: any): CardPackOpenedEvent | null {
     imageUrl: String(card?.imageUrl || card?.cardImageUrl || ''),
   })).filter((card: any) => card.imageUrl);
   if (!normalizedCards.length) return null;
-  const featureCard = [...normalizedCards].sort((a: any, b: any) => {
-    const score = (rarity: string) => /secret|legendary/i.test(rarity) ? 7 : /ultra|epic/i.test(rarity) ? 5 : /holo/i.test(rarity) ? 4 : /rare/i.test(rarity) ? 3 : /uncommon/i.test(rarity) ? 2 : 1;
-    return score(b.rarity) - score(a.rarity);
-  })[0];
+  // Legacy live events still end on the actual final card in the pack.
+  // Rarity never gates the featured close-up.
+  const featureCard = normalizedCards[normalizedCards.length - 1];
   return {
     eventId: String(payload?.eventId || payload?.packId || `${game}-${Date.now()}`),
     type: 'card-pack-opened',
