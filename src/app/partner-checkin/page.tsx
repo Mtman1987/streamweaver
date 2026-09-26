@@ -89,14 +89,14 @@ const DEFAULT_STATE: OverlayState = {
 
 export default function PartnerCheckinPage() {
   const [state, setState] = useState<OverlayState>(DEFAULT_STATE);
-  const broadcasterAvatar = useRef('');
+  const [broadcasterAvatar, setBroadcasterAvatar] = useState('');
   const hideTimer = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     const tenantId = getOverlayTenantId();
     const tenantParam = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
     fetch(`/api/user-profile${tenantParam}`).then(r => r.json()).then(d => {
-      if (d.twitch?.avatar) broadcasterAvatar.current = d.twitch.avatar;
+      if (d.twitch?.avatar) setBroadcasterAvatar(d.twitch.avatar);
     }).catch(() => {});
   }, []);
 
@@ -169,7 +169,9 @@ export default function PartnerCheckinPage() {
   if (state.phase === 'hidden') return null;
 
   const isPending = state.phase === 'pending';
-  const avatarSrc = isPending ? broadcasterAvatar.current : (state.entry?.imageUrl || '');
+  const avatarSrc = state.kind === 'space-mountain'
+    ? broadcasterAvatar
+    : isPending ? broadcasterAvatar : (state.entry?.imageUrl || '');
   const headline = isPending ? state.title : (state.entry?.name || state.title);
   const riderNames = state.names?.slice(0, 6).join(' • ');
 

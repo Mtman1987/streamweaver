@@ -151,10 +151,12 @@ async function generateGreeting(username: string, entry: CheckinEntry, kind: Che
   }
 }
 
-async function playGreeting(greeting: string, tenantId?: string): Promise<void> {
+async function playGreeting(greeting: string, tenantId?: string, twitchReceiptSpeaks = false): Promise<void> {
   const { markTtsHandled } = require('./chat-dispatcher');
   markTtsHandled(greeting);
   await sendChatMessage(greeting, 'bot', undefined, tenantId);
+  // Space Mountain's confirmed Stella chat receipt queues its own TTS.
+  if (twitchReceiptSpeaks) return;
 
   try {
     const { textToSpeech } = await import('../ai/flows/text-to-speech');
@@ -254,7 +256,7 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
   await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
 
   const greeting = await generateGreeting(username, entry, kind, sourceLabel, tenantId);
-  await playGreeting(greeting, tenantId);
+  await playGreeting(greeting, tenantId, kind === 'space-mountain');
 
   // Post to tenant's shoutout Discord channel if bridge is enabled
   try {
@@ -313,18 +315,19 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     await addPoints(frontSeatRider.name, FRONT_SEAT_BONUS_POINTS, 'space-mountain-front-seat', await resolvePointsCtx(tenantId));
   }
 
-  const names = checkedIn.slice(0, 8).map((entry) => entry.name).join(', ');
-  const suffix = checkedIn.length > 8 ? ` and ${checkedIn.length - 8} more` : '';
-  let broadcasterMsg = `@${username} launched ${copy.title} with ${checkedIn.length} riders: ${names}${suffix} | 🎢 Front seat: ${frontSeatRider.name} (+${FRONT_SEAT_BONUS_POINTS} pts)!`;
-  if (pointCost > 0) {
-    const balance = await getBalance(username, tenantId);
-    if (typeof balance === 'number') broadcasterMsg += ` | Balance: ${balance} pts`;
+  if (kind !== 'space-mountain') {
+    const names = checkedIn.slice(0, 8).map((entry) => entry.name).join(', ');
+    const suffix = checkedIn.length > 8 ? ` and ${checkedIn.length - 8} more` : '';
+    let broadcasterMsg = `@${username} launched ${copy.title} with ${checkedIn.length} riders: ${names}${suffix} | 🎢 Front seat: ${frontSeatRider.name} (+${FRONT_SEAT_BONUS_POINTS} pts)!`;
+    if (pointCost > 0) {
+      const balance = await getBalance(username, tenantId);
+      if (typeof balance === 'number') broadcasterMsg += ` | Balance: ${balance} pts`;
+    }
+    await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
   }
-  await sendChatMessage(broadcasterMsg, 'broadcaster', undefined, tenantId);
 
-  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${frontSeatRider.name} with ${FRONT_SEAT_BONUS_POINTS} bonus points! 🎢`;
-  await playGreeting(greeting, tenantId);
-
+  // Show the result immediately; speech generation can take longer than the
+  // reveal window and must not make the card disappear before it ever displays.
   broadcastCheckin('reveal', {
     kind,
     username,
@@ -338,4 +341,7 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     frontSeatBonusPoints: FRONT_SEAT_BONUS_POINTS,
     entry: frontSeatRider,
   }, tenantId);
+
+  const greeting = `${copy.emoji} ${username} just blasted ${checkedIn.length} people through ${copy.title}. Front seat goes to ${frontSeatRider.name} with ${FRONT_SEAT_BONUS_POINTS} bonus points! 🎢`;
+  await playGreeting(greeting, tenantId, kind === 'space-mountain');
 }

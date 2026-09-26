@@ -423,7 +423,13 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
   if (isStreamerSpeaking(now)) { recordStellaDecision('silence', 'streamer-speaking', now); return { delivered: false, reason: 'streamer-speaking' }; }
   if (Math.random() < 0.22) { recordStellaDecision('silence', 'ambient-restraint', now); return { delivered: false, reason: 'chose-silence' }; }
 
-  const canSpeak = hasActiveTtsConsumer(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+  // Ambient lines are spoken lines. If no live listener can play them,
+  // keep the room quiet rather than placing an unspeaking line in chat.
+  if (!hasActiveTtsConsumer(SPACEMOUNTAIN_SYSTEM_TENANT_ID)) {
+    recordStellaDecision('silence', 'no-tts-listener', now);
+    scheduleNextAmbient(now);
+    return { delivered: false, reason: 'no-tts-listener' };
+  }
 
   ambientRunning = true;
   scheduleNextAmbient(now);

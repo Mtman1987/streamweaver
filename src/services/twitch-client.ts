@@ -97,12 +97,6 @@ export async function sendConfirmedLoungeStellaMessage(message: string): Promise
     loungeChatUserIds = ids;
   }
 
-  // Start speaking while Twitch processes the send; only the visual chat
-  // receipt waits for Twitch to confirm acceptance.
-  void queueTtsOverlay(message, tenantId).then(result => {
-    if (!result.queued) console.warn('[Stella Lounge TTS] Chat line was not spoken:', result.error || 'not queued');
-  }).catch(error => console.error('[Stella Lounge TTS] Chat line failed:', error));
-
   const response = await fetch('https://api.twitch.tv/helix/chat/messages', {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
@@ -119,9 +113,16 @@ export async function sendConfirmedLoungeStellaMessage(message: string): Promise
     throw new Error(`Twitch did not send Stella's lounge chat message: ${reason}`);
   }
   const messageId = receipt.message_id;
-  spokenLoungeStellaMessageIds.add(messageId);
-  if (spokenLoungeStellaMessageIds.size > 512) {
-    spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
+  // IRC may deliver the same message before Helix returns. Whichever receipt
+  // arrives first owns the one TTS attempt; a failed Helix send speaks nothing.
+  if (!spokenLoungeStellaMessageIds.has(messageId)) {
+    spokenLoungeStellaMessageIds.add(messageId);
+    if (spokenLoungeStellaMessageIds.size > 512) {
+      spokenLoungeStellaMessageIds.delete(spokenLoungeStellaMessageIds.values().next().value!);
+    }
+    void queueTtsOverlay(message, tenantId).then(result => {
+      if (!result.queued) console.warn('[Stella Lounge TTS] Confirmed chat line was not spoken:', messageId, result.error || 'not queued');
+    }).catch(error => console.error('[Stella Lounge TTS] Confirmed chat line failed:', messageId, error));
   }
   try {
     const event = normalizeTwitchSharedChatEvent({
