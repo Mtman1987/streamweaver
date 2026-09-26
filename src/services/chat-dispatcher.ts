@@ -1854,9 +1854,11 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
                         reducedMotionSafe: true,
                     },
                 });
-                if ((speaker.tenantId || tenantId) === 'spacemountainlive') {
-                    void queueTtsOverlay(response, speaker.tenantId || tenantId)
-                        .catch((error) => console.warn('[Stella Lounge Host] Social TTS failed:', error));
+                if ((speaker.tenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                    && /stella/i.test(String(speaker.botName || ''))
+                    && !Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message)) {
+                    await sendTwitchChatMessage(response, 'bot', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, SPACEMOUNTAIN_SYSTEM_TENANT_ID)
+                        .catch((error) => console.warn('[Stella Lounge] Discord social line was not sent to Twitch:', error));
                 }
             }
             await sendStructuredDiscordReply({
@@ -4879,10 +4881,6 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             },
                         });
                     }
-                    if (tenantId === 'spacemountainlive') {
-                        void queueTtsOverlay(response, tenantId)
-                            .catch((error) => console.warn('[Stella Lounge Host] Social TTS failed:', error));
-                    }
                     await reply(response, 'bot').catch(() => {});
                     return;
                 }
@@ -5203,11 +5201,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         SPACEMOUNTAIN_SYSTEM_TENANT_ID,
                     );
 
-                    const tts = await queueTtsOverlay(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
-                    if (!tts.ok) {
-                        console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                    }
-                    console.log(`[Dispatcher] Stella answered @${actualUsername} via Twitch + Lounge TTS in #${replyChannel}`);
+                    console.log(`[Dispatcher] Stella answered @${actualUsername} in #${replyChannel}; chat listener handles TTS`);
                 } catch (error) {
                     console.error('[Dispatcher] Stella system-tenant response failed:', error);
                 }
@@ -5670,12 +5664,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                                     sourceTenantId: tenantId,
                                     responseTenantId,
                                 });
-                                if (responseTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
-                                    const tts = await queueTtsOverlay(aiReply, responseTenantId);
-                                    if (!tts.ok) console.warn('[Dispatcher] Stella system-tenant TTS queue failed:', tts.error);
-                                } else {
-                                    await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId).catch(() => {});
-                                }
+                                await sendChatMessage(aiReply, 'bot', responseChannel, responseTenantId)
+                                    .catch((error) => console.warn('[Dispatcher] Cross-bot Twitch chat delivery failed:', error));
                                 if (responseTenantId) {
                                     await appendBotInteraction({
                                         platform: 'twitch',
@@ -5829,7 +5819,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             }).catch((error) => console.error('[Dispatcher] Twitch cross-bot follow-up failed:', error));
                             
                             // Generate TTS for AI response
-                            if (shouldGenerateTtsForReply) {
+                            if (shouldGenerateTtsForReply && !isSpaceMountainSystemReply) {
                                 try {
                                     const targetTenant = responseTenantId || tenantId || undefined;
                                     const tts = await queueTtsOverlay(aiReply, targetTenant);
