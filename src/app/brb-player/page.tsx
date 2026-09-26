@@ -3,9 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
+import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
 export default function BRBPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const spotlightLevel = useLoungeBroadcastVolume('spotlight');
+  const spotlightLevelRef = useRef<number | null>(null);
+  useEffect(() => {
+    spotlightLevelRef.current = spotlightLevel;
+    if (videoRef.current && spotlightLevel !== null) videoRef.current.volume = spotlightLevel;
+  }, [spotlightLevel]);
   const [active, setActive] = useState(false);
   const [clipUser, setClipUser] = useState('');
   const [spotlight, setSpotlight] = useState(false);
@@ -88,7 +95,8 @@ export default function BRBPlayer() {
 
         if (videoRef.current) {
           videoRef.current.src = src;
-          videoRef.current.muted = true;
+          videoRef.current.muted = false;
+          if (spotlightLevelRef.current !== null) videoRef.current.volume = spotlightLevelRef.current;
           videoRef.current.load();
           videoRef.current.play().then(() => {
             if (epoch !== playbackEpoch || stopped) return;
@@ -96,7 +104,6 @@ export default function BRBPlayer() {
             setGifUrl('');
             setActive(true);
             notifyParent(true, 'clip');
-            if (videoRef.current) videoRef.current.muted = false;
           }).catch((err: unknown) => { console.warn('[BRB] Clip playback failed:', err); if (epoch === playbackEpoch) playEmbed(clipId, epoch, fallback); });
         }
       } catch (err) {

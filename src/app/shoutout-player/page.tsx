@@ -3,9 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
+import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
 export default function ShoutoutPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const spotlightLevel = useLoungeBroadcastVolume('spotlight');
+  const spotlightLevelRef = useRef<number | null>(null);
+  useEffect(() => {
+    spotlightLevelRef.current = spotlightLevel;
+    if (videoRef.current && spotlightLevel !== null) videoRef.current.volume = spotlightLevel;
+  }, [spotlightLevel]);
   const websocketRef = useRef<WebSocket | null>(null);
   const activeEventIdRef = useRef<string>('');
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,16 +102,15 @@ export default function ShoutoutPlayer() {
         const video = videoRef.current;
         video.src = src;
         video.muted = false;
+        if (spotlightLevelRef.current !== null) video.volume = spotlightLevelRef.current;
         video.load();
         setVisible(true);
         try {
           // OBS browser sources permit autoplay with audio in normal operation.
           await video.play();
         } catch {
-          // Regular browsers may block unmuted autoplay. Keep the clip moving
-          // instead of leaving a fully loaded video paused on its first frame.
-          video.muted = true;
-          await video.play();
+          // The direct clip could not play. Use the existing Twitch embed fallback.
+          throw new Error('Direct clip playback blocked');
         }
         acknowledgePlayback(eventId, 'started');
       }

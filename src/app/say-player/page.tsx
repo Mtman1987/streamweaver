@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS } from '@/lib/tts-voices';
 import { captureSpeechChat } from '@/services/speech-chat-capture';
+import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
 const VOICE_OPTIONS = [
   { id: '', label: 'Default voice' },
@@ -13,6 +14,7 @@ type VoiceIdentity = { discordUserId: string; discordUsername: string };
 
 export default function SayPlayer() {
   const playing = useRef(false);
+  const playingAudioRef = useRef<HTMLAudioElement | null>(null);
   const queue = useRef<Array<{ id: number; audioUrl: string }>>([]);
   const knownIds = useRef<Set<number>>(new Set());
   const lastSeenId = useRef(0);
@@ -22,6 +24,14 @@ export default function SayPlayer() {
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [volume, setVolume] = useState(0.6);
+  const stellaLevel = useLoungeBroadcastVolume('stella');
+  const broadcastSource = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('placement') === 'lounge';
+  useEffect(() => {
+    if (broadcastSource && tenantId === 'spacemountainlive' && stellaLevel !== null && playingAudioRef.current) {
+      playingAudioRef.current.volume = stellaLevel;
+    }
+  }, [broadcastSource, tenantId, stellaLevel]);
   const [voice, setVoice] = useState('');
   const [identity, setIdentity] = useState<VoiceIdentity | null>(null);
   const [voiceSaving, setVoiceSaving] = useState(false);
@@ -36,6 +46,7 @@ export default function SayPlayer() {
     const nextTenantId = params.get('tenantId') || '';
     const controlToken = params.get('controlToken') || '';
     setTenantId(nextTenantId);
+    if (broadcastSource && nextTenantId === 'spacemountainlive') setActive(true);
     try {
       lastSeenId.current = Number(localStorage.getItem(`streamweaver-say-last-${nextTenantId || 'global'}`) || 0);
       const savedVolume = Number(localStorage.getItem('streamweaver-say-volume') || '');
@@ -170,11 +181,13 @@ export default function SayPlayer() {
         if (!next) return;
         playing.current = true;
         const audio = new Audio(next.audioUrl);
-        audio.volume = volume;
+        playingAudioRef.current = audio;
+        audio.volume = broadcastSource && tenantId === 'spacemountainlive' ? (stellaLevel ?? volume) : volume;
         const finish = (message: string) => {
           lastSeenId.current = Math.max(lastSeenId.current, Number(next.id || 0));
           try { localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current)); } catch {}
           playing.current = false;
+          if (playingAudioRef.current === audio) playingAudioRef.current = null;
           setStatus(message);
         };
         audio.onended = () => finish('Listening for new public TTS…');
@@ -182,6 +195,7 @@ export default function SayPlayer() {
         setStatus('Speaking…');
         void audio.play().catch((error) => {
           playing.current = false;
+          if (playingAudioRef.current === audio) playingAudioRef.current = null;
           knownIds.current.delete(Number(next.id || 0));
           queue.current.unshift(next);
           setStatus(`Browser blocked audio: ${error?.message || 'activate audio and try again'}`);
@@ -192,7 +206,7 @@ export default function SayPlayer() {
       }
     }, 500);
     return () => window.clearInterval(poll);
-  }, [active, resetCursor, syncToLatest, tenantId, volume]);
+  }, [active, resetCursor, syncToLatest, tenantId, volume, broadcastSource, stellaLevel]);
 
 
   useEffect(() => {
