@@ -480,6 +480,10 @@ async function startServer() {
                 await reconnectDisconnectedTenants();
             } catch (e) { /* silent */ }
         }, 300000); // every 5 minutes
+        pollingService.addTask('lounge-diagnostics', async () => {
+            try { const { runLoungeDiagnosticTick } = require('./src/services/lounge-diagnostic-journal'); await runLoungeDiagnosticTick(); }
+            catch (e) { console.warn('[Lounge Journal] Tick failed:', e); }
+        }, 60000);
         pollingService.addTask('stella-lounge-host', async () => {
             try {
                 const { runStellaLoungeHostTick } = require('./src/services/stella-lounge-host');
