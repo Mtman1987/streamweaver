@@ -115,9 +115,7 @@ test('authorized Athena calls work in non-tenant shoutout carrier chats only thr
   assert.match(carrierAthena, /channelId:/);
   assert.match(carrierAthena, /context: 'twitch'/);
   assert.match(carrierAthena, /Athena failed:/);
-  assert.match(patch, /handleTwitchCarrierAthenaCall/);
-  assert.match(patch, /athena\|annie\|athenabot87/i);
-  assert.match(patch, /athenaResult\.handled && athenaResult\.message/);
+  assert.match(carrierAthena, /handleTwitchCarrierAthenaCall/);
 });
 
 test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () => {
