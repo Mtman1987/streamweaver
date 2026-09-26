@@ -44,8 +44,10 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState('Click Start test to load the live creator rotation.');
   const [volume, setVolume] = React.useState(0.45);
+  const [quality, setQuality] = React.useState('');
   const playerHostRef = React.useRef<HTMLDivElement>(null);
   const playerRef = React.useRef<any>(null);
+  const startedRef = React.useRef(false);
   const scriptPromiseRef = React.useRef<Promise<void> | null>(null);
 
   const active = creators[activeIndex] || null;
@@ -98,7 +100,12 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
   }, [fetchLiveCreators, method]);
 
   React.useEffect(() => {
-    if (autoStart && !started && !loading) void start();
+    // The production clean player is deliberately one-click: mount one Twitch
+    // player and keep that exact player alive for every subsequent channel.
+    if (autoStart && !startedRef.current && !started && !loading) {
+      startedRef.current = true;
+      void start();
+    }
   }, [autoStart, loading, start, started]);
 
   React.useEffect(() => {
@@ -134,14 +141,31 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
             parent: [parent], autoplay: true, muted: false,
           });
           playerRef.current = player;
+          const prefer480p30 = () => {
+            try {
+              const values = (player.getQualities?.() || []).map((value: unknown) => String(value || '')).filter(Boolean);
+              const preferred = values.find((value: string) => /^480p30$/i.test(value))
+                || values.find((value: string) => /^480p$/i.test(value))
+                || values.find((value: string) => /^360p30$/i.test(value))
+                || values.find((value: string) => /^360p$/i.test(value))
+                || values.find((value: string) => /^720p30$/i.test(value))
+                || '';
+              if (preferred && player.setQuality) player.setQuality(preferred);
+              setQuality(preferred || 'auto');
+            } catch { setQuality('auto'); }
+          };
           player.addEventListener(window.Twitch.Player.READY, () => {
+            prefer480p30();
             player.setVolume(volume);
             player.play();
           });
+          player.addEventListener(window.Twitch.Player.PLAYING, prefer480p30);
           player.addEventListener(window.Twitch.Player.PLAYBACK_BLOCKED, () => {
             setMessage('Twitch blocked unmuted autoplay. Click inside the video once, then the API rotation can continue.');
           });
         } else {
+          // Fire-and-forget rotation: change only Twitch's channel. Do not
+          // recreate the iframe, MediaSource, encoder, socket, or any buffer.
           playerRef.current.setChannel(active.username);
           playerRef.current.setVolume(volume);
           playerRef.current.play();
@@ -202,7 +226,7 @@ export function SpotlightLab({ method, autoStart = false, clean = false }: { met
           )}
         </div>
         {!clean && <><div className="now"><span>NOW TESTING</span><strong>{active ? `@${active.username} • next change in 30 seconds` : 'Waiting for live creators'}</strong></div>
-        <p className="foot">For a fair comparison, click play once if Twitch asks. The important difference is what happens after the first 30-second change.</p></>}
+        <p className="foot">For a fair comparison, click play once if Twitch asks. The important difference is what happens after the first 30-second change.{quality ? ` Twitch quality: ${quality}.` : ''}</p></>}
       </section>
     </main>
   );
