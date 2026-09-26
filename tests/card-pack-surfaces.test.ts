@@ -173,3 +173,18 @@ test('Discord embed builder preserves attachment URLs so Pokemon GIF stays insid
   assert.match(branding, /embedMediaUrl = \/\^attachment:/);
   assert.match(reveal, /imageUrl: state === 'ready' \? 'attachment:\/\/pack-animation\.gif'/);
 });
+
+
+test('Pokemon pack replies use rotating public speakers and preserve the chosen speaker for the GIF edit', async () => {
+  const source = await read('src/services/discord-pack-reveal.ts');
+  assert.match(source, /resolveStructuredDiscordReplySpeaker/);
+  assert.match(source, /rotateSpeaker: true/);
+  assert.match(source, /applyGif\(input, messageId, sent\.speaker, gifUrl\)/);
+});
+
+test('Pokemon GIF is forced into the first embed before multipart upload', async () => {
+  const source = await read('src/services/discord-pack-reveal.ts');
+  assert.match(source, /const finalEmbeds = payload\.embeds\.map/);
+  assert.match(source, /attachment:\/\/pack-animation\.gif/);
+  assert.match(source, /embeds: finalEmbeds/);
+});
