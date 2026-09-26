@@ -1,8 +1,8 @@
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import { normalizeCardPackEvent, type CardPackGame } from '@/lib/card-pack-event';
 import { queueCardPackGif, waitForCardPackGif } from './card-pack-render-client';
-import { editDiscordMessage } from './discord-local';
-import { editWebhookMessage } from './discord-webhooks';
+import { editDiscordMessage, editDiscordMessageWithBinaryAttachment } from './discord-local';
+import { editWebhookMessage, editWebhookMessageWithBinaryAttachment } from './discord-webhooks';
 import {
   buildStructuredDiscordReplyPayload,
   sendStructuredDiscordReply,
@@ -48,16 +48,25 @@ export function formatPackGrid(cards: PackRevealCard[], highlightRow: number): s
   return ['```ansi', rows, '```'].join('\n');
 }
 
-function cardInfoFields(cards: PackRevealCard[]) {
-  return cards.slice(0, 12).map((card, index) => ({
-    name: `${index + 1}. ${String(card.name || 'Unknown Card').slice(0, 180)}`,
-    value: [
-      card.rarity ? `Rarity: **${card.rarity}**` : '',
-      card.setCode ? `Set: **${card.setCode}**` : '',
-      card.number ? `#${card.number}` : '',
-    ].filter(Boolean).join(' · ') || 'Card',
-    inline: true,
-  }));
+function formatCardInfoGrid(cards: PackRevealCard[]) {
+  const cell = (card: PackRevealCard, index: number) => {
+    const nameRaw = `${index + 1}. ${String(card?.name || 'Unknown')}`;
+    const name = (nameRaw.length > 18 ? nameRaw.slice(0, 17) + '…' : nameRaw).padEnd(18, ' ');
+    const rarity = String(card?.rarity || '?').slice(0, 1).toUpperCase();
+    const set = String(card?.setCode || '').slice(0, 5);
+    const number = String(card?.number || '?');
+    const metaRaw = [rarity, set, `#${number}`].filter(Boolean).join(' · ');
+    const meta = (metaRaw.length > 18 ? metaRaw.slice(0, 17) + '…' : metaRaw).padEnd(18, ' ');
+    return { name, meta };
+  };
+  const lines: string[] = [];
+  for (let index = 0; index < cards.length; index += 3) {
+    const row = cards.slice(index, index + 3).map((card, offset) => cell(card, index + offset));
+    lines.push(row.map((entry) => entry.name).join(' │ ').trimEnd());
+    lines.push(row.map((entry) => entry.meta).join(' │ ').trimEnd());
+    if (index + 3 < cards.length) lines.push('');
+  }
+  return ['```text', ...lines, '```'].join('\n');
 }
 
 function galleryEmbeds(cards: PackRevealCard[], embedUrl: string): Record<string, unknown>[] {
@@ -97,18 +106,36 @@ async function applyStep(channelId: string, messageId: string, step: StructuredD
 
 async function applyGif(input: PackRevealInput, messageId: string, speaker: DiscordReplySpeaker, gifUrl: string) {
   const feature = input.featureCard;
-  await applyStep(input.channelId, messageId, {
+  const step: StructuredDiscordReplyInput = {
     ...revealStep({ ...input, featureCard: feature }, -1, speaker),
-    message: feature
-      ? `⭐ **${feature.name}** — ${feature.rarity || 'Rare'}`
-      : 'Pack opened.',
-    fields: [
-      ...cardInfoFields(input.cards),
-      ...(Array.isArray(input.fields) ? input.fields : []),
-    ],
-    imageUrl: gifUrl,
+    message: [
+      feature ? `⭐ **${feature.name}** — ${feature.rarity || 'Rare'}` : 'Pack opened.',
+      formatCardInfoGrid(input.cards),
+    ].join('\n'),
+    fields: Array.isArray(input.fields) ? input.fields : [],
+    imageUrl: 'attachment://pack-animation.gif',
     extraEmbeds: [],
-  });
+  };
+  const payload = await buildStructuredDiscordReplyPayload(step);
+  const media = await fetch(gifUrl).catch(() => null);
+  if (!media?.ok) throw new Error(`Could not fetch rendered pack GIF: ${media?.status || 'network error'}`);
+  const fileBuffer = Buffer.from(await media.arrayBuffer());
+  const patched = await editWebhookMessageWithBinaryAttachment(
+    input.channelId,
+    messageId,
+    { content: '', embeds: payload.embeds },
+    fileBuffer,
+    'pack-animation.gif',
+  ).catch(() => false);
+  if (!patched) {
+    await editDiscordMessageWithBinaryAttachment(
+      input.channelId,
+      messageId,
+      { content: '', embeds: payload.embeds },
+      fileBuffer,
+      'pack-animation.gif',
+    );
+  }
 }
 
 async function legacyFallback(input: PackRevealInput, messageId: string, speaker: DiscordReplySpeaker) {
@@ -141,11 +168,12 @@ export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<vo
     tenantId: input.tenantId,
     stableId: `${input.tenantId || 'global'}:${(input.botName || 'streamweaver').toLowerCase()}`,
   });
-  first.message = `🃏 **Opening ${input.setName || input.title || 'booster pack'}...**`;
-  first.fields = [
-    ...cardInfoFields(input.cards),
-    ...(Array.isArray(input.fields) ? input.fields : []),
-  ];
+  first.message = [
+    `🃏 **Opening ${input.setName || input.title || 'booster pack'}...**`,
+    '🎞️ **PACK ANIMATION INCOMING…**',
+    formatCardInfoGrid(input.cards),
+  ].join('\n');
+  first.fields = Array.isArray(input.fields) ? input.fields : [];
   const sent = await sendStructuredDiscordReply(first);
   const messageId = sent.messageId;
   if (!messageId || rowCount < 1) return;

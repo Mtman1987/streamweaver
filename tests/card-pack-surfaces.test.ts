@@ -117,3 +117,22 @@ test('captured pack render can carry the broadcaster tenant and pack front prefe
   assert.match(overlay, /avatarUrl \? \(/);
   assert.match(overlay, /rounded-full/);
 });
+
+
+test('Pokemon Discord pack uses fixed three-column grid with animation pending notice', async () => {
+  const source = await read('src/services/discord-pack-reveal.ts');
+  assert.match(source, /formatCardInfoGrid/);
+  assert.match(source, /PACK ANIMATION INCOMING/);
+  assert.doesNotMatch(source, /function cardInfoFields/);
+});
+
+test('Pokemon Discord GIF edit uploads a real attachment instead of external image proxying', async () => {
+  const source = await read('src/services/discord-pack-reveal.ts');
+  const local = await read('src/services/discord-local.ts');
+  const hooks = await read('src/services/discord-webhooks.ts');
+  assert.match(source, /attachment:\/\/pack-animation\.gif/);
+  assert.match(source, /editWebhookMessageWithBinaryAttachment/);
+  assert.match(source, /editDiscordMessageWithBinaryAttachment/);
+  assert.match(local, /files\[0\]/);
+  assert.match(hooks, /files\[0\]/);
+});

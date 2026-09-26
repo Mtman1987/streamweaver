@@ -219,6 +219,30 @@ export async function getDiscordMessage(channelId: string, messageId: string): P
     return await discordRequest(`/channels/${channelId}/messages/${messageId}`);
 }
 
+
+export async function editDiscordMessageWithBinaryAttachment(
+    channelId: string,
+    messageId: string,
+    payload: { content?: string; embeds?: Record<string, unknown>[]; components?: Record<string, unknown>[] },
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType = 'image/gif',
+): Promise<void> {
+    const formData = new FormData();
+    const bytes = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength) as unknown as BlobPart;
+    const blob = new Blob([bytes], { type: mimeType });
+    formData.append('payload_json', JSON.stringify({
+        ...payload,
+        attachments: [{ id: 0, filename: fileName }],
+    }));
+    formData.append('files[0]', blob, fileName);
+    await discordRequest(`/channels/${channelId}/messages/${messageId}`, {
+        method: 'PATCH',
+        body: formData,
+        headers: {},
+    });
+}
+
 export async function editDiscordMessage(
     channelId: string,
     messageId: string,
