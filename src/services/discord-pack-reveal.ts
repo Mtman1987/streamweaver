@@ -48,6 +48,18 @@ export function formatPackGrid(cards: PackRevealCard[], highlightRow: number): s
   return ['```ansi', rows, '```'].join('\n');
 }
 
+function cardInfoFields(cards: PackRevealCard[]) {
+  return cards.slice(0, 12).map((card, index) => ({
+    name: `${index + 1}. ${String(card.name || 'Unknown Card').slice(0, 180)}`,
+    value: [
+      card.rarity ? `Rarity: **${card.rarity}**` : '',
+      card.setCode ? `Set: **${card.setCode}**` : '',
+      card.number ? `#${card.number}` : '',
+    ].filter(Boolean).join(' · ') || 'Card',
+    inline: true,
+  }));
+}
+
 function galleryEmbeds(cards: PackRevealCard[], embedUrl: string): Record<string, unknown>[] {
   return cards.slice(1).filter((card) => card?.imageUrl).map((card) => ({ url: embedUrl, image: { url: card.imageUrl } }));
 }
@@ -88,8 +100,12 @@ async function applyGif(input: PackRevealInput, messageId: string, speaker: Disc
   await applyStep(input.channelId, messageId, {
     ...revealStep({ ...input, featureCard: feature }, -1, speaker),
     message: feature
-      ? `${formatPackGrid(input.cards, -1)}\n⭐ **${feature.name}** — ${feature.rarity || 'Rare'}`
-      : formatPackGrid(input.cards, -1),
+      ? `⭐ **${feature.name}** — ${feature.rarity || 'Rare'}`
+      : 'Pack opened.',
+    fields: [
+      ...cardInfoFields(input.cards),
+      ...(Array.isArray(input.fields) ? input.fields : []),
+    ],
     imageUrl: gifUrl,
     extraEmbeds: [],
   });
@@ -125,7 +141,11 @@ export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<vo
     tenantId: input.tenantId,
     stableId: `${input.tenantId || 'global'}:${(input.botName || 'streamweaver').toLowerCase()}`,
   });
-  first.message = `🃏 **Opening ${input.setName || input.title || 'booster pack'}...**\n${formatPackGrid(input.cards, 0)}`;
+  first.message = `🃏 **Opening ${input.setName || input.title || 'booster pack'}...**`;
+  first.fields = [
+    ...cardInfoFields(input.cards),
+    ...(Array.isArray(input.fields) ? input.fields : []),
+  ];
   const sent = await sendStructuredDiscordReply(first);
   const messageId = sent.messageId;
   if (!messageId || rowCount < 1) return;
@@ -140,7 +160,7 @@ export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<vo
         cards: input.cards,
         openedAt: new Date().toISOString(),
       });
-      await queueCardPackGif(event);
+      await queueCardPackGif(event, input.tenantId);
       const gifUrl = await waitForCardPackGif(event.eventId);
       if (gifUrl) {
         await applyGif(input, messageId, sent.speaker, gifUrl);

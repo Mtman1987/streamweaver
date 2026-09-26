@@ -73,7 +73,9 @@ export function encodeCardPackEvent(event: CardPackOpenedEvent): string {
   return Buffer.from(JSON.stringify(event), 'utf8').toString('base64url');
 }
 
-export function buildCardPackRenderUrl(event: CardPackOpenedEvent): string {
+export function buildCardPackRenderUrl(event: CardPackOpenedEvent, tenantId?: string): string {
   const base = String(process.env.NEXT_PUBLIC_STREAMWEAVE_URL || process.env.NEXT_PUBLIC_BASE_URL || process.env.STREAMWEAVER_URL || 'https://streamweaver-new.fly.dev').replace(/\/$/, '');
-  return `${base}/overlay/card-pack?event=${encodeURIComponent(encodeCardPackEvent(event))}&capture=1`;
+  const tenant = String(tenantId || '').trim().toLowerCase().replace(/^#/, '');
+  const tenantParam = tenant ? `&tenant=${encodeURIComponent(tenant)}` : '';
+  return `${base}/overlay/card-pack?event=${encodeURIComponent(encodeCardPackEvent(event))}&capture=1${tenantParam}`;
 }

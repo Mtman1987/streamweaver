@@ -3,6 +3,7 @@ import { sendChatMessage } from '../../twitch';
 import { addPoints, formatCompactPointAmount, getPoints } from '../../points';
 import { normalizeCardPackEvent } from '@/lib/card-pack-event';
 import { cardPackOverlayAliases } from '@/services/card-pack-overlay-state';
+import { queueCardPackGif } from '@/services/card-pack-render-client';
 
 export async function handlePokemonPackOpen(context: any, params: any): Promise<void> {
   const { username, args } = context;
@@ -45,6 +46,10 @@ export async function handlePokemonPackOpen(context: any, params: any): Promise<
           payload: { ...result, username, game: 'pokemon', eventId: canonical.eventId }
         }, tenantId);
       }
+      const captureTenant = aliases.find((value) => !/^\d+$/.test(value)) || aliases[0];
+      void queueCardPackGif(canonical, captureTenant).catch((error) => {
+        console.warn('[Pokemon] Pack GIF queue failed:', error instanceof Error ? error.message : error);
+      });
       
       // Show all cards with names and rarities
       const cardList = result.pack.map((card: PokemonCard) => `${card.name} (${card.rarity})`).join(', ');
