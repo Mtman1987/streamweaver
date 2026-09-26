@@ -113,6 +113,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             const { getPendingShoutoutClip } = require('../services/walk-on-shoutout');
             const pendingClip = getPendingShoutoutClip(resolvedTenantId);
             if (pendingClip) ws.send(JSON.stringify(pendingClip));
+            const { getPendingCardPack } = require('../services/card-pack-overlay-state');
+            const pendingCardPack = getPendingCardPack(resolvedTenantId);
+            if (pendingCardPack) ws.send(JSON.stringify(pendingCardPack));
         }
         
         // Do not load global chat history before tenant identification.
@@ -156,6 +159,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         const { getPendingShoutoutClip } = require('../services/walk-on-shoutout');
                         const pendingClip = getPendingShoutoutClip(tid);
                         if (pendingClip) ws.send(JSON.stringify(pendingClip));
+                        const { getPendingCardPack } = require('../services/card-pack-overlay-state');
+                        const pendingCardPack = getPendingCardPack(tid);
+                        if (pendingCardPack) ws.send(JSON.stringify(pendingCardPack));
 
                         // Send tenant-specific Twitch status after identify.
                         const { getTwitchStatus } = require('../services/twitch-client');

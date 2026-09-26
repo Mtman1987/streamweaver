@@ -9,6 +9,7 @@ import { generateTTS } from '@/services/tts-provider';
 import { sendChatMessage } from '@/services/twitch';
 import { addPoints, getPoints, setPoints } from '@/services/points';
 import { normalizeCardPackEvent } from '@/lib/card-pack-event';
+import { cardPackOverlayAliases } from '@/services/card-pack-overlay-state';
 import {
   listGlobalVariables,
   listUserVariables,
@@ -730,11 +731,18 @@ export class SubActionExecutor {
           username,
           setName: 'Pokemon',
         });
-        (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, context.tenantId);
-        (global as any).broadcast({
-          type: 'pokemon-pack-opened',
-          payload: { username, cards, game: 'pokemon', eventId: canonical.eventId }
-        }, context.tenantId);
+        const aliases = cardPackOverlayAliases({
+          tenantId: context?.tenantId,
+          channel: (context as any)?.channel,
+          platform: context?.platform,
+        });
+        for (const tenantId of aliases) {
+          (global as any).broadcast({ type: 'card-pack-opened', payload: canonical }, tenantId);
+          (global as any).broadcast({
+            type: 'pokemon-pack-opened',
+            payload: { username, cards, game: 'pokemon', eventId: canonical.eventId }
+          }, tenantId);
+        }
       }
       
       return { success: true, variables: { pokemonCards: cards } };
