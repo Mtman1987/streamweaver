@@ -91,12 +91,16 @@ export default function CardPackOverlay() {
       if (image.complete) resolve();
     }));
     const ready = Promise.all(images);
-    const timeout = new Promise<void>((resolve) => later(resolve, 15_000));
-    void Promise.all([new Promise<void>((resolve) => later(resolve, 1_400)), Promise.race([ready, timeout])]).then(() => {
+    const preloadTimeoutMs = captureMode ? 2_500 : 15_000;
+    const packHoldMs = captureMode ? 900 : 1_400;
+    const timeout = new Promise<void>((resolve) => later(resolve, preloadTimeoutMs));
+    void Promise.all([new Promise<void>((resolve) => later(resolve, packHoldMs)), Promise.race([ready, timeout])]).then(() => {
       if (sequence.current !== current) return;
       setPhase('deal');
-      later(() => setPhase('flip'), 3_000);
-      later(() => setPhase('feature'), 13_000);
+      later(() => setPhase('flip'), captureMode ? 1_600 : 3_000);
+      // DSH records capture-mode packs for 14 seconds total. Put the final
+      // featured card on screen early enough that every GIF ends on it.
+      later(() => setPhase('feature'), captureMode ? 6_500 : 13_000);
       if (!captureMode) later(() => { setPhase('hidden'); setEvent(null); }, 27_000);
     });
   };
