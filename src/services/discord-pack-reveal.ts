@@ -4,6 +4,7 @@ import { editDiscordMessage, editDiscordMessageWithBinaryAttachment } from './di
 import { editWebhookMessage, editWebhookMessageWithBinaryAttachment } from './discord-webhooks';
 import {
   buildStructuredDiscordReplyPayload,
+  resolveStructuredDiscordReplySpeaker,
   sendStructuredDiscordReply,
   type DiscordReplySpeaker,
   type StructuredDiscordReplyInput,
@@ -140,11 +141,12 @@ async function applyGif(input: PackRevealInput, messageId: string, speaker: Disc
  */
 export async function sendAnimatedPackReveal(input: PackRevealInput): Promise<void> {
   if (!input.cards.length) return;
-  const speaker = {
-    botName: input.botName || 'StreamWeaver',
+  const speaker = await resolveStructuredDiscordReplySpeaker({
     tenantId: input.tenantId,
-    stableId: `${input.tenantId || 'global'}:${(input.botName || 'streamweaver').toLowerCase()}`,
-  };
+    botName: input.botName,
+    rotateSpeaker: true,
+    isPrivate: false,
+  });
   const sent = await sendStructuredDiscordReply(buildPackReply(input, speaker, 'pending'));
   const messageId = sent.messageId;
   if (!messageId) return;
