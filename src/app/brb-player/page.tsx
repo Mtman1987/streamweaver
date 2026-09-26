@@ -16,12 +16,15 @@ export default function BRBPlayer() {
   const [musicIndex, setMusicIndex] = useState(0);
   const [musicActive, setMusicActive] = useState(false);
   const spotlightLevel = useLoungeBroadcastVolume('spotlight');
+  const mediaLevel = useLoungeBroadcastVolume('media');
   const spotlightLevelRef = useRef<number | null>(null);
   useEffect(() => {
     spotlightLevelRef.current = spotlightLevel;
     if (videoRef.current && spotlightLevel !== null) videoRef.current.volume = spotlightLevel;
-    if (musicRef.current && spotlightLevel !== null) musicRef.current.volume = spotlightLevel;
   }, [spotlightLevel]);
+  useEffect(() => {
+    if (musicRef.current && mediaLevel !== null) musicRef.current.volume = mediaLevel;
+  }, [mediaLevel]);
   useEffect(() => {
     const audio = musicRef.current;
     if (!audio) return;
