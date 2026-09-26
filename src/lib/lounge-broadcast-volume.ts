@@ -25,8 +25,13 @@ export function useLoungeBroadcastVolume(output: 'stella' | 'spotlight' | 'media
       try {
         const response = await fetch('/api/lounge/audio-mix', { cache: 'no-store' });
         if (!response.ok) return;
-        const value = Number((await response.json())?.levels?.[output]);
-        if (!stopped && Number.isInteger(value) && value >= 1 && value <= 100) setLevel(value / 100);
+        const levels = (await response.json())?.levels;
+        const value = Number(levels?.[output]);
+        const master = levels?.all === undefined ? 100 : Number(levels.all);
+        if (!stopped && Number.isInteger(value) && value >= 0 && value <= 100
+          && Number.isInteger(master) && master >= 0 && master <= 100) {
+          setLevel((value / 100) * (master / 100));
+        }
       } catch {}
     };
     void refresh();

@@ -2828,11 +2828,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         const args = String(volumeCommand[1] || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
-        const output = /^(stella|spotlight|media)$/.test(args[0] || '') ? args[0] as LoungeMixOutput : null;
+        const output = /^(stella|spotlight|media|all)$/.test(args[0] || '') ? args[0] as LoungeMixOutput : null;
         try {
             if (args.length === 0) {
                 const mix = await getLoungeAudioMix();
-                await reply(`Broadcast mix: Stella ${mix.levels.stella}% · Spotlight ${mix.levels.spotlight}% · Media ${mix.levels.media}%.`, 'bot').catch(() => {});
+                await reply(`Broadcast mix: All ${mix.levels.all}% · Stella ${mix.levels.stella}% · Spotlight ${mix.levels.spotlight}% · Media ${mix.levels.media}%.`, 'bot').catch(() => {});
             } else if (args.length === 1 && output) {
                 const mix = await selectLoungeMixOutput(output);
                 await reply(`${output} volume selected: ${mix.levels[output]}%.`, 'bot').catch(() => {});
@@ -2842,7 +2842,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const mix = await setLoungeMixVolume(output, value);
                 await reply(`${mix.selected} volume set to ${mix.levels[mix.selected]}%.`, 'bot').catch(() => {});
             } else {
-                await reply('Usage: !vol [stella|spotlight|media] [1-100]', 'bot').catch(() => {});
+                await reply('Usage: !vol [stella|spotlight|media|all] [0-100]', 'bot').catch(() => {});
             }
         } catch (error) {
             await reply(`Volume unchanged: ${error instanceof Error ? error.message : String(error)}`, 'bot').catch(() => {});
