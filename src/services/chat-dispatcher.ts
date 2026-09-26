@@ -1911,6 +1911,7 @@ const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 
 // Track processed messages to prevent duplicates
 const processedMessages = new Set<string>();
+const pendingWatchChoices = new Map<string, { options: Array<{ id: string; title: string; year: number | null }>; expiresAt: number }>();
 
 // Track messages that already have TTS (e.g. from shoutout flow) to prevent double TTS
 const ttsHandledMessages = new Set<string>();
@@ -2858,6 +2859,18 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         return;
     }
 
+    // Keep watch choices tied to the requester and channel; expire them so a
+    // later number cannot silently queue a title from an old search.
+    if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && /^!follow(?:\\s|$)/i.test(actualMessage.trim())) {
+        const name = actualMessage.trim().replace(/^!follow\\s*/i, '').replace(/^@/, '').trim().toLowerCase();
+        if (!/^[a-z0-9_]{3,25}$/.test(name)) {
+            await reply(`@${actualUsername}, use !follow @creator to share their Twitch channel.`, 'bot').catch(() => {});
+        } else {
+            await reply(`Follow @${name}: https://www.twitch.tv/${name}`, 'bot').catch(() => {});
+        }
+        return;
+    }
+
     // SML media requests are production-critical Lounge commands. Handle them
     // before imported JSON actions and general bot/command filters so stale
     // Streamer.bot actions cannot swallow !sr or !wr.
@@ -2877,6 +2890,55 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
         const roomId = SPACEMOUNTAIN_LOUNGE_ROOM_ID;
         const lane = command === 'wr' ? 'movie' : 'music';
+        const choiceKey = `${replyChannel}:${String(tags['user-id'] || tags.username || actualUsername).toLowerCase()}`;
+        let choice: { id: string; title: string; year: number | null } | undefined;
+        if (command === 'wr') {
+            const number = query.match(/^[1-3]$/);
+            if (number) {
+                const pending = pendingWatchChoices.get(choiceKey);
+                if (!pending || pending.expiresAt < Date.now()) {
+                    pendingWatchChoices.delete(choiceKey);
+                    await reply(`@${actualUsername}, those choices expired. Search again with !wr <movie title>.`, 'bot').catch(() => {});
+                    return;
+                }
+                choice = pending.options[Number(number[0]) - 1];
+                if (!choice) {
+                    await reply(`@${actualUsername}, choose one of the listed numbers.`, 'bot').catch(() => {});
+                    return;
+                }
+            } else {
+                try {
+                    const found: any = await executeHearMeOutBotAction({
+                        action: 'hmo.media.search',
+                        tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                        roomId,
+                        lane: 'movie',
+                        actorUserId: String(tags['user-id'] || tags.username || actualUsername),
+                        actorName: actualUsername,
+                        query,
+                    });
+                    const options = Array.isArray(found.options)
+                        ? found.options.filter((option: any) => /^[a-z0-9-]+$/i.test(String(option?.id || '')) && option?.title).slice(0, 3)
+                            .map((option: any) => ({ id: String(option.id), title: String(option.title).slice(0, 90), year: Number(option.year) || null }))
+                        : [];
+                    if (!options.length) {
+                        pendingWatchChoices.delete(choiceKey);
+                        await reply(`@${actualUsername}, the provider returned no playable choices for "${query.slice(0, 70)}". Try a different title or year.`, 'bot').catch(() => {});
+                        return;
+                    }
+                    pendingWatchChoices.set(choiceKey, { options, expiresAt: Date.now() + 5 * 60_000 });
+                    const list = options.map((option: { title: string; year: number | null }, index: number) =>
+                        `${index + 1}) ${option.title}${option.year && !option.title.includes(String(option.year)) ? ` (${option.year})` : ''}`
+                    ).join(' | ');
+                    await reply(`@${actualUsername}, watch choices: ${list}. Type !wr 1, !wr 2, or !wr 3 within 5 minutes.`.slice(0, 490), 'bot').catch(() => {});
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.error('[Dispatcher] SML !wr provider search failed:', error);
+                    await reply(`@${actualUsername}, movie search failed: ${message.slice(0, 150)}. Please try !wr ${query.slice(0, 60)} again.`, 'bot').catch(() => {});
+                }
+                return;
+            }
+        }
         try {
             const result: any = await executeHearMeOutBotAction({
                 action: 'hmo.media.request',
@@ -2887,12 +2949,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 actorUserId: String(tags['user-id'] || tags.username || actualUsername),
                 actorName: actualUsername,
                 actorRole: isHearMeOutOwner ? 'owner' : tags.mod ? 'moderator' : 'member',
-                query,
+                query: choice?.title || query,
+                itemId: choice?.id,
                 idempotencyKey: `twitch:${replyChannel}:${String(tags.id || '') || Date.now()}:${command}`,
             });
             const title = String(result?.request?.item?.title || query);
             const confirmation = String(result?.message || 'Added to the 24-Hour Lounge queue.').replace(/[.]+$/, '');
             await reply(`✅ @${actualUsername} 24-Hour Lounge: ${title} — ${confirmation}.`, 'broadcaster').catch(() => {});
+            if (choice) pendingWatchChoices.delete(choiceKey);
             console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
