@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
+import { isAdmin, SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
 import { noteStreamerSpeech, stellaThoughtBoard } from '@/services/stella-thought-board';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,9 @@ function clean(value: unknown) {
 export async function POST(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session?.tenantId) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+  if (!isAdmin(session.tenantId)) {
+    return NextResponse.json({ error: 'Broadcaster authorization required.' }, { status: 403 });
+  }
 
   const body = await request.json().catch(() => ({}));
   const text = clean(body.text || body.transcript);

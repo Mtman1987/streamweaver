@@ -41,9 +41,12 @@ export function getStellaEnergy(now = Date.now()): StellaEnergy {
 export function interestCanChime(topic: string, now = Date.now(), cooldownMs = 12 * 60_000) {
   const key = topic.toLowerCase().trim();
   const last = topicCooldowns.get(key) || 0;
-  if (now - last < cooldownMs) return false;
-  topicCooldowns.set(key, now);
-  return true;
+  return Boolean(key) && now - last >= cooldownMs;
+}
+
+export function markStellaInterestChime(topic: string, now = Date.now()) {
+  const key = topic.toLowerCase().trim();
+  if (key) topicCooldowns.set(key, now);
 }
 
 export function recordStellaDecision(decision: 'speak' | 'silence', reason: string, now = Date.now()) {
@@ -79,11 +82,21 @@ export function openStellaThread(user: string, prompt: string, now = Date.now())
   if (!key) return;
   threads.set(key, { user, prompt: prompt.slice(0, 300), openedAt: now, expiresAt: now + 12 * 60_000 });
 }
-export function consumeStellaThread(user: string, now = Date.now()): Thread | null {
+export function peekStellaThread(user: string, now = Date.now()): Thread | null {
   clean(now);
   const key = user.toLowerCase().trim();
-  const thread = threads.get(key) || null;
-  if (thread) threads.delete(key);
+  return threads.get(key) || null;
+}
+
+export function closeStellaThread(user: string) {
+  const key = user.toLowerCase().trim();
+  if (key) threads.delete(key);
+}
+
+// Kept for compatibility with callers that intentionally want destructive reads.
+export function consumeStellaThread(user: string, now = Date.now()): Thread | null {
+  const thread = peekStellaThread(user, now);
+  if (thread) closeStellaThread(user);
   return thread;
 }
 
