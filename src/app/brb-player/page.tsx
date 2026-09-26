@@ -31,7 +31,7 @@ export default function BRBPlayer() {
       setGifUrl(gif.url);
       setSpotlight(false);
       setActive(true);
-      notifyParent(true, 'clip');
+      notifyParent(true, 'gif');
     };
 
     const playClip = async (clipUrl: string, thumbnailUrl: string, fallback?: { url: string; user: string }) => {
@@ -71,6 +71,7 @@ export default function BRBPlayer() {
             setSpotlight(false);
             setGifUrl('');
             setActive(true);
+            notifyParent(true, 'clip');
             if (videoRef.current) videoRef.current.muted = false;
           }).catch((err: unknown) => { console.warn('[BRB] Clip playback failed:', err); if (epoch === playbackEpoch) showGif(fallback); });
         }
@@ -80,7 +81,7 @@ export default function BRBPlayer() {
       }
     };
 
-    const notifyParent = (on: boolean, mode: 'clip' | 'spotlight' = 'clip') => {
+    const notifyParent = (on: boolean, mode: 'clip' | 'gif' = 'clip') => {
       if (window.parent !== window) {
         window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: on, mode }, 'https://spmt.live');
       }
@@ -202,7 +203,7 @@ export default function BRBPlayer() {
         style={{ width: '100%', height: '100%', objectFit: 'contain', display: spotlight || gifUrl ? 'none' : 'block' }}
         autoPlay
       />
-      {active && gifUrl && <img onError={() => { setGifUrl(''); setActive(false); if (window.parent !== window) window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: false, mode: 'clip' }, 'https://spmt.live'); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {active && gifUrl && <img onError={() => { setGifUrl(''); setActive(false); if (window.parent !== window) window.parent.postMessage({ type: 'spmt-lounge-brb-audio', active: false, mode: 'gif' }, 'https://spmt.live'); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
       {active && spotlight && (
         <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 2, padding: '8px 14px', borderRadius: 9,
           background: 'rgba(5,12,30,.83)', border: '1px solid rgba(103,232,249,.65)',
