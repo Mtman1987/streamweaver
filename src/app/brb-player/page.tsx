@@ -28,11 +28,6 @@ export default function BRBPlayer() {
     let reconnect: NodeJS.Timeout;
     let stopped = false;
     let manual = false;
-    let automatic = false;
-    let autoTimer: ReturnType<typeof setTimeout>;
-    let autoStartedAt = 0;
-    let autoIndex = 0;
-    let autoPlaylist: { clips: any[]; gifs: { url: string; user: string }[] } = { clips: [], gifs: [] };
     let playbackEpoch = 0;
     let embedTimer: ReturnType<typeof setTimeout>;
     let lastGif: { url: string; user: string } | undefined;
@@ -144,68 +139,7 @@ export default function BRBPlayer() {
       setTestStream(false);
     };
 
-    const stopAutomatic = () => {
-      automatic = false;
-      clearTimeout(autoTimer);
-      playbackEpoch++;
-      clearTimeout(embedTimer);
-      videoRef.current?.pause();
-      setEmbedUrl('');
-      setVideoPlaying(false);
-      setGifUrl('');
-      setSpotlight(false);
-      setActive(false);
-      notifyParent(false);
-    };
-
-    const nextAutomatic = async () => {
-      if (!automatic || manual || stopped) return;
-      if (Date.now() - autoStartedAt >= 10 * 60_000 || (!autoPlaylist.clips.length && !autoPlaylist.gifs.length)) {
-        try {
-          const response = await fetch('/api/lounge/brb-fallback?tenant=spacemountainlive', {
-            cache: 'no-store', signal: AbortSignal.timeout(20_000),
-          });
-          if (!response.ok) throw new Error(`BRB playlist ${response.status}`);
-          const data = await response.json();
-          if (!automatic || manual || stopped) return;
-          autoPlaylist = {
-            clips: Array.isArray(data.clips) ? data.clips : [],
-            gifs: Array.isArray(data.gifs) ? data.gifs : [],
-          };
-          autoIndex = 0;
-          autoStartedAt = Date.now();
-        } catch (error) {
-          console.warn('[BRB] Playlist lookup failed:', error);
-          autoStartedAt = Date.now() - 10 * 60_000 + 15_000;
-        }
-      }
-      if (!automatic || manual || stopped) return;
-      const clip = autoPlaylist.clips.length ? autoPlaylist.clips[autoIndex % autoPlaylist.clips.length] : null;
-      const gif = autoPlaylist.gifs.length ? autoPlaylist.gifs[autoIndex % autoPlaylist.gifs.length] : undefined;
-      autoIndex++;
-      if (clip) {
-        setClipUser(clip.user || '');
-        void playClip(clip.clipUrl, clip.thumbnailUrl || '', gif, clip);
-      } else {
-        showGif(gif);
-      }
-      autoTimer = setTimeout(() => { void nextAutomatic(); },
-        clip ? Math.max(5_000, Number(clip.duration) || 30_000) : 12_000);
-    };
-
-    const onSpotlightHealth = (event: MessageEvent) => {
-      if (event.origin !== 'https://spmt.live' || event.source !== window.parent
-          || event.data?.type !== 'spmt-lounge-spotlight-health') return;
-      if (event.data.healthy === true) {
-        if (automatic) stopAutomatic();
-      } else if (event.data.healthy === false && !automatic && !manual) {
-        automatic = true;
-        autoStartedAt = 0;
-        void nextAutomatic();
-      }
-    };
-    window.addEventListener('message', onSpotlightHealth);
-    const onVideoError = () => { if ((automatic || manual) && lastGif) showGif(lastGif); };
+    const onVideoError = () => { if (manual && lastGif) showGif(lastGif); };
     videoRef.current?.addEventListener('error', onVideoError);
 
     const connect = () => {
@@ -222,7 +156,6 @@ export default function BRBPlayer() {
                 : [];
               if (!users.length) return;
               stopTest();
-              if (automatic) stopAutomatic();
               manual = true;
               playbackEpoch++;
               clearTimeout(embedTimer);
@@ -297,7 +230,7 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(autoTimer); clearTimeout(embedTimer); clearTimeout(testTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
+    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(embedTimer); clearTimeout(testTimer); ws?.close(); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
   }, []);
 
   return (
