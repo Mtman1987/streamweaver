@@ -150,7 +150,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         const parsed = JSON.parse(body);
                         const tenantId = String(parsed?.tenantId || '').trim();
                         const messages = Array.isArray(parsed?.messages) ? parsed.messages : [];
-                        const allowedTypes = new Set(['pokemon-pack-opened', 'quackverse-pack-opened', 'public-image-generated']);
+                        const allowedTypes = new Set(['card-pack-opened', 'pokemon-pack-opened', 'quackverse-pack-opened', 'public-image-generated']);
                         if (!tenantId || messages.length === 0 || messages.some((message: any) => !message || !allowedTypes.has(String(message.type || '')))) {
                             res.writeHead(400, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ error: 'Invalid overlay broadcast request' }));

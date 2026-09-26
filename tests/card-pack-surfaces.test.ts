@@ -39,6 +39,20 @@ test('one overlay accepts canonical and legacy pack events during migration', as
   assert.match(overlay, /pokemon-pack-opened/);
   assert.match(overlay, /quackverse-pack-opened/);
   assert.match(overlay, /phase === 'feature'/);
+  assert.match(overlay, /CardBack/);
+  assert.match(overlay, /user-profile/);
+  assert.match(overlay, /avatarUrl/);
+});
+
+test('Pokemon automation paths send tenant-scoped canonical pack events', async () => {
+  const legacy = await read('src/services/automation/subactions/PokemonHandlers.ts');
+  const executor = await read('src/services/automation/SubActionExecutor.ts');
+  const routes = await read('src/server/routes.ts');
+  assert.match(legacy, /card-pack-opened/);
+  assert.match(legacy, /context\?\.tenantId/);
+  assert.match(executor, /card-pack-opened/);
+  assert.match(executor, /context\.tenantId/);
+  assert.match(routes, /card-pack-opened/);
 });
 
 test('Discord pack reveal queues a GIF and preserves its old edit path as fallback', async () => {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
+import CardBack from '@/components/CardBack';
 import { resolveCardPackGame, type CardPackOpenedEvent, type CardPackCard } from '@/lib/card-pack-event';
 
 type Phase = 'hidden' | 'pack' | 'deal' | 'flip' | 'feature';
@@ -65,6 +66,7 @@ export default function CardPackOverlay() {
   const [event, setEvent] = useState<CardPackOpenedEvent | null>(null);
   const [phase, setPhase] = useState<Phase>('hidden');
   const lastEventId = useRef('');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const sequence = useRef(0);
   const timers = useRef<number[]>([]);
   const captureMode = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1', []);
@@ -98,6 +100,15 @@ export default function CardPackOverlay() {
       if (!captureMode) later(() => { setPhase('hidden'); setEvent(null); }, 27_000);
     });
   };
+
+  useEffect(() => {
+    const tenantId = getOverlayTenantId();
+    const tenantParam = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+    fetch(`/api/user-profile${tenantParam}`).then((r) => r.json()).then((d) => {
+      const avatar = String(d?.twitch?.avatar || d?.twitch?.profileImageUrl || d?.logoUrl || '').trim();
+      if (avatar) setAvatarUrl(avatar);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -184,7 +195,9 @@ export default function CardPackOverlay() {
                   }}
                 >
                   {phase === 'deal' ? (
-                    <div className={`flex h-full items-center justify-center text-4xl ${isQuackverse ? 'bg-cyan-950' : 'bg-red-950'}`}>{isQuackverse ? '🦆' : '⚡'}</div>
+                    <div className="flex h-full items-center justify-center bg-slate-950">
+                      <CardBack width={210} height={294} avatarUrl={avatarUrl} />
+                    </div>
                   ) : (
                     <CardFace key={`${event.eventId}-${index}`} card={card} className="h-full w-full object-contain" />
                   )}
