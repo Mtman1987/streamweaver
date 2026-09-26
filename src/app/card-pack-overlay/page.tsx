@@ -66,7 +66,7 @@ export default function CardPackOverlay() {
   const [phase, setPhase] = useState<Phase>('hidden');
   const lastEventId = useRef('');
   const sequence = useRef(0);
-  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const timers = useRef<number[]>([]);
   const captureMode = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1', []);
   const loungeMain = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('placement') === 'lounge-main', []);
 
