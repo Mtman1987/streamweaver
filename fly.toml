@@ -14,6 +14,7 @@ primary_region = 'iad'
   INTERNAL_API_BASE_URL = 'https://streamweaver-new.fly.dev'
   SPMT_LOCAL_LLM_ENABLED = 'false'
   OPENAI_CHAT_MODEL = 'gpt-4.1-mini'
+  EDENAI_CALLS_ENABLED = 'false'
 
 [[mounts]]
   source = 'streamweaver_data'

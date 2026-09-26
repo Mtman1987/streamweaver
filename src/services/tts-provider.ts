@@ -157,6 +157,9 @@ export async function generateTTS(
       if (voice.edenaiProvider === 'openai' && config.openaiApiKey) {
         return await generateOpenAITTS(normalizedText, voice, config.openaiApiKey);
       }
+      if (process.env.EDENAI_CALLS_ENABLED === 'false') {
+        throw new Error('Eden AI speech calls are paused while credits are depleted');
+      }
       if (!config.apiKey) throw new Error('Eden AI TTS is not configured');
       return await generateEdenAITTS(normalizedText, voice, config.apiKey);
     } catch (error) {
@@ -176,7 +179,7 @@ async function generatePortableDeepgramTTS(text: string, voice: TTSVoiceOption, 
   // the account's credits first; Eden AI supplies that same voice on failure.
   const routes = [
     { name: 'Deepgram', key: config.deepgramApiKey, synthesize: () => generateDeepgramTTS(text, config.deepgramApiKey, voice.deepgramModel) },
-    { name: 'Eden AI', key: config.apiKey, synthesize: () => generateEdenAIDeepgramTTS(text, voice, config.apiKey) },
+    { name: 'Eden AI', key: process.env.EDENAI_CALLS_ENABLED === 'false' ? '' : config.apiKey, synthesize: () => generateEdenAIDeepgramTTS(text, voice, config.apiKey) },
   ];
   const failures: string[] = [];
   for (const route of routes) {

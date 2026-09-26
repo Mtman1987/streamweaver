@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
 import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
 import { isSpmtLocalLlmEnabled, requestSpmtLocalLlm } from '@/services/spmt-local-llm';
@@ -15,6 +16,8 @@ const DEFAULT_AI_MAX_CHARACTERS = 12_000;
 const MAX_EDENAI_SYSTEM_CHARACTERS = 12_000;
 const MAX_EDENAI_PROMPT_CHARACTERS = 24_000;
 const LOCAL_LLM_CIRCUIT_OPEN_MS = 5 * 60 * 1000;
+const EDENAI_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
+const edenQuotaCooldowns = new Map<string, number>();
 
 let localLlmCircuitOpenUntil = 0;
 let localLlmCircuitReason = '';
@@ -118,15 +121,9 @@ function closeLocalLlmCircuit(): void {
 }
 
 /**
- * Shared bot AI entry point.
- *
- * Emergency quality routing is intentionally global and tenant-neutral:
- *   1. EdenAI first for normal tenant text generation;
- *   2. owner-hosted SPMT Qwen only when EdenAI is unavailable, rate-limited,
- *      out of credits, missing a usable key, or otherwise fails.
- *
- * The local circuit breaker remains in place so an unavailable Qwen fallback
- * does not add the same timeout to every EdenAI failure.
+ * Shared bot AI entry point. EdenAI serves normally; OpenAI serves when
+ * EdenAI is unavailable, including while its credential is out of credits.
+ * The local provider runs only when explicitly enabled.
  */
 export async function generateAIResponse(
   prompt: string,
@@ -201,11 +198,31 @@ export async function generateEdenAIFallbackResponse(
   tenantId?: string,
   options?: AIResponseOptions,
 ): Promise<string> {
+  if (process.env.EDENAI_CALLS_ENABLED === 'false') {
+    throw new Error('EdenAI calls are paused while credits are depleted.');
+  }
   const config = getEdenFallbackConfig(tenantId);
   if (!config.apiKey) {
     throw new Error('No EdenAI API key is configured.');
   }
-  return generateEdenAIResponse(prompt, governedPrompt(systemPrompt), config, options);
+  // A depleted credential should not make every chat turn wait for another 402.
+  // Fingerprint the key so adding funds or replacing the key can recover without
+  // logging or retaining its raw value in the cooldown map.
+  const credential = createHash('sha256').update(config.apiKey).digest('hex');
+  if ((edenQuotaCooldowns.get(credential) || 0) > Date.now()) {
+    throw new Error('EdenAI credit is cooling down; using OpenAI fallback.');
+  }
+  edenQuotaCooldowns.delete(credential);
+  try {
+    const response = await generateEdenAIResponse(prompt, governedPrompt(systemPrompt), config, options);
+    return response;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/\b402\b|insufficient ai credit|balance cannot cover|no more credits/i.test(message)) {
+      edenQuotaCooldowns.set(credential, Date.now() + EDENAI_QUOTA_COOLDOWN_MS);
+    }
+    throw error;
+  }
 }
 
 type EdenAIChatMessage = {
