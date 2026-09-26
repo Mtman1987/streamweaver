@@ -5,32 +5,14 @@ import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
-const THEME_TRACKS = ['spmt', 'spmt2', 'spmt3', 'spmt4'].map(
-  (track) => `https://hearmeout-main.fly.dev/api/lounge/theme-music?track=${track}`,
-);
-
 export default function BRBPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const musicRef = useRef<HTMLAudioElement>(null);
-  const musicFailuresRef = useRef(0);
-  const [musicIndex, setMusicIndex] = useState(0);
-  const [musicActive, setMusicActive] = useState(false);
   const spotlightLevel = useLoungeBroadcastVolume('spotlight');
-  const mediaLevel = useLoungeBroadcastVolume('media');
   const spotlightLevelRef = useRef<number | null>(null);
   useEffect(() => {
     spotlightLevelRef.current = spotlightLevel;
     if (videoRef.current && spotlightLevel !== null) videoRef.current.volume = spotlightLevel;
   }, [spotlightLevel]);
-  useEffect(() => {
-    if (musicRef.current && mediaLevel !== null) musicRef.current.volume = mediaLevel;
-  }, [mediaLevel]);
-  useEffect(() => {
-    const audio = musicRef.current;
-    if (!audio) return;
-    if (musicActive) void audio.play().catch((error) => console.warn('[BRB] Theme music autoplay unavailable:', error));
-    else audio.pause();
-  }, [musicActive, musicIndex]);
   const [active, setActive] = useState(false);
   const [clipUser, setClipUser] = useState('');
   const [spotlight, setSpotlight] = useState(false);
@@ -58,8 +40,6 @@ export default function BRBPlayer() {
       clearTimeout(embedTimer);
       setEmbedUrl('');
       setVideoPlaying(false);
-      musicFailuresRef.current = 0;
-      setMusicActive(true);
       lastGif = undefined;
       if (!gif?.url) { videoRef.current?.pause(); setClipUser(''); setGifUrl(''); setActive(true); notifyParent(true, 'gif'); return; }
       videoRef.current?.pause();
@@ -90,7 +70,6 @@ export default function BRBPlayer() {
     const playClip = async (clipUrl: string, thumbnailUrl: string, fallback?: { url: string; user: string }) => {
       const epoch = ++playbackEpoch;
       lastGif = fallback;
-      setMusicActive(false);
       clearTimeout(embedTimer);
       setEmbedUrl('');
       setVideoPlaying(false);
@@ -155,7 +134,6 @@ export default function BRBPlayer() {
       setVideoPlaying(false);
       setGifUrl('');
       setActive(false);
-      setMusicActive(false);
       notifyParent(false);
     };
 
@@ -227,7 +205,6 @@ export default function BRBPlayer() {
               setVideoPlaying(false);
               setGifUrl('');
               setClipUser('');
-              setMusicActive(true);
               setActive(true);
               setSpotlight(false);
               notifyParent(true, 'gif');
@@ -252,7 +229,6 @@ export default function BRBPlayer() {
               setGifUrl('');
               setClipUser('');
               setActive(msg.type === 'brb-no-media');
-              setMusicActive(msg.type === 'brb-no-media');
               setSpotlight(false);
               notifyParent(msg.type === 'brb-no-media', 'gif');
               if (videoRef.current) videoRef.current.src = '';
@@ -265,7 +241,7 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { stopped = true; musicRef.current?.pause(); clearTimeout(reconnect); clearTimeout(autoTimer); clearTimeout(embedTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
+    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(autoTimer); clearTimeout(embedTimer); ws?.close(); window.removeEventListener('message', onSpotlightHealth); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
   }, []);
 
   return (
@@ -274,7 +250,6 @@ export default function BRBPlayer() {
       overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative'
     }}>
-      <audio ref={musicRef} src={THEME_TRACKS[musicIndex]} preload={musicActive ? 'auto' : 'none'} onEnded={() => setMusicIndex((index) => (index + 1) % THEME_TRACKS.length)} onError={() => { if (!musicActive) return; if (++musicFailuresRef.current >= THEME_TRACKS.length) { setMusicActive(false); return; } setMusicIndex((index) => (index + 1) % THEME_TRACKS.length); }} onPlaying={() => { musicFailuresRef.current = 0; }} />
       <video
         ref={videoRef}
         style={{ width: '100%', height: '100%', objectFit: 'contain', display: videoPlaying && !spotlight && !gifUrl && !embedUrl ? 'block' : 'none' }}
