@@ -5677,8 +5677,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const isStellaLounge = (responseTenantId || tenantId) === SPACEMOUNTAIN_SYSTEM_TENANT_ID;
             let continuedStellaThread = false;
             if (isStellaLounge) {
-                const { consumeStellaThread } = await import('./stella-thought-board');
-                const thread = consumeStellaThread(actualUsername);
+                const { peekStellaThread } = await import('./stella-thought-board');
+                const thread = peekStellaThread(actualUsername);
                 if (thread) {
                     continuedStellaThread = true;
                     console.log(`[Dispatcher] Stella continuing open thread with ${actualUsername}`);
@@ -5720,7 +5720,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             console.log(`[Dispatcher] Interest ${matchedInterest} invited ${botName} into message from ${actualUsername}`);
                             mentionsBot = true;
                             if (isStella) {
-                                const { rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                                const { markStellaInterestChime, rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                                markStellaInterestChime(matchedInterest);
                                 rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Interest ${matchedInterest}: ${actualMessage}`, ttlMs: 20 * 60_000 });
                                 recordStellaDecision('speak', `interest:${matchedInterest}`);
                             }
@@ -5759,7 +5760,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         
                         if (aiReply) {
                             if (isStellaLounge) {
-                                const { openStellaThread, rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                                const { closeStellaThread, openStellaThread, rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                                if (continuedStellaThread) closeStellaThread(actualUsername);
                                 rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella replied: ${aiReply}`, ttlMs: 25 * 60_000 });
                                 recordStellaDecision('speak', continuedStellaThread ? 'conversation-thread' : 'direct-chat');
                                 if (/\?\s*$/.test(aiReply)) openStellaThread(actualUsername, aiReply);
