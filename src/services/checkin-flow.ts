@@ -285,8 +285,6 @@ export async function resolveCheckinSelection(kind: CheckinKind, selectionNumber
 
 export async function runCheckin(kind: CheckinKind, username: string, selectionNumber: number, pointCost: number, tenantId?: string): Promise<void> {
   const copy = labels(kind);
-  broadcastCheckin('pending', createPendingPayload(kind, username, copy.group), tenantId);
-
   const insufficient = await chargePoints(username, pointCost, `${kind}-checkin`, tenantId);
   if (insufficient !== null) {
     await sendChatMessage(`@${username}, you need ${pointCost} points for a ${copy.title.toLowerCase()}! (You have ${insufficient})`, 'broadcaster', undefined, tenantId).catch(() => {});
@@ -299,6 +297,7 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
     return;
   }
 
+  broadcastCheckin('pending', createPendingPayload(kind, username, sourceLabel), tenantId);
   const stats = recordDetailedCheckin(username, entry.key, entry.name, kind, tenantId);
   broadcastCheckin('reveal', {
     kind,
@@ -337,14 +336,6 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
 export async function runBulkCheckin(kind: CheckinKind, username: string, pointCost: number, tenantId?: string): Promise<void> {
   const source = await getCheckinSource(kind, tenantId, username);
   const copy = labels(kind);
-  broadcastCheckin('pending', createPendingPayload(kind, username, source.sourceLabel, { count: source.entries.length }), tenantId);
-
-  const insufficient = await chargePoints(username, pointCost, `${kind}-checkin`, tenantId);
-  if (insufficient !== null) {
-    await sendChatMessage(`@${username}, you need ${pointCost} points for ${copy.title}! (You have ${insufficient})`, 'broadcaster', undefined, tenantId).catch(() => {});
-    return;
-  }
-
   if (source.entries.length === 0) {
     const message = source.error
       ? `@${username}, ${copy.title} rider lookup is unavailable right now: ${source.error}`
@@ -353,6 +344,13 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     return;
   }
 
+  const insufficient = await chargePoints(username, pointCost, `${kind}-checkin`, tenantId);
+  if (insufficient !== null) {
+    await sendChatMessage(`@${username}, you need ${pointCost} points for ${copy.title}! (You have ${insufficient})`, 'broadcaster', undefined, tenantId).catch(() => {});
+    return;
+  }
+
+  broadcastCheckin('pending', createPendingPayload(kind, username, source.sourceLabel, { count: source.entries.length }), tenantId);
   const checkedIn = source.entries.map((entry) => {
     const stats = recordDetailedCheckin(username, entry.key, entry.name, kind, tenantId);
     return { ...entry, total: stats.entryTotal };

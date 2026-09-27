@@ -207,7 +207,8 @@ export default function PartnerCheckinPage() {
         position: 'absolute',
         top: 32,
         left: 32,
-        width: state.kind === 'space-mountain' ? 720 : 560,
+        width: state.kind === 'space-mountain' ? 'calc(100% - 64px)' : 'min(560px, calc(100% - 64px))',
+        boxSizing: 'border-box',
         borderRadius: 28,
         padding: 24,
         color: 'white',
@@ -234,7 +235,7 @@ export default function PartnerCheckinPage() {
           }}>
             {avatarSrc ? <img src={avatarSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : state.emoji}
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               display: 'inline-block',
               padding: '6px 12px',
@@ -249,7 +250,8 @@ export default function PartnerCheckinPage() {
             </div>
             <div style={{
               marginTop: 14,
-              fontSize: state.kind === 'space-mountain' ? 46 : 42,
+              fontSize: state.kind === 'space-mountain' ? 38 : 42,
+              overflowWrap: 'anywhere',
               lineHeight: 1,
               fontWeight: 900,
               textShadow: '0 4px 18px rgba(0,0,0,0.45)',
