@@ -28,7 +28,7 @@ async function loungeState() {
   return response.json();
 }
 
-export async function GET() {
+async function buildStatusStrip() {
   const [gameResult, spotlightResult, mediaResult, eventsResult] = await Promise.allSettled([
     json(`${CHAT_TAG_URL}/api/game-hub/channel?channel=spacemountainlive`),
     json(SPOTLIGHT_URL),
@@ -61,7 +61,7 @@ export async function GET() {
       title: String(event.title).trim(),
       startsAt: String(event.startsAt),
     }));
-  return NextResponse.json({
+  return {
     events,
     games,
     spotlight: login ? {
@@ -74,5 +74,26 @@ export async function GET() {
       title: String(mediaItem?.title || mediaItem?.name || 'Untitled media').trim(),
       thumbnailUrl: String(mediaItem?.thumbnailUrl || mediaItem?.thumbnail || '').trim(),
     } : null,
-  }, { headers: { 'cache-control': 'no-store, no-cache, must-revalidate' } });
+  };
+}
+
+// Several mounted lounge widgets request this strip together. Share the same
+// four upstream lookups for a short window instead of multiplying them on
+// every poll and competing with chat and Fly health checks.
+let cached: { at: number; value: Awaited<ReturnType<typeof buildStatusStrip>> } | null = null;
+let pending: Promise<Awaited<ReturnType<typeof buildStatusStrip>>> | null = null;
+
+export async function GET() {
+  if (!cached || Date.now() - cached.at >= 2500) {
+    if (!pending) {
+      pending = buildStatusStrip().then((value) => {
+        cached = { at: Date.now(), value };
+        return value;
+      }).finally(() => { pending = null; });
+    }
+    await pending;
+  }
+  return NextResponse.json(cached!.value, {
+    headers: { 'cache-control': 'no-store, no-cache, must-revalidate' },
+  });
 }
