@@ -29,6 +29,7 @@ export type HearMeOutBotActionPayload = {
   query?: string;
   itemId?: string;
   lane?: 'music' | 'movie';
+  targetLane?: 'music' | 'movie';
   channelId?: string;
   control?: string;
   value?: number;

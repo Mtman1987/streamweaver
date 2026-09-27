@@ -4098,6 +4098,24 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             }
             await reply(`📡 @${actualUsername}, !${command} received — applying it to HearMeOut.`, 'bot').catch(() => {});
             try {
+                if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && (command === 'skip' || command === 'next')) {
+                    // Resolve the playing lane and advance it in the worker in one action.
+                    // Separate state reads can time out while StreamWeaver is busy and
+                    // select a stale lane if another request arrives between calls.
+                    const result: any = await executeHearMeOutBotAction({
+                        ...actionBase,
+                        action: 'hmo.media.control',
+                        sessionId: 'discord-music-room',
+                        control: 'next-active',
+                        targetLane: targetLane || undefined,
+                    });
+                    const active = ['movie', 'music'].find((lane) =>
+                        result?.program?.[lane]?.current && result.program[lane].playback?.status === 'playing');
+                    const playing = active ? result.program[active].current.item.title : 'nothing queued';
+                    await reply(`✅ HearMeOut ${result.lane === 'movie' ? 'movie' : 'music'} skipped. Now playing: ${playing}.`, 'bot').catch(() => {});
+                    console.log(`[Dispatcher] SML !${command} advanced ${result.lane || 'unknown'}; now playing: ${playing}`);
+                    return;
+                }
                 const [music, movie]: any[] = await Promise.all([
                     readSession('discord-music-room'),
                     readSession('discord-watch-room'),
