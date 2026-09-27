@@ -7,7 +7,7 @@ const dispatcher = fs.readFileSync(path.join(process.cwd(), 'src/services/chat-d
 const actions = fs.readFileSync(path.join(process.cwd(), 'src/services/hearmeout-actions.ts'), 'utf8');
 const lounge = fs.readFileSync(path.join(process.cwd(), 'src/lib/spacemountain-lounge.ts'), 'utf8');
 
-test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', () => {
+test('SML !sr and !wr bypass imported command actions and reach the Lounge worker', () => {
   const selfGuard = dispatcher.indexOf('if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;');
   const media = dispatcher.indexOf('const smlMediaRequest = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID');
   const generic = dispatcher.indexOf('if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand))');
@@ -15,7 +15,7 @@ test('SML !sr and !wr bypass imported command actions and hit HearMeOut first', 
   assert.match(dispatcher, /self && !isSpaceMountainBroadcasterCommand/);
   assert.ok(media > selfGuard);
   assert.ok(generic > media);
-  assert.match(dispatcher, /system-spacemountainlive-lounge/);
+  assert.match(dispatcher, /SPACEMOUNTAIN_LOUNGE_ROOM_ID/);
   assert.match(dispatcher, /lane = command === 'wr' \? 'movie' : 'music'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /HearMeOut could not queue/);
@@ -26,11 +26,13 @@ test('SML media keeps separate permanent music and movie sessions', () => {
   assert.match(lounge, /SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID/);
   assert.match(actions, /lane === 'movie' \? SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID : SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID/);
   assert.match(actions, /sessionId === SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID/);
-  assert.match(actions, /fetch\(\`\$\{HEARMEOUT_URL\}\/api\/internal\/bot\/actions\`/);
+  assert.match(actions, /fetch\(\`\$\{LOUNGE_WORKER_URL\}\/lounge\/media\/actions\`/);
   assert.doesNotMatch(actions, /APOLLO_LOUNGE_ORIGIN|\/api\/watch\/broadcast\/requests\?roomId=|executeSpaceMountainApolloMedia/);
 });
 
-test('all SpaceMountain Lounge media bypass shared service and chat auth during development', () => {
+test('Lounge commands use worker credentials while other HearMeOut actions retain their own service auth', () => {
+  assert.match(actions, /HMO_WORKER_SHARED_SECRET/);
+  assert.match(actions, /if \(isSpaceMountainLoungeMedia\(effectivePayload\)\)/);
   assert.match(actions, /bypassServiceAuthForLoungeMedia = isSpaceMountainLoungeMedia\(effectivePayload\)/);
   assert.match(actions, /const secrets = bypassServiceAuthForLoungeMedia \? \[\] : getHearMeOutServiceSecrets\(\)/);
   assert.match(actions, /!bypassServiceAuthForLoungeMedia && !secrets\.length/);

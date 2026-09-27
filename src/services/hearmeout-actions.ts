@@ -2,6 +2,7 @@ import { SPACEMOUNTAIN_LOUNGE_ROOM_ID, SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID, SP
 const HEARMEOUT_URL = String(
   process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev',
 ).replace(/\/+$/, '');
+const LOUNGE_WORKER_URL = String(process.env.HMO_LOUNGE_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4444').replace(/\/+$/, '');
 
 import type { ActionBotPersona } from '@/services/bot-persona-catalog';
 
@@ -77,6 +78,20 @@ function liveHearMeOutPayload(payload: HearMeOutBotActionPayload): HearMeOutBotA
 
 export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPayload): Promise<Record<string, unknown>> {
   const effectivePayload = liveHearMeOutPayload(payload);
+  if (isSpaceMountainLoungeMedia(effectivePayload)) {
+    const secret = String(process.env.HMO_WORKER_SHARED_SECRET || '').trim();
+    if (!secret) throw new Error('Lounge worker service credential is not configured');
+    const response = await fetch(`${LOUNGE_WORKER_URL}/lounge/media/actions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(effectivePayload),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(105_000),
+    });
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!response.ok || data.success !== true) throw new Error(String(data.error || `Lounge worker returned ${response.status}`));
+    return data;
+  }
   // SpaceMountain Lounge media is under active development. Do not let the
   // StreamWeaver<->HearMeOut service credential block queue or playback work.
   // Twitch-facing permissions are enforced by the chat dispatcher.

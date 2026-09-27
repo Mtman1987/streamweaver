@@ -1,4 +1,3 @@
-import { SPACEMOUNTAIN_LOUNGE_SESSION_ID } from '@/lib/spacemountain-lounge';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +6,7 @@ export const revalidate = 0;
 const CHAT_TAG_URL = String(process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_CHAT_TAG_URL || 'https://chat-tag-new.fly.dev').replace(/\/+$/, '');
 const SPOTLIGHT_URL = String(process.env.DSH_COMMUNITY_SPOTLIGHT_URL || 'https://discord-stream-hub-new.fly.dev/api/community-spotlight');
 const EVENTS_URL = String(process.env.DSH_COMMUNITY_EVENTS_URL || 'https://discord-stream-hub-new.fly.dev/api/community-events');
-const HEARMEOUT_URL = String(process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev').replace(/\/+$/, '');
+const LOUNGE_WORKER_URL = String(process.env.HMO_LOUNGE_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4444').replace(/\/+$/, '');
 
 async function json(url: string): Promise<any> {
   const response = await fetch(url, {
@@ -20,12 +19,12 @@ async function json(url: string): Promise<any> {
 }
 
 async function loungeState() {
-  const response = await fetch(`${HEARMEOUT_URL}/api/watch/sessions/${encodeURIComponent(SPACEMOUNTAIN_LOUNGE_SESSION_ID)}/state`, {
+  const response = await fetch(`${LOUNGE_WORKER_URL}/lounge/media/program`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
     signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
   });
-  if (!response.ok) throw new Error(`HearMeOut Lounge returned ${response.status}`);
+  if (!response.ok) throw new Error(`Lounge worker returned ${response.status}`);
   return response.json();
 }
 
@@ -51,7 +50,8 @@ export async function GET() {
   }));
   const login = String(source?.twitchLogin || user?.twitchLogin || user?.login || '').replace(/^@/, '').trim();
   const mediaState = mediaResult.status === 'fulfilled' ? mediaResult.value : null;
-  const mediaItem = mediaState?.current?.item || null;
+  const active = mediaState?.movie?.current && mediaState.movie.playback?.status === 'playing' ? mediaState.movie : mediaState?.music;
+  const mediaItem = active?.current?.item || null;
   const eventPayload = eventsResult.status === 'fulfilled' ? eventsResult.value : {};
   const events = (Array.isArray(eventPayload?.events) ? eventPayload.events : [])
     .filter((event: any) => event?.title && Number.isFinite(Date.parse(String(event?.startsAt || ''))))
