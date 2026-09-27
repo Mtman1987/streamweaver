@@ -3,6 +3,7 @@ import * as http from 'http';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
 import { getTenantIdFromSession } from '../lib/tenant';
 import { resolveTenantSocketAction } from './websocket-tenant';
+import { readCheckinOverlayEvent } from '../services/checkin-overlay-state';
 
 const privilegedTypes = new Set([
     'send-twitch-message',
@@ -116,6 +117,8 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
             const { getPendingCardPack } = require('../services/card-pack-overlay-state');
             const pendingCardPack = getPendingCardPack(resolvedTenantId);
             if (pendingCardPack) ws.send(JSON.stringify(pendingCardPack));
+            const pendingCheckin = await readCheckinOverlayEvent(resolvedTenantId);
+            if (pendingCheckin) ws.send(JSON.stringify(pendingCheckin));
         }
         
         // Do not load global chat history before tenant identification.
@@ -162,6 +165,8 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         const { getPendingCardPack } = require('../services/card-pack-overlay-state');
                         const pendingCardPack = getPendingCardPack(tid);
                         if (pendingCardPack) ws.send(JSON.stringify(pendingCardPack));
+                        const pendingCheckin = await readCheckinOverlayEvent(tid);
+                        if (pendingCheckin) ws.send(JSON.stringify(pendingCheckin));
 
                         // Send tenant-specific Twitch status after identify.
                         const { getTwitchStatus } = require('../services/twitch-client');

@@ -5,6 +5,7 @@ import { getStoredTokens } from '../lib/token-utils.server';
 import { readJsonFile, writeJsonFile } from './storage';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '../lib/tenant';
+import { createCheckinOverlayEvent, rememberCheckinOverlayEvent } from './checkin-overlay-state';
 
 const FRONT_SEAT_FILE = 'space-mountain-front-seat.json';
 export const FRONT_SEAT_BONUS_POINTS = 100;
@@ -69,14 +70,16 @@ function labels(kind: CheckinKind) {
 }
 
 function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, unknown>, tenantId?: string) {
-  if (typeof (global as any).broadcast !== 'function') return;
-  const broadcast = (global as any).broadcast;
   const broadcastTenantId = normalizeTenantId(tenantId);
+  const event = createCheckinOverlayEvent(type === 'pending' ? 'checkin-pending' : 'checkin-reveal', payload);
+  if (broadcastTenantId) rememberCheckinOverlayEvent(broadcastTenantId, event);
+  if (typeof (global as any).broadcast !== 'function') {
+    console.warn('[CheckinOverlay] WebSocket unavailable; HTTPS replay saved the event');
+    return;
+  }
+  const broadcast = (global as any).broadcast;
 
-  const delivered = broadcast({
-    type: type === 'pending' ? 'checkin-pending' : 'checkin-reveal',
-    payload,
-  }, broadcastTenantId);
+  const delivered = broadcast(event, broadcastTenantId);
   console.log(`[CheckinOverlay] ${type} tenant=${broadcastTenantId || 'global'} clients=${typeof delivered === 'number' ? delivered : 'unknown'}`);
 
   // Keep the legacy partner overlay event stream alive so older /partner-checkin

@@ -91,6 +91,9 @@ export default function PartnerCheckinPage() {
   const [state, setState] = useState<OverlayState>(DEFAULT_STATE);
   const [broadcasterAvatar, setBroadcasterAvatar] = useState('');
   const hideTimer = useRef<NodeJS.Timeout>();
+  const [connection, setConnection] = useState('connecting');
+  const [debug, setDebug] = useState(false);
+  useEffect(() => setDebug(new URLSearchParams(window.location.search).has('debug')), []);
 
   useEffect(() => {
     const tenantId = getOverlayTenantId();
@@ -103,57 +106,57 @@ export default function PartnerCheckinPage() {
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout;
+    let stopped = false;
+    const latestIssuedAt = { current: 0 };
+    const tenantId = getOverlayTenantId();
+
+    const showEvent = (data: any) => {
+      if (data?.type !== 'checkin-pending' && data?.type !== 'checkin-reveal') return;
+      const issuedAt = Number(data.issuedAt) || Date.now();
+      if (data.eventId && issuedAt <= latestIssuedAt.current) return;
+      if (data.expiresAt && Number(data.expiresAt) <= Date.now()) return;
+      latestIssuedAt.current = issuedAt;
+      const pending = data.type === 'checkin-pending';
+      const lifetime = Math.max(1, Number(data.expiresAt) ? Number(data.expiresAt) - Date.now() : pending ? 45000 : 25000);
+      clearTimeout(hideTimer.current);
+      setState(pending ? {
+        phase: 'pending',
+        kind: data.payload?.kind || 'partner',
+        username: data.payload?.username || '',
+        sourceLabel: data.payload?.sourceLabel || '',
+        title: data.payload?.title || 'Check-In',
+        subtitle: data.payload?.subtitle || '',
+        accentColor: data.payload?.accentColor || '#FFD700',
+        emoji: data.payload?.emoji || '✨',
+        entry: null,
+        count: data.payload?.count,
+      } : {
+        phase: 'reveal',
+        kind: data.payload?.kind || 'partner',
+        username: data.payload?.username || '',
+        sourceLabel: data.payload?.sourceLabel || '',
+        title: data.payload?.bulk ? `${data.payload?.emoji || '✨'} Mass Check-In` : 'Check-In Locked',
+        subtitle: data.payload?.bulk
+          ? `${data.payload?.count || 0} checked in by ${data.payload?.username || ''}`
+          : `Checked in by ${data.payload?.username || ''}`,
+        accentColor: data.payload?.accentColor || '#FFD700',
+        emoji: data.payload?.emoji || '✨',
+        entry: data.payload?.entry || null,
+        count: data.payload?.count,
+        names: data.payload?.names || [],
+      });
+      hideTimer.current = setTimeout(() => setState(DEFAULT_STATE), lifetime);
+    };
 
     const connect = () => {
+      if (stopped) return;
       try {
-        ws = new WebSocket(getBrowserWebSocketUrl(getOverlayTenantId() || undefined));
-        ws.onclose = () => { reconnectTimeout = setTimeout(connect, 3000); };
-        ws.onerror = () => {};
+        ws = new WebSocket(getBrowserWebSocketUrl(tenantId || undefined));
+        ws.onopen = () => { setConnection('connected'); };
+        ws.onclose = () => { if (!stopped) { setConnection('reconnecting'); reconnectTimeout = setTimeout(connect, 3000); } };
+        ws.onerror = () => { setConnection('socket error'); };
         ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-
-            // Legacy partner-checkin-pending / partner-checkin events are
-            // ignored — checkin-pending / checkin-reveal carry the correct
-            // kind and all payload fields for every check-in type.
-
-            if (data.type === 'checkin-pending') {
-              clearTimeout(hideTimer.current);
-              setState({
-                phase: 'pending',
-                kind: data.payload?.kind || 'partner',
-                username: data.payload?.username || '',
-                sourceLabel: data.payload?.sourceLabel || '',
-                title: data.payload?.title || 'Check-In',
-                subtitle: data.payload?.subtitle || '',
-                accentColor: data.payload?.accentColor || '#FFD700',
-                emoji: data.payload?.emoji || '✨',
-                entry: null,
-                count: data.payload?.count,
-              });
-              hideTimer.current = setTimeout(() => setState(DEFAULT_STATE), 45000);
-            }
-
-            if (data.type === 'checkin-reveal') {
-              clearTimeout(hideTimer.current);
-              setState({
-                phase: 'reveal',
-                kind: data.payload?.kind || 'partner',
-                username: data.payload?.username || '',
-                sourceLabel: data.payload?.sourceLabel || '',
-                title: data.payload?.bulk ? `${data.payload?.emoji || '✨'} Mass Check-In` : 'Check-In Locked',
-                subtitle: data.payload?.bulk
-                  ? `${data.payload?.count || 0} checked in by ${data.payload?.username || ''}`
-                  : `Checked in by ${data.payload?.username || ''}`,
-                accentColor: data.payload?.accentColor || '#FFD700',
-                emoji: data.payload?.emoji || '✨',
-                entry: data.payload?.entry || null,
-                count: data.payload?.count,
-                names: data.payload?.names || [],
-              });
-              hideTimer.current = setTimeout(() => setState(DEFAULT_STATE), 25000);
-            }
-          } catch {}
+          try { showEvent(JSON.parse(event.data)); } catch {}
         };
       } catch {
         reconnectTimeout = setTimeout(connect, 3000);
@@ -161,12 +164,17 @@ export default function PartnerCheckinPage() {
     };
 
     connect();
-    return () => { clearTimeout(reconnectTimeout); clearTimeout(hideTimer.current); ws?.close(); };
+    return () => {
+      stopped = true;
+      clearTimeout(reconnectTimeout);
+      clearTimeout(hideTimer.current);
+      ws?.close();
+    };
   }, []);
 
   const theme = useMemo(() => THEMES[state.kind], [state.kind]);
   const modeCopy = useMemo(() => MODE_COPY[state.kind], [state.kind]);
-  if (state.phase === 'hidden') return null;
+  if (state.phase === 'hidden') return debug ? <div style={{ padding: 24, color: '#fff', background: '#152033', font: '20px sans-serif' }}>Check-in overlay socket: {connection} · waiting for event</div> : null;
 
   const isPending = state.phase === 'pending';
   const avatarSrc = state.kind === 'space-mountain'
@@ -177,6 +185,7 @@ export default function PartnerCheckinPage() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent', pointerEvents: 'none' }}>
+      {debug && <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 10, color: '#fff', background: '#152033', padding: 4, fontSize: 14 }}>Socket: {connection} · {state.phase}</div>}
       <div style={{
         position: 'absolute',
         inset: 0,
