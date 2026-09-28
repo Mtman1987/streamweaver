@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  cancelNextSayEcho,
   clearSaySuppressionForTenant,
+  consumeNextSayEcho,
   formatSaySpeechText,
   isSaySuppressedForTenant,
   isSayTextSpeakable,
   stripTwitchEmotesFromText,
+  suppressNextSayEcho,
   suppressSayForTenant,
 } from '../src/services/say-tts';
 
@@ -50,4 +53,20 @@ test('say TTS ignores numbers in speaker names but preserves numbers in messages
   );
 
   assert.equal(spoken, 'mtman said: I have 2 passes left');
+});
+
+
+test('STT say echo suppression is exact, speaker-scoped, and consume-once', () => {
+  suppressNextSayEcho('spacemountainlive', 'spacemountainlive', 'hello from STT');
+
+  assert.equal(consumeNextSayEcho('spacemountainlive', 'someoneelse', 'hello from STT'), false);
+  assert.equal(consumeNextSayEcho('spacemountainlive', 'spacemountainlive', 'different text'), false);
+  assert.equal(consumeNextSayEcho('spacemountainlive', 'spacemountainlive', 'hello from STT'), true);
+  assert.equal(consumeNextSayEcho('spacemountainlive', 'spacemountainlive', 'hello from STT'), false);
+});
+
+test('STT say echo suppression supports cancellation after a failed send', () => {
+  suppressNextSayEcho('spacemountainlive', 'spacemountainlive', 'failed STT');
+  cancelNextSayEcho('spacemountainlive', 'spacemountainlive', 'failed STT');
+  assert.equal(consumeNextSayEcho('spacemountainlive', 'spacemountainlive', 'failed STT'), false);
 });
