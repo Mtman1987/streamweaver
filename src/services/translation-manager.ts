@@ -207,7 +207,7 @@ export async function autoTranslateIncoming(
 
   if (normalizedUser && state.autoTranslateUsers.has(normalizedUser)) {
     const targetLanguage = state.autoTranslateTargets.get(normalizedUser) || 'en';
-    const result = await translateToLanguage(message, targetLanguage);
+    const result = await translateToLanguage(message, targetLanguage, tenantId);
     if (!result.error && result.translatedText && !sameText(message, result.translatedText)) {
       return { translatedText: result.translatedText, targetLanguage };
     }
@@ -223,7 +223,7 @@ export async function autoTranslateIncoming(
       console.log(`[TranslationManager] Auto-detected ${detected.language} for tenant ${tenantId}`);
     }
 
-    const result = await translateToLanguage(message, 'en');
+    const result = await translateToLanguage(message, 'en', tenantId);
     if (!result.error && result.translatedText && !sameText(message, result.translatedText)) {
       return { translatedText: result.translatedText, targetLanguage: 'en' };
     }
@@ -286,8 +286,8 @@ export async function handleOneOffTranslation(
   const text = textParts.join(' ').trim();
   if (!text) return 'Translation: !t es hello | !t hello | !t @user en | !t @user off';
 
-  const result = await translateToLanguage(text, targetLanguage);
-  return result.error ? null : result.translatedText;
+  const result = await translateToLanguage(text, targetLanguage, tenantId);
+  return result.error ? 'Stella could not translate that right now. Try again in a moment.' : result.translatedText;
 }
 
 export function clearTranslationStateForTests(): void {
