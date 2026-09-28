@@ -35,7 +35,7 @@ export default function BRBPlayer() {
     let testGeneration = 0;
     let automatic = false;
     let spotlightHealthy = true;
-    let autoStartTimer: ReturnType<typeof setTimeout>;
+    let autoStartTimer: ReturnType<typeof setTimeout> | undefined;
     let autoStopTimer: ReturnType<typeof setTimeout>;
     let autoClipTimer: ReturnType<typeof setTimeout>;
     let autoEpoch = 0;
@@ -144,6 +144,7 @@ export default function BRBPlayer() {
     // Manual BRB always takes priority over this automatic intermission.
     const stopAutomatic = () => {
       clearTimeout(autoStartTimer);
+      autoStartTimer = undefined;
       clearTimeout(autoStopTimer);
       clearTimeout(autoClipTimer);
       if (!automatic) return;
@@ -225,13 +226,16 @@ export default function BRBPlayer() {
       spotlightHealthy = event.data.healthy;
       if (spotlightHealthy) {
         clearTimeout(autoStartTimer);
+        autoStartTimer = undefined;
         clearTimeout(autoStopTimer);
         autoStopTimer = setTimeout(() => { if (spotlightHealthy) stopAutomatic(); }, 3000);
       } else {
         clearTimeout(autoStopTimer);
         if (!automatic && !manual) {
-          clearTimeout(autoStartTimer);
-          autoStartTimer = setTimeout(() => { void startAutomatic(); }, 6000);
+          if (!autoStartTimer) autoStartTimer = setTimeout(() => {
+            autoStartTimer = undefined;
+            void startAutomatic();
+          }, 6000);
         }
       }
     };
@@ -318,7 +322,10 @@ export default function BRBPlayer() {
             if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
               stopTest();
               if (msg.type === 'brb-stop') manual = false;
-              if (!manual && !spotlightHealthy) autoStartTimer = setTimeout(() => { void startAutomatic(); }, 8000);
+              if (!manual && !spotlightHealthy && !autoStartTimer) autoStartTimer = setTimeout(() => {
+                autoStartTimer = undefined;
+                void startAutomatic();
+              }, 6000);
               playbackEpoch++;
               clearTimeout(embedTimer);
               setEmbedUrl('');
