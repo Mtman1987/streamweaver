@@ -4008,7 +4008,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume|radio)(?:\s+(.*))?$/i);
+        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume|radio|autoradio)(?:\s+(.*))?$/i);
         if (hearMeOutCommand) {
             const command = hearMeOutCommand[1].toLowerCase();
             const argument = String(hearMeOutCommand[2] || '').trim();
@@ -4029,7 +4029,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 await reply(`❌ HearMeOut received !${command}, but it failed: ${message}`, 'bot').catch(() => {});
             };
 
-            if (command === 'radio') {
+            if (command === 'radio' || command === 'autoradio') {
                 const match = argument.match(/^(on|off|status|add)(?:\s+(.+))?$/i);
                 const radioControl = match?.[1]?.toLowerCase() || (!argument ? 'status' : '');
                 if (!radioControl || radioControl === 'add' && !match?.[2]) {
@@ -5311,6 +5311,27 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 && /(^|\W)stella(\W|$)/i.test(actualMessage)
             ) {
                 try {
+                    const actorRole: BotActorRole = tags.badges?.broadcaster || actualUsername.toLowerCase() === replyChannel.toLowerCase()
+                        ? 'owner' : tags.mod ? 'moderator' : 'member';
+                    const { detectStellaLoungeIntent, resolveStellaLoungeIntent } = await import('./stella-lounge-host');
+                    const liveIntent = detectStellaLoungeIntent(actualMessage);
+                    if (liveIntent) {
+                        await sendChatMessage(await resolveStellaLoungeIntent(liveIntent), 'bot', replyChannel, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                        return;
+                    }
+                    const botAction = await routeBotAction(actualMessage, {
+                        tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                        sourceTenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+                        sourceActorRole: actorRole,
+                        botName: 'Stella', source: 'twitch', visibility: 'public',
+                        message: actualMessage,
+                        requestId: tags.id ? `twitch:${tags.id}` : undefined,
+                        actor: { userId: String(tags?.['user-id'] || '').trim() || undefined, username: actualUsername, displayName, role: actorRole },
+                    });
+                    if (botAction) {
+                        await sendChatMessage(botAction.response, 'bot', replyChannel, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                        return;
+                    }
                     const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {
                         method: 'POST',
                         headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),

@@ -32,6 +32,7 @@ export type StellaLoungeSnapshot = {
     kind?: 'music' | 'movie';
     currentTitle?: string;
     currentArtist?: string;
+    pausedMovieTitle?: string;
     queueCount: number;
     nextTitle?: string;
     playbackState: 'playing' | 'idle' | 'unknown';
@@ -189,6 +190,8 @@ export async function buildStellaLoungeSnapshot(
       kind: activeKind,
       currentTitle: currentMedia?.title ? String(currentMedia.title) : undefined,
       currentArtist: currentMedia?.artist ? String(currentMedia.artist) : undefined,
+      pausedMovieTitle: mediaData?.movie?.current?.item?.title && mediaData.movie.playback?.status !== 'playing'
+        ? String(mediaData.movie.current.item.title) : undefined,
       queueCount: Number.isFinite(Number(activeLane?.queueCount)) ? Number(activeLane.queueCount) : mediaQueue.length,
       nextTitle: mediaQueue[0]?.item?.title ? String(mediaQueue[0].item.title) : undefined,
       playbackState: mediaResult.status !== 'fulfilled' ? 'unknown' : activeKind ? 'playing' : 'idle',
@@ -241,11 +244,12 @@ export function detectStellaLoungeIntent(message: string): StellaLoungeIntent | 
 function mediaLine(snapshot: StellaLoungeSnapshot): string {
   if (!snapshot.media.available) return 'The Lounge media worker is not reporting its player state right now.';
   if (snapshot.media.currentTitle && snapshot.media.playbackState === 'playing') {
-    return `The Lounge ${snapshot.media.kind === 'movie' ? 'movie' : 'music'} worker reports ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''} playing.`;
+    return `The Lounge ${snapshot.media.kind === 'movie' ? 'movie' : 'music'} worker reports ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''} playing.${snapshot.media.pausedMovieTitle ? ` The movie ${snapshot.media.pausedMovieTitle} is selected but not playing.` : ''}`;
   }
   if (snapshot.media.currentTitle) {
     return `HearMeOut has ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''} selected, but playback is not verified. Do not say it is playing or audible.`;
   }
+  if (snapshot.media.pausedMovieTitle) return `The movie ${snapshot.media.pausedMovieTitle} is selected but not playing.`;
   if (snapshot.media.nextTitle) return `HearMeOut is idle; ${snapshot.media.nextTitle} is next in the ${snapshot.media.queueCount}-item queue.`;
   return 'The Lounge media worker has no movie or music playing.';
 }

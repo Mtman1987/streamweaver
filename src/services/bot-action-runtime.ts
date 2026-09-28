@@ -193,6 +193,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['pause HearMeOut', 'skip the current song', 'clear the HearMeOut queue'],
   },
   {
+    id: 'hmo.media.radio',
+    title: 'Read or control the SpaceMountain Lounge automatic music DJ',
+    app: 'HearMeOut', risk: 'write', minimumRole: 'member',
+    examples: ['Stella turn on autoradio', 'Stella turn off the Lounge DJ', 'Stella is autoradio on?'],
+  },
+  {
     id: 'hmo.bot.control',
     title: 'Invite or remove a tenant bot in a HearMeOut room',
     app: 'HearMeOut', risk: 'write', minimumRole: 'member',
@@ -397,6 +403,16 @@ function extractApplicationDecision(message: string) {
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
+  const radio = /\b(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b/.test(value);
+  if (radio) {
+    if (/\b(?:is|are|what(?:'s| is)|check|status|how)\b.*\b(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b|\b(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b.*\b(?:status|enabled|running)\b/.test(value)) {
+      return { action: 'hmo.media.radio', args: { control: 'status' }, detection: 'explicit' };
+    }
+    const control = /\b(?:turn|switch|set)\s+(?:the\s+)?(?:lounge\s+)?(?:dj\s+|auto\s*radio\s+|radio\s+)?on\b|\b(?:turn|switch|set)\s+on\s+(?:the\s+)?(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b|\b(?:enable|start|activate)\s+(?:the\s+)?(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b/.test(value) ? 'on'
+      : /\b(?:turn|switch|set)\s+(?:the\s+)?(?:lounge\s+)?(?:dj\s+|auto\s*radio\s+|radio\s+)?off\b|\b(?:turn|switch|set)\s+off\s+(?:the\s+)?(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b|\b(?:disable|stop|deactivate)\s+(?:the\s+)?(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b/.test(value) ? 'off'
+      : /\b(?:is|status|check|what|how)\b.*\b(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b|\b(?:auto\s*radio|lounge\s+(?:dj|radio)|radio)\b.*\b(?:status|enabled|running|on\?)\b/.test(value) ? 'status' : '';
+    if (control) return { action: 'hmo.media.radio', args: { control }, detection: 'explicit' };
+  }
 
   const wordBattle=value.match(/\b(?:start|create|make|link|launch|begin)\b.*\b(phrase guess|word chain|word guess)\b.*\b(?:with|between|against|vs\.?|versus)\b\s+(.{2,180})$/);
   if(wordBattle){
@@ -635,6 +651,10 @@ function formatDate(value: unknown): string {
 }
 
 function formatResult(action: BotActionId, result: Record<string, any>): string {
+  if (action === 'hmo.media.radio') {
+    const current = clean(result.program?.music?.current?.item?.title, 100);
+    return `📻 Lounge DJ is ${result.radio.enabled ? 'on' : 'off'}; ${result.radio.recentCount || 0} human picks guide it, and ${result.radio.seedCount || 0} playlist references help it start${current ? `; now selected: ${current}` : ''}.`;
+  }
   if (action === 'sw.lounge.volume') return `✅ Lounge ${clean(result.output, 20)} volume is now ${Number(result.value)}%.`;
   if (action === 'sw.image.generate') {
     const images = Array.isArray(result.images) ? result.images.filter(Boolean) : [];
@@ -735,6 +755,17 @@ export async function executeBotAction(
       status: 'forbidden',
       response: `${context.botName} cannot perform that action for this account. ${descriptor.minimumRole} access is required.`,
     };
+  }
+  if (request.action === 'hmo.media.radio') {
+    if (context.tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID || context.sourceTenantId && context.sourceTenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+      return { handled: true, action: request.action, status: 'forbidden', response: 'Lounge radio belongs to SpaceMountainLive.' };
+    }
+    if (!/^(on|off|status)$/.test(request.args.control || '')) {
+      return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me to turn Lounge radio on or off, or ask for its status.' };
+    }
+    if (request.args.control !== 'status' && !hasRole(context.actor.role, 'moderator')) {
+      return { handled: true, action: request.action, status: 'forbidden', response: 'Only the broadcaster or a moderator can change Lounge radio.' };
+    }
   }
   if (request.args.parseError) {
     return { handled: true, action: request.action, status: 'needs_input', response: request.args.parseError };
@@ -896,7 +927,7 @@ export async function executeBotAction(
         action: request.action as HearMeOutBotAction,
         tenantId: context.tenantId,
         roomId: context.roomId,
-        ...(request.action.startsWith('hmo.media.') && context.playbackSessionId ? { sessionId: context.playbackSessionId } : {}),
+        ...(request.action === 'hmo.media.radio' ? { sessionId: 'discord-music-room' } : request.action.startsWith('hmo.media.') && context.playbackSessionId ? { sessionId: context.playbackSessionId } : {}),
         actorUserId: context.actor.userId,
         actorName: context.actor.displayName || context.actor.username,
         query: request.args.query,
@@ -914,6 +945,7 @@ export async function executeBotAction(
         } : {}),
         idempotencyKey: clean(context.requestId, 160) || undefined,
       });
+      if (request.action === 'hmo.media.radio' && typeof (result as any)?.radio?.enabled !== 'boolean') throw new Error('Lounge worker did not confirm its radio state.');
       return { handled: true, action: request.action, status: 'completed', response: formatResult(request.action, result), result };
     }
     const { serverId, actorUserId } = await resolveDshScope(context, dependencies);
@@ -969,7 +1001,7 @@ export async function routeBotAction(message: string, context: BotActionContext)
   }
   if (!request) return null;
   const loungeScoped = context.sourceTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
-    && (request.action.startsWith('sw.lounge.') || request.action.startsWith('nebula.'));
+    && (request.action.startsWith('sw.lounge.') || request.action.startsWith('nebula.') || request.action === 'hmo.media.radio');
   return executeBotAction(request, loungeScoped
     ? { ...context, tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID, actor: { ...context.actor, role: context.sourceActorRole || context.actor.role } }
     : context);

@@ -82,3 +82,17 @@ test('answers high-value Lounge questions from facts without a model guess', asy
   assert.match(await resolveStellaLoungeIntent('moderator', fixtureFetch as typeof fetch), /!mtfixit/);
   assert.match(await resolveStellaLoungeIntent('fist-bump', fixtureFetch as typeof fetch), /happy_gesture/);
 });
+
+test('reports a paused movie alongside playing music without saying the movie ended', async () => {
+  const fetchPausedMovie = (input: string | URL | Request) => {
+    if (String(input).includes('/lounge/media/program')) return Promise.resolve(new Response(JSON.stringify({
+      movie: { current: { item: { title: 'The Fifth Element' } }, playback: { status: 'paused' }, queue: [] },
+      music: { current: { item: { title: 'Rocket Man', artist: 'Elton John' } }, playback: { status: 'playing' }, queue: [] },
+    }), { status: 200 }));
+    return fixtureFetch(input);
+  };
+  const snapshot = await buildStellaLoungeSnapshot(fetchPausedMovie as typeof fetch);
+  assert.equal(snapshot.media.kind, 'music');
+  assert.equal(snapshot.media.pausedMovieTitle, 'The Fifth Element');
+  assert.match(formatStellaLoungeContext(snapshot), /Rocket Man.*playing.*The movie The Fifth Element is selected but not playing/);
+});

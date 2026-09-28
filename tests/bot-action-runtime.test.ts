@@ -7,6 +7,7 @@ import {
   BOT_ACTION_CATALOG,
   detectBotAction,
   executeBotAction,
+  routeBotAction,
   type BotActionContext,
   type BotActionRuntimeDependencies,
 } from '../src/services/bot-action-runtime';
@@ -37,6 +38,54 @@ test('Stella translates explicit screen and game commands into real actions', as
   assert.deepEqual(await detectBotAction('Stella start the game bingo'), {
     action: 'nebula.command', args: { command: 'spmt bingo start' }, detection: 'explicit',
   });
+});
+
+test('Stella understands radio control and status without treating a question as an on command', async () => {
+  for (const [message, control] of [
+    ['Stella turn on autoradio', 'on'],
+    ['Stella switch the Lounge DJ off', 'off'],
+    ['Stella, is the radio on?', 'status'],
+  ]) {
+    assert.deepEqual(await detectBotAction(message), {
+      action: 'hmo.media.radio', args: { control }, detection: 'explicit',
+    });
+  }
+  assert.equal((await detectBotAction('Stella, the radio is on'))?.action, undefined);
+});
+
+test('Stella radio uses only the Lounge music worker and confirms its real state', async () => {
+  const calls: any[] = [];
+  const context: BotActionContext = {
+    tenantId: 'spacemountainlive', sourceTenantId: 'spacemountainlive',
+    botName: 'Stella', source: 'twitch', message: 'Stella turn on autoradio',
+    actor: { username: 'spacemountainlive', role: 'owner' },
+  };
+  const dependencies: BotActionRuntimeDependencies = {
+    readDiscordConfig: async () => ({}) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    executeHearMeOutBotAction: async (payload) => {
+      calls.push(payload);
+      return { radio: { enabled: true, recentCount: 3, seedCount: 480 }, program: { music: { current: { item: { title: 'Rocket Man' } } } } } as any;
+    },
+  };
+  const outcome = await executeBotAction((await detectBotAction(context.message))!, context, dependencies);
+  assert.equal(outcome.status, 'completed');
+  assert.match(outcome.response, /Lounge DJ is on; 3 human picks/);
+  assert.equal(calls[0].sessionId, 'discord-music-room');
+  assert.equal(calls[0].tenantId, 'spacemountainlive');
+  assert.equal(calls[0].control, 'on');
+
+  const viewer = await executeBotAction((await detectBotAction(context.message))!, {
+    ...context, actor: { username: 'viewer', role: 'member' },
+  }, dependencies);
+  assert.equal(viewer.status, 'forbidden');
+  assert.equal(calls.length, 1);
+  const otherChannel = await executeBotAction((await detectBotAction(context.message))!, {
+    ...context, sourceTenantId: 'otherchannel',
+  }, dependencies);
+  assert.equal(otherChannel.status, 'forbidden');
+  assert.equal(calls.length, 1);
 });
 
 test('detects explicit Chat Wars battle setup without requiring @ prefixes', async () => {
