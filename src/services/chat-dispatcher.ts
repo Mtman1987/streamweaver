@@ -128,6 +128,7 @@ import { routeBotAction, type BotActorRole } from './bot-action-runtime';
 import {
     applySayState,
     cleanSayTextForSpeech,
+    consumeForcedSayEcho,
     consumeNextSayEcho,
     formatSaySpeechText,
     isSayEnabled,
@@ -3087,9 +3088,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const isSpaceMountainDataSpeaker = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
         && replyChannel.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
         && actualUsername.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !isSpaceMountainDataSpeaker && !message.startsWith('[') && isSayTextSpeakable(sayMessage) && !consumeNextSayEcho(replyChannel, actualUsername, actualMessage)) {
+    const forcedSayEcho = isSpaceMountainDataSpeaker
+        && consumeForcedSayEcho(replyChannel, actualUsername, actualMessage);
+    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && (!isSpaceMountainDataSpeaker || forcedSayEcho) && !message.startsWith('[') && isSayTextSpeakable(sayMessage) && !consumeNextSayEcho(replyChannel, actualUsername, actualMessage)) {
         readSayUsers().then((sayUsers) => {
-            if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
+            if (!forcedSayEcho && !isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
             if (isSaySuppressedForTenant(tenantId) || isSaySuppressedForTenant(sayChannelKey)) return;
             const spokenMessage = formatSaySpeechText(sayChannelKey, displayName || actualUsername, sayMessage);
