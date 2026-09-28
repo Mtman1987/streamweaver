@@ -258,3 +258,18 @@ test('Lounge sponsor fallback keeps ten DSH sponsor GIFs ready across Twitch cli
   assert.doesNotMatch(player, /playlistReady/);
   assert.match(player, /clip playlist must never\s*\/\/ cancel it|clip playlist must never[\s\S]*cancel it/);
 });
+
+
+test('public !unmute recovery pulses both Lounge viewers without exposing public mute', () => {
+  const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+  const mix = fs.readFileSync('src/services/lounge-audio-mix.ts', 'utf8');
+  const directory = fs.readFileSync('src/lib/lounge-command-directory.ts', 'utf8');
+  assert.match(dispatcher, /tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && command === 'unmute'/);
+  assert.match(dispatcher, /sessionId: 'discord-music-room'[\s\S]*control: 'unmute'/);
+  assert.match(dispatcher, /sessionId: 'discord-watch-room'[\s\S]*control: 'unmute'/);
+  assert.match(dispatcher, /pulseLoungePlaybackUnmute\(\)/);
+  assert.match(dispatcher, /command === 'mute' && !canControlHearMeOut/);
+  assert.match(mix, /unmutePulseAt: number/);
+  assert.match(mix, /now - state\.unmutePulseAt < 3_000/);
+  assert.match(directory, /!unmute[\s\S]*Retry audio for both Lounge video players/);
+});

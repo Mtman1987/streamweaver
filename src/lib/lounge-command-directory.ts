@@ -82,6 +82,7 @@ export const LOUNGE_COMMAND_CATEGORIES: LoungeCommandCategory[] = [
       entry('!wr <movie title> / !wr 1-3', 'Search playable watch choices, then queue a numbered result.', 'HearMeOut'),
       entry('!follow @creator', 'Post the creator’s Twitch channel link in chat.', 'Lounge', 'Twitch'),
       entry('!np / !nowplaying', 'Show the current music and movie state.', 'HearMeOut'),
+      entry('!unmute', 'Retry audio for both Lounge video players after an autoplay fallback.', 'Lounge', 'Twitch'),
       entry('!votebump', 'Vote to swap HearMeOut with the current Spotlight.', 'Lounge', 'Twitch'),
       entry('!bump', 'Immediately swap HearMeOut with the current Spotlight.', 'Lounge', 'Twitch', 'moderator'),
       entry('!play [music|movie]', 'Resume a media lane.', 'HearMeOut', 'Twitch', 'moderator'),

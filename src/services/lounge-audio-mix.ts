@@ -5,6 +5,7 @@ export type LoungeAudioMix = {
   levels: Record<LoungeMixOutput, number>;
   selected: LoungeMixOutput;
   updatedAt: number;
+  unmutePulseAt: number;
 };
 
 const FILE_NAME = 'lounge-audio-mix.json';
@@ -13,6 +14,7 @@ const DEFAULTS: LoungeAudioMix = {
   levels: { stella: 100, spotlight: 58, media: 85, all: 100 },
   selected: 'media',
   updatedAt: 0,
+  unmutePulseAt: 0,
 };
 const OUTPUTS = new Set<LoungeMixOutput>(['stella', 'spotlight', 'media', 'all']);
 
@@ -25,6 +27,7 @@ function normalize(input: Partial<LoungeAudioMix> | null): LoungeAudioMix {
     levels: { stella: volume('stella'), spotlight: volume('spotlight'), media: volume('media'), all: volume('all') },
     selected: input?.selected && OUTPUTS.has(input.selected) ? input.selected : DEFAULTS.selected,
     updatedAt: Number(input?.updatedAt) || 0,
+    unmutePulseAt: Number(input?.unmutePulseAt) || 0,
   };
 }
 
@@ -49,6 +52,17 @@ export async function setLoungeMixVolume(output: LoungeMixOutput | null, value: 
   state.levels[target] = value;
   state.selected = target;
   state.updatedAt = Date.now();
+  await writeJsonFile(FILE_NAME, state, STORAGE_CONTEXT);
+  return state;
+}
+
+
+export async function pulseLoungePlaybackUnmute(): Promise<LoungeAudioMix> {
+  const state = await getLoungeAudioMix();
+  const now = Date.now();
+  if (now - state.unmutePulseAt < 3_000) return state;
+  state.unmutePulseAt = now;
+  state.updatedAt = now;
   await writeJsonFile(FILE_NAME, state, STORAGE_CONTEXT);
   return state;
 }

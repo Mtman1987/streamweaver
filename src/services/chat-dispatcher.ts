@@ -81,7 +81,7 @@ import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES }
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
 import { getLoungeMediaLayout, overrideLoungeMediaLayout, voteLoungeMediaLayout } from './lounge-media-layout';
-import { getLoungeAudioMix, selectLoungeMixOutput, setLoungeMixVolume, type LoungeMixOutput } from './lounge-audio-mix';
+import { getLoungeAudioMix, pulseLoungePlaybackUnmute, selectLoungeMixOutput, setLoungeMixVolume, type LoungeMixOutput } from './lounge-audio-mix';
 import { hasDiscordModAccess } from './discord-permissions';
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from './bot-relay';
 import {
@@ -4081,6 +4081,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const message = error instanceof Error ? error.message : String(error);
                 await reply(`❌ HearMeOut received !${command}, but it failed: ${message}`, 'bot').catch(() => {});
             };
+
+            if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && command === 'unmute') {
+                try {
+                    await Promise.allSettled([
+                        executeHearMeOutBotAction({ ...actionBase, action: 'hmo.media.control', sessionId: 'discord-music-room', control: 'unmute' }),
+                        executeHearMeOutBotAction({ ...actionBase, action: 'hmo.media.control', sessionId: 'discord-watch-room', control: 'unmute' }),
+                    ]);
+                    await pulseLoungePlaybackUnmute();
+                    await reply('🔊 Lounge audio recovery sent to media + Spotlight.', 'bot').catch(() => {});
+                } catch (error) {
+                    await replyFailure(error);
+                }
+                return;
+            }
+
+            if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && command === 'mute' && !canControlHearMeOut) {
+                await reply(`@${actualUsername}, only the broadcaster or a moderator can mute the Lounge players.`, 'bot').catch(() => {});
+                return;
+            }
 
             if (command === 'radio' || command === 'autoradio') {
                 const match = argument.match(/^(on|off|status|add)(?:\s+(.+))?$/i);
