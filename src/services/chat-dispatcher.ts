@@ -3084,7 +3084,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     });
 
     const sayMessage = stripTwitchEmotesFromText(actualMessage, tags.emotes);
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(sayMessage) && !consumeNextSayEcho(replyChannel, actualUsername, actualMessage)) {
+    const isSpaceMountainDataSpeaker = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        && replyChannel.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+        && actualUsername.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
+    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !isSpaceMountainDataSpeaker && !message.startsWith('[') && isSayTextSpeakable(sayMessage) && !consumeNextSayEcho(replyChannel, actualUsername, actualMessage)) {
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
