@@ -8,7 +8,7 @@ type Creator = {
   displayName: string;
   avatarUrl: string;
   gameName: string;
-  viewerCount: number;
+  viewerCount: number | null;
 };
 
 export default function LoungeLiveShoutouts() {
@@ -89,9 +89,9 @@ export default function LoungeLiveShoutouts() {
           {creator.avatarUrl ? <img className="avatar" src={creator.avatarUrl} alt="" /> : <div className="avatarFallback">{initial}</div>}
           <div className="copy">
             <AutoFitText className="name" minFontSize={12} maxFontSize={25}>{creator.displayName}</AutoFitText>
-            <AutoFitText className="game" minFontSize={8} maxFontSize={13}>{creator.gameName || 'Just Chatting'}</AutoFitText>
+            <AutoFitText className="game" minFontSize={8} maxFontSize={13}>{creator.gameName || 'Live on Twitch'}</AutoFitText>
           </div>
-          <div className="live"><strong>● LIVE</strong><span>{creator.viewerCount.toLocaleString()}</span></div>
+          <div className="live"><strong>● LIVE</strong>{creator.viewerCount === null ? null : <span>{creator.viewerCount.toLocaleString()}</span>}</div>
         </article>
       ) : (
         <article className="card empty"><strong>{group === 'partner' ? 'SCANNING PARTNERS & CREW' : 'SCANNING THE COMMUNITY'}</strong></article>
