@@ -40,6 +40,19 @@ test('Stella translates explicit screen and game commands into real actions', as
   });
 });
 
+test('Stella maps movie fast-forward and rewind to the Lounge movie lane', async () => {
+  assert.deepEqual(await detectBotAction('Stella fast forward the movie 30 seconds'), {
+    action: 'hmo.media.control',
+    args: { control: 'forward', value: '30', lane: 'movie' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella rewind 2 minutes'), {
+    action: 'hmo.media.control',
+    args: { control: 'rewind', value: '120', lane: 'movie' },
+    detection: 'explicit',
+  });
+});
+
 test('Stella understands radio control and status without treating a question as an on command', async () => {
   for (const [message, control] of [
     ['Stella turn on autoradio', 'on'],
