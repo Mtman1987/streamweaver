@@ -15,6 +15,9 @@ import { sendTwitchChatMessage } from '@/services/twitch';
 import { getLoungeDiagnosticJournal } from './lounge-diagnostic-journal';
 import { LOUNGE_COMMAND_CATEGORIES } from '@/lib/lounge-command-directory';
 import { getStellaChaosMode } from './stella-chaos-mode';
+import { getLoungeMediaLayout } from './lounge-media-layout';
+import { getLoungeAudioMix } from './lounge-audio-mix';
+import { isBRBActive } from './brb-clips';
 
 export type StellaLoungeIntent =
   | 'overview'
@@ -58,6 +61,12 @@ export type StellaLoungeSnapshot = {
     games: string[];
     upcomingEvents: Array<{ title: string; startsAt: string }>;
   };
+  controls: {
+    available: boolean;
+    mainWindow: 'stream' | 'media' | 'unknown';
+    brbActive: boolean;
+    volume: { stella: number; spotlight: number; media: number; all: number } | null;
+  };
 };
 
 type FetchLike = typeof fetch;
@@ -79,6 +88,9 @@ const EVENT_SPEECH_GAP_MS = 12_000;
 const PROMO_GAP_MS = 30 * 60_000;
 
 let cachedSnapshot: { expiresAt: number; value: StellaLoungeSnapshot } | null = null;
+export function invalidateStellaLoungeSnapshot() {
+  cachedSnapshot = null;
+}
 let ambientRunning = false;
 let lastAmbientTopic = -1;
 const recentAmbientTopicFamilies: number[] = [];
@@ -139,7 +151,15 @@ export async function buildStellaLoungeSnapshot(
 ): Promise<StellaLoungeSnapshot> {
   if (fetcher === fetch && cachedSnapshot && cachedSnapshot.expiresAt > now) return cachedSnapshot.value;
 
-  const [mediaResult, spotlightResult, nebulaResult, gamesResult, communityResult, overlayResult] = await Promise.allSettled([
+  const localControlState = fetcher === fetch
+    ? Promise.all([getLoungeMediaLayout(), getLoungeAudioMix()]).then(([layout, mix]) => ({
+        layout,
+        mix,
+        brbActive: isBRBActive(SPACEMOUNTAIN_SYSTEM_TENANT_ID),
+      }))
+    : Promise.resolve(null);
+
+  const [mediaResult, spotlightResult, nebulaResult, gamesResult, communityResult, overlayResult, controlResult] = await Promise.allSettled([
     fetchJson(fetcher, `${LOUNGE_WORKER_URL}/lounge/media/program`),
     fetchJson(fetcher, `${SPOTLIGHT_WORKER_URL}/spotlight/program`),
     fetchJson(fetcher, `${SPMT_URL}/api/integrations/chat-tag/state`)
@@ -147,6 +167,7 @@ export async function buildStellaLoungeSnapshot(
     fetchJson(fetcher, `${NEBULA_URL}/api/game-hub/channel?channel=${SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL}`),
     fetchJson(fetcher, `${SPMT_URL}/api/community/shoutouts`),
     fetchJson(fetcher, `${process.env.STREAMWEAVER_BASE_URL || 'https://streamweaver-new.fly.dev'}/api/lounge/status-strip`),
+    localControlState,
   ]);
 
   const mediaData = mediaResult.status === 'fulfilled' ? unwrapData(mediaResult.value) : null;
@@ -177,6 +198,7 @@ export async function buildStellaLoungeSnapshot(
   const liveRows = communityResult.status === 'fulfilled' ? liveCommunityRows(communityResult.value) : [];
   const liveNames = liveRows.map(publicPlayerName).filter(Boolean).slice(0, 12);
   const overlayData = overlayResult.status === 'fulfilled' ? unwrapData(overlayResult.value) : null;
+  const controlData = controlResult.status === 'fulfilled' ? controlResult.value : null;
   const overlayGames = (Array.isArray(overlayData?.games) ? overlayData.games : [])
     .map((game: any) => String(game?.name || '').trim()).filter(Boolean).slice(0, 8);
   const overlayEvents = (Array.isArray(overlayData?.events) ? overlayData.events : [])
@@ -307,8 +329,11 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
       ? `- Community live count: ${snapshot.community.liveCount}${snapshot.community.liveNames.length ? ` (${snapshot.community.liveNames.join(', ')})` : ''}.`
       : '- Community live state is unavailable.',
     snapshot.overlay.available
-      ? `- What the Lounge overlay currently knows: assigned Spotlight ${snapshot.overlay.spotlight || 'unverified'}; media listing ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}. Do not infer which window is main or call music Spotlight.`
+      ? `- What the Lounge overlay currently knows: assigned Spotlight ${snapshot.overlay.spotlight || 'unverified'}; media listing ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; active games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}.`
       : '- Lounge overlay state is unavailable; do not guess what is on screen.',
+    snapshot.controls.available
+      ? `- Lounge controls: main window=${snapshot.controls.mainWindow}; BRB=${snapshot.controls.brbActive ? 'active' : 'inactive'}; mixer=${snapshot.controls.volume ? `Stella ${snapshot.controls.volume.stella}%, Spotlight ${snapshot.controls.volume.spotlight}%, media ${snapshot.controls.volume.media}%, all ${snapshot.controls.volume.all}%` : 'unavailable'}.`
+      : '- Lounge layout/mixer/BRB control state is unavailable; do not guess it.',
     `- Recent Lounge diagnostic journal: ${getLoungeDiagnosticJournal(12).length ? getLoungeDiagnosticJournal(12).map((entry) => `[${entry.level}] ${entry.subsystem}/${entry.event}: ${entry.detail}`).join(' | ') : 'no recorded faults or transitions yet'}.`,
     '- Use the diagnostic journal for why/how questions. State only causes the journal actually proves; if it records symptoms but not a cause, say the cause is not yet proven.',
     `- Installed tenant command directory: ${LOUNGE_COMMAND_CATEGORIES.flatMap((category) => category.commands.map((command) => command.command + ' = ' + command.description)).join(' | ')}.`,

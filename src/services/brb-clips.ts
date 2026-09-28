@@ -33,6 +33,13 @@ async function setClipModeToStorage(useViewerClips: boolean): Promise<void> {
   await writeJsonFile(CLIP_MODE_FILE, { useViewerClips });
 }
 
+export function isBRBActive(tenantId?: string): boolean {
+  const key = String(tenantId || '').trim();
+  if (!key) return false;
+  const runtime = runtimeByTenant.get(key);
+  return testBRBActiveTenants.has(key) || Boolean(runtime?.isPlaying && !runtime.stopRequested);
+}
+
 export async function toggleClipMode(tenantId?: string): Promise<void> {
   const { toggleMode } = await import('./modes-manager');
   await toggleMode('clipmode', tenantId);

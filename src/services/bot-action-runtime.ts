@@ -23,6 +23,8 @@ import { requestSpotlightRestart } from '@/services/lounge-player-control';
 import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
+import { SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID, SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID } from '@/lib/spacemountain-lounge';
+import { invalidateStellaLoungeSnapshot } from '@/services/stella-lounge-host';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
@@ -480,7 +482,10 @@ function detectExplicitAction(message: string): BotActionRequest | null {
     return { action: 'sw.lounge.brb', args: { control: 'stop' }, detection: 'explicit' };
   }
 
-  const loungeVolume = value.match(/\b(?:set|change|turn|make|lower|raise)\b.*\b(stella|spotlight|media)\b.*\b(?:volume|audio|sound)?\b.*?\b(\d{1,3})\s*(?:%|percent)?\b/);
+  if (/\b(?:mute|silence)\b.*\b(?:everything|all|whole stream)\b|\b(?:everything|all)\b.*\b(?:mute|silence)\b/.test(value)) {
+    return { action: 'sw.lounge.volume', args: { output: 'all', value: '0' }, detection: 'explicit' };
+  }
+  const loungeVolume = value.match(/\b(?:set|change|turn|make|lower|raise)\b.*\b(stella|spotlight|media|all)\b.*\b(?:volume|audio|sound)?\b.*?\b(\d{1,3})\s*(?:%|percent)?\b/);
   if (loungeVolume) {
     return { action: 'sw.lounge.volume', args: { output: loungeVolume[1], value: loungeVolume[2] }, detection: 'explicit' };
   }
@@ -808,8 +813,8 @@ export async function executeBotAction(
   if (request.action === 'sw.lounge.brb' && !/^(start|stop)$/.test(request.args.control || '')) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me whether to start or stop BRB.' };
   }
-  if (request.action === 'sw.lounge.volume' && (!/^(stella|spotlight|media)$/.test(request.args.output || '') || !/^\d{1,3}$/.test(request.args.value || ''))) {
-    return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me Stella, Spotlight, or media and a volume from 1 to 100.' };
+  if (request.action === 'sw.lounge.volume' && (!/^(stella|spotlight|media|all)$/.test(request.args.output || '') || !/^\d{1,3}$/.test(request.args.value || ''))) {
+    return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me Stella, Spotlight, media, or all and a volume from 0 to 100.' };
   }
   if (request.action === 'sw.image.generate' && !request.args.prompt) {
     return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me what image to generate.' };
@@ -873,12 +878,14 @@ export async function executeBotAction(
     }
     if (request.action === 'sw.lounge.spotlight.restart') {
       const result = requestSpotlightRestart();
+      invalidateStellaLoungeSnapshot();
       return { handled: true, action: request.action, status: 'completed', response: '✅ Spotlight player restart requested.', result };
     }
     if (request.action === 'sw.lounge.layout') {
       if (context.tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID) throw new Error('Lounge layout belongs to the SpaceMountain channel.');
       const target = request.args.target === 'media' || request.args.target === 'stream' ? request.args.target : 'toggle';
       const layout = await setLoungeMediaLayout(target, context.actor.username || context.botName);
+      invalidateStellaLoungeSnapshot();
       return { handled: true, action: request.action, status: 'completed',
         response: layout.mode === 'media'
           ? 'Layout saved: HearMeOut is set as the main window; Spotlight is set as the small window. The viewer updates on its next poll.'
@@ -888,16 +895,19 @@ export async function executeBotAction(
     if (request.action === 'sw.lounge.brb') {
       if (request.args.control === 'stop') {
         stopBRB(context.tenantId);
+        invalidateStellaLoungeSnapshot();
         return { handled: true, action: request.action, status: 'completed', response: '✅ BRB player stopped.', result: { control: 'stop' } };
       }
       const broadcaster = clean(context.actor.username || context.actor.displayName || context.tenantId, 100);
       void startBRB(broadcaster, context.tenantId).catch((error) => console.error('[BotActionRuntime] BRB start failed:', error));
+      invalidateStellaLoungeSnapshot();
       return { handled: true, action: request.action, status: 'completed', response: '✅ BRB player started.', result: { control: 'start' } };
     }
     if (request.action === 'sw.lounge.volume') {
       const value = Number(request.args.value);
-      const output = request.args.output as 'stella' | 'spotlight' | 'media';
+      const output = request.args.output as 'stella' | 'spotlight' | 'media' | 'all';
       const mix = await setLoungeMixVolume(output, value);
+      invalidateStellaLoungeSnapshot();
       return { handled: true, action: request.action, status: 'completed', response: formatResult(request.action, { output, value: mix.levels[output] }), result: { output, value: mix.levels[output], mix } };
     }
     if (request.action === 'sw.image.generate') {
@@ -946,6 +956,7 @@ export async function executeBotAction(
         idempotencyKey: clean(context.requestId, 160) || undefined,
       });
       if (request.action === 'hmo.media.radio' && typeof (result as any)?.radio?.enabled !== 'boolean') throw new Error('Lounge worker did not confirm its radio state.');
+      if (context.tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) invalidateStellaLoungeSnapshot();
       return { handled: true, action: request.action, status: 'completed', response: formatResult(request.action, result), result };
     }
     const { serverId, actorUserId } = await resolveDshScope(context, dependencies);
@@ -1001,8 +1012,18 @@ export async function routeBotAction(message: string, context: BotActionContext)
   }
   if (!request) return null;
   const loungeScoped = context.sourceTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
-    && (request.action.startsWith('sw.lounge.') || request.action.startsWith('nebula.') || request.action === 'hmo.media.radio');
-  return executeBotAction(request, loungeScoped
-    ? { ...context, tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID, actor: { ...context.actor, role: context.sourceActorRole || context.actor.role } }
-    : context);
+    && (request.action.startsWith('sw.lounge.') || request.action.startsWith('nebula.') || request.action.startsWith('hmo.media.'));
+  if (loungeScoped) {
+    const mediaAction = request.action.startsWith('hmo.media.') && request.action !== 'hmo.media.radio';
+    const movieLane = /\b(?:movie|film|watch|watchroom|watch room)\b/i.test(context.message);
+    return executeBotAction(request, {
+      ...context,
+      tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
+      playbackSessionId: mediaAction
+        ? (movieLane ? SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID : SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID)
+        : context.playbackSessionId,
+      actor: { ...context.actor, role: context.sourceActorRole || context.actor.role },
+    });
+  }
+  return executeBotAction(request, context);
 }

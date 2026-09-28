@@ -5369,7 +5369,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const { detectStellaLoungeIntent, resolveStellaLoungeIntent } = await import('./stella-lounge-host');
                     const liveIntent = detectStellaLoungeIntent(actualMessage);
                     if (liveIntent) {
-                        await sendChatMessage(await resolveStellaLoungeIntent(liveIntent), 'bot', replyChannel, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                        const liveReply = await resolveStellaLoungeIntent(liveIntent);
+                        await reply(liveReply, 'bot');
+                        const { rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                        rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella replied: ${liveReply}`, ttlMs: 25 * 60_000 });
+                        recordStellaDecision('speak', `live-intent:${liveIntent}`);
                         return;
                     }
                     const botAction = await routeBotAction(actualMessage, {
@@ -5382,7 +5386,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         actor: { userId: String(tags?.['user-id'] || '').trim() || undefined, username: actualUsername, displayName, role: actorRole },
                     });
                     if (botAction) {
-                        await sendChatMessage(botAction.response, 'bot', replyChannel, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                        await reply(botAction.response, 'bot');
+                        const { rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                        rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella action: ${botAction.response}`, ttlMs: 25 * 60_000 });
+                        recordStellaDecision('speak', `action:${botAction.action}:${botAction.status}`);
                         return;
                     }
                     const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {
@@ -5408,12 +5415,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const aiReply = String(data.response || data.data?.response || '').trim();
                     if (!aiReply) return;
 
-                    await sendChatMessage(
-                        aiReply,
-                        'bot',
-                        replyChannel,
-                        SPACEMOUNTAIN_SYSTEM_TENANT_ID,
-                    );
+                    await reply(aiReply, 'bot');
+                    const { openStellaThread, rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
+                    rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella replied: ${aiReply}`, ttlMs: 25 * 60_000 });
+                    recordStellaDecision('speak', 'direct-chat');
+                    if (/\?\s*$/.test(aiReply)) openStellaThread(actualUsername, aiReply);
 
                     console.log(`[Dispatcher] Stella answered @${actualUsername} in #${replyChannel}; chat listener handles TTS`);
                 } catch (error) {
