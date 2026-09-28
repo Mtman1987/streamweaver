@@ -11,7 +11,8 @@ import {
 test('detects safe natural-language commands after any tenant bot wake name', () => {
   assert.equal(detectOpenBotCommand("NovaBot, who's live?"), 'live-members');
   assert.equal(detectOpenBotCommand('athena whos live right now?'), 'live-members');
-  assert.equal(detectOpenBotCommand('how many users are reporting live in Chat-Tag?'), 'live-members');
+  assert.equal(detectOpenBotCommand('how many users are reporting live in Chat-Tag?'), null);
+  assert.equal(detectOpenBotCommand('how many people are live right now?'), 'live-members');
   assert.equal(detectOpenBotCommand('MayaBot who has the tag?'), 'chat-tag-current');
   assert.equal(detectOpenBotCommand('MayaBot, show me the ChatTag leaderboard'), 'chat-tag-leaderboard');
   assert.equal(detectOpenBotCommand("what's playing in HearMeOut?"), 'hearmeout');
@@ -37,55 +38,36 @@ test('rewrites documented SPMT namespace commands for the native DM dispatcher',
   assert.equal(rewriteSpmtNamespaceCommand('NovaBot, how are you?'), null);
 });
 
-test('formats canonical SPMT live-member data without service secrets', async () => {
+test('uses DSH as the sole live-community source', async () => {
+  const calls: string[] = [];
   const reply = await runOpenBotCommand('live-members', async (input) => {
-    assert.match(String(input), /spmt\.live\/api\/community\/shoutouts/);
+    calls.push(String(input));
+    assert.match(String(input), /discord-stream-hub-new\.fly\.dev\/api\/community-spotlight/);
     return new Response(JSON.stringify({
-      shoutouts: [
-        { twitchDisplayName: 'StreamerOne', isLive: true },
-        { twitchUsername: 'streamer_two', isLive: true },
-        { twitchUsername: 'offline_user', isLive: false },
+      source: 'discord-stream-hub',
+      count: 2,
+      users: [
+        { username: 'StreamerOne', twitchLogin: 'streamer_one', group: 'Community' },
+        { username: 'StreamerTwo', twitchLogin: 'streamer_two', group: 'Partners' },
       ],
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   });
 
-  assert.equal(reply, '🟢2 live 💬0 chatting (1/1): 🟢StreamerOne | 🟢streamer_two');
+  assert.equal(reply, '🟢 DSH reports 2 SpaceMountain community members live right now: StreamerOne, StreamerTwo.');
+  assert.equal(calls.length, 1);
+  assert.equal(calls.some((url) => /chat-tag|api\/tag|api\/twitch\/live/.test(url)), false);
 });
 
-test('falls back to public ChatTag roster and Twitch lookup when SPMT live feed is unavailable', async () => {
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
-  const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
-    calls.push({ url, init });
+test('does not fall back to Chat Tag when DSH live-community state is unavailable', async () => {
+  const calls: string[] = [];
+  const reply = await runOpenBotCommand('live-members', async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ error: 'temporarily unavailable' }), { status: 503 });
+  });
 
-    if (url.includes('/api/community/shoutouts')) {
-      return new Response(JSON.stringify({ error: 'temporarily unavailable' }), { status: 503 });
-    }
-    if (url.endsWith('/api/tag')) {
-      return new Response(JSON.stringify({
-        players: [
-          { twitchUsername: 'streamer_one' },
-          { twitchUsername: 'streamer_two' },
-        ],
-      }), { status: 200, headers: { 'content-type': 'application/json' } });
-    }
-    if (url.endsWith('/api/twitch/live')) {
-      assert.equal(init?.method, 'POST');
-      assert.deepEqual(JSON.parse(String(init?.body || '{}')), {
-        usernames: ['streamer_one', 'streamer_two'],
-      });
-      return new Response(JSON.stringify({
-        liveUsers: [{ displayName: 'Streamer One', username: 'streamer_one' }],
-        allUsers: [],
-      }), { status: 200, headers: { 'content-type': 'application/json' } });
-    }
-    return new Response('{}', { status: 404 });
-  };
-
-  const reply = await runOpenBotCommand('live-members', fetcher as typeof fetch);
-  assert.equal(reply, '🟢1 live 💬0 chatting (1/1): 🟢Streamer One');
-  assert.equal(calls.some((call) => call.url.endsWith('/api/twitch/live')), true);
-  assert.equal(calls.some((call) => new Headers(call.init?.headers).has('x-bot-secret')), false);
+  assert.equal(reply, 'The Discord Stream Hub live-community list is temporarily unavailable, so I will not guess who is live.');
+  assert.equal(calls.length, 1);
+  assert.equal(calls.some((url) => /chat-tag|api\/tag|api\/twitch\/live/.test(url)), false);
 });
 
 test('uses SPMT integration state for current IT without service-secret headers', async () => {

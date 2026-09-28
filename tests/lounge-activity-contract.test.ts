@@ -163,7 +163,7 @@ test('Lounge has separate partner and community live shoutout rotations', () => 
   assert.match(route, /isPriorityCreator/);
   assert.match(route, /viewerCount/);
   assert.match(route, /discord-stream-hub-new\.fly\.dev\/api\/community-spotlight/);
-  assert.match(route, /chat-tag-new\.fly\.dev/);
+  assert.doesNotMatch(route, /chat-tag-new\.fly\.dev|CHAT_TAG_URL|api\/discord\/live-members/);
 });
 
 test('Lounge data APIs are public to unauthenticated browser-source overlays', () => {
@@ -230,13 +230,12 @@ test('Lounge media bump supports viewer votes and broadcaster or moderator overr
   assert.match(middleware, /api\/lounge\/media-layout/);
 });
 
-test('Lounge live cards use current Twitch live members and DSH group metadata', () => {
+test('Lounge live cards use DSH as the live-community source of truth', () => {
   const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
-  assert.match(route, /const currentLiveMembers = Array\.isArray\(chatTag\?\.liveMembers\)/);
-  assert.match(route, /const dshByLogin = new Map/);
-  assert.match(route, /chatTagResult\.status === 'fulfilled'/);
-  assert.match(route, /dshByLogin\.get\(login\.toLowerCase\(\)\)/);
-  assert.match(route, /details\.gameName, details\.game_name, row\.gameName, row\.game_name/);
+  assert.match(route, /const rows: any\[\] = Array\.isArray\(dsh\?\.users\) \? dsh\.users : \[\]/);
+  assert.match(route, /source: 'discord-stream-hub'/);
+  assert.match(route, /featured\.gameTitle, row\.gameName, row\.game_name/);
+  assert.doesNotMatch(route, /CHAT_TAG_URL|chatTagResult|api\/discord\/live-members/);
 });
 
 

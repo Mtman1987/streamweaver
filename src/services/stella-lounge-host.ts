@@ -80,6 +80,9 @@ const NEBULA_URL = (
 ).replace(/\/+$/, '');
 const LOUNGE_WORKER_URL = String(process.env.HMO_LOUNGE_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4444').replace(/\/+$/, '');
 const SPOTLIGHT_WORKER_URL = String(process.env.HMO_SPOTLIGHT_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4445').replace(/\/+$/, '');
+const DSH_COMMUNITY_SPOTLIGHT_URL = String(
+  process.env.DSH_COMMUNITY_SPOTLIGHT_URL || 'https://discord-stream-hub-new.fly.dev/api/community-spotlight',
+);
 
 const SNAPSHOT_CACHE_MS = 15_000;
 const AMBIENT_MIN_MS = 7 * 60_000;
@@ -121,6 +124,7 @@ function unwrapData(payload: any): any {
 
 function liveCommunityRows(payload: any): any[] {
   const data = unwrapData(payload);
+  if (Array.isArray(data?.users)) return data.users;
   if (Array.isArray(data?.liveMembers)) return data.liveMembers;
   const rows = [data?.shoutouts, data?.items, data?.rows, data?.community]
     .find((value) => Array.isArray(value)) || [];
@@ -165,7 +169,7 @@ export async function buildStellaLoungeSnapshot(
     fetchJson(fetcher, `${SPMT_URL}/api/integrations/chat-tag/state`)
       .catch(() => fetchJson(fetcher, `${NEBULA_URL}/api/tag`)),
     fetchJson(fetcher, `${NEBULA_URL}/api/game-hub/channel?channel=${SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL}`),
-    fetchJson(fetcher, `${SPMT_URL}/api/community/shoutouts`),
+    fetchJson(fetcher, DSH_COMMUNITY_SPOTLIGHT_URL),
     fetchJson(fetcher, `${process.env.STREAMWEAVER_BASE_URL || 'https://streamweaver-new.fly.dev'}/api/lounge/status-strip`),
     localControlState,
   ]);
@@ -270,7 +274,11 @@ export function detectStellaLoungeIntent(message: string): StellaLoungeIntent | 
 
   if (/\b(fist\s*bump|pound it|dap me|up top)\b/.test(normalized)) return 'fist-bump';
   if (/\b(get|find|call|contact|need|where(?:'s| is))\b.*\b(mod|moderator|staff|help desk|support)\b|\bneed help from (?:a )?human\b/.test(normalized)) return 'moderator';
-  if (/\b(?:who(?:'s| is)|which|what|is anyone)\b.*\b(?:live|streaming|spotlight)\b|\b(?:spotlight|streamer)\b.*\b(?:live|on screen|right now)\b/.test(normalized)) return 'live';
+  if (
+    /\b(?:who(?:'s| is)|which|what|is anyone)\b.*\b(?:live|streaming|spotlight)\b|\b(?:spotlight|streamer)\b.*\b(?:live|on screen|right now)\b/.test(normalized)
+    || /\bhow many\b.*\b(?:people|members?|streamers?|creators?)\b.*\b(?:live|streaming)\b/.test(normalized)
+    || /\bhow many\b.*\b(?:live|streaming)\b.*\b(?:people|members?|streamers?|creators?)\b/.test(normalized)
+  ) return 'live';
   if (/\b(what(?:'s| is) playing|now playing|what song|what movie|what is queued|media status|music status)\b/.test(normalized)) return 'playing';
   if (/\b(how (?:do|can) i join|join (?:the )?(?:game|games|rotation)|how to play|let me play|put me in)\b/.test(normalized)) return 'join-game';
   if (/\b(game status|who(?:'s| is) playing|who has the tag|who(?:'s| is) it|how many players|is (?:a |the )?game active)\b/.test(normalized)) return 'game-status';
@@ -297,6 +305,18 @@ function spotlightLine(snapshot: StellaLoungeSnapshot): string {
     : 'The Spotlight worker has not verified a playing streamer right now.';
 }
 
+function communityLiveLine(snapshot: StellaLoungeSnapshot): string {
+  if (!snapshot.community.available) {
+    return 'The Discord Stream Hub live-community list is temporarily unavailable, so I will not guess who is live.';
+  }
+  if (!snapshot.community.liveCount) {
+    return 'Discord Stream Hub reports no SpaceMountain community members live right now.';
+  }
+  const shown = snapshot.community.liveNames.slice(0, 12);
+  const remaining = Math.max(0, snapshot.community.liveCount - shown.length);
+  return `Discord Stream Hub reports ${snapshot.community.liveCount} SpaceMountain community member${snapshot.community.liveCount === 1 ? '' : 's'} live right now${shown.length ? `: ${shown.join(', ')}${remaining ? `, and ${remaining} more` : ''}` : ''}.`;
+}
+
 function gameLine(snapshot: StellaLoungeSnapshot): string {
   if (!snapshot.nebula.available) return 'Nebula Arcade is not reporting live game state right now.';
   const catalog = snapshot.nebula.games.length
@@ -316,7 +336,7 @@ export async function resolveStellaLoungeIntent(
 
   const snapshot = await buildStellaLoungeSnapshot(fetcher);
   if (intent === 'playing') return mediaLine(snapshot);
-  if (intent === 'live') return spotlightLine(snapshot);
+  if (intent === 'live') return `${communityLiveLine(snapshot)} ${spotlightLine(snapshot)}`;
   if (intent === 'game-status') return `${gameLine(snapshot)} Type spmt join if you want in.`;
   if (intent === 'join-game') {
     const gameCommand = snapshot.nebula.games.find((game) => game.joinCommand);
@@ -341,8 +361,8 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
     `- ${spotlightLine(snapshot)}`,
     `- ${gameLine(snapshot)}`,
     snapshot.community.available
-      ? `- Community live count: ${snapshot.community.liveCount}${snapshot.community.liveNames.length ? ` (${snapshot.community.liveNames.join(', ')})` : ''}.`
-      : '- Community live state is unavailable.',
+      ? `- Discord Stream Hub live-community count: ${snapshot.community.liveCount}${snapshot.community.liveNames.length ? ` (${snapshot.community.liveNames.join(', ')})` : ''}.`
+      : '- Discord Stream Hub live-community state is unavailable; do not guess who is live.',
     snapshot.overlay.available
       ? `- What the Lounge overlay currently knows: assigned Spotlight ${snapshot.overlay.spotlight || 'unverified'}; media listing ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; active games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}.`
       : '- Lounge overlay state is unavailable; do not guess what is on screen.',

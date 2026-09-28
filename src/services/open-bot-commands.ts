@@ -20,6 +20,9 @@ type FetchJsonOptions = {
 const SPMT_URL = (process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
 const CHAT_TAG_URL = (process.env.CHAT_TAG_BASE_URL || process.env.NEXT_PUBLIC_CHAT_TAG_URL || 'https://chat-tag-new.fly.dev').replace(/\/+$/, '');
 const HEARMEOUT_URL = (process.env.HEARMEOUT_BASE_URL || process.env.NEXT_PUBLIC_HEARMEOUT_URL || 'https://hearmeout-main.fly.dev').replace(/\/+$/, '');
+const DSH_COMMUNITY_SPOTLIGHT_URL = String(
+  process.env.DSH_COMMUNITY_SPOTLIGHT_URL || 'https://discord-stream-hub-new.fly.dev/api/community-spotlight',
+);
 
 function normalizeSpmtCommandTypos(command: string): string {
   return command
@@ -71,8 +74,7 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
   if (
     /\b(who(?:'?s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized) ||
     /\bhow many\b.*\b(?:users?|members?|people|creators?|streamers?)\b.*\b(?:live|streaming|broadcasting)\b/.test(normalized) ||
-    /\bhow many\b.*\b(?:live|streaming|broadcasting)\b.*\b(?:users?|members?|people|creators?|streamers?)\b/.test(normalized) ||
-    /\bchat[\s-]?tag\b.*\b(?:users?|members?|people|creators?|streamers?)\b.*\b(?:live|streaming|broadcasting)\b/.test(normalized)
+    /\bhow many\b.*\b(?:live|streaming|broadcasting)\b.*\b(?:users?|members?|people|creators?|streamers?)\b/.test(normalized)
   ) return 'live-members';
   if (/\b(who(?:'s| is) it|who has the tag|current(?:ly)? it)\b/.test(normalized)) return 'chat-tag-current';
   if (/\b(chat[\s-]?tag (?:status|state)|how many (?:chat[\s-]?tag )?players|game status)\b/.test(normalized)) return 'chat-tag-status';
@@ -148,6 +150,7 @@ function unwrapData(payload: any): any {
 
 function normalizeLiveRows(payload: any): any[] {
   const data = unwrapData(payload);
+  if (Array.isArray(data?.users)) return data.users;
   if (Array.isArray(data?.liveMembers)) return data.liveMembers;
   const rows = [data?.shoutouts, data?.items, data?.rows, data?.community]
     .find((value) => Array.isArray(value)) || [];
@@ -178,65 +181,28 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
   }
 
   if (command === 'live-members') {
-    const [members, state, winnersPayload] = await Promise.all([
-      fetchSpmtLiveMembers(fetcher),
-      fetchSpmtChatTagState(fetcher).catch(() => ({ players: [] })),
-      fetchJson(fetcher, `${CHAT_TAG_URL}/api/tag/winners`).catch(() => ({ monthlyWinners: [] })),
-    ]);
-    if (!members.length) return 'Nobody in the SpaceMountain community is live right now.';
-
-    const players = Array.isArray(state?.players) ? state.players : [];
-    const winnerRows = Array.isArray(winnersPayload?.monthlyWinners) ? winnersPayload.monthlyWinners : [];
-    const winnerNames = new Set(winnerRows
-      .map((winner: any) => String(winner?.username || winner?.twitchUsername || winner?.name || '').trim().toLowerCase())
-      .filter(Boolean));
+    let members: any[] = [];
+    try {
+      members = await fetchDshLiveMembers(fetcher);
+    } catch (error) {
+      console.warn('[OpenBotCommands] DSH live-community feed unavailable:', error);
+      return 'The Discord Stream Hub live-community list is temporarily unavailable, so I will not guess who is live.';
+    }
+    if (!members.length) return 'Discord Stream Hub reports no SpaceMountain community members live right now.';
 
     const liveRows = members.map((member: any) => {
       const login = String(
-        member?.twitchUsername || member?.username || member?.twitchLogin || member?.login || member?.twitchDisplayName || member?.displayName || ''
+        member?.twitchLogin || member?.twitchUsername || member?.login || member?.username || ''
       ).trim().toLowerCase();
-      const display = String(member?.twitchDisplayName || member?.displayName || member?.twitchUsername || member?.username || login).trim();
+      const display = String(
+        member?.displayName || member?.username || member?.twitchDisplayName || member?.twitchLogin || login
+      ).trim();
       return { login, display };
     }).filter((member: any) => member.login);
 
-    const liveLogins = new Set(liveRows.map((member: any) => member.login));
-    const now = Date.now();
-    const activeThresholdMs = 40 * 60 * 1000;
-    const channelChatters: Record<string, string[]> = {};
-    const discordChatters: string[] = [];
-
-    for (const player of players) {
-      const playerName = String(player?.twitchUsername || player?.username || player?.displayName || '').trim().toLowerCase();
-      if (!playerName || liveLogins.has(playerName)) continue;
-      const rawLastChat = player?.lastChatAt;
-      const numericLastChat = Number(rawLastChat);
-      const parsedLastChat = Number.isFinite(numericLastChat) && numericLastChat > 0
-        ? numericLastChat
-        : Date.parse(String(rawLastChat || ''));
-      if (!Number.isFinite(parsedLastChat) || now - parsedLastChat > activeThresholdMs) continue;
-      const seenChannel = String(player?.lastSeenChannel || '').trim().toLowerCase().replace(/^#/, '');
-      if (seenChannel === 'discord') {
-        if (!discordChatters.includes(playerName)) discordChatters.push(playerName);
-      } else if (seenChannel && liveLogins.has(seenChannel)) {
-        channelChatters[seenChannel] ||= [];
-        if (!channelChatters[seenChannel].includes(playerName)) channelChatters[seenChannel].push(playerName);
-      }
-    }
-
-    const groups: string[] = [];
-    let totalChatters = 0;
-    for (const member of liveRows) {
-      const chatters = channelChatters[member.login] || [];
-      totalChatters += chatters.length;
-      const crowned = winnerNames.has(member.login) ? `👑${member.display}` : member.display;
-      groups.push(`🟢${crowned}${chatters.length ? ` > 💬${chatters.join(', ')}` : ''}`);
-    }
-    if (discordChatters.length) {
-      totalChatters += discordChatters.length;
-      groups.push(`🟣Discord > 💬${discordChatters.join(', ')}`);
-    }
-
-    return `🟢${liveRows.length} live 💬${totalChatters} chatting (1/1): ${groups.join(' | ')}`;
+    const shown = liveRows.slice(0, 12);
+    const remaining = Math.max(0, liveRows.length - shown.length);
+    return `🟢 DSH reports ${liveRows.length} SpaceMountain community member${liveRows.length === 1 ? '' : 's'} live right now: ${shown.map((member) => member.display).join(', ')}${remaining ? `, and ${remaining} more` : ''}.`;
   }
 
   if (command === 'apps') {
@@ -285,28 +251,9 @@ async function fetchSpmtChatTagState(fetcher: FetchLike): Promise<any> {
   }
 }
 
-async function fetchSpmtLiveMembers(fetcher: FetchLike): Promise<any[]> {
-  try {
-    const rows = normalizeLiveRows(await fetchJson(fetcher, `${SPMT_URL}/api/community/shoutouts`));
-    if (rows.length) return rows;
-  } catch (error) {
-    console.warn('[OpenBotCommands] SPMT live feed unavailable; using public ChatTag/Twitch fallback:', error);
-  }
-
-  const roster = normalizeChatTagState(await fetchJson(fetcher, `${CHAT_TAG_URL}/api/tag`));
-  const usernames = Array.from(new Set(
-    (Array.isArray(roster?.players) ? roster.players : [])
-      .map((player: any) => String(player?.twitchUsername || player?.username || '').trim().toLowerCase())
-      .filter(Boolean),
-  ));
-  if (!usernames.length) return [];
-
-  const liveData = unwrapData(await fetchJson(fetcher, `${CHAT_TAG_URL}/api/twitch/live`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usernames }),
-  }));
-  return Array.isArray(liveData?.liveUsers) ? liveData.liveUsers : [];
+async function fetchDshLiveMembers(fetcher: FetchLike): Promise<any[]> {
+  const payload = await fetchJson(fetcher, DSH_COMMUNITY_SPOTLIGHT_URL);
+  return normalizeLiveRows(payload);
 }
 
 function escapeRegExp(value: string): string {
