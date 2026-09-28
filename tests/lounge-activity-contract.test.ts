@@ -158,7 +158,9 @@ test('Lounge has separate partner and community live shoutout rotations', () => 
   assert.match(overlay, /right: 8px; top: 7px/);
   assert.match(overlay, /padding-top: 22px/);
   assert.doesNotMatch(overlay, /PARTNER SPOTLIGHT|COMMUNITY LIVE/);
-  assert.match(overlay, /creator\.gameName \|\| 'Just Chatting'/);
+  assert.match(overlay, /creator\.gameName \|\| 'Live on Twitch'/);
+  assert.doesNotMatch(overlay, /creator\.gameName \|\| 'Just Chatting'/);
+  assert.match(overlay, /creator\.viewerCount === null/);
   assert.doesNotMatch(overlay, /creator\.gameName \|\| creator\.title/);
   assert.match(route, /isPriorityCreator/);
   assert.match(route, /viewerCount/);
@@ -235,6 +237,8 @@ test('Lounge live cards use DSH as the live-community source of truth', () => {
   assert.match(route, /const rows: any\[\] = Array\.isArray\(dsh\?\.users\) \? dsh\.users : \[\]/);
   assert.match(route, /source: 'discord-stream-hub'/);
   assert.match(route, /featured\.gameTitle, row\.gameName, row\.game_name/);
+  assert.match(route, /Number\.isFinite\(Number\(featured\.viewerCount \?\? row\.viewerCount\)\)/);
+  assert.doesNotMatch(route, /row\.viewerCount \?\? 0/);
   assert.doesNotMatch(route, /CHAT_TAG_URL|chatTagResult|api\/discord\/live-members/);
 });
 
