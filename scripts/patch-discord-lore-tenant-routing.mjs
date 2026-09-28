@@ -10,7 +10,16 @@ const oldBlock = `async function addLoreCandidate(messageLower: string, candidat
 
 const newBlock = `async function addLoreCandidate(messageLower: string, candidates: BotMatch[], tenantId?: string) {\n  if (!tenantId) return;\n  const lore = await readWorldLore();\n  const characters = Object.values(lore?.characters || {});\n  const configuredNames = new Set([\n    getBotName(tenantId),\n    ...splitAliases(readUserConfigSync(tenantId).AI_BOT_ALIASES),\n    ...splitAliases(getBotAliases(tenantId)),\n  ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));\n\n  const tenantCharacters = characters.filter((character) => {\n    if (character.stableId.startsWith(\`\${tenantId}:\`)) return true;\n    if (!character.stableId.startsWith('unknown:')) return false;\n\n    const loreNames = characterTriggers(character)\n      .map((value) => String(value || '').trim().toLowerCase())\n      .filter(Boolean);\n    return character.stableId !== THE_COUNT_STABLE_ID\n      && loreNames.some((name) => configuredNames.has(name));\n  });\n\n  for (const character of tenantCharacters) {\n    const triggers = Array.from(new Set([\n      character.currentName,\n      ...(character.aliases || []),\n      ...(character.previousNames || []),\n    ].filter(Boolean).map((value) => value.toLowerCase())));\n\n    for (const trigger of triggers) {\n      const index = triggerIndex(messageLower, trigger);\n      if (index >= 0) {\n        candidates.push({ tenantId, botName: character.currentName, trigger, index });\n      }\n    }\n  }\n}`;
 
-if (before.includes(newBlock)) {
+// The route may already contain the scoped resolver plus a separate early
+// exclusion for The Count. That variant has the intended tenant boundary.
+const resolver = before.slice(before.indexOf('async function addLoreCandidate('), before.indexOf('\nasync function getDiscordLogChannelId('));
+if (before.includes(newBlock) || (
+  resolver.includes('const configuredNames = new Set([')
+  && resolver.includes('character.stableId.startsWith(`${tenantId}:`)')
+  && resolver.includes("character.stableId.startsWith('unknown:')")
+  && resolver.includes('character.stableId === THE_COUNT_STABLE_ID')
+  && resolver.includes('loreNames.some((name) => configuredNames.has(name))')
+)) {
   console.log('[LoreTenantRoutingPatch] already applied');
   process.exit(0);
 }
