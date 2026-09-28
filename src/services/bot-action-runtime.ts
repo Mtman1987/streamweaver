@@ -468,7 +468,11 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if (/\b(?:restart|reboot|power[- ]?cycle|turn off and (?:back )?on)\b.*\bspotlight\b|\bspotlight\b.*\b(?:restart|reboot|power[- ]?cycle)\b/.test(value)) {
     return { action: 'sw.lounge.spotlight.restart', args: {}, detection: 'explicit' };
   }
-  if (/\b(?:swap|switch|flip)\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them)\b|\bbump\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them|spotlight|stream|movie|media)\b/.test(value)) {
+  if (
+    /\b(?:swap|switch|flip)\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them)\b|\bbump\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them|spotlight|stream|movie|media)\b/.test(value)
+    || /\b(?:swap|switch|flip)\b.*\b(?:media|movie|hearmeout|hear me out)\b.*\b(?:spotlight|stream|streamer)\b/.test(value)
+    || /\b(?:swap|switch|flip)\b.*\b(?:spotlight|stream|streamer)\b.*\b(?:media|movie|hearmeout|hear me out)\b/.test(value)
+  ) {
     return { action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit' };
   }
   if (/\b(?:put|move|show|focus|bring)\b.*\b(?:movie|media|hearmeout|hear me out|spotlight|stream|streamer)\b.*\b(?:main|big|large)\s*(?:window|screen|stage)?\b/.test(value)) {

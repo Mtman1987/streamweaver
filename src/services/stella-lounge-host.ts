@@ -239,6 +239,21 @@ export async function buildStellaLoungeSnapshot(
       games: overlayGames,
       upcomingEvents: overlayEvents,
     },
+    controls: {
+      available: Boolean(controlData),
+      mainWindow: controlData?.layout?.mode === 'media'
+        ? 'media'
+        : controlData?.layout?.mode === 'stream'
+          ? 'stream'
+          : 'unknown',
+      brbActive: Boolean(controlData?.brbActive),
+      volume: controlData?.mix?.levels ? {
+        stella: Number(controlData.mix.levels.stella),
+        spotlight: Number(controlData.mix.levels.spotlight),
+        media: Number(controlData.mix.levels.media),
+        all: Number(controlData.mix.levels.all),
+      } : null,
+    },
   };
 
   if (fetcher === fetch) cachedSnapshot = { expiresAt: now + SNAPSHOT_CACHE_MS, value: snapshot };
@@ -331,7 +346,7 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
     snapshot.overlay.available
       ? `- What the Lounge overlay currently knows: assigned Spotlight ${snapshot.overlay.spotlight || 'unverified'}; media listing ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; active games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}.`
       : '- Lounge overlay state is unavailable; do not guess what is on screen.',
-    snapshot.controls.available
+    snapshot.controls?.available
       ? `- Lounge controls: main window=${snapshot.controls.mainWindow}; BRB=${snapshot.controls.brbActive ? 'active' : 'inactive'}; mixer=${snapshot.controls.volume ? `Stella ${snapshot.controls.volume.stella}%, Spotlight ${snapshot.controls.volume.spotlight}%, media ${snapshot.controls.volume.media}%, all ${snapshot.controls.volume.all}%` : 'unavailable'}.`
       : '- Lounge layout/mixer/BRB control state is unavailable; do not guess it.',
     `- Recent Lounge diagnostic journal: ${getLoungeDiagnosticJournal(12).length ? getLoungeDiagnosticJournal(12).map((entry) => `[${entry.level}] ${entry.subsystem}/${entry.event}: ${entry.detail}`).join(' | ') : 'no recorded faults or transitions yet'}.`,
