@@ -8,6 +8,9 @@ async function call(path:string, init:RequestInit={}){
 export async function executeNebulaCommand(input:{channel:string;username:string;userId?:string;displayName?:string;message:string}){
  return call('/api/game-hub/command',{method:'POST',body:JSON.stringify({...input,isBroadcaster:true,isModerator:true,source:'streamweaver-bot-action'})});
 }
+export async function readNebulaChannelState(channel:string){
+ return call('/api/game-hub/channel?channel='+encodeURIComponent(channel));
+}
 export async function manageNebulaOverlay(input:{operation:'list'|'create'|'update';channel:string;id?:string;name?:string;gameIds?:string[];layout?:string;transparent?:boolean}){
  if(input.operation==='list') return call('/api/game-hub/bot-overlays?channel='+encodeURIComponent(input.channel));
  const method=input.operation==='create'?'POST':'PATCH'; return call('/api/game-hub/bot-overlays',{method,body:JSON.stringify(input)});
