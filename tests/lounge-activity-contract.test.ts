@@ -245,3 +245,16 @@ test('walk-on greetings use the shared AI provider instead of an Eden-only greet
   assert.match(shoutout, /Shared AI greeting provider failed/);
   assert.doesNotMatch(shoutout, /api\.edenai\.run\/v2\/text\/chat/);
 });
+
+
+test('Lounge sponsor fallback keeps ten DSH sponsor GIFs ready across Twitch clips', () => {
+  const player = fs.readFileSync('src/app/brb-player/page.tsx', 'utf8');
+  assert.match(player, /SPONSOR_GIF_BUFFER_SIZE = 10/);
+  assert.match(player, /preloadSponsorGif/);
+  assert.match(player, /readyGifBuffer\.push\(\.\.\.preloaded\)/);
+  assert.match(player, /readyGifBuffer\.length <= 3/);
+  assert.match(player, /if \(clips\.length && lastSponsorKind === 'gif'\)/);
+  assert.match(player, /showGif\(gif\)/);
+  assert.doesNotMatch(player, /playlistReady/);
+  assert.match(player, /clip playlist must never\s*\/\/ cancel it|clip playlist must never[\s\S]*cancel it/);
+});

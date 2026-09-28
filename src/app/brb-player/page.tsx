@@ -5,6 +5,10 @@ import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
+const SPONSOR_GIF_BUFFER_SIZE = 10;
+const SPONSOR_GIF_DURATION_MS = 12_000;
+type SponsorGif = { url: string; user: string };
+
 export default function BRBPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const spotlightLevel = useLoungeBroadcastVolume('spotlight');
@@ -168,54 +172,186 @@ export default function BRBPlayer() {
       const epoch = ++autoEpoch;
       setActive(true);
       notifyParent(true, 'gif');
-      let playlistReady = false;
-      // DSH's stored GIFs are quick to retrieve while clip discovery runs.
-      void fetch('https://discord-stream-hub-new.fly.dev/api/lounge/brb-gifs', {
-        cache: 'no-store', signal: AbortSignal.timeout(8000),
-      }).then(response => response.ok ? response.json() : { gifs: [] }).then(data => {
-        const quickGifs = Array.isArray(data.gifs) ? data.gifs.filter(
-          (gif: { url?: string }) => typeof gif.url === 'string'
-            && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/')) : [];
-        if (!quickGifs.length || !automatic || stopped || epoch !== autoEpoch || manual || playlistReady) return;
-        let gifIndex = 0;
-        const nextGif = () => {
-          if (!automatic || stopped || epoch !== autoEpoch || manual || playlistReady) return;
-          showGif(quickGifs[gifIndex++ % quickGifs.length]);
-          autoClipTimer = setTimeout(nextGif, 12000);
+
+      let clips: Array<{ clipUrl: string; thumbnailUrl?: string; user?: string; duration?: number }> = [];
+      let clipIndex = 0;
+      let lastSponsorKind: 'clip' | 'gif' = 'clip';
+      let sponsorLoopStarted = false;
+      let readyGifBuffer: SponsorGif[] = [];
+      let gifPool: SponsorGif[] = [];
+      let refillPromise: Promise<void> | null = null;
+      const usedGifUrls = new Set<string>();
+
+      const stillAutomatic = () => automatic && !stopped && epoch === autoEpoch && !manual;
+
+      const shuffle = <T,>(items: T[]): T[] => {
+        const copy = [...items];
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      };
+
+      const preloadSponsorGif = (gif: SponsorGif): Promise<SponsorGif | null> => new Promise((resolve) => {
+        const image = new Image();
+        const timeout = setTimeout(() => {
+          image.onload = null;
+          image.onerror = null;
+          resolve(null);
+        }, 8_000);
+        image.onload = () => {
+          clearTimeout(timeout);
+          image.onload = null;
+          image.onerror = null;
+          resolve(gif);
         };
-        nextGif();
-      }).catch(() => {});
+        image.onerror = () => {
+          clearTimeout(timeout);
+          image.onload = null;
+          image.onerror = null;
+          resolve(null);
+        };
+        image.src = gif.url;
+      });
+
+      const fetchGifPool = async () => {
+        const response = await fetch('https://discord-stream-hub-new.fly.dev/api/lounge/brb-gifs', {
+          cache: 'no-store', signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) throw new Error(`DSH sponsor GIF bank unavailable: ${response.status}`);
+        const data = await response.json();
+        const candidates: SponsorGif[] = Array.isArray(data.gifs) ? data.gifs
+          .filter((gif: { url?: string }) => typeof gif.url === 'string'
+            && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/'))
+          .map((gif: { url: string; user?: string }) => ({ url: gif.url, user: String(gif.user || '') })) : [];
+        const queued = new Set(readyGifBuffer.map((gif) => gif.url));
+        let fresh = candidates.filter((gif) => !usedGifUrls.has(gif.url) && !queued.has(gif.url));
+        if (!fresh.length && candidates.length) {
+          usedGifUrls.clear();
+          fresh = candidates.filter((gif) => !queued.has(gif.url));
+        }
+
+        // Prefer different creators before taking a second GIF from the same one.
+        const randomized = shuffle(fresh);
+        const users = new Set<string>();
+        const distinct: SponsorGif[] = [];
+        const repeats: SponsorGif[] = [];
+        for (const gif of randomized) {
+          const userKey = gif.user.toLowerCase();
+          if (userKey && !users.has(userKey)) {
+            users.add(userKey);
+            distinct.push(gif);
+          } else {
+            repeats.push(gif);
+          }
+        }
+        gifPool = [...distinct, ...repeats];
+      };
+
+      const refillReadyGifBuffer = async () => {
+        if (!stillAutomatic() || readyGifBuffer.length >= SPONSOR_GIF_BUFFER_SIZE) return;
+        if (refillPromise) return refillPromise;
+        refillPromise = (async () => {
+          try {
+            if (gifPool.length < SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length) {
+              await fetchGifPool();
+            }
+            if (!stillAutomatic()) return;
+            const need = Math.max(0, SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length);
+            const selected: SponsorGif[] = [];
+            while (selected.length < need && gifPool.length) {
+              const gif = gifPool.shift()!;
+              if (usedGifUrls.has(gif.url) || readyGifBuffer.some((queued) => queued.url === gif.url)) continue;
+              usedGifUrls.add(gif.url);
+              selected.push(gif);
+            }
+            const preloaded = (await Promise.all(selected.map(preloadSponsorGif)))
+              .filter((gif): gif is SponsorGif => Boolean(gif));
+            if (stillAutomatic()) readyGifBuffer.push(...preloaded);
+          } catch (error) {
+            if (stillAutomatic()) console.warn('[BRB] Sponsor GIF buffer refill failed:', error);
+          }
+        })().finally(() => { refillPromise = null; });
+        return refillPromise;
+      };
+
+      const nextSponsorItem = () => {
+        if (!stillAutomatic()) return;
+        if (readyGifBuffer.length <= 3) void refillReadyGifBuffer();
+
+        if (clips.length && lastSponsorKind === 'gif') {
+          const clip = clips[clipIndex++ % clips.length];
+          const fallback = readyGifBuffer[0];
+          lastSponsorKind = 'clip';
+          setClipUser(clip.user || '');
+          // Use the clip itself; worker Spotlight cannot play source VODs.
+          void playClip(clip.clipUrl, clip.thumbnailUrl || '', fallback, undefined);
+          autoClipTimer = setTimeout(
+            nextSponsorItem,
+            Math.max(5000, Math.min(65000, Number(clip.duration) || 30000)),
+          );
+          return;
+        }
+
+        const gif = readyGifBuffer.shift();
+        if (gif) {
+          lastSponsorKind = 'gif';
+          showGif(gif);
+          autoClipTimer = setTimeout(nextSponsorItem, SPONSOR_GIF_DURATION_MS);
+          return;
+        }
+
+        if (clips.length) {
+          const clip = clips[clipIndex++ % clips.length];
+          lastSponsorKind = 'clip';
+          setClipUser(clip.user || '');
+          void playClip(clip.clipUrl, clip.thumbnailUrl || '', undefined, undefined);
+          autoClipTimer = setTimeout(
+            nextSponsorItem,
+            Math.max(5000, Math.min(65000, Number(clip.duration) || 30000)),
+          );
+          return;
+        }
+
+        void refillReadyGifBuffer();
+        autoClipTimer = setTimeout(nextSponsorItem, 1000);
+      };
+
+      const ensureSponsorLoop = () => {
+        if (!stillAutomatic() || sponsorLoopStarted || (!readyGifBuffer.length && !clips.length)) return;
+        sponsorLoopStarted = true;
+        nextSponsorItem();
+      };
+
+      // Prime ten already-downloaded DSH GIFs before relying on slower Twitch clip discovery.
+      void refillReadyGifBuffer().then(() => ensureSponsorLoop());
+
       try {
         const response = await fetch('/api/lounge/brb-fallback?tenant=spacemountainlive', {
           cache: 'no-store', signal: AbortSignal.timeout(45000),
         });
         if (!response.ok) throw new Error('BRB playlist unavailable');
         const media = await response.json();
-        if (!automatic || stopped || epoch !== autoEpoch || manual) return;
-        playlistReady = true;
-        clearTimeout(autoClipTimer);
-        const clips = Array.isArray(media.clips) ? media.clips.filter(
+        if (!stillAutomatic()) return;
+        clips = Array.isArray(media.clips) ? media.clips.filter(
           (clip: { clipUrl?: string }) => typeof clip.clipUrl === 'string' && clip.clipUrl.includes('clip=')) : [];
-        const gifs = Array.isArray(media.gifs) ? media.gifs.filter(
-          (gif: { url?: string }) => typeof gif.url === 'string' && gif.url.startsWith('https://')) : [];
-        let index = 0;
-        const next = () => {
-          if (!automatic || stopped || epoch !== autoEpoch || manual) return;
-          if (clips.length && (index % 2 === 0 || !gifs.length)) {
-            const clip = clips[Math.floor(index++ / 2) % clips.length];
-            const gif = gifs.length ? gifs[(index - 1) % gifs.length] : undefined;
-            setClipUser(clip.user || '');
-            // Use the clip itself; worker Spotlight cannot play source VODs.
-            void playClip(clip.clipUrl, clip.thumbnailUrl || '', gif, undefined);
-            autoClipTimer = setTimeout(next, Math.max(5000, Math.min(65000, Number(clip.duration) || 30000)));
-          } else if (gifs.length) {
-            showGif(gifs[index++ % gifs.length]);
-            autoClipTimer = setTimeout(next, 12000);
-          }
-        };
-        next();
+
+        // Keep DSH GIFs as a persistent ready buffer. The clip playlist must never
+        // cancel it; clips simply alternate with whatever is already preloaded.
+        const mediaGifs: SponsorGif[] = Array.isArray(media.gifs) ? media.gifs.filter(
+          (gif: { url?: string }) => typeof gif.url === 'string'
+            && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/'))
+          .map((gif: { url: string; user?: string }) => ({ url: gif.url, user: String(gif.user || '') })) : [];
+        if (mediaGifs.length) gifPool.push(...shuffle(mediaGifs));
+        void refillReadyGifBuffer();
+        ensureSponsorLoop();
       } catch (error) {
-        if (automatic && epoch === autoEpoch) console.warn('[BRB] Automatic playlist unavailable:', error);
+        if (stillAutomatic()) {
+          console.warn('[BRB] Automatic playlist unavailable:', error);
+          void refillReadyGifBuffer();
+          ensureSponsorLoop();
+        }
       }
     };
 
