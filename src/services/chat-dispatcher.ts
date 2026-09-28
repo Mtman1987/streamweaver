@@ -3332,7 +3332,28 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             requesterUsername: actualUsername,
             canManageOthers: Boolean(tags.mod || tags.badges?.broadcaster),
         });
-        if (translated) await reply(translated, 'bot').catch(() => {});
+        if (translated) {
+            await reply(translated, 'bot').catch(() => {});
+            if (!args[0]?.startsWith('@') && !/^Stella could not translate/i.test(translated)) {
+                const explicitLanguage = ['en', 'es', 'fr', 'ru', 'de', 'ja'].includes(String(args[0] || '').toLowerCase())
+                    ? String(args[0]).toLowerCase()
+                    : 'en';
+                const sourceText = explicitLanguage !== 'en' || String(args[0] || '').toLowerCase() === 'en'
+                    ? args.slice(1).join(' ')
+                    : args.join(' ');
+                if (sourceText.trim()) {
+                    publishTranslationSubtitleEvent({
+                        tenantId,
+                        username: actualUsername,
+                        displayName,
+                        sourceText,
+                        translatedText: translated,
+                        targetLanguage: explicitLanguage as any,
+                        durationMs: 9000,
+                    });
+                }
+            }
+        }
         return;
     }
     
