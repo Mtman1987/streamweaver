@@ -4,12 +4,9 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
-import { addSayQueueItem, getSayQueue } from '../_store';
 import { resolveSayQueueStreamKey } from '../_stream';
-import { buildSayChatSpeech, resolveSayChatIdentity } from '@/services/say-chat';
+import { resolveSayChatIdentity } from '@/services/say-chat';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
-import { generateTTS } from '@/services/tts-provider';
-import { touchTtsConsumer } from '@/services/tts-consumer-presence';
 
 const sayChatSchema = z.object({
   text: z.string().trim().min(1, 'Message required').max(500, 'Message too long'),
@@ -53,7 +50,7 @@ export async function POST(request: NextRequest) {
         const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/send-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, as: 'broadcaster', tenantId: targetChannel ? undefined : session.tenantId, targetChannel, suppressSayTts: true }),
+          body: JSON.stringify({ message: text, as: 'broadcaster', tenantId: targetChannel ? undefined : session.tenantId, targetChannel, forceSayTts: true }),
         });
         if (!response.ok) {
           const result = await response.json().catch(() => ({}));
@@ -65,50 +62,13 @@ export async function POST(request: NextRequest) {
       return apiError(error instanceof Error ? error.message : 'Chat post failed', { status: 502, code: 'CHAT_POST_FAILED' });
     }
 
-    try {
-      const spokenText = buildSayChatSpeech(identity, text);
-      const voiceOverride = voice || undefined;
-
-      // This request originates from the public Say Player, so refresh the same
-      // browser-source consumer lease and always use that shared queue regardless
-      // of whether the chat destination is Discord, Twitch, Kick, or another adapter.
-      touchTtsConsumer(streamKey, 'say', 'say');
-      const audioDataUri = await generateTTS(
-        spokenText,
-        voiceOverride,
-        streamKey,
-        { requireActiveConsumer: true, consumerScope: 'say' },
-      );
-      if (!audioDataUri) {
-        return apiOk({
-          posted: true,
-          queued: false,
-          skipped: true,
-          reason: 'no-active-say-listener',
-          tenantId: streamKey,
-          identity,
-        });
-      }
-
-      const item = addSayQueueItem(streamKey, audioDataUri);
-      return apiOk({
-        posted: true,
-        queued: true,
-        delivered: 'say-player',
-        tenantId: streamKey,
-        queueLength: getSayQueue(streamKey).length,
-        id: item.id,
-        identity,
-        spokenText,
-      });
-    } catch (error) {
-      console.error('[Say Chat] TTS queue failed after chat post:', error);
-      return apiError('Posted in chat, but TTS could not read it', {
-        status: 502,
-        code: 'TTS_QUEUE_FAILED',
-        details: { posted: true, queued: false, identity },
-      });
-    }
+    return apiOk({
+      posted: true,
+      queued: false,
+      delivered: 'chat-echo',
+      tenantId: streamKey,
+      identity,
+    });
   };
   if (!captureId) return deliver();
   const key = JSON.stringify([session.tenantId, streamKey, captureId]);
