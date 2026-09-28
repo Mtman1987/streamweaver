@@ -12,6 +12,7 @@ test('detects Stella host questions and social gestures', () => {
   assert.equal(detectStellaLoungeIntent("Stella, what's happening in the Lounge?"), 'overview');
   assert.equal(detectStellaLoungeIntent('how can I join the game?'), 'join-game');
   assert.equal(detectStellaLoungeIntent("what's playing right now?"), 'playing');
+  assert.equal(detectStellaLoungeIntent("who's live in the Spotlight right now?"), 'live');
   assert.equal(detectStellaLoungeIntent('I need a moderator'), 'moderator');
   assert.equal(detectStellaLoungeIntent('fist bump, Stella'), 'fist-bump');
   assert.equal(detectStellaLoungeIntent('what did you think of that book?'), null);
@@ -19,12 +20,13 @@ test('detects Stella host questions and social gestures', () => {
 
 function fixtureFetch(input: string | URL | Request): Promise<Response> {
   const url = String(input);
-  if (url.includes('/api/music/session/state')) {
+  if (url.includes('/lounge/media/program')) {
     return Promise.resolve(new Response(JSON.stringify({
-      current: { title: 'Rocket Man', artist: 'Elton John' },
-      queue: [{ title: 'Space Oddity' }, { title: 'Starman' }],
+      movie: { current: null, playback: { status: 'idle' }, queue: [], queueCount: 0 },
+      music: { current: { item: { title: 'Rocket Man', artist: 'Elton John' } }, playback: { status: 'playing' }, queue: [], queueCount: 2 },
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
   }
+  if (url.includes('/spotlight/program')) return Promise.resolve(new Response(JSON.stringify({ ready: true, currentLogin: 'CaptainOne' }), { status: 200 }));
   if (url.includes('/api/integrations/chat-tag/state') || url.endsWith('/api/tag')) {
     return Promise.resolve(new Response(JSON.stringify({
       currentIt: 'Nova',
@@ -54,6 +56,7 @@ test('builds one bounded snapshot from the live services', async () => {
   const snapshot = await buildStellaLoungeSnapshot(fixtureFetch as typeof fetch, Date.parse('2026-09-21T12:00:00Z'));
   assert.equal(snapshot.media.currentTitle, 'Rocket Man');
   assert.equal(snapshot.media.queueCount, 2);
+  assert.equal(snapshot.overlay.spotlight, 'CaptainOne');
   assert.equal(snapshot.nebula.playerCount, 2);
   assert.equal(snapshot.nebula.activePlayerCount, 1);
   assert.equal(snapshot.nebula.currentPlayer, 'Nova');
@@ -70,8 +73,9 @@ test('builds one bounded snapshot from the live services', async () => {
 test('answers high-value Lounge questions from facts without a model guess', async () => {
   assert.equal(
     await resolveStellaLoungeIntent('playing', fixtureFetch as typeof fetch),
-    'HearMeOut is playing Rocket Man by Elton John, with 2 queued.',
+    'The Lounge music worker reports Rocket Man by Elton John playing.',
   );
+  assert.match(await resolveStellaLoungeIntent('live', fixtureFetch as typeof fetch), /@CaptainOne on the Spotlight feed/);
   assert.match(await resolveStellaLoungeIntent('join-game', fixtureFetch as typeof fetch), /spmt join.*!bingo join/);
   assert.match(await resolveStellaLoungeIntent('game-status', fixtureFetch as typeof fetch), /Nova currently has the active turn/);
   assert.match(await resolveStellaLoungeIntent('overview', fixtureFetch as typeof fetch), /CaptainOne/);

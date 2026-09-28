@@ -4008,7 +4008,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume)(?:\s+(.*))?$/i);
+        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume|radio)(?:\s+(.*))?$/i);
         if (hearMeOutCommand) {
             const command = hearMeOutCommand[1].toLowerCase();
             const argument = String(hearMeOutCommand[2] || '').trim();
@@ -4028,6 +4028,28 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 const message = error instanceof Error ? error.message : String(error);
                 await reply(`❌ HearMeOut received !${command}, but it failed: ${message}`, 'bot').catch(() => {});
             };
+
+            if (command === 'radio') {
+                const match = argument.match(/^(on|off|status|add)(?:\s+(.+))?$/i);
+                const radioControl = match?.[1]?.toLowerCase() || (!argument ? 'status' : '');
+                if (!radioControl || radioControl === 'add' && !match?.[2]) {
+                    await reply(`@${actualUsername}, use !radio on, !radio off, !radio status, or !radio add <public YouTube playlist URL>.`, 'bot').catch(() => {});
+                    return;
+                }
+                if (radioControl !== 'status' && !canControlHearMeOut) {
+                    await reply(`@${actualUsername}, only the broadcaster or a moderator can change Lounge radio.`, 'bot').catch(() => {});
+                    return;
+                }
+                try {
+                    const result: any = await executeHearMeOutBotAction({
+                        ...actionBase, action: 'hmo.media.radio', sessionId: 'discord-music-room',
+                        control: radioControl, query: match?.[2],
+                    });
+                    const current = result?.program?.music?.current?.item?.title;
+                    await reply(`📻 Lounge auto-radio is ${result.radio.enabled ? 'on' : 'off'} with ${result.radio.seedCount} songs${current ? `; now selected: ${current}` : '; request a song or add a public YouTube playlist to seed it'}.`, 'bot').catch(() => {});
+                } catch (error) { await replyFailure(error); }
+                return;
+            }
 
             if (command === 'sr' || command === 'wr') {
                 if (!argument) {
@@ -5504,6 +5526,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             : 'member';
                     const botAction = await routeBotAction(actualMessage, {
                         tenantId: responseTenantId,
+                        sourceTenantId: tenantId,
+                        sourceActorRole: broadcasterSpeaking ? 'owner' : tags.mod ? 'moderator' : 'member',
                         botName: responseBotName,
                         source: 'twitch',
                         visibility: 'public',
@@ -5525,6 +5549,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         await sendChatMessage(botAction.response, 'bot', responseChannel, responseTenantId).catch(() => {});
                         console.log(`[Dispatcher] Bot action ${botAction.action} ${botAction.status} for tenant ${responseTenantId} from Twitch`);
                         return;
+                    }
+                    if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+                        const { detectStellaLoungeIntent, resolveStellaLoungeIntent } = await import('./stella-lounge-host');
+                        const liveIntent = detectStellaLoungeIntent(actualMessage);
+                        if (liveIntent === 'playing' || liveIntent === 'live' || liveIntent === 'overview') {
+                            const responseChannel = await resolveTwitchReplyChannel({ sourceChannel: replyChannel, sourceTenantId: tenantId, responseTenantId });
+                            const facts = await resolveStellaLoungeIntent(liveIntent);
+                            await sendChatMessage(facts, 'bot', responseChannel, responseTenantId);
+                            return;
+                        }
                     }
                 }
 

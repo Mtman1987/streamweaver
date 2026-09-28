@@ -93,3 +93,14 @@ export async function overrideLoungeMediaLayout(target: LoungeMediaLayoutMode | 
   state.updatedBy = actor;
   return saveState(state).then(() => getLoungeMediaLayout());
 }
+
+export async function setLoungeMediaLayout(target: LoungeMediaLayoutMode | 'toggle', actor: string) {
+  const state = await readState();
+  state.mode = target === 'toggle' ? (state.mode === 'media' ? 'stream' : 'media') : target;
+  state.locked = false;
+  state.votes = { stream: {}, media: {} };
+  state.updatedAt = Date.now();
+  state.updatedBy = actor;
+  await saveState(state);
+  return getLoungeMediaLayout();
+}

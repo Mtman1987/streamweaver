@@ -17,16 +17,18 @@ import { canUsePublicImageGeneration, runImageCommand } from '@/services/image-c
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
+import { setLoungeMediaLayout } from '@/services/lounge-media-layout';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
 import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
+import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
 
 export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | 'hearmeout' | 'spmt';
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -46,6 +48,8 @@ export type BotActionRequest = {
 
 export type BotActionContext = {
   tenantId: string;
+  sourceTenantId?: string;
+  sourceActorRole?: BotActorRole;
   botName: string;
   source: BotActionSource;
   message: string;
@@ -267,6 +271,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['restart the Spotlight player', 'turn Spotlight off and back on'],
   },
   {
+    id: 'sw.lounge.layout',
+    title: 'Move the Lounge movie or Spotlight between the main and small windows',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['swap the screens', 'bump them', 'put the movie in the main window'],
+  },
+  {
     id: 'sw.lounge.volume',
     title: 'Set the live Lounge mixer volume for Stella, Spotlight, or media',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
@@ -404,7 +414,8 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if(battleIntent){
     let channels=[...message.matchAll(/@([a-z0-9_]{2,80})/gi)].map(match=>match[1].toLowerCase());
     if(!channels.length){
-      const tail=value.match(/\b(?:with|between|against|vs\.?|versus)\s+(.{2,180})$/)?.[1]||'';
+      const afterGame=value.slice(value.lastIndexOf('chat wars') + 'chat wars'.length);
+      const tail=afterGame.match(/\b(?:with|between|against|vs\.?|versus)\s+(.{2,180})$/)?.[1]||'';
       channels=tail
         .replace(/\b(?:in|for)\s+chat\s+wars\b.*$/,'')
         .split(/\s*(?:,|\band\b|\bvs\.?\b|\bversus\b|\bagainst\b)\s*/i)
@@ -422,7 +433,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   }
   const battle=value.match(/\b(?:start|make|create|link)\b.*\b(?:chat wars|stream battle|stream vs stream)\b.*(?:against|with|versus|vs\.?)[\s@]+([a-z0-9_]{2,80})\b/);
   if(battle) return {action:'nebula.stream-battle',args:{opponent:battle[1]},detection:'explicit'};
-  const gameStartStop=value.match(/\b(?:stella\s+)?(start|stop|end|turn on|turn off)\s+(?:the\s+)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/);
+  const gameStartStop=value.match(/\b(start|launch|stop|end|turn on|turn off)\s+(?:the\s+)?(?:game\s+)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/);
   if(gameStartStop){ const action=/^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start'; return {action:'nebula.command',args:{command:`spmt ${gameNames[gameStartStop[2]]} ${action}`},detection:'explicit'}; }
 
   const stellaMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?|\d{1,7})\b/);
@@ -438,6 +449,13 @@ function detectExplicitAction(message: string): BotActionRequest | null {
 
   if (/\b(?:restart|reboot|power[- ]?cycle|turn off and (?:back )?on)\b.*\bspotlight\b|\bspotlight\b.*\b(?:restart|reboot|power[- ]?cycle)\b/.test(value)) {
     return { action: 'sw.lounge.spotlight.restart', args: {}, detection: 'explicit' };
+  }
+  if (/\b(?:swap|switch|flip)\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them)\b|\bbump\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them|spotlight|stream|movie|media)\b/.test(value)) {
+    return { action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit' };
+  }
+  if (/\b(?:put|move|show|focus|bring)\b.*\b(?:movie|media|hearmeout|hear me out|spotlight|stream|streamer)\b.*\b(?:main|big|large)\s*(?:window|screen|stage)?\b/.test(value)) {
+    const target = /\b(?:movie|media|hearmeout|hear me out)\b/.test(value) ? 'media' : 'stream';
+    return { action: 'sw.lounge.layout', args: { target }, detection: 'explicit' };
   }
   if (/\b(?:start|show|turn on)\b.*\bbrb\b|\b(?:brb|be right back)\s+(?:player|screen)\b/.test(value)) {
     return { action: 'sw.lounge.brb', args: { control: 'start' }, detection: 'explicit' };
@@ -815,7 +833,8 @@ export async function executeBotAction(
       const command=clean(request.args.command,400); if(!command) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula command to run.'};
       const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
       const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:command});
-      return {handled:true,action:request.action,status:'completed',response:clean((result as any).reply,500)||'✅ Nebula command completed.',result};
+      if ((result as any).handled !== true) return {handled:true,action:request.action,status:'failed',response:'Nebula did not accept that game command; no game change was confirmed.',result};
+      return {handled:true,action:request.action,status:'completed',response:clean((result as any).reply,500)||'Nebula accepted the command, but did not return a game status.',result};
     }
     if (request.action === 'nebula.overlay.manage') {
       const result=await manageNebulaOverlay({operation:(request.args.operation as any)||'create',channel:context.tenantId,name:request.args.name});
@@ -824,6 +843,16 @@ export async function executeBotAction(
     if (request.action === 'sw.lounge.spotlight.restart') {
       const result = requestSpotlightRestart();
       return { handled: true, action: request.action, status: 'completed', response: '✅ Spotlight player restart requested.', result };
+    }
+    if (request.action === 'sw.lounge.layout') {
+      if (context.tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID) throw new Error('Lounge layout belongs to the SpaceMountain channel.');
+      const target = request.args.target === 'media' || request.args.target === 'stream' ? request.args.target : 'toggle';
+      const layout = await setLoungeMediaLayout(target, context.actor.username || context.botName);
+      return { handled: true, action: request.action, status: 'completed',
+        response: layout.mode === 'media'
+          ? 'Layout saved: HearMeOut is set as the main window; Spotlight is set as the small window. The viewer updates on its next poll.'
+          : 'Layout saved: Spotlight is set as the main window; HearMeOut is set as the small window. The viewer updates on its next poll.',
+        result: layout };
     }
     if (request.action === 'sw.lounge.brb') {
       if (request.args.control === 'stop') {
@@ -938,5 +967,10 @@ export async function routeBotAction(message: string, context: BotActionContext)
       request = { action: 'hmo.media.request', args: { query: extractMediaQuery(value) }, detection: 'explicit' };
     }
   }
-  return request ? executeBotAction(request, context) : null;
+  if (!request) return null;
+  const loungeScoped = context.sourceTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+    && (request.action.startsWith('sw.lounge.') || request.action.startsWith('nebula.'));
+  return executeBotAction(request, loungeScoped
+    ? { ...context, tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID, actor: { ...context.actor, role: context.sourceActorRole || context.actor.role } }
+    : context);
 }

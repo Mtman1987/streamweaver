@@ -27,6 +27,18 @@ test('publishes a persona-neutral suite action catalog', () => {
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Moonbeam'), false);
 });
 
+test('Stella translates explicit screen and game commands into real actions', async () => {
+  assert.deepEqual(await detectBotAction('Stella swap the screens'), {
+    action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella bump them'), {
+    action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella start the game bingo'), {
+    action: 'nebula.command', args: { command: 'spmt bingo start' }, detection: 'explicit',
+  });
+});
+
 test('detects explicit Chat Wars battle setup without requiring @ prefixes', async () => {
   assert.deepEqual(await detectBotAction('Stella start a stream vs stream Chat Wars with alpha and beta'), {
     action: 'nebula.chatwars.stream-battle',

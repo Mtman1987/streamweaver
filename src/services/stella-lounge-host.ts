@@ -21,6 +21,7 @@ export type StellaLoungeIntent =
   | 'join-game'
   | 'game-status'
   | 'playing'
+  | 'live'
   | 'moderator'
   | 'fist-bump';
 
@@ -28,6 +29,7 @@ export type StellaLoungeSnapshot = {
   capturedAt: string;
   media: {
     available: boolean;
+    kind?: 'music' | 'movie';
     currentTitle?: string;
     currentArtist?: string;
     queueCount: number;
@@ -49,6 +51,7 @@ export type StellaLoungeSnapshot = {
   overlay: {
     available: boolean;
     spotlight?: string;
+    spotlightReady: boolean;
     mediaTitle?: string;
     mediaKind?: 'music' | 'movie';
     games: string[];
@@ -65,15 +68,12 @@ const NEBULA_URL = (
   || process.env.NEXT_PUBLIC_CHAT_TAG_URL
   || 'https://chat-tag-new.fly.dev'
 ).replace(/\/+$/, '');
-const HEARMEOUT_URL = (
-  process.env.HEARMEOUT_BASE_URL
-  || process.env.NEXT_PUBLIC_HEARMEOUT_URL
-  || 'https://hearmeout-main.fly.dev'
-).replace(/\/+$/, '');
+const LOUNGE_WORKER_URL = String(process.env.HMO_LOUNGE_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4444').replace(/\/+$/, '');
+const SPOTLIGHT_WORKER_URL = String(process.env.HMO_SPOTLIGHT_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4445').replace(/\/+$/, '');
 
 const SNAPSHOT_CACHE_MS = 15_000;
-const AMBIENT_MIN_MS = 12 * 60_000;
-const AMBIENT_MAX_MS = 28 * 60_000;
+const AMBIENT_MIN_MS = 7 * 60_000;
+const AMBIENT_MAX_MS = 14 * 60_000;
 const EVENT_SPEECH_GAP_MS = 12_000;
 const PROMO_GAP_MS = 30 * 60_000;
 
@@ -138,8 +138,9 @@ export async function buildStellaLoungeSnapshot(
 ): Promise<StellaLoungeSnapshot> {
   if (fetcher === fetch && cachedSnapshot && cachedSnapshot.expiresAt > now) return cachedSnapshot.value;
 
-  const [mediaResult, nebulaResult, gamesResult, communityResult, overlayResult] = await Promise.allSettled([
-    fetchJson(fetcher, `${HEARMEOUT_URL}/api/music/session/state`),
+  const [mediaResult, spotlightResult, nebulaResult, gamesResult, communityResult, overlayResult] = await Promise.allSettled([
+    fetchJson(fetcher, `${LOUNGE_WORKER_URL}/lounge/media/program`),
+    fetchJson(fetcher, `${SPOTLIGHT_WORKER_URL}/spotlight/program`),
     fetchJson(fetcher, `${SPMT_URL}/api/integrations/chat-tag/state`)
       .catch(() => fetchJson(fetcher, `${NEBULA_URL}/api/tag`)),
     fetchJson(fetcher, `${NEBULA_URL}/api/game-hub/channel?channel=${SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL}`),
@@ -148,8 +149,12 @@ export async function buildStellaLoungeSnapshot(
   ]);
 
   const mediaData = mediaResult.status === 'fulfilled' ? unwrapData(mediaResult.value) : null;
-  const currentMedia = mediaData?.current && typeof mediaData.current === 'object' ? mediaData.current : null;
-  const mediaQueue = Array.isArray(mediaData?.queue) ? mediaData.queue : [];
+  const activeKind = mediaData?.movie?.current && mediaData.movie.playback?.status === 'playing' ? 'movie'
+    : mediaData?.music?.current && mediaData.music.playback?.status === 'playing' ? 'music' : undefined;
+  const activeLane = activeKind ? mediaData[activeKind] : null;
+  const currentMedia = activeLane?.current?.item || null;
+  const mediaQueue = Array.isArray(activeLane?.queue) ? activeLane.queue : [];
+  const spotlightData = spotlightResult.status === 'fulfilled' ? unwrapData(spotlightResult.value) : null;
 
   const nebulaData = nebulaResult.status === 'fulfilled' ? unwrapData(nebulaResult.value) : null;
   const nebulaState = nebulaData?.state && typeof nebulaData.state === 'object' ? nebulaData.state : nebulaData;
@@ -181,15 +186,12 @@ export async function buildStellaLoungeSnapshot(
     capturedAt: new Date(now).toISOString(),
     media: {
       available: mediaResult.status === 'fulfilled',
+      kind: activeKind,
       currentTitle: currentMedia?.title ? String(currentMedia.title) : undefined,
       currentArtist: currentMedia?.artist ? String(currentMedia.artist) : undefined,
-      queueCount: mediaQueue.length,
-      nextTitle: mediaQueue[0]?.title ? String(mediaQueue[0].title) : undefined,
-      playbackState: mediaResult.status !== 'fulfilled'
-        ? 'unknown'
-        : currentMedia && /^(playing|active)$/i.test(String(mediaData?.playbackState || mediaData?.state || currentMedia?.state || ''))
-          ? 'playing'
-          : 'idle',
+      queueCount: Number.isFinite(Number(activeLane?.queueCount)) ? Number(activeLane.queueCount) : mediaQueue.length,
+      nextTitle: mediaQueue[0]?.item?.title ? String(mediaQueue[0].item.title) : undefined,
+      playbackState: mediaResult.status !== 'fulfilled' ? 'unknown' : activeKind ? 'playing' : 'idle',
     },
     nebula: {
       available: nebulaResult.status === 'fulfilled' || gamesResult.status === 'fulfilled',
@@ -205,7 +207,8 @@ export async function buildStellaLoungeSnapshot(
     },
     overlay: {
       available: overlayResult.status === 'fulfilled',
-      spotlight: overlayData?.spotlight?.displayName ? String(overlayData.spotlight.displayName) : undefined,
+      spotlight: spotlightData?.ready && spotlightData?.currentLogin ? String(spotlightData.currentLogin) : undefined,
+      spotlightReady: Boolean(spotlightData?.ready && spotlightData?.currentLogin),
       mediaTitle: overlayData?.media?.title ? String(overlayData.media.title) : undefined,
       mediaKind: overlayData?.media?.kind === 'movie' ? 'movie' : overlayData?.media?.kind === 'music' ? 'music' : undefined,
       games: overlayGames,
@@ -227,6 +230,7 @@ export function detectStellaLoungeIntent(message: string): StellaLoungeIntent | 
 
   if (/\b(fist\s*bump|pound it|dap me|up top)\b/.test(normalized)) return 'fist-bump';
   if (/\b(get|find|call|contact|need|where(?:'s| is))\b.*\b(mod|moderator|staff|help desk|support)\b|\bneed help from (?:a )?human\b/.test(normalized)) return 'moderator';
+  if (/\b(?:who(?:'s| is)|which|what|is anyone)\b.*\b(?:live|streaming|spotlight)\b|\b(?:spotlight|streamer)\b.*\b(?:live|on screen|right now)\b/.test(normalized)) return 'live';
   if (/\b(what(?:'s| is) playing|now playing|what song|what movie|what is queued|media status|music status)\b/.test(normalized)) return 'playing';
   if (/\b(how (?:do|can) i join|join (?:the )?(?:game|games|rotation)|how to play|let me play|put me in)\b/.test(normalized)) return 'join-game';
   if (/\b(game status|who(?:'s| is) playing|who has the tag|who(?:'s| is) it|how many players|is (?:a |the )?game active)\b/.test(normalized)) return 'game-status';
@@ -235,15 +239,21 @@ export function detectStellaLoungeIntent(message: string): StellaLoungeIntent | 
 }
 
 function mediaLine(snapshot: StellaLoungeSnapshot): string {
-  if (!snapshot.media.available) return 'HearMeOut is not reporting its player state right now.';
+  if (!snapshot.media.available) return 'The Lounge media worker is not reporting its player state right now.';
   if (snapshot.media.currentTitle && snapshot.media.playbackState === 'playing') {
-    return `HearMeOut reports verified playback of ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''}, with ${snapshot.media.queueCount} queued.`;
+    return `The Lounge ${snapshot.media.kind === 'movie' ? 'movie' : 'music'} worker reports ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''} playing.`;
   }
   if (snapshot.media.currentTitle) {
     return `HearMeOut has ${snapshot.media.currentTitle}${snapshot.media.currentArtist ? ` by ${snapshot.media.currentArtist}` : ''} selected, but playback is not verified. Do not say it is playing or audible.`;
   }
   if (snapshot.media.nextTitle) return `HearMeOut is idle; ${snapshot.media.nextTitle} is next in the ${snapshot.media.queueCount}-item queue.`;
-  return 'HearMeOut is idle and its queue is empty.';
+  return 'The Lounge media worker has no movie or music playing.';
+}
+
+function spotlightLine(snapshot: StellaLoungeSnapshot): string {
+  return snapshot.overlay.spotlightReady && snapshot.overlay.spotlight
+    ? `The live Spotlight worker reports @${snapshot.overlay.spotlight} on the Spotlight feed.`
+    : 'The Spotlight worker has not verified a playing streamer right now.';
 }
 
 function gameLine(snapshot: StellaLoungeSnapshot): string {
@@ -265,6 +275,7 @@ export async function resolveStellaLoungeIntent(
 
   const snapshot = await buildStellaLoungeSnapshot(fetcher);
   if (intent === 'playing') return mediaLine(snapshot);
+  if (intent === 'live') return spotlightLine(snapshot);
   if (intent === 'game-status') return `${gameLine(snapshot)} Type spmt join if you want in.`;
   if (intent === 'join-game') {
     const gameCommand = snapshot.nebula.games.find((game) => game.joinCommand);
@@ -279,19 +290,20 @@ export async function resolveStellaLoungeIntent(
       ? `${snapshot.community.liveCount} community streamer${snapshot.community.liveCount === 1 ? ' is' : 's are'} live${snapshot.community.liveNames.length ? `: ${snapshot.community.liveNames.join(', ')}` : ''}.`
       : 'No community streamers are live at this moment.'
     : 'The live-community board is temporarily unavailable.';
-  return `${mediaLine(snapshot)} ${gameLine(snapshot)} ${community}`;
+  return `${mediaLine(snapshot)} ${spotlightLine(snapshot)} ${gameLine(snapshot)} ${community}`;
 }
 
 export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): string {
   return [
     'Verified live Lounge state (use these facts; do not invent missing state):',
     `- ${mediaLine(snapshot)}`,
+    `- ${spotlightLine(snapshot)}`,
     `- ${gameLine(snapshot)}`,
     snapshot.community.available
       ? `- Community live count: ${snapshot.community.liveCount}${snapshot.community.liveNames.length ? ` (${snapshot.community.liveNames.join(', ')})` : ''}.`
       : '- Community live state is unavailable.',
     snapshot.overlay.available
-      ? `- What the Lounge overlay currently knows: Spotlight ${snapshot.overlay.spotlight || 'none'}; visible media ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}.`
+      ? `- What the Lounge overlay currently knows: assigned Spotlight ${snapshot.overlay.spotlight || 'unverified'}; media listing ${snapshot.overlay.mediaTitle ? `${snapshot.overlay.mediaKind || 'media'} "${snapshot.overlay.mediaTitle}"` : 'none'}; games ${snapshot.overlay.games.length ? snapshot.overlay.games.join(', ') : 'none'}; upcoming events ${snapshot.overlay.upcomingEvents.length ? snapshot.overlay.upcomingEvents.map((event) => `${event.title} at ${event.startsAt}`).join('; ') : 'none'}. Do not infer which window is main or call music Spotlight.`
       : '- Lounge overlay state is unavailable; do not guess what is on screen.',
     `- Recent Lounge diagnostic journal: ${getLoungeDiagnosticJournal(12).length ? getLoungeDiagnosticJournal(12).map((entry) => `[${entry.level}] ${entry.subsystem}/${entry.event}: ${entry.detail}`).join(' | ') : 'no recorded faults or transitions yet'}.`,
     '- Use the diagnostic journal for why/how questions. State only causes the journal actually proves; if it records symptoms but not a cause, say the cause is not yet proven.',
@@ -303,12 +315,10 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
 }
 
 const AMBIENT_TOPICS = [
-  (snapshot: StellaLoungeSnapshot) => `Invite the room into a quick, fun conversation about books: a favorite book, a character they would bring aboard, or a fictional world worth visiting. Do not recommend a specific book unless asked. Live state: ${mediaLine(snapshot)}`,
-  (snapshot: StellaLoungeSnapshot) => `Offer the room an enthusiastic fist bump or celebrate the simple fact that the Lounge is still flying. Keep it natural, not motivational-poster language. Live state: ${gameLine(snapshot)}`,
-  (snapshot: StellaLoungeSnapshot) => `Ask one playful, answerable question that could spark chat without requiring personal information. It may involve space travel, games, music, movies, snacks, or strange human customs. Live state: ${mediaLine(snapshot)} ${gameLine(snapshot)}`,
-  (snapshot: StellaLoungeSnapshot) => `Give a short invitation to join what is available right now. Mention spmt join only if it fits. Do not pretend a game is active when the state says otherwise. Live state: ${gameLine(snapshot)}`,
-  (snapshot: StellaLoungeSnapshot) => `Make one dry, warm observation as Stella about tending a 24-hour community Lounge. You may acknowledge the current music or game state, but do not narrate an event that did not happen. Live state: ${mediaLine(snapshot)} ${gameLine(snapshot)}`,
-  (snapshot: StellaLoungeSnapshot) => `Start a tiny social moment: a harmless this-or-that, a one-line curiosity, a compact space fact framed as conversation, or an invitation for someone to share a win from their day. Live state: ${mediaLine(snapshot)}`,
+  (snapshot: StellaLoungeSnapshot) => `React to the current Lounge program with a concise host observation. ${mediaLine(snapshot)} ${spotlightLine(snapshot)}`,
+  (snapshot: StellaLoungeSnapshot) => `Acknowledge the current Spotlight streamer by verified name, if one is present. If none is verified, discuss the current movie or music instead. ${spotlightLine(snapshot)} ${mediaLine(snapshot)}`,
+  (snapshot: StellaLoungeSnapshot) => `Briefly guide someone into a real game only when a game is available. Otherwise build on current media. ${gameLine(snapshot)} ${mediaLine(snapshot)}`,
+  (snapshot: StellaLoungeSnapshot) => `Find a natural follow-up to recent human chat when available. Otherwise make a grounded observation about the current movie, music, or streamer. ${mediaLine(snapshot)} ${spotlightLine(snapshot)}`,
 ];
 
 
@@ -437,7 +447,7 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
     const snapshot = await buildStellaLoungeSnapshot();
     const room = await buildRoomAwareness(now);
     if (snapshot.nebula.games.length && snapshot.nebula.playerCount === 0) rememberProducerOpportunity('Nebula Arcade has games available and the shared player pool is empty.', 20 * 60_000, now);
-    if (snapshot.media.queueCount === 0) rememberProducerOpportunity('HearMeOut queue is empty; a natural opening may exist for a music request invitation.', 20 * 60_000, now);
+    if (snapshot.media.available && snapshot.media.queueCount === 0) rememberProducerOpportunity('The Lounge media queue is empty; a natural opening may exist for a request invitation.', 20 * 60_000, now);
     const prompt = [
       chooseAmbientTopic(snapshot),
       'Current co-host state: ' + JSON.stringify(stellaThoughtBoard(now)),

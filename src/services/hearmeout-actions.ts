@@ -11,6 +11,7 @@ export type HearMeOutBotAction =
   | 'hmo.media.request'
   | 'hmo.media.search'
   | 'hmo.media.control'
+  | 'hmo.media.radio'
   | 'hmo.rooms.read'
   | 'hmo.bot.control'
   | 'hmo.voice.bridge.state'
