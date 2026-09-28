@@ -41,6 +41,7 @@ const lastRetryReset = new Map<string, number>();
 let communityBotClient: tmi.Client | null = null;
 let communityBotUsername = '';
 const communityBotChannels = new Set<string>();
+const signalCarrierChannels = new Set<string>();
 let communityBotConnectPromise: Promise<tmi.Client | null> | null = null;
 let theCountTwitchClient: tmi.Client | null = null;
 let theCountConnectPromise: Promise<tmi.Client | null> | null = null;
@@ -325,21 +326,33 @@ async function disconnectIfOpen(client: tmi.Client | null | undefined): Promise<
 }
 
 async function getCommunityBotTokens(): Promise<StoredTokens | null> {
+  const tokenPath = communityBotTokensPath();
   try {
-    const raw = await fsp.readFile(communityBotTokensPath(), 'utf-8');
+    const raw = await fsp.readFile(tokenPath, 'utf-8');
     const parsed = JSON.parse(raw);
-    // Accept either dedicated community keys or legacy bot keys.
     const normalized: StoredTokens = {
       communityBotToken: parsed.communityBotToken || parsed.botToken || parsed.access_token,
       communityBotRefreshToken: parsed.communityBotRefreshToken || parsed.botRefreshToken || parsed.refresh_token,
       communityBotUsername: parsed.communityBotUsername || parsed.botUsername || parsed.username,
       communityBotTokenExpiry: parsed.communityBotTokenExpiry || parsed.botTokenExpiry,
     };
-    if (!normalized.communityBotToken || !normalized.communityBotRefreshToken || !normalized.communityBotUsername) {
+    const missing = [
+      !normalized.communityBotToken ? 'access token' : '',
+      !normalized.communityBotRefreshToken ? 'refresh token' : '',
+      !normalized.communityBotUsername ? 'username' : '',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      console.warn(`[Twitch:community-bot] Credentials incomplete at ${tokenPath}: missing ${missing.join(', ')}`);
       return null;
     }
     return normalized;
-  } catch {
+  } catch (error: any) {
+    const code = String(error?.code || '');
+    if (code === 'ENOENT') {
+      console.warn(`[Twitch:community-bot] Credential file not found at ${tokenPath}; authorize the Community Bot in Integrations`);
+    } else {
+      console.warn(`[Twitch:community-bot] Could not read credentials at ${tokenPath}: ${error?.message || String(error)}`);
+    }
     return null;
   }
 }
@@ -384,8 +397,9 @@ async function ensureCommunityBotForChannel(
         try {
           const channelName = channel.replace('#', '').toLowerCase();
           const tenantId = channelToTenant.get(channelName);
-          if (!tenantId) return;
-          const tenant = tenantClients.get(tenantId);
+          const isSignalCarrier = signalCarrierChannels.has(channelName);
+          if (!tenantId && !isSignalCarrier) return;
+          const tenant = tenantId ? tenantClients.get(tenantId) : undefined;
           if (
             tenant
             && (
@@ -395,6 +409,37 @@ async function ensureCommunityBotForChannel(
                 && !isSharedCommunityBotClient(tenant.botClient))
             )
           ) {
+            return;
+          }
+
+          if (!tenantId && isSignalCarrier) {
+            if (self) return;
+            const username = String(tags?.username || tags?.['display-name'] || 'viewer').trim();
+            const carrierMessage = String(message || '');
+            // Carrier chats are read-only for StreamWeaverBot. The Signal
+            // action may still run, but acknowledgements stay out of chat.
+            const sayCarrierReply = async (_text: string): Promise<boolean> => false;
+
+            if (/^!signal(?:\s|$)/i.test(carrierMessage)) {
+              const { handleTwitchSignalCommand } = await import('./signal-system');
+              try {
+                const result = await handleTwitchSignalCommand({
+                  providerUserId: String(tags?.['user-id'] || ''),
+                  username,
+                  broadcaster: channelName,
+                  rawMessage: carrierMessage,
+                  deferAcknowledgement: true,
+                });
+                if (result.message) {
+                  await sayCarrierReply(result.message);
+                }
+              } catch (error: any) {
+                console.error('[Twitch:community-bot] Carrier !signal failed:', error);
+                await sayCarrierReply(`@${username}, Signal failed: ${error?.message || 'unknown error'}`);
+              }
+              return;
+            }
+
             return;
           }
 
@@ -417,16 +462,22 @@ async function ensureCommunityBotForChannel(
   }
 
   const client = await communityBotConnectPromise;
-  if (!client) return null;
+  if (!client) {
+    // Do not cache a failed setup forever: OAuth can write fresh credentials while this process is live.
+    communityBotConnectPromise = null;
+    return null;
+  }
 
-  const channelLogin = channel.toLowerCase();
+  const channelLogin = String(channel || '').trim().replace(/^#+/, '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 25);
+  if (!channelLogin) return null;
   if (!communityBotChannels.has(channelLogin)) {
     try {
       await client.join(channelLogin);
       communityBotChannels.add(channelLogin);
       console.log(`[Twitch:community-bot] Joined #${channelLogin}`);
     } catch (error) {
-      console.error(`[Twitch:community-bot] Failed to join #${channelLogin}:`, error);
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[Twitch:community-bot] Failed to join carrier ${channelLogin}: ${detail}`);
     }
   }
 
@@ -536,6 +587,49 @@ export async function reconnectTheCountTwitchClient(): Promise<tmi.Client | null
   theCountConnectPromise = null;
   theCountChannels.clear();
   return setupTheCountTwitchClient();
+}
+
+function normalizeSignalCarrierChannel(value: string): string {
+  return String(value || '').replace(/^#/, '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 25);
+}
+
+export async function syncSignalCarrierChannels(channels: string[]): Promise<{ active: string[]; joined: string[]; parted: string[] }> {
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Twitch client credentials are not configured');
+
+  const next = new Set((channels || []).map(normalizeSignalCarrierChannel).filter(Boolean));
+  const joined: string[] = [];
+  const parted: string[] = [];
+
+  for (const channel of next) {
+    if (!communityBotChannels.has(channel)) {
+      const client = await ensureCommunityBotForChannel(channel, clientId, clientSecret);
+      if (!client || !communityBotChannels.has(channel)) {
+        console.warn(`[Signal] Skipping carrier ${channel}: community bot could not join; continuing with remaining live carriers`);
+        continue;
+      }
+      joined.push(channel);
+    }
+    signalCarrierChannels.add(channel);
+  }
+
+  for (const channel of [...signalCarrierChannels]) {
+    if (next.has(channel)) continue;
+    signalCarrierChannels.delete(channel);
+    if (channelToTenant.has(channel)) continue;
+    if (communityBotClient && communityBotChannels.has(channel)) {
+      try {
+        await communityBotClient.part(channel);
+      } catch (error) {
+        console.warn(`[Twitch:community-bot] Failed to part removed Signal carrier #${channel}:`, error);
+      }
+      communityBotChannels.delete(channel);
+      parted.push(channel);
+    }
+  }
+
+  return { active: [...signalCarrierChannels].sort(), joined, parted };
 }
 
 async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {

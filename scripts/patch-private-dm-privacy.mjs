@@ -63,7 +63,8 @@ patchFile('src/services/chat-monitor.ts', (source) => {
 });
 
 patchFile('src/services/chat-dispatcher.ts', (source) => {
-  if (source.includes('Relay routed to active Discord presence')) return source;
+  if (source.includes('Relay routed to active Discord presence')
+    || source.includes('Direct human relay delivered through Discord:')) return source;
 
   const unsafe = /if \(relayRequest\.targetName && isDirectHumanRelayTarget\(relayRequest\.targetName\)\) \{\s*const directMessage = buildDirectHumanRelayMessage\(\{[\s\S]*?\}\);\s*console\.log\('\[Dispatcher\] Relay delivered directly to human target in current Twitch chat:'[\s\S]*?await sendChatMessage\([\s\S]*?\)\.catch\(\(\) => \{\}\);\s*return;\s*\}/;
   if (!unsafe.test(source)) throw new Error('Human relay routing patch: unsafe Twitch fallback marker missing');

@@ -6,6 +6,7 @@ import { getMultiPlatformManager } from '@/services/multi-platform';
 import { getKickServiceForTenant } from '@/services/kick';
 import { getPoints } from '@/services/points';
 import { readSharedChatReplay } from '@/services/shared-chat-ingestion';
+import { enrichDiscordSharedChatEvents } from '@/services/discord-rich-chat';
 import { getTwitchStatus } from '@/services/twitch-client';
 import { getUser } from '@/services/user-stats';
 import { listCommlinkCommunityChats, readCommlinkCommunityMessages } from '@/services/commlink-community-chats';
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
   const ownReplay = await readSharedChatReplay(tenantId, { limit: 500 });
   const publicMessages = await readCommlinkCommunityMessages(communityChats, tenantId);
   const replay = dedupeEvents([...ownReplay, ...publicMessages]);
-  const filtered = replay.filter((event) => {
+  const filteredAll = replay.filter((event) => {
     const platform = canonicalPlatform(event);
     const eventTime = timestampMs(event.originalTimestamp);
     if (platformFilter && platform !== platformFilter) return false;
@@ -107,6 +108,10 @@ export async function GET(request: NextRequest) {
     if (query && !`${event.sender.displayName} ${event.sender.login || ''} ${event.text} ${event.channelName || ''}`.toLowerCase().includes(query)) return false;
     return true;
   });
+  // Hydrate only the bounded visible window. Discord channel/message lookups are
+  // cached, so Commlink gets names, avatars, mentions and rich media without
+  // turning a 500-event replay into hundreds of provider requests.
+  const filtered = await enrichDiscordSharedChatEvents(filteredAll.slice(-limit));
   const commands = (await getAllCommands(tenantId))
     .filter((command) => command.enabled)
     .map((command) => ({
@@ -186,7 +191,9 @@ export async function GET(request: NextRequest) {
       readOnly: true,
     };
   });
-  const channels = Array.from(new Map(replay.map((event) => {
+  const richEventById = new Map(filtered.map((event) => [event.eventId, event]));
+  const channelReplay = replay.map((event) => richEventById.get(event.eventId) || event);
+  const channels = Array.from(new Map(channelReplay.map((event) => {
     const platform = canonicalPlatform(event);
     const id = `${platform}:${event.channelId}`;
     return [id, {
@@ -212,7 +219,7 @@ export async function GET(request: NextRequest) {
     mode: 'read-only',
     count: events.length,
     capacity: 500,
-    hasMore: filtered.length > events.length,
+    hasMore: filteredAll.length > events.length,
     generatedAt: new Date().toISOString(),
     nextSince: events.at(-1)?.originalTimestamp || request.nextUrl.searchParams.get('since') || null,
     commands,

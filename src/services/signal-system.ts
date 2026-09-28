@@ -6,8 +6,7 @@ import { readWorldLore } from '../lib/world-lore-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
 import { getDiscordStreamHubDefaultGuildId, postDiscordStreamHubSignalDrop, toggleDiscordStreamHubSignalSeeker } from './discord-stream-hub';
 import { sendStructuredDiscordReply, type DiscordReplySpeaker } from './discord-structured-replies';
-import { buildBotAvatarUrl, resolveDiscordBotThumbnailUrl } from './discord-branding';
-import { hasTenantOwnAvatar } from './discord-avatar-media';
+import { resolveDiscordBotThumbnailUrl } from './discord-branding';
 import { sendWebhookMessage } from './discord-webhooks';
 import { deleteMessage } from './discord';
 import { createDiscordDmChannel, sendDiscordMessage } from './discord-local';
@@ -25,6 +24,7 @@ const SIGNAL_COOLDOWN_STATE = 'signal-command-cooldowns.json';
 const SIGNAL_OWNER_DISCORD_ID = String(process.env.STREAMWEAVER_OWNER_DISCORD_ID || '767875979561009173').trim();
 const SIGNAL_CLICK_STATE = 'signal-click-tracking.json';
 const SIGNAL_TWITCH_TENANT_ID = String(process.env.SIGNAL_TWITCH_TENANT_ID || 'spacemountainlive').trim();
+const SIGNAL_COMMUNITY_SPOTLIGHT_GIF_URL = 'https://cdn.discordapp.com/emojis/1284931162896334929.gif';
 const CHANNEL_EXCLUDE = /(?:log|staff|admin|support|ticket|announce|moderator|mod-only|private|audit)/i;
 
 export type SignalCommandResult = {
@@ -337,16 +337,35 @@ async function postDiscordStreamHubSignal(input: {
   return response.json().catch(() => ({}));
 }
 
+async function resolveDiscordStreamHubSignalDestination(): Promise<{ guildId: string; channelId: string }> {
+  const base = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || 'https://discord-stream-hub-new.fly.dev').replace(/\/$/, '');
+  const secret = String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();
+  if (!secret) throw new Error('DSH service secret is not configured');
+  const response = await fetch(`${base}/api/internal/signal/channel`, {
+    headers: { Authorization: `Bearer ${secret}` },
+    cache: 'no-store',
+    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(5000)
+      : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`Signal destination lookup failed: ${response.status} ${await response.text().catch(() => '')}`);
+  }
+  const payload = await response.json().catch(() => null) as any;
+  const guildId = String(payload?.guildId || '').trim();
+  const channelId = String(payload?.channelId || '').trim();
+  if (!guildId || !channelId) throw new Error('DSH Signal destination response was incomplete');
+  return { guildId, channelId };
+}
+
 function boldSignalText(value: string): string {
   const escaped = String(value || '').replace(/\\/g, '\\\\').replace(/\*/g, '\\*').trim();
   return `**${escaped}**`;
 }
 
-async function resolveSignalDiscordAvatarUrl(): Promise<string> {
+function resolveSignalEmbedBadgeUrl(): string {
   const configured = String(process.env.SIGNAL_DISCORD_GIF_URL || '').trim();
-  if (/^https?:\/\//i.test(configured)) return configured;
-  if (hasTenantOwnAvatar(SIGNAL_TWITCH_TENANT_ID)) return buildBotAvatarUrl(SIGNAL_TWITCH_TENANT_ID);
-  return resolveDiscordBotThumbnailUrl(SIGNAL_TWITCH_TENANT_ID).catch(() => '');
+  return /^https?:\/\//i.test(configured) ? configured : SIGNAL_COMMUNITY_SPOTLIGHT_GIF_URL;
 }
 
 export async function handleDiscordSignalCommand(input: {
@@ -367,17 +386,29 @@ export async function handleDiscordSignalCommand(input: {
   const entitlement = await getSpmtEasterEggEntitlement({ provider: 'discord', providerUserId: userId });
   if (!entitlement.eggs.signal) return { handled: true, ok: false, message: 'NO CARRIER AUTHORIZATION.' };
 
-  const signalAvatarUrl = await resolveSignalDiscordAvatarUrl();
+  const signalBadgeUrl = resolveSignalEmbedBadgeUrl();
+  const webhookAvatarUrl = String(input.sourceUserAvatarUrl || '').trim()
+    || 'https://cdn.discordapp.com/embed/avatars/0.png';
+  const webhookUsername = String(
+    input.msg.member?.displayName
+    || input.msg.displayName
+    || input.msg.author?.globalName
+    || input.msg.author?.global_name
+    || input.actualUsername
+    || 'Discord User'
+  ).trim();
+
   const local = await sendWebhookMessage(
     input.sourceChannelId,
     '',
-    input.actualUsername,
-    signalAvatarUrl || input.sourceUserAvatarUrl,
+    webhookUsername,
+    webhookAvatarUrl,
     [{
       title: '📡 SIGNAL',
       description: boldSignalText(signalText),
       color: 0x22d3ee,
-      ...(signalAvatarUrl ? { thumbnail: { url: signalAvatarUrl } } : {}),
+      thumbnail: { url: signalBadgeUrl },
+      footer: { text: 'SIGNAL LOCKED • MESSAGE ACQUIRED' },
     }],
   );
 
@@ -439,9 +470,7 @@ export async function handleTwitchSignalCommand(input: {
   const targetName = input.broadcaster.replace(/^#/, '').trim().toLowerCase();
   if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };
 
-  const guildId = await getDiscordStreamHubDefaultGuildId();
-  const channelId = await resolveSignalChannelId(guildId);
-  if (!channelId) throw new Error(`${SIGNAL_CHANNEL_NAME} was not found in the Space Mountain Discord.`);
+  const { guildId, channelId } = await resolveDiscordStreamHubSignalDestination();
 
   const posted = await postDiscordStreamHubSignal({
     guildId,
@@ -452,8 +481,11 @@ export async function handleTwitchSignalCommand(input: {
   });
   await recordSignalCooldown(targetName);
 
-  await sendChatMessage(`📡 SIGNAL ACKNOWLEDGED — transmission accepted from @${input.username}.`, 'bot', targetName, SIGNAL_TWITCH_TENANT_ID).catch((error) => {
-    console.warn('[Signal] Discord carrier posted but SpaceMountainLive Twitch acknowledgement failed', error);
-  });
-  return { handled: true, ok: true, messageId: posted?.messageId || null };
+  const acknowledgement = `📡 SIGNAL ACKNOWLEDGED — transmission accepted from @${input.username}.`;
+  if (!input.deferAcknowledgement) {
+    await sendChatMessage(acknowledgement, 'bot', targetName, SIGNAL_TWITCH_TENANT_ID).catch((error) => {
+      console.warn('[Signal] Discord carrier posted but SpaceMountainLive Twitch acknowledgement failed', error);
+    });
+  }
+  return { handled: true, ok: true, message: acknowledgement, messageId: posted?.messageId || null };
 }

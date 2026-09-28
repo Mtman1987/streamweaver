@@ -49,10 +49,10 @@ const OVERLAYS: OverlayInfo[] = [
     recommended: '1920x1080',
   },
   {
-    name: 'Pokemon Pack Overlay',
-    path: '/pokemon-pack-overlay',
-    description: 'Animated pack opening experience when viewers redeem !pack.',
-    recommended: '1920x1080',
+    name: 'Card Pack Overlay · Pokemon + Quackverse',
+    path: '/overlay/card-pack',
+    description: 'One shared animated booster reveal for Pokemon and Quackverse pack openings from Twitch, Discord, Overlay Bay, and OBS.',
+    recommended: '960x540 or 1920x1080',
   },
   {
     name: 'Pokemon Collection Overlay',

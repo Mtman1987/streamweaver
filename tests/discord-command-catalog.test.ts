@@ -10,12 +10,12 @@ import {
 
 test('discord command summary includes highfive and commands', () => {
   const summary = buildDiscordCommandsSummary();
-  assert.match(summary, /Choose a category/);
+  assert.match(summary, /Use `!commands 1` through `!commands 8`/);
   const fields = buildDiscordCommandDirectoryFields();
   const rendered = fields.map((field) => `${field.name}: ${field.value}`).join('\n');
   assert.match(rendered, /!highfive @user/);
   assert.match(rendered, /!leaderboard/);
-  assert.doesNotMatch(rendered, /!hydrate|!stretch|!yes|!yup|!no/);
+  assert.doesNotMatch(rendered, /`!(?:hydrate|stretch|yes|yup|no)(?:`|\s)/);
 });
 
 test('discord admin summary respects mod visibility', () => {

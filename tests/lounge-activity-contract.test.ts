@@ -123,9 +123,10 @@ test('Twitch social commands publish an overlay event before replying', () => {
 
 test('Twitch HearMeOut commands acknowledge and bridge both global queues', () => {
   const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
-  assert.match(dispatcher, /\^!\(sr\|wr\|music\|songs\|movie\|movies\|play\|pause\|stop\|skip\|next\|clear\|np\|nowplaying\|mute\|unmute\|volume\)/);
+  assert.match(dispatcher, /\^!\(sr\|wr\|music\|songs\|movie\|movies\|play\|pause\|stop\|skip\|next\|clear\|np\|nowplaying\|mute\|unmute\|volume\|radio\|autoradio\)/);
   assert.match(dispatcher, /!\$\{command\} received/);
-  assert.match(dispatcher, /roomId = 'system-spacemountainlive-lounge'/);
+  assert.match(dispatcher, /roomId = SPACEMOUNTAIN_LOUNGE_ROOM_ID/);
+  assert.match(fs.readFileSync('src/lib/spacemountain-lounge.ts', 'utf8'), /SPACEMOUNTAIN_LOUNGE_ROOM_ID = 'system-spacemountainlive-lounge'/);
   assert.match(dispatcher, /lane = command === 'wr' \? 'movie' : 'music'/);
   assert.match(dispatcher, /action: 'hmo\.media\.request'/);
   assert.match(dispatcher, /action: 'hmo\.media\.control'/);
@@ -168,15 +169,16 @@ test('Lounge data APIs are public to unauthenticated browser-source overlays', (
   assert.match(middleware, /pathname === '\/api\/lounge\/status-strip'/);
 });
 
-test('top-right strip rotates active games, main spotlight, Apollo media, and local/UTC time', () => {
+test('top-right strip rotates games, events, spotlight, lounge worker media, and local/UTC time', () => {
   const overlay = fs.readFileSync('src/app/overlay/lounge-status-strip/page.tsx', 'utf8');
   const route = fs.readFileSync('src/app/api/lounge/status-strip/route.ts', 'utf8');
   assert.match(overlay, /NOW PLAYING/);
   assert.match(overlay, /NOW STREAMING/);
   assert.match(overlay, /NOW LISTENING/);
   assert.match(overlay, /NOW WATCHING/);
-  assert.match(overlay, /payload\.games\.length \+ \(payload\.spotlight \? 1 : 0\) \+ \(payload\.media \? 1 : 0\) \+ 1/);
-  assert.match(overlay, /activeIndex === payload\.games\.length/);
+  assert.match(overlay, /payload\.games\.length \+ payload\.events\.length \+ \(payload\.spotlight \? 1 : 0\) \+ \(payload\.media \? 1 : 0\) \+ 1/);
+  assert.match(overlay, /activeIndex - payload\.games\.length/);
+  assert.match(overlay, /spotlightIndex = payload\.games\.length \+ payload\.events\.length/);
   assert.match(overlay, /rotationCount < 2/);
   assert.match(overlay, /spotlight\.avatarUrl/);
   assert.match(overlay, /STATION TIME/);
@@ -185,8 +187,9 @@ test('top-right strip rotates active games, main spotlight, Apollo media, and lo
   assert.doesNotMatch(overlay, /Space Mountain Live/);
   assert.match(route, /api\/game-hub\/channel\?channel=spacemountainlive/);
   assert.match(route, /api\/community-spotlight/);
-  assert.match(route, /spacemountainlive-lounge\/apollo\/api\/watch\/broadcast\/state/);
-  assert.match(route, /mediaState\?\.current\?\.item/);
+  assert.match(route, /LOUNGE_WORKER_URL.*HMO_LOUNGE_WORKER_URL/);
+  assert.match(route, /\$\{LOUNGE_WORKER_URL\}\/lounge\/media\/program/);
+  assert.match(route, /active\?\.current\?\.item/);
   assert.doesNotMatch(route, /discord-music-room|discord-watch-room/);
 });
 

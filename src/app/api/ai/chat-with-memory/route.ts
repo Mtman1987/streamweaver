@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { generateAIResponse, getAIConfig } from '@/services/ai-provider';
 import { appendPublicChatMessages, readPublicChatMessages } from '@/lib/public-chat-store';
 import { isCommander, getCommanderSystemPrompt, readCommanderMemory, appendCommanderMemory, formatCommanderHistory } from '@/lib/commander-memory';
+import { isVoidwalker, getVoidwalkerSystemPrompt } from '@/lib/voidwalker';
 import { formatWorldLoreForPrompt } from '@/lib/world-lore-store';
 import { formatBotInteractionHistoryForPrompt } from '@/lib/bot-interactions-store';
 import { apiError, apiOk } from '@/lib/api-response';
@@ -186,12 +187,14 @@ export async function POST(request: NextRequest) {
 
     let commanderContext = '';
     const userIsCommander = isCommander(username);
+    const userIsVoidwalker = userIsCommander ? false : await isVoidwalker({ context, providerUserId: userId });
     if (userIsCommander) {
       const commanderHistory = await readCommanderMemory(10);
       commanderContext = [getCommanderSystemPrompt(), formatCommanderHistory(commanderHistory)]
         .filter(Boolean)
         .join('\n\n');
     }
+    const voidwalkerContext = userIsVoidwalker ? getVoidwalkerSystemPrompt() : '';
 
     const contextFlags: Record<string, string> = {
       twitch: '[Context: Live Twitch chat. Keep responses to 1-2 sentences. Many viewers can see this.]',
@@ -233,6 +236,7 @@ export async function POST(request: NextRequest) {
       botInteractionHistory,
       stellaLoungeContext,
       commanderContext,
+      voidwalkerContext,
       contextFlag,
       discordMetadata,
       historyText,

@@ -2,7 +2,7 @@
   "id": "38355d88-4a3e-4026-93b2-cf0fd79bb525",
   "name": "!bitsleader",
   "command": "!bitsleader",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !bitsleader",
   "cooldown": {
     "global": 0,

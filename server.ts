@@ -160,6 +160,22 @@ async function startServer() {
             console.warn('[Server] Tenant re-bootstrap failed:', e);
         }
 
+        try {
+            const { startSignalCarrierRosterSync } = await import('./src/services/signal-carrier-sync');
+            startSignalCarrierRosterSync();
+            console.log('[Signal] DSH shoutout carrier listener armed');
+        } catch (error) {
+            console.warn('[Signal] Carrier listener startup skipped:', error);
+        }
+
+        try {
+            const { startSignalScheduler } = await import('./src/services/signal-system');
+            startSignalScheduler();
+            console.log('[Signal] Lost Signal scheduler control armed');
+        } catch (error) {
+            console.warn('[Signal] Scheduler startup skipped:', error);
+        }
+
         const serverHost = process.env.SERVER_HOST || (isProductionRuntime ? '0.0.0.0' : appConfig?.server?.host || '127.0.0.1');
         const uiPort = Number(process.env.PORT || appConfig?.server?.port || (isProductionRuntime ? 3000 : 3100));
         const wsPort = Number(process.env.WS_PORT || appConfig?.server?.wsPort || 8090);

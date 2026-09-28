@@ -41,11 +41,12 @@ test('Quackverse pack opens broadcast to the source StreamWeaver tenant pack ove
     assert.equal(response.status, 200);
     assert.equal(forwarded.tenantId, '47145728');
     assert.deepEqual(forwarded.messages.map((entry: any) => entry.type), [
+      'card-pack-opened',
       'pokemon-pack-opened',
       'quackverse-pack-opened',
     ]);
     assert.equal(forwarded.messages[0].payload.username, 'packviewer');
-    assert.equal(forwarded.messages[0].payload.pack[0].imageUrl, 'https://chat-tag.test/cards/space-duck.png');
+    assert.equal(forwarded.messages[0].payload.cards[0].imageUrl, 'https://chat-tag.test/cards/space-duck.png');
     assert.equal((await response.json()).delivered, 2);
   } finally {
     if (originalSecret === undefined) delete process.env.BOT_SECRET_KEY;

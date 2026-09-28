@@ -2,7 +2,7 @@
   "id": "f281415b-b178-4a39-9295-71b78ee5de26",
   "name": "konami code",
   "command": "(?i).*@?UUDDLRLRAB.*",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: konami code",
   "cooldown": {
     "global": 0,

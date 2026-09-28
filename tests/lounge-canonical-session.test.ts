@@ -11,12 +11,12 @@ test('Twitch Lounge commands and Lounge display share one canonical HMO session'
   const status = read('src/app/api/lounge/status-strip/route.ts');
 
   assert.match(constants, /SPACEMOUNTAIN_LOUNGE_ROOM_ID = 'system-spacemountainlive-lounge'/);
-  assert.match(constants, /SPACEMOUNTAIN_LOUNGE_SESSION_ID = `watch-room-${SPACEMOUNTAIN_LOUNGE_ROOM_ID}-music`/);
+  assert.match(constants, /SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID = `watch-room-\$\{SPACEMOUNTAIN_LOUNGE_ROOM_ID\}-music`/);
 
   assert.match(dispatcher, /SPACEMOUNTAIN_LOUNGE_ROOM_ID/);
-  assert.match(actions, /sessionId: SPACEMOUNTAIN_LOUNGE_SESSION_ID/);
-  assert.match(status, /SPACEMOUNTAIN_LOUNGE_SESSION_ID/);
-  assert.match(status, /\/api\/watch\/sessions\/\$\{encodeURIComponent\(SPACEMOUNTAIN_LOUNGE_SESSION_ID\)\}\/state/);
+  assert.match(actions, /SPACEMOUNTAIN_LOUNGE_ROOM_ID/);
+  assert.match(status, /LOUNGE_WORKER_URL/);
+  assert.match(status, /\/lounge\/media\/program/);
 
   assert.doesNotMatch(status, /apollo\/api\/watch\/broadcast\/state|apolloLoungeState/);
   assert.doesNotMatch(actions, /sessionId: lane === 'movie' \? SPACEMOUNTAIN_MOVIE_SESSION_ID : SPACEMOUNTAIN_MUSIC_SESSION_ID/);

@@ -2,7 +2,7 @@
   "id": "fc40c477-0782-415b-905e-961cd4e9d7d7",
   "name": "!twitter",
   "command": "!twitter",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !twitter",
   "cooldown": {
     "global": 10,

@@ -27,6 +27,6 @@ test('Discord ingress avatar is propagated into the command message before Signa
 test('production Fly image applies the Signal presentation patch after the existing Signal runtime patch', () => {
   assert.match(
     dockerfile,
-    /npm run prebuild:simple && node scripts\/patch-signal-discord-presentation\.mjs && node scripts\/patch-discord-lore-tenant-routing\.mjs && node scripts\/patch-signal-carrier-join-hardening\.mjs/,
+    /npm run prebuild:simple && node scripts\/patch-card-pack-event\.mjs && node scripts\/patch-signal-discord-presentation\.mjs && node scripts\/patch-discord-lore-tenant-routing\.mjs && node scripts\/patch-signal-carrier-join-hardening\.mjs/,
   );
 });

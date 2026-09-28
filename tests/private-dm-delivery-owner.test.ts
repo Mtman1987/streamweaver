@@ -14,7 +14,7 @@ test('the Discord route is the sole default owner of private AI messages', () =>
   assert.match(ownership, /'dm-private-ai': 'route'/);
   assert.match(monitor, /if \(!pollOwns\('dm-private-ai'\)\) return;/);
 
-  const dedupeIndex = route.indexOf('const isFirstSeen = registerHandledDiscordMessage');
+  const dedupeIndex = route.indexOf('await registerHandledDiscordMessagePersisted({');
   const privateLaneIndex = route.indexOf('const isPrivateDiscordLane = isDirectMessage');
   assert.ok(dedupeIndex >= 0, 'Discord ingress must register every message');
   assert.ok(privateLaneIndex > dedupeIndex, 'DM dedupe must run before private-lane dispatch');

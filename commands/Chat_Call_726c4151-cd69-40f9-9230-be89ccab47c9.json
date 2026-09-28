@@ -2,7 +2,7 @@
   "id": "726c4151-cd69-40f9-9230-be89ccab47c9",
   "name": "Chat Call",
   "command": "(?i).*@?{{BOT_NAME}}.*",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: Chat Call",
   "cooldown": {
     "global": 0,

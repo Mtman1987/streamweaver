@@ -15,8 +15,18 @@ import { attachPrivateDmControls, attachPublicDiscordControls } from './private-
 import { listPrivateGeneratedImageUrls } from './private-image-library';
 import { registerPrivateImageCarousel } from './private-image-carousel';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
+import { getPublicBotTtsEnabled } from './public-bot-tts';
+import { hasActiveTtsConsumer } from './tts-consumer-presence';
+import { generateTTS } from './tts-provider';
+import { addSayQueueItem } from '@/app/api/say/_store';
+import { getConfiguredAppUrl } from '@/lib/runtime-origin';
+import { THE_COUNT_AVATAR_PATH, THE_COUNT_OWNER_TITLE, isTheCountName } from '@/lib/the-count';
 
 const SPACEMOUNTAIN_FALLBACK_LOGO = 'https://spacemountain.live/assets/space-logo-main.png';
+
+function theCountAvatarUrl(): string {
+  return `${getConfiguredAppUrl()}${THE_COUNT_AVATAR_PATH}`;
+}
 
 export type DiscordReplySpeaker = {
   botName: string;
@@ -210,11 +220,13 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     : getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const botAvatar = firstUrl(
-    webhookIdentity.avatarUrl,
+    isTheCountName(speaker.botName) ? theCountAvatarUrl() : webhookIdentity.avatarUrl,
     await getAvatarUrlForTenant(speaker.tenantId),
     SPACEMOUNTAIN_FALLBACK_LOGO,
   );
-  const owner = await resolveTenantOwnerBranding(speaker.tenantId);
+  const owner = isTheCountName(speaker.botName)
+    ? { name: THE_COUNT_OWNER_TITLE, logo: theCountAvatarUrl() }
+    : await resolveTenantOwnerBranding(speaker.tenantId);
   const requesterLogo = firstUrl(effectiveInput.sourceUserAvatarUrl, SPACEMOUNTAIN_FALLBACK_LOGO);
 
   const embed = await buildDiscordBotEmbed({
@@ -255,6 +267,23 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     deleteAt,
     speaker,
   };
+}
+
+async function queuePersistentPublicBotTts(input: { channelId: string; tenantId: string; text: string }): Promise<number> {
+  if (!await getPublicBotTtsEnabled(input.channelId, input.tenantId)) return 0;
+  const streamKey = `discord:${input.channelId}`;
+  if (!hasActiveTtsConsumer(streamKey, 'say')) return 0;
+  const text = String(input.text || '').trim();
+  if (!text) return 0;
+  const chunks = text.match(/[\s\S]{1,450}/g) || [];
+  let queued = 0;
+  for (const chunk of chunks) {
+    const audioDataUri = await generateTTS(chunk, undefined, streamKey, { requireActiveConsumer: true, consumerScope: 'say' });
+    if (!audioDataUri) continue;
+    addSayQueueItem(streamKey, audioDataUri);
+    queued += 1;
+  }
+  return queued;
 }
 
 async function finalizePublicControls(input: {
@@ -307,7 +336,7 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const avatarUrl = firstUrl(
-    webhookIdentity.avatarUrl,
+    isTheCountName(speaker.botName) ? theCountAvatarUrl() : webhookIdentity.avatarUrl,
     await getAvatarUrlForTenant(speaker.tenantId),
     SPACEMOUNTAIN_FALLBACK_LOGO,
   );
@@ -358,6 +387,17 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
       }).catch((error) => {
         console.warn('[Discord Reply] Failed to attach public emoji controls:', error);
       });
+    }
+  }
+
+  if (sentId && !replyInput.isPrivate) {
+    const publicTtsTenantId = speaker.tenantId || replyInput.tenantId;
+    if (publicTtsTenantId) {
+      await queuePersistentPublicBotTts({
+        channelId: replyInput.channelId,
+        tenantId: publicTtsTenantId,
+        text: replyInput.message,
+      }).catch((error) => console.warn('[Discord Reply] Persistent public bot TTS failed:', error));
     }
   }
 

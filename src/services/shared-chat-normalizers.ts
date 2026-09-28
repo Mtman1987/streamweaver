@@ -288,7 +288,7 @@ export function normalizeDiscordSharedChatEvent(input: DiscordSharedChatInput): 
   const receivedTimestamp = isoTimestamp(input.receivedAt);
   const originalTimestamp = isoTimestamp(firstString(payload.createdAt, payload.created_at, payload.timestamp) || input.receivedAt);
   const sourceId = guildId ? `discord:${guildId}` : 'discord:dm';
-  const channelId = channelIdRaw ? `discord:${channelIdRaw}` : 'discord:unknown';
+  const channelId = channelIdRaw || 'unknown';
   const upstreamId = messageId || `${channelId}:${originalTimestamp}:${firstString(payload.userId, payload.user_id, author.id, user.id, 'unknown')}:${text}`;
   const username = firstString(payload.userName, payload.username, author.username, user.username, payload.displayName, member.displayName, member.nick, 'Unknown');
   const displayName = firstString(payload.displayName, payload.globalName, member.displayName, member.nick, author.global_name, author.username, username, 'Unknown');
@@ -327,8 +327,10 @@ export function normalizeDiscordSharedChatEvent(input: DiscordSharedChatInput): 
     routing: {
       mirrored: false,
       reflected: false,
-      canReply: Boolean(channelIdRaw),
-      replyTarget: channelIdRaw ? `discord:${channelIdRaw}` : undefined,
+      // Discord channel compose/delete are verified, but source-thread reply is
+      // not implemented by the SPMT outbound adapter. Do not advertise a dead action.
+      canReply: false,
+      replyTarget: undefined,
       botReadable: true,
       botCanReply: false,
       tenantIsolationKey: tenantId,

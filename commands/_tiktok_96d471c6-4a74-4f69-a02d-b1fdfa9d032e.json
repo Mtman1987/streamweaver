@@ -2,7 +2,7 @@
   "id": "96d471c6-4a74-4f69-a02d-b1fdfa9d032e",
   "name": "!tiktok",
   "command": "!tiktok",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !tiktok",
   "cooldown": {
     "global": 10,

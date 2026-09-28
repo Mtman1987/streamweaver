@@ -6,6 +6,8 @@ import { readUserConfigSync } from '@/lib/user-config';
 import { getAdminTwitchId, listTenants } from '@/lib/tenant';
 import { appendBotInteraction, decideBotInteraction, getBotShareMode, toggleBotShareMode } from '@/lib/bot-interactions-store';
 import { readWorldLore, type WorldLoreCharacter } from '@/lib/world-lore-store';
+import { THE_COUNT_NAME, THE_COUNT_PERSONALITY, THE_COUNT_STABLE_ID, isTheCountName, messageInvokesTheCount } from '@/lib/the-count';
+import { getSpmtEasterEggEntitlement } from '@/lib/spmt-easter-eggs';
 import { promises as fs } from 'fs';
 import { getGenMode, setGenMode, toggleGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
@@ -40,7 +42,9 @@ import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/b
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import { parseDiscordChatPayload } from '@/lib/discord-chat-payload';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { requestSpmtOwnerRecoveryCode } from '@/lib/spmt-client';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
+import { resolvePrivateDiscordTenant } from '@/services/private-discord-tenant';
 import {
   beginPendingMtSupportRequest,
   consumePendingMtSupportRequest,
@@ -357,14 +361,47 @@ export async function POST(request: NextRequest) {
     }
 
     const isPrivateDiscordLane = isDirectMessage;
-    let tenantId = normalized.tenantId;
-    let tenantResolution = tenantId ? 'payload' : 'none';
-    if (!tenantId) {
-      tenantId = isPrivateDiscordLane
-        ? await resolveGuildTenant('', channelId)
-        : await resolveDiscordAuthorTenant(userId, userName);
-      tenantResolution = tenantId ? (isPrivateDiscordLane ? 'dm-channel' : 'discord-author') : 'none';
+    let tenantId: string | undefined;
+    let tenantResolution = 'none';
+
+    if (isPrivateDiscordLane) {
+      // PRIVATE DATA BOUNDARY: never trust a forwarded tenantId for Discord DMs.
+      // Verify the exact Discord message + immutable author ID, then resolve only
+      // that user's configured/SPMT tenant. Unknown DMs fail closed and cannot
+      // read or append another tenant's private history.
+      const privateTenant = await resolvePrivateDiscordTenant({
+        discordUserId: userId,
+        discordUsername: normalized.username,
+        channelId,
+        messageId: normalized.messageId,
+      });
+      tenantId = privateTenant?.tenantId;
+      tenantResolution = privateTenant?.source || 'none';
+
+      if (!tenantId) {
+        logDiscordTrace(traceId, 'private-tenant-rejected', {
+          channelId: channelId || null,
+          messageId: normalized.messageId || null,
+          userId: userId || null,
+          reason: 'private-discord-identity-not-verified',
+        });
+        return apiOk({
+          success: true,
+          botResponded: false,
+          skipped: 'unverified-private-tenant',
+        });
+      }
+    } else if (permanentOwner) {
+      const ownerTenantId = getAdminTwitchId().trim();
+      if (ownerTenantId && (await listTenants()).includes(ownerTenantId)) {
+        tenantId = ownerTenantId;
+        tenantResolution = 'discord-owner';
+      }
+    } else {
+      tenantId = normalized.tenantId || await resolveDiscordAuthorTenant(userId, userName);
+      tenantResolution = normalized.tenantId ? 'payload' : (tenantId ? 'discord-author' : 'none');
     }
+
     if (!tenantId && !isPrivateDiscordLane && dshAccess?.isOwner) {
       const ownerTenantId = getAdminTwitchId().trim();
       if (ownerTenantId && (await listTenants()).includes(ownerTenantId)) {
@@ -422,7 +459,12 @@ export async function POST(request: NextRequest) {
       skipAiMentions: true,
     });
 
-    if (tenantId && message) {
+    // Owner recovery commands contain account identifiers and must never be copied
+    // into the shared Commlink replay/history. The resulting code is returned only
+    // to the verified owner in the private Discord lane.
+    const isSensitiveOwnerRecoveryCommand = isPrivateDiscordLane && /^!spmtpassword(?:\s|$)/i.test(message.trim());
+
+    if (tenantId && message && !isSensitiveOwnerRecoveryCommand) {
       try {
         await recordSharedChatEvent(normalizeDiscordSharedChatEvent({
           tenantId,
@@ -562,6 +604,64 @@ export async function POST(request: NextRequest) {
     }
 
     let botMatch = await resolveMentionedBot(msgLower, tenantId);
+    // The Count is visible in ordinary rotating system replies, but personal
+    // invocation is the Black Hole egg entitlement. Before that unlock, a
+    // random known bot/persona denies knowing him and leaves a breadcrumb so
+    // the hunt stays playful instead of becoming a silent dead end.
+    if (messageInvokesTheCount(message)) {
+      const countMention = /(^|[^a-z0-9_])@?(?:the\s+)?count([^a-z0-9_]|$)/i.exec(message);
+      const entitlement = await getSpmtEasterEggEntitlement({ provider: 'discord', providerUserId: userId });
+      if (!entitlement.eggs.blackHole && countMention && (!botMatch || countMention.index <= botMatch.index)) {
+        const breadcrumbHints: string[] = [];
+        if (!entitlement.eggs.signal) {
+          breadcrumbHints.push('I do keep hearing strange static around Discord. Some transmissions do not stay visible for long.');
+        }
+        if (!entitlement.eggs.rocket) {
+          breadcrumbHints.push('If you are hunting anomalies, keep an eye on anything around SPMT that looks ready to launch. Curiosity is sometimes the control panel.');
+        }
+        if (!breadcrumbHints.length) {
+          breadcrumbHints.push('You have already followed the signal and the launch trail. The last anomaly does not transmit or take off — it bends things. I would watch Commlink when gravity feels wrong.');
+        }
+
+        const lore = await readWorldLore().catch(() => null);
+        const loreNames = Object.values(lore?.characters || {})
+          .filter((character: any) => character?.stableId !== THE_COUNT_STABLE_ID)
+          .map((character: any) => String(character?.currentName || '').trim())
+          .filter(Boolean);
+        const tenantNames = (await listTenants().catch(() => []))
+          .map((candidateTenantId) => String(getBotName(candidateTenantId) || '').trim())
+          .filter(Boolean);
+        const denialSpeakers = Array.from(new Set([...loreNames, ...tenantNames]))
+          .filter((name) => !isTheCountName(name));
+        const denialSpeaker = denialSpeakers[Math.floor(Math.random() * Math.max(1, denialSpeakers.length))]
+          || String(getBotName(tenantId) || 'StreamWeaver');
+        const hint = breadcrumbHints[Math.floor(Math.random() * breadcrumbHints.length)];
+        const denials = [
+          'The Count? Never heard of him.',
+          'Count who? That name is not on my roster.',
+          'Nope. Nobody by that name in my logs.',
+          'The Count? Sounds made up to me.',
+        ];
+        const denial = denials[Math.floor(Math.random() * denials.length)];
+        await sendDiscordRouteReplyOrCollect(channelId, `@${userName} ${denial} 👀 ${hint}`, denialSpeaker, 'easter-egg-hint');
+        return apiOk({
+          success: true,
+          botResponded: true,
+          countLocked: true,
+          hintDelivered: true,
+          speaker: denialSpeaker,
+          replies: relayOnly ? collectedReplies : undefined,
+        });
+      }
+      if (entitlement.eggs.blackHole && countMention && (!botMatch || countMention.index <= botMatch.index)) {
+        botMatch = {
+          tenantId,
+          botName: THE_COUNT_NAME,
+          trigger: countMention[0].trim(),
+          index: countMention.index,
+        };
+      }
+    }
     if (!botMatch && tenantId && !isPrivateDiscordLane) {
       const { hasPendingResearchMode } = await import('@/services/research-mode');
       if (hasPendingResearchMode({
@@ -768,6 +868,69 @@ export async function POST(request: NextRequest) {
     }
 
     if (isPrivateDiscordLane) {
+      // Emergency owner recovery must not depend on resolving the DM to a tenant.
+      // SPMT authenticates the immutable requester Discord ID and admin flag itself.
+      const ownerRecoveryMatch = message.trim().match(/^!spmtpassword(?:\s+(.+))?$/i);
+      if (ownerRecoveryMatch) {
+        const targetDiscordId = String(ownerRecoveryMatch[1] || '').replace(/[<@!>]/g, '').trim();
+        const recoveryBotName = tenantId ? getBotName(tenantId) : 'Athena';
+        if (!/^\d{15,24}$/.test(targetDiscordId)) {
+          if (channelId) {
+            await sendDiscordRouteReplyOrCollect(
+              channelId,
+              'Usage: !spmtpassword <discordId> in this private Athena DM. This creates a one-time SPMT recovery code; it does not set a default password.',
+              recoveryBotName,
+              'SPMT Recovery',
+            );
+          }
+          if (tenantId) await markDmMessageHandled(tenantId, normalized.messageId);
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId: tenantId || null, context: 'private-spmt-recovery', error: 'invalid-target' });
+        }
+
+        try {
+          const handoff = await requestSpmtOwnerRecoveryCode({
+            requesterDiscordId: userId,
+            targetDiscordId,
+          });
+          if (channelId) {
+            await sendDiscordRouteReplyOrCollect(
+              channelId,
+              [
+                'SPMT recovery handoff: **' + handoff.account + '**',
+                'Recovery code: **' + handoff.recoveryCode + '**',
+                'Give that account name and code to the tenant. They open https://spmt.live, choose **Recover**, enter both, then choose their own new password.',
+                'This code replaces any older unused recovery code for that account. Keep it in DM only.',
+              ].join('\n'),
+              recoveryBotName,
+              'SPMT Owner Recovery',
+            );
+          }
+          if (tenantId) await markDmMessageHandled(tenantId, normalized.messageId);
+          return apiOk({
+            success: true,
+            botResponded: Boolean(channelId),
+            tenantId: tenantId || null,
+            context: 'private-spmt-recovery',
+            account: handoff.account,
+            targetDiscordId,
+          });
+        } catch (error: any) {
+          const status = Number(error?.status || 0);
+          const safeMessage = status === 403
+            ? 'This owner recovery command is not authorized for your Discord account.'
+            : status === 404
+              ? 'No SPMT account is linked to that Discord ID.'
+              : status === 409
+                ? 'That Discord ID is linked ambiguously. Manual SPMT review is required.'
+                : 'SPMT recovery could not create a code right now. Try again after SPMT is healthy.';
+          if (channelId) {
+            await sendDiscordRouteReplyOrCollect(channelId, safeMessage, recoveryBotName, 'SPMT Recovery');
+          }
+          if (tenantId) await markDmMessageHandled(tenantId, normalized.messageId);
+          return apiOk({ success: true, botResponded: Boolean(channelId), tenantId: tenantId || null, context: 'private-spmt-recovery', error: 'recovery-failed', status });
+        }
+      }
+
       if (!tenantId) {
         return apiOk({ success: true, botResponded: false, error: 'tenant-not-found' });
       }
@@ -1264,7 +1427,7 @@ export async function POST(request: NextRequest) {
             fetch(`${getInternalAppUrl()}/api/say/queue`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage }),
+              body: JSON.stringify({ tenantId: sayChannelKey, text: spokenMessage, speakerUserId: userId, speakerName: userName }),
             }).then(async (response) => {
               const result = await response.json().catch(() => null);
               logDiscordTrace(traceId, 'say-queue-result', {
@@ -1306,6 +1469,50 @@ export async function POST(request: NextRequest) {
         replyCount: collectedReplies.length,
       });
       return apiOk({ success: true, botResponded: false });
+    }
+
+    // Bot-directed human messages must use the same !say path as ordinary
+    // Discord conversation. The source message may be deleted after it is
+    // folded into the bot embed, so queue the HUMAN speech before generating
+    // the bot response. Bot-authored replies remain excluded from automatic
+    // TTS and can still be spoken manually with the embed speaker control.
+    if (!isDiscordBotAuthor(data) && isSayTextSpeakable(message) && !message.trim().startsWith('!')) {
+      try {
+        const sayUsers = await readSayUsers();
+        if (isSayEnabled(sayUsers, userId, channelId)) {
+          const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
+          const spokenMessage = formatSaySpeechText(sayChannelKey, userName, message);
+          fetch(`${getInternalAppUrl()}/api/say/queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tenantId: sayChannelKey,
+              text: spokenMessage,
+              speakerUserId: userId,
+              speakerName: userName,
+            }),
+          }).then(async (response) => {
+            const result = await response.json().catch(() => null);
+            logDiscordTrace(traceId, 'say-queue-bot-directed-result', {
+              ok: response.ok && Boolean(result?.ok),
+              status: response.status,
+              tenantId: sayChannelKey,
+              delivered: result?.delivered || null,
+              reason: result?.reason || result?.error || null,
+            });
+          }).catch((error) => {
+            logDiscordTrace(traceId, 'say-queue-bot-directed-result', {
+              ok: false,
+              tenantId: sayChannelKey,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
+      } catch (error) {
+        logDiscordTrace(traceId, 'say-state-bot-directed-error', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // Generate AI response
@@ -1743,8 +1950,10 @@ export async function POST(request: NextRequest) {
         createdAt: normalized.createdAt,
         isDirectMessage,
         message: botInteractionDecision?.shouldRespond ? botInteractionDecision.promptInstruction : message,
+        personality: isTheCountName(botName) ? THE_COUNT_PERSONALITY : undefined,
+        responseName: isTheCountName(botName) ? THE_COUNT_NAME : undefined,
         tenantId: botTenantId || tenantId || undefined,
-        context: 'discord',
+        context: isTheCountName(botName) ? 'discord-cross-bot' : 'discord',
       }),
     });
 
@@ -1924,8 +2133,10 @@ function triggerIndex(message: string, trigger: string) {
 export async function resolveMentionedBot(messageLower: string, _guildTenantId?: string): Promise<BotMatch | null> {
   const candidates: BotMatch[] = [];
   const addCandidate = (tenantId: string | undefined) => {
-    const botName = getBotName(tenantId);
-    const configAliases = splitAliases(readUserConfigSync(tenantId).AI_BOT_ALIASES);
+    const configured = readUserConfigSync(tenantId);
+    // Discord name resolution is independent of the tenant's Twitch transport.
+    const botName = configured.AI_BOT_NAME || getBotName(tenantId);
+    const configAliases = splitAliases(configured.AI_BOT_ALIASES);
     const settingAliases = splitAliases(getBotAliases(tenantId));
     const triggers = Array.from(new Set([
       botName.toLowerCase(),
@@ -1955,7 +2166,23 @@ async function addLoreCandidate(messageLower: string, candidates: BotMatch[], te
   if (!tenantId) return;
   const lore = await readWorldLore();
   const characters = Object.values(lore?.characters || {});
-  const tenantCharacters = characters.filter((character) => character.stableId.startsWith(`${tenantId}:`) || character.stableId.startsWith('unknown:'));
+  const configuredNames = new Set([
+    getBotName(tenantId),
+    ...splitAliases(readUserConfigSync(tenantId).AI_BOT_ALIASES),
+    ...splitAliases(getBotAliases(tenantId)),
+  ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
+
+  const tenantCharacters = characters.filter((character) => {
+    if (character.stableId === THE_COUNT_STABLE_ID) return false;
+    if (character.stableId.startsWith(`${tenantId}:`)) return true;
+    if (!character.stableId.startsWith('unknown:')) return false;
+
+    const loreNames = characterTriggers(character)
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean);
+    return character.stableId !== THE_COUNT_STABLE_ID
+      && loreNames.some((name) => configuredNames.has(name));
+  });
 
   for (const character of tenantCharacters) {
     const triggers = Array.from(new Set([

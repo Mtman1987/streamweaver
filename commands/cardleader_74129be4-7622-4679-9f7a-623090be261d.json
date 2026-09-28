@@ -2,7 +2,7 @@
   "id": "74129be4-7622-4679-9f7a-623090be261d",
   "name": "cardleader",
   "command": "!cleader",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: cardleader",
   "cooldown": {
     "global": 0,

@@ -2,7 +2,7 @@
   "id": "bbc645e2-7b50-4721-ad06-1b781446f7d3",
   "name": "!youtube",
   "command": "!youtube",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !youtube",
   "cooldown": {
     "global": 10,

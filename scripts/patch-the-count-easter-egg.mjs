@@ -66,7 +66,7 @@ patchFile('src/app/api/discord/chat/route.ts', (source) => {
 
   const loreFilterMarker = "  const tenantCharacters = characters.filter((character) => character.stableId.startsWith(`${tenantId}:`) || character.stableId.startsWith('unknown:'));";
   const loreFilterReplacement = "  const tenantCharacters = characters.filter((character) =>\n    (character.stableId.startsWith(`${tenantId}:`) || character.stableId.startsWith('unknown:'))\n    && character.stableId !== THE_COUNT_STABLE_ID\n  );";
-  if (!source.includes(loreFilterReplacement)) {
+  if (!source.includes(loreFilterReplacement) && !source.includes('if (character.stableId === THE_COUNT_STABLE_ID) return false;')) {
     if (!source.includes(loreFilterMarker)) throw new Error('The Count patch: lore candidate marker missing');
     source = source.replace(loreFilterMarker, loreFilterReplacement);
   }

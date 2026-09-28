@@ -145,5 +145,5 @@ test('private data entry points and production build install the privacy lock', 
 
   assert.match(patchScript, /resolvePrivateDiscordTenant/);
   assert.match(patchScript, /private-discord-identity-not-verified/);
-  assert.match(patchScript, /unsafe owner\/channel fallback still present/);
+  assert.match(patchScript, /unsafe route owner\/channel fallback still present/);
 });

@@ -178,16 +178,65 @@ export async function runOpenBotCommand(command: OpenBotCommand, fetcher: FetchL
   }
 
   if (command === 'live-members') {
-    const members = await fetchSpmtLiveMembers(fetcher);
+    const [members, state, winnersPayload] = await Promise.all([
+      fetchSpmtLiveMembers(fetcher),
+      fetchSpmtChatTagState(fetcher).catch(() => ({ players: [] })),
+      fetchJson(fetcher, `${CHAT_TAG_URL}/api/tag/winners`).catch(() => ({ monthlyWinners: [] })),
+    ]);
     if (!members.length) return 'Nobody in the SpaceMountain community is live right now.';
-    const names = members
-      .map((member: any) => String(
-        member.twitchDisplayName || member.displayName || member.twitchUsername || member.username || member.discordDisplayName || member.name || ''
-      ).trim())
-      .filter(Boolean);
-    const shown = names.slice(0, 12);
-    const remaining = Math.max(0, names.length - shown.length);
-    return `🟢 ${names.length} live: ${shown.join(', ')}${remaining ? `, and ${remaining} more` : ''}.`;
+
+    const players = Array.isArray(state?.players) ? state.players : [];
+    const winnerRows = Array.isArray(winnersPayload?.monthlyWinners) ? winnersPayload.monthlyWinners : [];
+    const winnerNames = new Set(winnerRows
+      .map((winner: any) => String(winner?.username || winner?.twitchUsername || winner?.name || '').trim().toLowerCase())
+      .filter(Boolean));
+
+    const liveRows = members.map((member: any) => {
+      const login = String(
+        member?.twitchUsername || member?.username || member?.twitchLogin || member?.login || member?.twitchDisplayName || member?.displayName || ''
+      ).trim().toLowerCase();
+      const display = String(member?.twitchDisplayName || member?.displayName || member?.twitchUsername || member?.username || login).trim();
+      return { login, display };
+    }).filter((member: any) => member.login);
+
+    const liveLogins = new Set(liveRows.map((member: any) => member.login));
+    const now = Date.now();
+    const activeThresholdMs = 40 * 60 * 1000;
+    const channelChatters: Record<string, string[]> = {};
+    const discordChatters: string[] = [];
+
+    for (const player of players) {
+      const playerName = String(player?.twitchUsername || player?.username || player?.displayName || '').trim().toLowerCase();
+      if (!playerName || liveLogins.has(playerName)) continue;
+      const rawLastChat = player?.lastChatAt;
+      const numericLastChat = Number(rawLastChat);
+      const parsedLastChat = Number.isFinite(numericLastChat) && numericLastChat > 0
+        ? numericLastChat
+        : Date.parse(String(rawLastChat || ''));
+      if (!Number.isFinite(parsedLastChat) || now - parsedLastChat > activeThresholdMs) continue;
+      const seenChannel = String(player?.lastSeenChannel || '').trim().toLowerCase().replace(/^#/, '');
+      if (seenChannel === 'discord') {
+        if (!discordChatters.includes(playerName)) discordChatters.push(playerName);
+      } else if (seenChannel && liveLogins.has(seenChannel)) {
+        channelChatters[seenChannel] ||= [];
+        if (!channelChatters[seenChannel].includes(playerName)) channelChatters[seenChannel].push(playerName);
+      }
+    }
+
+    const groups: string[] = [];
+    let totalChatters = 0;
+    for (const member of liveRows) {
+      const chatters = channelChatters[member.login] || [];
+      totalChatters += chatters.length;
+      const crowned = winnerNames.has(member.login) ? `👑${member.display}` : member.display;
+      groups.push(`🟢${crowned}${chatters.length ? ` > 💬${chatters.join(', ')}` : ''}`);
+    }
+    if (discordChatters.length) {
+      totalChatters += discordChatters.length;
+      groups.push(`🟣Discord > 💬${discordChatters.join(', ')}`);
+    }
+
+    return `🟢${liveRows.length} live 💬${totalChatters} chatting (1/1): ${groups.join(' | ')}`;
   }
 
   if (command === 'apps') {

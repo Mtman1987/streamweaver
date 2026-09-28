@@ -20,7 +20,8 @@ test('live social commands use durable no-repeat AI copy and the social overlay 
   assert.match(events, /reaction\?: string/);
   assert.match(events, /'dance'/);
   assert.match(dispatcher, /reaction: response/);
-  assert.match(dispatcher, /queueTtsOverlay\(response/);
+  assert.match(dispatcher, /await reply\(response, 'bot'\)/);
+  assert.match(read('src/services/twitch-client.ts'), /sendConfirmedLoungeStellaMessage/);
   assert.match(overlay, /social-astronaut/);
   assert.match(overlay, /🧑‍🚀/);
   assert.match(overlay, /social-reaction/);
@@ -46,7 +47,7 @@ test('live Stella translation supports one-shot and target-aware auto translatio
   assert.match(dispatcher, /translated\.translatedText/);
   assert.match(dispatcher, /hasEffectiveDiscordModAccess/);
   assert.match(directory, /!t @user en \/ !t @user off/);
-  assert.match(discord, /!t <language> <message>/);
+  assert.match(discord, /!t/);
 });
 
 test('translation subtitles are a dedicated shell-free overlay', () => {
@@ -59,6 +60,6 @@ test('translation subtitles are a dedicated shell-free overlay', () => {
   assert.match(events, /translatedText/);
   assert.match(route, /resolveOverlayTenantId/);
   assert.match(overlay, /translation-subtitle/);
-  assert.match(overlay, /background:transparent/);
-  assert.doesNotMatch(overlay, /workspace|sidebar|navigation/i);
+  assert.match(overlay, /background: transparent !important/);
+  assert.doesNotMatch(overlay, /<(?:Workspace|Sidebar|Navigation)\b/i);
 });

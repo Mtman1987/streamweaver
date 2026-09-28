@@ -2,7 +2,7 @@
   "id": "61d121f1-cfd7-43b2-91b5-061ac40f9195",
   "name": "badgeleader",
   "command": "!bleader",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: badgeleader",
   "cooldown": {
     "global": 0,

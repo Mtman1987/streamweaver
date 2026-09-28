@@ -3,6 +3,7 @@ import * as http from 'http';
 import { validateLocalApiKeySync } from '../lib/local-config/service';
 import { getTenantIdFromSession } from '../lib/tenant';
 import { resolveTenantSocketAction } from './websocket-tenant';
+import { resolveOverlayTenantId } from '../lib/overlay-tenant.server';
 import { readCheckinOverlayEvent } from '../services/checkin-overlay-state';
 
 const privilegedTypes = new Set([
@@ -102,8 +103,9 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
         (ws as any).__localAuthorized = connectionAuthorized;
         
         // Resolve tenant from URL query param (for overlays) or session cookie (dashboard clients).
-        const urlTenantId = extractTenantIdFromRequest(request);
+        const urlTenantAlias = extractTenantIdFromRequest(request);
         const cookieTenantId = extractTenantIdFromCookie(request);
+        const urlTenantId = urlTenantAlias ? (await resolveOverlayTenantId(urlTenantAlias) || urlTenantAlias) : '';
         const resolvedTenantId = cookieTenantId || urlTenantId;
         (ws as any).__sessionAuthorized = Boolean(cookieTenantId);
         (ws as any).__authorizedTenantId = cookieTenantId || '';

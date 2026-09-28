@@ -49,7 +49,7 @@ test('formats canonical SPMT live-member data without service secrets', async ()
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   });
 
-  assert.equal(reply, '🟢 2 live: StreamerOne, streamer_two.');
+  assert.equal(reply, '🟢2 live 💬0 chatting (1/1): 🟢StreamerOne | 🟢streamer_two');
 });
 
 test('falls back to public ChatTag roster and Twitch lookup when SPMT live feed is unavailable', async () => {
@@ -83,7 +83,7 @@ test('falls back to public ChatTag roster and Twitch lookup when SPMT live feed 
   };
 
   const reply = await runOpenBotCommand('live-members', fetcher as typeof fetch);
-  assert.equal(reply, '🟢 1 live: Streamer One.');
+  assert.equal(reply, '🟢1 live 💬0 chatting (1/1): 🟢Streamer One');
   assert.equal(calls.some((call) => call.url.endsWith('/api/twitch/live')), true);
   assert.equal(calls.some((call) => new Headers(call.init?.headers).has('x-bot-secret')), false);
 });

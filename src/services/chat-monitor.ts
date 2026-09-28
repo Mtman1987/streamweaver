@@ -14,6 +14,7 @@ import { appendPrivateChatMessages } from '@/lib/private-chat-store';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
 import { pollOwns } from './discord-processing-owner';
+import { resolvePrivateDiscordTenant } from './private-discord-tenant';
 
 let cachedChatHistory: Map<string, ChatHistoryMessage[]> = new Map();
 let lastDiscordMessageId: Map<string, string | null> = new Map();
@@ -278,6 +279,28 @@ export async function checkDmChannelActivity(): Promise<void> {
 
         for (const msg of newMessages.reverse()) {
             if (msg?.author?.bot) continue;
+
+            // PRIVATE DATA BOUNDARY: a configured DM channel is not sufficient
+            // proof of tenant ownership. Verify the exact Discord message and
+            // immutable author ID, then require it to resolve back to this loop's
+            // tenant before touching private history or private settings.
+            const verifiedPrivateTenant = await resolvePrivateDiscordTenant({
+                discordUserId: msg.author?.id,
+                discordUsername: msg.author?.username,
+                channelId: normalizedDmChannelId,
+                messageId: msg.id,
+            });
+            if (!verifiedPrivateTenant || verifiedPrivateTenant.tenantId !== tenantId) {
+                console.error('[DM Sweep] Refusing private message with mismatched tenant ownership', {
+                    configuredTenantId: tenantId,
+                    verifiedTenantId: verifiedPrivateTenant?.tenantId || null,
+                    channelId: normalizedDmChannelId,
+                    messageId: msg.id || null,
+                    discordUserId: msg.author?.id || null,
+                });
+                continue;
+            }
+
             const messageText = String(msg?.content || '').trim();
             const memoryAttachments = normalizeDiscordAttachmentsForMemory(msg);
             const memoryEmbeds = normalizeDiscordEmbedsForMemory(msg);

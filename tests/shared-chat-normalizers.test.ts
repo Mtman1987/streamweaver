@@ -97,7 +97,7 @@ test('normalizes Discord only with explicit tenant id and keeps guild id as sour
 
   assert.equal(event.tenantId, '94371278');
   assert.equal(event.sourceId, 'discord:62633402');
-  assert.equal(event.channelId, 'discord:1529967135605129369');
+  assert.equal(event.channelId, '1529967135605129369');
   assert.equal(event.meta.guildId, '62633402');
   assert.equal(event.media[0]?.url, 'https://example.com/image.png');
   assert.equal(event.routing.tenantIsolationKey, '94371278');

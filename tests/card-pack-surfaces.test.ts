@@ -90,9 +90,9 @@ test('Pokemon automation paths fan out to Twitch channel aliases', async () => {
   const legacy = await read('src/services/automation/subactions/PokemonHandlers.ts');
   const executor = await read('src/services/automation/SubActionExecutor.ts');
   assert.match(legacy, /cardPackOverlayAliases/);
-  assert.match(legacy, /context\?\.channel/);
+  assert.match(legacy, /channel: context\?\.channel/);
   assert.match(executor, /cardPackOverlayAliases/);
-  assert.match(executor, /context\?\.channel/);
+  assert.match(executor, /channel: \(context as any\)\?\.channel/);
 });
 
 
@@ -161,7 +161,7 @@ test('Pokemon Discord pack no longer posts the old three-at-a-time image gallery
   const source = await read('src/services/discord-pack-reveal.ts');
   assert.doesNotMatch(source, /galleryEmbeds/);
   assert.doesNotMatch(source, /revealStep/);
-  assert.doesNotMatch(source, /row-edit reveal/);
+  assert.doesNotMatch(source, /function revealStep|const revealStep/);
   assert.match(source, /sendStructuredDiscordReply\(buildPackReply/);
 });
 

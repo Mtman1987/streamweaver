@@ -2,7 +2,7 @@
   "id": "a6f8c3f9-51b6-45c8-8035-cdc4b8a691c9",
   "name": "!stretch",
   "command": "!stretch",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !stretch",
   "cooldown": {
     "global": 120,

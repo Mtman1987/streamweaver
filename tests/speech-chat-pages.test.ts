@@ -39,11 +39,13 @@ for (const page of ['say-player', 'tts-mixer']) {
           if (name === 'react') return react;
           if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx };
           if (name === '@/lib/tts-voices') return voices;
+          if (name === '@/lib/lounge-broadcast-volume') return { useLoungeBroadcastVolume: () => null };
           if (name === '@/services/speech-chat-capture') return { captureSpeechChat };
           throw new Error(`Unexpected import ${name}`);
         },
         crypto: { randomUUID },
-        window: { SpeechRecognition: class {
+        URLSearchParams,
+        window: { location: { search: '' }, SpeechRecognition: class {
           onend: any;
           constructor() { recognitions.push(this); }
           start() {}

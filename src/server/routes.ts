@@ -621,6 +621,30 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                 return;
             }
 
+            if (pathname === '/api/twitch/community-bot/reconnect' && req.method === 'POST') {
+                if (!isInternalServiceAuthorized(req.headers)) {
+                    res.writeHead(401, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Unauthorized' }));
+                    return;
+                }
+                try {
+                    console.log('[HTTP] Reconnecting shared community bot...');
+                    const { disconnectCommunityBot, getCommunityBotRuntimeState } = twitchClientModule;
+                    await disconnectCommunityBot();
+                    const { syncSignalCarrierRosterOnce } = require('../services/signal-carrier-sync');
+                    await syncSignalCarrierRosterOnce();
+                    const state = getCommunityBotRuntimeState();
+                    console.log('[HTTP] Shared community bot reconnect result:', state);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, state }));
+                } catch (e: any) {
+                    console.error('[HTTP] Shared community bot reconnect failed:', e);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+                return;
+            }
+
             if (pathname === '/api/twitch/community-bot/disconnect' && req.method === 'POST') {
                 if (!isInternalServiceAuthorized(req.headers)) {
                     res.writeHead(401, { 'Content-Type': 'application/json' });

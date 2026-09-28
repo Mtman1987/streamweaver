@@ -17,7 +17,7 @@ test('The Count OAuth is owner-only, state-bound, and exact-account pinned', () 
   assert.match(start, /isPrivilegedRole\(requestedRole\)/);
   assert.match(start, /!isAdmin\(session\.tenantId\)/);
   assert.match(start, /createPrivilegedTwitchOAuthTransaction/);
-  assert.match(start, /requestedRole === 'the-count' \? countScopes : standardScopes/);
+  assert.match(start, /requestedRole === 'the-count' \|\| requestedRole === 'space-mountain-bot'/);
   assert.match(transaction, /randomBytes\(32\)/);
   assert.match(transaction, /timingSafeEqual/);
   assert.match(transaction, /transaction\.ownerId !== ownerId/);

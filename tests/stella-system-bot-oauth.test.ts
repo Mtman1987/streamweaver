@@ -20,7 +20,7 @@ test('Stella OAuth is owner-only and pinned to StellaBot87', () => {
 test('Stella OAuth writes only bot credentials to the SpaceMountain system tenant', () => {
   const callback = read('src/app/auth/twitch/callback/route.ts');
   const start = callback.indexOf('if (isSpaceMountainBot)');
-  const end = callback.indexOf('// Community bot is admin-only', start);
+  const end = callback.indexOf('if (isSpaceMountainBroadcaster)', start);
   const flow = callback.slice(start, end);
 
   assert.match(flow, /SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
@@ -64,8 +64,11 @@ test('Stella Lounge replies use the live runtime instead of a static bot-account
 
   assert.doesNotMatch(direct, /tenantHasBotAccount\(SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
   assert.match(direct, /sendChatMessage\([\s\S]*aiReply,[\s\S]*'bot',[\s\S]*SPACEMOUNTAIN_SYSTEM_TENANT_ID/);
-  assert.match(direct, /queueTtsOverlay\(aiReply, SPACEMOUNTAIN_SYSTEM_TENANT_ID\)/);
-  assert.ok(direct.indexOf('sendChatMessage(') < direct.indexOf('queueTtsOverlay('));
+  const routes = read('src/server/routes.ts');
+  const runtime = read('src/services/twitch-client.ts');
+  assert.match(routes, /sendConfirmedLoungeStellaMessage\(message\.trim\(\)\)/);
+  assert.match(runtime, /if \(!response\.ok \|\| receipt\?\.is_sent !== true \|\| !receipt\.message_id\)/);
+  assert.match(runtime, /queuePreparedTtsOverlay\(spokenMessage, prepared\.audioUrl, tenantId\)/);
   assert.match(dispatcher, /!isSpaceMountainSystemReply \|\| twitchBotPosted/);
 });
 

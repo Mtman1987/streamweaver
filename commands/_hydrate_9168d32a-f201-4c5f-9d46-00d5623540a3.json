@@ -2,7 +2,7 @@
   "id": "9168d32a-f201-4c5f-9d46-00d5623540a3",
   "name": "!hydrate",
   "command": "!hydrate",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !hydrate",
   "cooldown": {
     "global": 120,

@@ -97,6 +97,7 @@ async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster') {
     './chat-dispatcher': { handleTwitchMessage: async (_channel: string, _tags: any, message: string) => { dispatched.push(message); } },
     './shared-chat-ingestion': { recordSharedChatEvent: async () => {} }, './shared-chat-normalizers': { normalizeTwitchSharedChatEvent: () => ({}) },
     './shared-chat': { shouldIgnoreMirrored: () => false, isMirroredSharedMessage: () => false },
+    './tts-overlay-queue': { queueTtsOverlay: async () => ({}), prepareTtsOverlay: async () => ({}), queuePreparedTtsOverlay: async () => ({}) },
     'fs': { promises: { readFile: async () => JSON.stringify({ communityBotToken: 'community', communityBotRefreshToken: 'community-refresh', communityBotUsername: 'streamweaverbot' }) } },
     '../lib/runtime-origin': { getConfiguredAppUrl: () => 'https://example.test' },
     '../lib/the-count-twitch-vault.server': { readTheCountTwitchCredential: async () => null }, '../lib/the-count': { THE_COUNT_TWITCH_LOGIN: 'count' },

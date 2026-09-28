@@ -309,9 +309,9 @@ export async function GET(request: NextRequest) {
 
     if (isSpaceMountainBot) {
       const username = String(userInfo?.login || '').trim().toLowerCase();
-      if (!username) {
+      if (username !== 'stellabot87' || !userInfo?.id) {
         return clearPrivilegedOAuthCookie(
-          NextResponse.redirect(`${appOrigin}/integrations?error=stella_identity&msg=Could+not+identify+the+Twitch+account+used+for+Stella.`),
+          NextResponse.redirect(`${appOrigin}/integrations?error=wrong_stella_account&msg=Authorize+the+stellabot87+Twitch+account+only.`),
         );
       }
 
@@ -374,7 +374,20 @@ export async function GET(request: NextRequest) {
       let existing: Record<string, any> = {};
       try { existing = JSON.parse(await fs.readFile(cbPath, 'utf-8')); } catch {}
 
-      const username = userInfo?.login || '';
+      let username = userInfo?.login || '';
+      if (!username) {
+        const validateResponse = await fetch('https://id.twitch.tv/oauth2/validate', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        });
+        if (validateResponse.ok) {
+          const identity = await validateResponse.json().catch(() => null);
+          username = String(identity?.login || '').trim().toLowerCase();
+        }
+      }
+      if (!username) {
+        console.error('[Twitch OAuth] Community bot identity could not be resolved; credentials not stored');
+        return NextResponse.redirect(`${appOrigin}/integrations?error=community_bot_identity`);
+      }
       const storage = {
         communityBotToken: tokenData.access_token,
         communityBotRefreshToken: tokenData.refresh_token,
@@ -383,6 +396,18 @@ export async function GET(request: NextRequest) {
         lastUpdated: new Date().toISOString(),
       };
       await updateStoredTokens(storage, undefined, true);
+      console.info('[Twitch OAuth] Community bot credentials stored', { username, hasRefreshToken: Boolean(tokenData.refresh_token) });
+      try {
+        const wsPort = process.env.WS_PORT || '8090';
+        const reconnectResponse = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/community-bot/reconnect`, {
+          method: 'POST',
+          headers: internalServiceHeaders(),
+        });
+        const reconnectText = await reconnectResponse.text().catch(() => '');
+        console.info('[Twitch OAuth] Community bot IRC reconnect response', { status: reconnectResponse.status, body: reconnectText.slice(0, 500) });
+      } catch (reconnectError) {
+        console.warn('[Twitch OAuth] Community bot credentials saved but IRC reconnect failed:', reconnectError);
+      }
       return clearPrivilegedOAuthCookie(
         NextResponse.redirect(`${appOrigin}/integrations?success=true`),
       );

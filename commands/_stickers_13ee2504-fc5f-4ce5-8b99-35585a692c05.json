@@ -2,7 +2,7 @@
   "id": "13ee2504-fc5f-4ce5-8b99-35585a692c05",
   "name": "!stickers",
   "command": "(?i).*@?stickers.*",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: !stickers",
   "cooldown": {
     "global": 0,

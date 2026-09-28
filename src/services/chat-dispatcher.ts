@@ -57,6 +57,7 @@ import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
 import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
 import { sendDiscordCommandShoutout } from './discord-command-shoutout';
+import { handleDiscordSignalCommand, handleTwitchSignalCommand, toggleSignalScheduler } from './signal-system';
 import {
     deleteStructuredDiscordReply,
     editStructuredDiscordReply,
@@ -121,6 +122,7 @@ import {
 } from './mt-support-report';
 import { findDiscordLastSeenForNames, findDiscordLastSeenForUserId } from './discord-last-seen';
 import { lookupDiscordRelayPresence } from './discord-relay-presence';
+import { deliverDirectHumanRelay } from './direct-human-relay';
 import { getInternalAppUrl } from '../lib/runtime-origin';
 import { routeBotAction, type BotActorRole } from './bot-action-runtime';
 import {
@@ -302,7 +304,7 @@ const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
 
 const DISCORD_NATIVE_COMMAND_NAMES = new Set([
     ...DISCORD_NATIVE_SOCIAL_COMMANDS,
-    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip', 'leaderboard',
+    'commands', 'admin', 'so', 'signal', 'signalbot', 'watchtime', 'time', 'coinflip', 'leaderboard',
     'followers', 'uptime', 'stats',
     'timeout', 'raidmessage', 'mtfixit',
     'ignore',
@@ -1434,7 +1436,9 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         return true;
     }
 
-    const discordCommandCategory = directLoungeCommandCategory(actualMessage, await resolveIsMod());
+    const discordCommandCategory = /^!commands\s+[1-8]$/i.test(actualMessage)
+        ? directLoungeCommandCategory(actualMessage, await resolveIsMod())
+        : null;
     if (discordCommandCategory) {
         for (const line of discordCommandCategory) await reply(line);
         return true;
@@ -1610,6 +1614,38 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         } catch (error: any) {
             console.error('[Discord Dispatcher] !leaderboard failed:', error);
             await reply(`@${actualUsername}, I couldn't render the DiscordStreamHub leaderboard right now.`);
+        }
+        return true;
+    }
+
+    if (cmdName === 'signalbot') {
+        if (!isPermanentDiscordOwner(msg)) {
+            await reply('@' + actualUsername + ', this control is restricted to the StreamWeaver owner.');
+            return true;
+        }
+        const requested = actualMessage.replace(/^!signalbot\b/i, '').trim().toLowerCase();
+        const force = requested === 'on' ? true : requested === 'off' ? false : undefined;
+        const result = await toggleSignalScheduler(force);
+        await reply('Signal clue scheduler is now ' + (result.enabled ? 'ON' : 'OFF') + '.' + (result.enabled ? ' The first clue was fired immediately and a DM receipt was sent.' : ''));
+        return true;
+    }
+
+    if (cmdName === 'signal') {
+        try {
+            const result = await handleDiscordSignalCommand({
+                msg,
+                tenantId,
+                actualUsername,
+                actualMessage,
+                sourceChannelId,
+                sourceUserAvatarUrl,
+            });
+            if (!result.ok && result.message) {
+                await reply(`@${actualUsername}, ${result.message}`);
+            }
+        } catch (error: any) {
+            console.error('[Discord Dispatcher] !signal failed:', error);
+            await reply(`@${actualUsername}, Signal failed: ${error?.message || 'unknown error'}`);
         }
         return true;
     }
@@ -3015,6 +3051,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             ? ` Listen: ${buildSayPlayerUrl(undefined, 'twitch', replyChannel)}${isSelfTarget ? ' | Type !say again to disable.' : ''}`
             : '';
         await replyMaybeKick(`TTS for @${targetUser} is now ${nextState}.${suffix}`, 'broadcaster').catch(() => {});
+        return;
+    }
+
+    if (isCommand && /^!signal(?:\s|$)/i.test(actualMessage)) {
+        try {
+            const result = await handleTwitchSignalCommand({
+                providerUserId: String(tags['user-id'] || tags.userId || ''),
+                username: actualUsername,
+                broadcaster: replyChannel,
+                tenantId,
+                rawMessage: actualMessage,
+            });
+            if (!result.ok && result.message) {
+                await replyMaybeKick(result.message, 'bot').catch(() => {});
+            }
+        } catch (error: any) {
+            console.error('[Dispatcher] Twitch !signal failed:', error);
+            await replyMaybeKick(`@${actualUsername}, Signal failed: ${error?.message || 'unknown error'}`, 'bot').catch(() => {});
+        }
         return;
     }
 
@@ -5419,6 +5474,95 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
 
+            // The Count is a built-in character, not a tenant bot. His Twitch
+            // account is only a delivery identity; the canonical Black Hole
+            // entitlement remains the sole personal invocation gate. Before
+            // unlock, a random persona leaves a breadcrumb rather than silence.
+            if (!isCommand && !userIsKnownBot && messageInvokesTheCount(actualMessage)) {
+                const twitchUserId = String(tags?.['user-id'] || '').trim();
+                const entitlement = await getSpmtEasterEggEntitlement({
+                    provider: 'twitch',
+                    providerUserId: twitchUserId,
+                });
+                if (!entitlement.eggs.blackHole) {
+                    const breadcrumbHints: string[] = [];
+                    if (!entitlement.eggs.signal) {
+                        breadcrumbHints.push('I have heard odd static around Discord lately. Some transmissions disappear almost as fast as they arrive.');
+                    }
+                    if (!entitlement.eggs.rocket) {
+                        breadcrumbHints.push('If this is part of the hunt, I would keep poking at anything around SPMT that looks like it wants to launch.');
+                    }
+                    if (!breadcrumbHints.length) {
+                        breadcrumbHints.push('You found the signal and the launch trail already. The remaining anomaly bends instead of broadcasts — Commlink might react strangely near impossible gravity.');
+                    }
+
+                    const lore = await readWorldLore().catch(() => null);
+                    const loreNames = Object.values(lore?.characters || {})
+                        .map((character: any) => String(character?.currentName || '').trim())
+                        .filter((name) => name && name.toLowerCase() !== THE_COUNT_NAME.toLowerCase());
+                    const tenantNames = (await listTenants().catch(() => []))
+                        .map((candidateTenantId) => String(getBotName(candidateTenantId) || '').trim())
+                        .filter((name) => name && name.toLowerCase() !== THE_COUNT_NAME.toLowerCase());
+                    const denialSpeakers = Array.from(new Set([...loreNames, ...tenantNames]));
+                    const denialSpeaker = denialSpeakers[Math.floor(Math.random() * Math.max(1, denialSpeakers.length))]
+                        || String(getBotName(tenantId) || 'StreamWeaver');
+                    const hint = breadcrumbHints[Math.floor(Math.random() * breadcrumbHints.length)];
+                    const denials = [
+                        'The Count? Never heard of him.',
+                        'Count who? Not ringing any bells.',
+                        'Nobody by that name in my logs.',
+                        'The Count? Sounds suspiciously fictional.',
+                    ];
+                    const denial = denials[Math.floor(Math.random() * denials.length)];
+                    const responseChannel = await resolveTwitchReplyChannel({
+                        sourceChannel: replyChannel,
+                        sourceTenantId: tenantId,
+                        responseTenantId: tenantId,
+                    });
+                    await sendChatMessage(`@${actualUsername} [${denialSpeaker}] ${denial} 👀 ${hint}`, 'bot', responseChannel, tenantId);
+                    console.log(`[Dispatcher] Count breadcrumb delivered by ${denialSpeaker} to @${actualUsername} in #${responseChannel}`);
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3100}/api/ai/chat-with-memory`, {
+                        method: 'POST',
+                        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
+                        body: JSON.stringify({
+                            username: actualUsername,
+                            displayName,
+                            userId: twitchUserId,
+                            message: actualMessage,
+                            personality: THE_COUNT_PERSONALITY,
+                            responseName: THE_COUNT_NAME,
+                            tenantId: tenantId || undefined,
+                            channelId: replyChannel,
+                            context: 'twitch-cross-bot',
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        console.error('[Dispatcher] The Count Twitch AI failed:', response.status);
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const aiReply = String(data.response || data.data?.response || '').trim();
+                    if (!aiReply) return;
+
+                    const responseChannel = await resolveTwitchReplyChannel({
+                        sourceChannel: replyChannel,
+                        sourceTenantId: tenantId,
+                        responseTenantId: tenantId,
+                    });
+                    await sendChatMessage(aiReply, 'count', responseChannel, tenantId);
+                    console.log(`[Dispatcher] The Count answered @${actualUsername} in #${responseChannel}`);
+                } catch (error) {
+                    console.error('[Dispatcher] The Count Twitch response failed:', error);
+                }
+                return;
+            }
+
             // Check for shoutout command (without bot name)
             // Skip messages that look like the formatted shoutout output to prevent re-triggering
             // Skip shoutout processing for known bots to prevent automated messages from triggering shoutouts
@@ -5453,7 +5597,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
             
-            const { getBotName, getBotInterests, getBotAliases } = require('../lib/bot-settings-store');
+            const { getBotInterests, getBotAliases } = require('../lib/bot-settings-store');
             const localConfiguredBotName = getBotName(tenantId);
             let botName = localConfiguredBotName;
             let responseTenantId = tenantId;
@@ -5708,22 +5852,23 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         });
                         if (!resolvedRelayTarget) {
                             if (relayRequest.targetName && isDirectHumanRelayTarget(relayRequest.targetName)) {
-                                const directMessage = buildDirectHumanRelayMessage({
+                                const directDelivery = await deliverDirectHumanRelay({
                                     targetName: relayRequest.targetName,
                                     sourceUserName: actualUsername,
                                     relayMessage: relayRequest.relayMessage,
                                 });
-                                console.log('[Dispatcher] Relay delivered directly to human target in current Twitch chat:', {
+                                if (directDelivery.delivered) {
+                                    console.log('[Dispatcher] Direct human relay delivered through Discord:', {
+                                        targetName: relayRequest.targetName,
+                                        mode: directDelivery.mode,
+                                        channelId: directDelivery.channelId || null,
+                                    });
+                                    return;
+                                }
+                                console.warn('[Dispatcher] Direct human relay Discord delivery failed:', {
                                     targetName: relayRequest.targetName,
-                                    replyChannel,
-                                    source: relayRequest.source || 'unknown',
+                                    error: directDelivery.error || 'target unavailable',
                                 });
-                                await sendChatMessage(
-                                    directMessage,
-                                    'bot',
-                                    replyChannel,
-                                    humanRelaySpeaker.tenantId
-                                ).catch(() => {});
                                 return;
                             }
                             console.warn('[Dispatcher] Human relay target unresolved:', {

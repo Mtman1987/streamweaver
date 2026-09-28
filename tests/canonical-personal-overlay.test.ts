@@ -25,8 +25,9 @@ test('Personal renderer is proxied through the authenticated StreamWeaver SPMT s
   const dataProxy = read('src/app/api/spmt/personal-render/[...path]/route.ts');
   const proxyHelper = read('src/lib/spmt-user-proxy.ts');
 
-  assert.match(themeRoute, /api\/tenant-scene\?output=personal/);
-  assert.match(themeRoute, /personalOverlayUrl: tenant \? `\/tenant\/\$\{encodeURIComponent\(tenant\)\}\/personal`/);
+  assert.match(themeRoute, /api\/tenant-scene\?output=public/);
+  assert.match(themeRoute, /api\/personal-overlay-launch/);
+  assert.match(themeRoute, /personalOverlayUrl: personalOverlayUrl \|\| null/);
   assert.match(rendererRoute, /fetchSpmtForUser\(request, `\/tenant\/\$\{encodeURIComponent\(tenant\)\}\/personal`/);
   assert.match(rendererRoute, /personal-render\/tenant/);
   assert.match(rendererRoute, /personal-render\/cloud-xbox\/status/);

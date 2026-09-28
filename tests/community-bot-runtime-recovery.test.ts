@@ -18,7 +18,7 @@ test('community bot failed setup is retryable and OAuth resets runtime state', (
 });
 
 test('Fly build applies community bot recovery after Signal generation', () => {
-  assert.match(dockerfile, /patch-signal-system\.mjs/);
+  assert.match(fs.readFileSync(path.join(root, 'package.json'), 'utf8'), /patch-signal-system\.mjs/);
   assert.match(dockerfile, /patch-signal-carrier-join-hardening\.mjs/);
   assert.match(dockerfile, /patch-signal-carrier-runtime-recovery\.mjs/);
   assert.ok(

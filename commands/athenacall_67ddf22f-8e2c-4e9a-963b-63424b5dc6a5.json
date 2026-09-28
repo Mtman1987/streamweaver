@@ -2,7 +2,7 @@
   "id": "67ddf22f-8e2c-4e9a-963b-63424b5dc6a5",
   "name": "athenacall",
   "command": "(?i).*@?{{BOT_NAME}}.*",
-  "enabled": true,
+  "enabled": false,
   "description": "Imported from Streamer.bot: athenacall",
   "cooldown": {
     "global": 0,

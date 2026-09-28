@@ -48,7 +48,7 @@ async function discordJson(path: string, ttlMs: number): Promise<any | null> {
         'User-Agent': 'DiscordBot (https://streamweaver-new.fly.dev, 1.0)',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(1_800),
     });
     if (!response.ok) return remember(key, null, Math.min(ttlMs, 30_000));
     return remember(key, await response.json(), ttlMs);
@@ -247,14 +247,14 @@ export async function enrichDiscordSharedChatEvents(events: SharedChatEventV1[])
   const discordEvents = events.filter(isDiscordEvent);
   if (!discordEvents.length) return events;
 
-  const channelIds = Array.from(new Set(discordEvents.map(rawDiscordChannelId).filter(Boolean))).slice(0, 30);
+  const channelIds = Array.from(new Set(discordEvents.map(rawDiscordChannelId).filter(Boolean))).slice(0, 12);
   const channelById = new Map<string, JsonRecord>();
   const messagesByLane = new Map<string, JsonRecord>();
 
-  await mapWithConcurrency(channelIds, 4, async (channelId) => {
+  await mapWithConcurrency(channelIds, 12, async (channelId) => {
     const [channel, messages] = await Promise.all([
       discordJson(`/channels/${channelId}`, 10 * 60_000),
-      discordJson(`/channels/${channelId}/messages?limit=100`, 45_000),
+      discordJson(`/channels/${channelId}/messages?limit=50`, 45_000),
     ]);
     if (channel && typeof channel === 'object') channelById.set(channelId, channel);
     if (Array.isArray(messages)) {
@@ -346,6 +346,7 @@ export async function enrichDiscordSharedChatEvents(events: SharedChatEventV1[])
     return {
       ...event,
       sourceName: text(guild?.name) || event.sourceName,
+      channelId: channelId || event.channelId,
       channelName: channelName || event.channelName,
       sender: {
         ...event.sender,
@@ -359,6 +360,9 @@ export async function enrichDiscordSharedChatEvents(events: SharedChatEventV1[])
       media,
       reply,
       editedAt: text(message?.edited_timestamp) || event.editedAt,
+      // Old replay entries may have been recorded when Discord incorrectly
+      // advertised canReply=true. Hydration repairs that stale capability too.
+      routing: { ...event.routing, canReply: false, replyTarget: undefined },
       meta: {
         ...(event.meta || {}),
         mentions: Array.isArray(message?.mentions)
