@@ -41,10 +41,17 @@ test('live Stella translation supports one-shot and target-aware auto translatio
   assert.match(manager, /autoTranslateTargets/);
   assert.match(manager, /translateToLanguage\(message, targetLanguage\)/);
   assert.match(manager, /sameText\(message, result\.translatedText\)/);
+  const translation = read('src/services/translation.ts');
+  assert.match(translation, /generateAIResponse/);
+  assert.doesNotMatch(translation, /automatic_translation/);
+  assert.doesNotMatch(translation, /process\.env\.EDENAI_API_KEY/);
+  assert.match(manager, /Stella could not translate that right now/);
 
   assert.match(dispatcher, /publishTranslationSubtitleEvent/);
   assert.match(dispatcher, /translated\.targetLanguage/);
   assert.match(dispatcher, /translated\.translatedText/);
+  assert.match(dispatcher, /sourceText/);
+  assert.match(dispatcher, /targetLanguage: explicitLanguage/);
   assert.match(dispatcher, /hasEffectiveDiscordModAccess/);
   assert.match(directory, /!t @user en \/ !t @user off/);
   assert.match(discord, /!t/);
