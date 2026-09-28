@@ -90,6 +90,10 @@ test('community fallback and reply routing are wired independently of botshare',
   assert.match(store, /messageId\?: string/);
   assert.match(store, /thread\.delivery\.channelId === input\.channelId/);
   assert.match(store, /isIntendedRecipient/);
+  assert.match(store, /await listTenants\(\)/);
+  assert.match(store, /input\.platform !== 'discord'/);
+  assert.match(store, /input\.recipientUserId/);
+  assert.match(dispatcher, /completeRelayReplyThread\(thread\.recipientContextTenantId, thread\.id\)/);
 });
 
 test('Discord DM relays are matched before the ordinary private AI response', () => {
@@ -101,4 +105,13 @@ test('Discord DM relays are matched before the ordinary private AI response', ()
   assert.ok(privateLane > relayMarker);
   assert.match(route, /sourceDiscordIsPrivate: true/);
   assert.match(route, /sourceDiscordRelayMessageId: acknowledgement\.messageId/);
+});
+
+
+test('cross-tenant Discord VC replies are allowed to search by exact recipient identity', () => {
+  const store = read('src/lib/relay-reply-thread-store.ts');
+  assert.match(store, /const directMatch = findMatch\(await readThreads\(input\.recipientContextTenantId\)\)/);
+  assert.match(store, /thread\.delivery\.channelId === input\.channelId/);
+  assert.match(store, /intendedUserId === actualUserId/);
+  assert.match(store, /fallbackContexts\.map/);
 });
