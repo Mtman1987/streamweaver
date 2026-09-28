@@ -36,6 +36,7 @@ export type StellaLoungeSnapshot = {
     currentTitle?: string;
     currentArtist?: string;
     pausedMovieTitle?: string;
+    positionSeconds?: number;
     queueCount: number;
     nextTitle?: string;
     playbackState: 'playing' | 'idle' | 'unknown';
@@ -85,8 +86,8 @@ const DSH_COMMUNITY_SPOTLIGHT_URL = String(
 );
 
 const SNAPSHOT_CACHE_MS = 15_000;
-const AMBIENT_MIN_MS = 7 * 60_000;
-const AMBIENT_MAX_MS = 14 * 60_000;
+const AMBIENT_MIN_MS = 9 * 60_000;
+const AMBIENT_MAX_MS = 18 * 60_000;
 const EVENT_SPEECH_GAP_MS = 12_000;
 const PROMO_GAP_MS = 30 * 60_000;
 
@@ -218,6 +219,9 @@ export async function buildStellaLoungeSnapshot(
       currentArtist: currentMedia?.artist ? String(currentMedia.artist) : undefined,
       pausedMovieTitle: mediaData?.movie?.current?.item?.title && mediaData.movie.playback?.status !== 'playing'
         ? String(mediaData.movie.current.item.title) : undefined,
+      positionSeconds: Number.isFinite(Number(activeLane?.playback?.position))
+        ? Math.max(0, Number(activeLane.playback.position))
+        : undefined,
       queueCount: Number.isFinite(Number(activeLane?.queueCount)) ? Number(activeLane.queueCount) : mediaQueue.length,
       nextTitle: mediaQueue[0]?.item?.title ? String(mediaQueue[0].item.title) : undefined,
       playbackState: mediaResult.status !== 'fulfilled' ? 'unknown' : activeKind ? 'playing' : 'idle',
@@ -358,6 +362,9 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
   return [
     'Verified live Lounge state (use these facts; do not invent missing state):',
     `- ${mediaLine(snapshot)}`,
+    snapshot.media.positionSeconds === undefined
+      ? '- Current media playhead: unavailable.'
+      : `- Current media playhead: ${Math.floor(snapshot.media.positionSeconds)} seconds.`,
     `- ${spotlightLine(snapshot)}`,
     `- ${gameLine(snapshot)}`,
     snapshot.community.available
@@ -497,7 +504,11 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
   if (ambientRunning) return { delivered: false, reason: 'already-running' };
   if (now < nextAmbientAt) return { delivered: false, reason: 'not-due' };
   if (isStreamerSpeaking(now)) { recordStellaDecision('silence', 'streamer-speaking', now); return { delivered: false, reason: 'streamer-speaking' }; }
-  if (Math.random() < 0.22) { recordStellaDecision('silence', 'ambient-restraint', now); return { delivered: false, reason: 'chose-silence' }; }
+  if (Math.random() < 0.45) {
+    recordStellaDecision('silence', 'ambient-restraint', now);
+    scheduleNextAmbient(now);
+    return { delivered: false, reason: 'chose-silence' };
+  }
 
   // Ambient lines are spoken lines. If no live listener can play them,
   // keep the room quiet rather than placing an unspeaking line in chat.
