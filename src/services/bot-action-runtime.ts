@@ -20,7 +20,7 @@ import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { setLoungeMediaLayout } from '@/services/lounge-media-layout';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart } from '@/services/lounge-player-control';
-import { executeNebulaCommand, manageNebulaOverlay, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
+import { executeNebulaCommand, manageNebulaOverlay, readNebulaChannelState, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
 import { SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID, SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID } from '@/lib/spacemountain-lounge';
@@ -30,7 +30,7 @@ export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | '
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'nebula.game.director' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -243,6 +243,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['start Chat Wars against @otherstreamer', 'link my stream with @otherstreamer for Chat Wars'],
   },
   {
+    id: 'nebula.game.director',
+    title: 'Direct Nebula games and the live game overlay',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
+    examples: ['start Bingo and put it on the overlay', 'take Mosaic off the overlay', 'switch to Word Chain', 'shuffle the active games'],
+  },
+  {
     id: 'nebula.live-overlay',
     title: 'Reshape the existing live Nebula overlay URL in place',
     app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'moderator',
@@ -450,6 +456,20 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const roleMatch=value.match(/\bstella\b.*\b(collab|producer|host|(?:arcade\s+)?steward)\b(?:\s+(?:with|for)\s+@?([a-z0-9_]{2,80}))?/);
   if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
   const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse'};
+  const namedGame=Object.entries(gameNames).find(([name])=>value.includes(name));
+  const gameDirectorIntent = /\b(?:start|launch|begin|stop|end|hide|remove|take|show|put|add|switch|swap|change|shuffle|randomize|rotate)\b/.test(value)
+    && /\b(?:game|games|nebula|overlay|screen|stage|rotation|chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/.test(value);
+  if (gameDirectorIntent) {
+    const gameId=namedGame?.[1]||'';
+    const stop=/\b(?:stop|end|turn off)\b/.test(value);
+    const hide=/\b(?:hide|remove|take)\b.*\b(?:overlay|screen|stage|off)\b|\btake\b.*\boff\b/.test(value);
+    const show=/\b(?:show|put|add)\b.*\b(?:overlay|screen|stage|on)\b/.test(value);
+    const switchGame=/\b(?:switch|swap|change)\b.*\b(?:game|to|into)\b/.test(value);
+    const shuffle=/\b(?:shuffle|randomize|mix up|rotate)\b.*\b(?:game|games|rotation|overlay)\b/.test(value);
+    const start=/\b(?:start|launch|begin|turn on)\b/.test(value);
+    const operation=shuffle?'shuffle':switchGame?'switch':stop&&hide?'stop-hide':hide?'hide':show&&start?'start-show':show?'show':'';
+    if(operation) return {action:'nebula.game.director',args:{operation,gameId},detection:'explicit'};
+  }
   if(/\b(?:overlay|screen|stage)\b/.test(value)&&/\b(?:nebula|lounge|game)\b/.test(value)){
     const ids=Object.entries(gameNames).filter(([name])=>value.includes(name)).map(([,id])=>id);
     if(ids.length) return {action:'nebula.live-overlay',args:{gameIds:ids.join(','),layout:/\bgrid\b/.test(value)?'auto-grid':/\bstack\b/.test(value)?'stack':'rotation'},detection:'explicit'};
@@ -879,6 +899,45 @@ export async function executeBotAction(
       if(!opponent) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which streamer to battle.'};
       const result=await createNebulaStreamBattle({channels:[context.tenantId,opponent],createdBy:context.tenantId,active:true});
       return {handled:true,action:request.action,status:'completed',response:`⚔️ Chat Wars stream battle linked: #${context.tenantId} vs #${opponent}.`,result};
+    }
+    if (request.action === 'nebula.game.director') {
+      const operation=String(request.args.operation||'');
+      const knownIds=new Set(['chatwars','bingo','pixelbattle','treasurehunt','wordchain','phraseguess','chickenroyale','emojirain','dancingparade','chat-tag','quackverse']);
+      let gameId=String(request.args.gameId||'').trim();
+      const state=await readNebulaChannelState(context.tenantId) as any;
+      const activeIds=Array.isArray(state?.gameIds)?state.gameIds.map((value:any)=>String(value)).filter((value:string)=>knownIds.has(value)):[];
+      if(!gameId && activeIds.length===1) gameId=activeIds[0];
+      if (operation === 'shuffle') {
+        if (!activeIds.length) return {handled:true,action:request.action,status:'needs_input',response:'There are no active Nebula games to shuffle.'};
+        const shuffled=[...activeIds].sort(()=>Math.random()-.5);
+        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:shuffled,layout:'rotation'});
+        return {handled:true,action:request.action,status:'completed',response:`✅ Shuffled the live Nebula game rotation: ${shuffled.join(', ')}.`,result};
+      }
+      if (!gameId || !knownIds.has(gameId)) {
+        return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula game you want me to control.'};
+      }
+      const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
+      const run=async(action:'start'|'stop')=>executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:`spmt ${gameId} ${action}`});
+      if (operation === 'start' || operation === 'start-show') await run('start');
+      if (operation === 'stop' || operation === 'stop-hide') await run('stop');
+      if (operation === 'switch') {
+        for (const active of activeIds.filter((id:string)=>id!==gameId && id!=='chat-tag')) {
+          await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:`spmt ${active} stop`});
+        }
+        await run('start');
+        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:[gameId],layout:'focus'});
+        return {handled:true,action:request.action,status:'completed',response:`✅ Switched Nebula to ${gameId} and focused it on the live overlay.`,result};
+      }
+      if (operation === 'show' || operation === 'start-show') {
+        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:[gameId],layout:'focus'});
+        return {handled:true,action:request.action,status:'completed',response:`✅ ${gameId} is on the live Nebula overlay.`,result};
+      }
+      if (operation === 'hide' || operation === 'stop-hide') {
+        const remaining=activeIds.filter((id:string)=>id!==gameId);
+        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:remaining,layout:remaining.length>1?'rotation':'focus'});
+        return {handled:true,action:request.action,status:'completed',response:`✅ ${gameId} is off the live Nebula overlay.`,result};
+      }
+      return {handled:true,action:request.action,status:'completed',response:`✅ Nebula ${gameId} ${operation} completed.`};
     }
     if (request.action === 'nebula.live-overlay') {
       const gameIds=String(request.args.gameIds||'').split(',').map(v=>v.trim()).filter(Boolean);

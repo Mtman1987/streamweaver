@@ -40,6 +40,39 @@ test('Stella translates explicit screen and game commands into real actions', as
   });
 });
 
+test('Stella directs flexible Nebula game and overlay changes without falling through to chat AI', async () => {
+  assert.deepEqual(await detectBotAction('Stella start Bingo and put it on the overlay'), {
+    action: 'nebula.game.director',
+    args: { operation: 'start-show', gameId: 'bingo' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella take Word Chain off the overlay'), {
+    action: 'nebula.game.director',
+    args: { operation: 'hide', gameId: 'wordchain' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella switch to Chat Wars'), {
+    action: 'nebula.game.director',
+    args: { operation: 'switch', gameId: 'chatwars' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella shuffle the games'), {
+    action: 'nebula.game.director',
+    args: { operation: 'shuffle', gameId: '' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella take it off the game overlay'), {
+    action: 'nebula.game.director',
+    args: { operation: 'hide', gameId: '' },
+    detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella start the game bingo'), {
+    action: 'nebula.command',
+    args: { command: 'spmt bingo start' },
+    detection: 'explicit',
+  });
+});
+
 test('Stella maps movie fast-forward and rewind to the Lounge movie lane', async () => {
   assert.deepEqual(await detectBotAction('Stella fast forward the movie 30 seconds'), {
     action: 'hmo.media.control',
