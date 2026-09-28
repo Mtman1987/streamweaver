@@ -128,6 +128,7 @@ import { routeBotAction, type BotActorRole } from './bot-action-runtime';
 import {
     applySayState,
     cleanSayTextForSpeech,
+    consumeNextSayEcho,
     formatSaySpeechText,
     isSayEnabled,
     hasSayEnabledInChannel,
@@ -3083,7 +3084,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     });
 
     const sayMessage = stripTwitchEmotesFromText(actualMessage, tags.emotes);
-    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(sayMessage)) {
+    if (!isCommand && !isBotMessage && !isKnownAutomationBotMessage && !message.startsWith('[') && isSayTextSpeakable(sayMessage) && !consumeNextSayEcho(replyChannel, actualUsername, actualMessage)) {
         readSayUsers().then((sayUsers) => {
             if (!isSayEnabled(sayUsers, actualUsername, replyChannel)) return;
             const sayChannelKey = resolveSayStreamKey(undefined, 'twitch', replyChannel);
