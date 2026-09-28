@@ -352,6 +352,8 @@ export default function TTSPlayer() {
   const [showControls, setShowControls] = useState(false);
   const [captionText, setCaptionText] = useState('');
   const captionWindowRef = useRef<HTMLDivElement>(null);
+  const captionContentRef = useRef<HTMLDivElement>(null);
+  const [captionPageStart, setCaptionPageStart] = useState(0);
   const [captionVisible, setCaptionVisible] = useState(false);
   const captionTypeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const captionLingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -363,12 +365,31 @@ export default function TTSPlayer() {
     && new URLSearchParams(window.location.search).get('placement') === 'lounge';
 
   useLayoutEffect(() => {
-    // Keep the newest three complete lines in view as the spoken text grows.
-    // A CSS line clamp inserts an ellipsis and permanently hides earlier words.
-    if (loungePlacement && captionWindowRef.current) {
-      captionWindowRef.current.scrollTop = captionWindowRef.current.scrollHeight;
+    if (!loungePlacement) return;
+    const windowElement = captionWindowRef.current;
+    const content = captionContentRef.current;
+    const node = content?.firstChild;
+    if (!windowElement || !content || !node || node.nodeType !== Node.TEXT_NODE) return;
+    if (content.getBoundingClientRect().height <= windowElement.clientHeight + 1) return;
+
+    // Turn a page at a real rendered line boundary before the fourth line
+    // paints. Every character stays visible in order; nothing is clamped.
+    const visible = node.textContent || '';
+    const range = document.createRange();
+    let firstLineTop: number | null = null;
+    const lineHeight = parseFloat(getComputedStyle(content).lineHeight) || 20;
+    for (let i = 0; i < visible.length; i++) {
+      if (/\s/.test(visible[i])) continue;
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const top = range.getBoundingClientRect().top;
+      if (firstLineTop === null) firstLineTop = top;
+      else if (top > firstLineTop + lineHeight / 2) {
+        setCaptionPageStart(captionPageStart + i);
+        break;
+      }
     }
-  }, [captionText, loungePlacement]);
+  }, [captionText, captionPageStart, loungePlacement]);
   const stellaMixGain = useRef(1);
   const stellaLevel = useLoungeBroadcastVolume('stella');
   useEffect(() => {
@@ -508,6 +529,7 @@ export default function TTSPlayer() {
         return;
       }
       setCaptionText('');
+      setCaptionPageStart(0);
       setCaptionVisible(true);
       let index = 0;
       const durationMs = Number.isFinite(durationSeconds) && Number(durationSeconds) > 0
@@ -725,17 +747,17 @@ export default function TTSPlayer() {
         right: loungePlacement ? '29%' : '5vw',
         bottom: loungePlacement ? '32%' : 54,
         minHeight: loungePlacement ? undefined : 56,
-        height: loungePlacement ? '3.48em' : undefined,
+        height: loungePlacement ? '3.6em' : undefined,
         fontSize: loungePlacement ? 'clamp(16px, 2vw, 24px)' : undefined,
         overflow: loungePlacement ? 'hidden' : 'visible',
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: loungePlacement ? 'flex-end' : 'flex-start',
         justifyContent: 'flex-start',
         pointerEvents: 'none',
         opacity: captionVisible ? 1 : 0,
         transition: 'opacity 0.7s ease',
       }}>
-        <div style={{
+        <div ref={captionContentRef} style={{
           maxWidth: loungePlacement ? '100%' : 'min(1080px, 78vw)',
           color: '#ffd900',
           fontFamily: 'Arial Black, Inter, system-ui, sans-serif',
@@ -747,11 +769,10 @@ export default function TTSPlayer() {
           textWrap: 'balance',
           WebkitTextStroke: '1px rgba(0,0,0,.9)',
           textShadow: '0 3px 3px #000, 0 0 8px #000, 0 0 18px rgba(0,0,0,.9)',
-          marginTop: loungePlacement ? 'auto' : undefined,
           flexShrink: loungePlacement ? 0 : undefined,
           overflowWrap: 'anywhere',
         }}>
-          {captionText}
+          {loungePlacement ? captionText.slice(captionPageStart) : captionText}
         </div>
       </div>
       {loungePlacement ? <LoungeAttributionMarquee /> : (
