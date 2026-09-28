@@ -30,6 +30,7 @@ const MACHINE_PATHS = [
   // human SPMT session; the routes themselves constrain what public callers can do.
   '/api/internal/hearmeout/bots',
   '/api/internal/hearmeout/persona-command',
+  '/api/internal/hearmeout/lounge-song-unavailable',
   '/api/speech/transcribe',
   // These routes perform their own service-auth checks. Do not force a human SPMT
   // session in middleware before machine credentials can be evaluated by the route itself.
