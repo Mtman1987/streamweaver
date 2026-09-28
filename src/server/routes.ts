@@ -8,7 +8,7 @@ import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
 import { getAdminTwitchId, tenantPath, SPACEMOUNTAIN_SYSTEM_TENANT_ID, SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL } from '../lib/tenant';
 import { readUserConfigSync } from '../lib/user-config';
 import { isKnownInternalSecret } from '../lib/internal-service-auth';
-import { cancelNextSayEcho, suppressNextSayEcho } from '../services/say-tts';
+import { cancelForcedSayEcho, cancelNextSayEcho, forceNextSayEcho, suppressNextSayEcho } from '../services/say-tts';
 
 function isAuthorized(headers: http.IncomingHttpHeaders): boolean {
     const key = headers['x-api-key'];
@@ -250,6 +250,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             tenantId: requestedTenantId,
                             bridgeToDiscord,
                             suppressSayTts,
+                            forceSayTts,
                         } = JSON.parse(body);
                         if (typeof message !== 'string' || !message.trim()) {
                             throw new Error('message is required');
@@ -308,10 +309,12 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         if (isSpaceMountainBroadcasterSend) {
                             const suppressEchoSpeaker = SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
                             if (suppressSayTts === true) suppressNextSayEcho(channel, suppressEchoSpeaker, message);
+                            if (forceSayTts === true) forceNextSayEcho(channel, suppressEchoSpeaker, message);
                             try {
                                 await sendSpaceMountainBroadcasterMessage(message.trim());
                             } catch (error) {
                                 if (suppressSayTts === true) cancelNextSayEcho(channel, suppressEchoSpeaker, message);
+                                if (forceSayTts === true) cancelForcedSayEcho(channel, suppressEchoSpeaker, message);
                                 throw error;
                             }
                             await mirrorOutboundTwitchMessageToDiscord({

@@ -38,16 +38,20 @@ test('SpaceMountain Twitch chat and Lounge browser source share one public TTS l
 });
 
 
-test('speech-to-chat marks Twitch sends as already queued for TTS', () => {
+test('speech-to-chat posts once and lets the Twitch echo become the only TTS source', () => {
   const route = readFileSync(new URL('../src/app/api/say/chat/route.ts', import.meta.url), 'utf8');
   const serverRoutes = readFileSync(new URL('../src/server/routes.ts', import.meta.url), 'utf8');
   const dispatcher = readFileSync(new URL('../src/services/chat-dispatcher.ts', import.meta.url), 'utf8');
 
-  assert.match(route, /suppressSayTts: true/);
+  assert.match(route, /forceSayTts: true/);
+  assert.doesNotMatch(route, /generateTTS\(/);
+  assert.doesNotMatch(route, /addSayQueueItem\(/);
+  assert.match(route, /delivered: 'chat-echo'/);
   assert.match(route, /tenantId: targetChannel \? undefined : session\.tenantId/);
-  assert.match(serverRoutes, /suppressNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
-  assert.match(serverRoutes, /cancelNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
-  assert.match(dispatcher, /!consumeNextSayEcho\(replyChannel, actualUsername, actualMessage\)/);
-  assert.match(dispatcher, /isSpaceMountainDataSpeaker/);
+  assert.match(serverRoutes, /forceNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
+  assert.match(serverRoutes, /cancelForcedSayEcho\(channel, suppressEchoSpeaker, message\)/);
+  assert.match(dispatcher, /consumeForcedSayEcho\(replyChannel, actualUsername, actualMessage\)/);
+  assert.match(dispatcher, /\(!isSpaceMountainDataSpeaker \|\| forcedSayEcho\)/);
+  assert.match(dispatcher, /if \(!forcedSayEcho && !isSayEnabled/);
 });
 
