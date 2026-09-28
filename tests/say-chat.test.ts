@@ -44,7 +44,10 @@ test('speech-to-chat marks Twitch sends as already queued for TTS', () => {
   const dispatcher = readFileSync(new URL('../src/services/chat-dispatcher.ts', import.meta.url), 'utf8');
 
   assert.match(route, /suppressSayTts: true/);
+  assert.match(route, /tenantId: targetChannel \? undefined : session\.tenantId/);
   assert.match(serverRoutes, /suppressNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
   assert.match(serverRoutes, /cancelNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
   assert.match(dispatcher, /!consumeNextSayEcho\(replyChannel, actualUsername, actualMessage\)/);
+  assert.match(dispatcher, /isSpaceMountainDataSpeaker/);
 });
+

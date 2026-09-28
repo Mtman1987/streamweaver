@@ -24,7 +24,7 @@ function fixtureFetch(input: string | URL | Request): Promise<Response> {
   if (url.includes('/lounge/media/program')) {
     return Promise.resolve(new Response(JSON.stringify({
       movie: { current: null, playback: { status: 'idle' }, queue: [], queueCount: 0 },
-      music: { current: { item: { title: 'Rocket Man', artist: 'Elton John' } }, playback: { status: 'playing' }, queue: [], queueCount: 2 },
+      music: { current: { item: { title: 'Rocket Man', artist: 'Elton John' } }, playback: { status: 'playing', position: 91 }, queue: [], queueCount: 2 },
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
   }
   if (url.includes('/spotlight/program')) return Promise.resolve(new Response(JSON.stringify({ ready: true, currentLogin: 'CaptainOne' }), { status: 200 }));
@@ -60,6 +60,7 @@ test('builds one bounded snapshot from the live services', async () => {
   const snapshot = await buildStellaLoungeSnapshot(fixtureFetch as typeof fetch, Date.parse('2026-09-21T12:00:00Z'));
   assert.equal(snapshot.media.currentTitle, 'Rocket Man');
   assert.equal(snapshot.media.queueCount, 2);
+  assert.equal(snapshot.media.positionSeconds, 91);
   assert.equal(snapshot.overlay.spotlight, 'CaptainOne');
   assert.equal(snapshot.nebula.playerCount, 2);
   assert.equal(snapshot.nebula.activePlayerCount, 1);
@@ -69,6 +70,7 @@ test('builds one bounded snapshot from the live services', async () => {
   assert.deepEqual(snapshot.community.liveNames, ['CaptainOne', 'CaptainTwo']);
   const prompt = formatStellaLoungeContext(snapshot);
   assert.match(prompt, /Rocket Man by Elton John/);
+  assert.match(prompt, /Current media playhead: 91 seconds/);
   assert.match(prompt, /Nebula Arcade has 2 players/);
   assert.match(prompt, /Available now: Bingo/);
   assert.match(prompt, /spmt join/);

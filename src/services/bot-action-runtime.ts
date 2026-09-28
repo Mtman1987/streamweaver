@@ -402,6 +402,11 @@ function extractApplicationDecision(message: string) {
   return { decision, type, application: clean(before || after, 160).replace(/["“”']/g, '').trim() };
 }
 
+function mediaOffsetSeconds(amount: string, unit: string): number {
+  const value = Math.max(0, Number(amount) || 0);
+  return /^(?:m|min|mins|minute|minutes)$/i.test(unit) ? value * 60 : value;
+}
+
 function detectExplicitAction(message: string): BotActionRequest | null {
   const value = normalized(message);
   const channel = extractChannel(message);
@@ -528,6 +533,22 @@ function detectExplicitAction(message: string): BotActionRequest | null {
 
   if (/\b(?:clear|empty)\b.*\b(?:hearmeout|hear\s+me\s+out|music)?\s*queue\b/.test(value)) {
     return { action: 'hmo.media.control', args: { control: 'clear' }, detection: 'explicit' };
+  }
+  const mediaForward = value.match(/\b(?:fast\s*forward|forward|skip\s+ahead)\b.*?\b(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m)\b/);
+  if (mediaForward) {
+    return {
+      action: 'hmo.media.control',
+      args: { control: 'forward', value: String(mediaOffsetSeconds(mediaForward[1], mediaForward[2])), lane: 'movie' },
+      detection: 'explicit',
+    };
+  }
+  const mediaRewind = value.match(/\b(?:rewind|go\s+back)\b.*?\b(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m)\b/);
+  if (mediaRewind) {
+    return {
+      action: 'hmo.media.control',
+      args: { control: 'rewind', value: String(mediaOffsetSeconds(mediaRewind[1], mediaRewind[2])), lane: 'movie' },
+      detection: 'explicit',
+    };
   }
   if (/\b(?:skip|next)\b.*\b(?:song|track|story|audio|hearmeout|hear\s+me\s+out)\b|\b(?:hearmeout|hear\s+me\s+out)\b.*\b(?:skip|next)\b/.test(value)) {
     return { action: 'hmo.media.control', args: { control: 'next' }, detection: 'explicit' };
@@ -937,11 +958,20 @@ export async function executeBotAction(
       const bot = request.action === 'hmo.bot.control'
         ? await (dependencies.resolveBotPersonaForAction || resolveBotPersonaForAction)(botSelector, context.tenantId)
         : undefined;
+      const requestedLane = request.args.lane === 'movie' ? 'movie' : request.args.lane === 'music' ? 'music' : undefined;
+      const loungeSessionId = request.action === 'hmo.media.radio'
+        ? 'discord-music-room'
+        : context.tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && request.action.startsWith('hmo.media.') && requestedLane
+          ? (requestedLane === 'movie' ? SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID : SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID)
+          : request.action.startsWith('hmo.media.') && context.playbackSessionId
+            ? context.playbackSessionId
+            : undefined;
       const result = await dependencies.executeHearMeOutBotAction({
         action: request.action as HearMeOutBotAction,
         tenantId: context.tenantId,
         roomId: context.roomId,
-        ...(request.action === 'hmo.media.radio' ? { sessionId: 'discord-music-room' } : request.action.startsWith('hmo.media.') && context.playbackSessionId ? { sessionId: context.playbackSessionId } : {}),
+        ...(loungeSessionId ? { sessionId: loungeSessionId } : {}),
+        ...(requestedLane ? { lane: requestedLane, targetLane: requestedLane } : {}),
         actorUserId: context.actor.userId,
         actorName: context.actor.displayName || context.actor.username,
         query: request.args.query,
