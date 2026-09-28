@@ -106,6 +106,18 @@ export default function SayPlayer() {
     return () => window.clearInterval(interval);
   }, [active, tenantId]);
 
+  useEffect(() => {
+    if (!broadcastSource) return;
+    const unlock = () => {
+      const audio = playingAudioRef.current;
+      if (!audio) return;
+      audio.muted = false;
+      if (audio.paused) void audio.play().catch(() => {});
+    };
+    window.addEventListener('streamweaver:lounge-audio-unlock', unlock);
+    return () => window.removeEventListener('streamweaver:lounge-audio-unlock', unlock);
+  }, [broadcastSource]);
+
   function updateVolume(next: number) {
     const value = Math.max(0, Math.min(1, next));
     setVolume(value);

@@ -404,6 +404,23 @@ export default function TTSPlayer() {
   }, []);
 
   useEffect(() => {
+    if (!loungePlacement) return;
+    const unlock = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.muted = false;
+      if (audio.src && audio.paused) {
+        void audio.play().then(() => {
+          stellaControllerRef.current?.startTalking();
+          setStatus('Playing...');
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('streamweaver:lounge-audio-unlock', unlock);
+    return () => window.removeEventListener('streamweaver:lounge-audio-unlock', unlock);
+  }, [loungePlacement]);
+
+  useEffect(() => {
     if (!overlayTenant) return;
     const heartbeat = () => {
       fetch('/api/tts/presence', {

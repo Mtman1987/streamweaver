@@ -273,3 +273,14 @@ test('public !unmute recovery pulses both Lounge viewers without exposing public
   assert.match(mix, /now - state\.unmutePulseAt < 3_000/);
   assert.match(directory, /!unmute[\s\S]*Retry audio for both Lounge video players/);
 });
+
+
+test('Lounge audio unlock pulse reaches Stella and public chat TTS', () => {
+  const hook = fs.readFileSync('src/lib/lounge-broadcast-volume.ts', 'utf8');
+  const stella = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
+  const say = fs.readFileSync('src/app/say-player/page.tsx', 'utf8');
+  assert.match(hook, /spmt-lounge-unmute-pulse/);
+  assert.match(hook, /streamweaver:lounge-audio-unlock/);
+  assert.match(stella, /streamweaver:lounge-audio-unlock/);
+  assert.match(say, /streamweaver:lounge-audio-unlock/);
+});

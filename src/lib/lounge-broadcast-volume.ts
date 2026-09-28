@@ -13,10 +13,15 @@ export function useLoungeBroadcastVolume(output: 'stella' | 'spotlight' | 'media
       || (params.get('tenant') || params.get('tenantId')) !== 'spacemountainlive') return;
 
     const onAudio = (event: MessageEvent) => {
-      if (event.origin !== 'https://spmt.live' || event.source !== window.parent || event.data?.type !== 'spmt.obspmt.audio') return;
-      const volume = Number(event.data.volume);
-      if (!Number.isFinite(volume) || volume < 0 || volume > 1 || typeof event.data.muted !== 'boolean') return;
-      setSource({ volume, muted: event.data.muted });
+      if (event.origin !== 'https://spmt.live' || event.source !== window.parent) return;
+      if (event.data?.type === 'spmt.obspmt.audio') {
+        const volume = Number(event.data.volume);
+        if (!Number.isFinite(volume) || volume < 0 || volume > 1 || typeof event.data.muted !== 'boolean') return;
+        setSource({ volume, muted: event.data.muted });
+      }
+      if (event.data?.type === 'spmt-lounge-unmute-pulse') {
+        window.dispatchEvent(new CustomEvent('streamweaver:lounge-audio-unlock', { detail: { at: Number(event.data.at || Date.now()) } }));
+      }
     };
     window.addEventListener('message', onAudio);
     let stopped = false;
