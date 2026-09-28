@@ -8,6 +8,7 @@ import { getConfiguredAppUrl, isAllowedOrigin } from '../lib/runtime-origin';
 import { getAdminTwitchId, tenantPath, SPACEMOUNTAIN_SYSTEM_TENANT_ID, SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL } from '../lib/tenant';
 import { readUserConfigSync } from '../lib/user-config';
 import { isKnownInternalSecret } from '../lib/internal-service-auth';
+import { cancelNextSayEcho, suppressNextSayEcho } from '../services/say-tts';
 
 function isAuthorized(headers: http.IncomingHttpHeaders): boolean {
     const key = headers['x-api-key'];
@@ -248,6 +249,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             targetChannel,
                             tenantId: requestedTenantId,
                             bridgeToDiscord,
+                            suppressSayTts,
                         } = JSON.parse(body);
                         if (typeof message !== 'string' || !message.trim()) {
                             throw new Error('message is required');
@@ -304,7 +306,14 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             && channel === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
 
                         if (isSpaceMountainBroadcasterSend) {
-                            await sendSpaceMountainBroadcasterMessage(message.trim());
+                            const suppressEchoSpeaker = SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
+                            if (suppressSayTts === true) suppressNextSayEcho(channel, suppressEchoSpeaker, message);
+                            try {
+                                await sendSpaceMountainBroadcasterMessage(message.trim());
+                            } catch (error) {
+                                if (suppressSayTts === true) cancelNextSayEcho(channel, suppressEchoSpeaker, message);
+                                throw error;
+                            }
                             await mirrorOutboundTwitchMessageToDiscord({
                                 bridgeToDiscord,
                                 tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
@@ -441,13 +450,20 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             return;
                         }
 
-                        await sendWithSharedChatAwareness({
-                            client,
-                            channel: finalChannel,
-                            message,
-                            as: sendAs,
-                            tenantId: tid,
-                        });
+                        const suppressEchoSpeaker = String((client as any).getUsername?.() || finalChannel).replace(/^#/, '');
+                        if (suppressSayTts === true) suppressNextSayEcho(finalChannel, suppressEchoSpeaker, message);
+                        try {
+                            await sendWithSharedChatAwareness({
+                                client,
+                                channel: finalChannel,
+                                message,
+                                as: sendAs,
+                                tenantId: tid,
+                            });
+                        } catch (error) {
+                            if (suppressSayTts === true) cancelNextSayEcho(finalChannel, suppressEchoSpeaker, message);
+                            throw error;
+                        }
                         await mirrorOutboundTwitchMessageToDiscord({
                             bridgeToDiscord,
                             tenantId: tid,

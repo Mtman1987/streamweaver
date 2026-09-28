@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { buildSayChatSpeech, resolveSayChatIdentity } from '../src/services/say-chat';
 import { resolveSayStreamKey } from '../src/services/say-tts';
@@ -34,4 +35,16 @@ test('SpaceMountain Twitch chat and Lounge browser source share one public TTS l
   assert.equal(resolveSayStreamKey(undefined, 'twitch', 'spacemountainlive'), 'spacemountainlive');
   assert.equal(resolveSayStreamKey('spacemountainlive', 'twitch', 'spacemountainlive'), 'spacemountainlive');
   assert.equal(resolveSayStreamKey(undefined, 'twitch', 'otherchannel'), 'twitch:otherchannel');
+});
+
+
+test('speech-to-chat marks Twitch sends as already queued for TTS', () => {
+  const route = readFileSync(new URL('../src/app/api/say/chat/route.ts', import.meta.url), 'utf8');
+  const serverRoutes = readFileSync(new URL('../src/server/routes.ts', import.meta.url), 'utf8');
+  const dispatcher = readFileSync(new URL('../src/services/chat-dispatcher.ts', import.meta.url), 'utf8');
+
+  assert.match(route, /suppressSayTts: true/);
+  assert.match(serverRoutes, /suppressNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
+  assert.match(serverRoutes, /cancelNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
+  assert.match(dispatcher, /!consumeNextSayEcho\(replyChannel, actualUsername, actualMessage\)/);
 });

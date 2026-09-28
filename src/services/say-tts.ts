@@ -11,6 +11,7 @@ type SayVoicePreferences = Record<string, string>;
 
 const saySpeakerState = new Map<string, { speaker: string; lastAt: number }>();
 const saySuppressionState = new Map<string, { until: number; reason: string }>();
+const sayEchoSuppressionState = new Map<string, { count: number; until: number }>();
 const SAY_REPEAT_SPEAKER_WINDOW_MS = 2 * 60 * 1000;
 export const SAY_SHOUTOUT_SUPPRESSION_MS = 90 * 1000;
 
@@ -169,6 +170,46 @@ export function stripTwitchEmotesFromText(text: unknown, emotes: TwitchEmoteRang
 
 function normalizeSaySuppressionKey(key: unknown): string {
   return String(key || '').trim().toLowerCase();
+}
+
+function sayEchoSuppressionKey(channel: unknown, speaker: unknown, text: unknown): string {
+  const normalizedChannel = normalizeSayChannel(channel);
+  const normalizedSpeaker = normalizeSayUser(speaker);
+  const normalizedText = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!normalizedChannel || !normalizedSpeaker || !normalizedText) return '';
+  return `${normalizedChannel}\n${normalizedSpeaker}\n${normalizedText}`;
+}
+
+export function suppressNextSayEcho(channel: unknown, speaker: unknown, text: unknown, ttlMs = 15_000): void {
+  const key = sayEchoSuppressionKey(channel, speaker, text);
+  if (!key) return;
+  const now = Date.now();
+  const existing = sayEchoSuppressionState.get(key);
+  const count = existing && existing.until > now ? existing.count + 1 : 1;
+  sayEchoSuppressionState.set(key, { count, until: now + Math.max(1_000, ttlMs) });
+}
+
+export function cancelNextSayEcho(channel: unknown, speaker: unknown, text: unknown): void {
+  const key = sayEchoSuppressionKey(channel, speaker, text);
+  if (!key) return;
+  const existing = sayEchoSuppressionState.get(key);
+  if (!existing) return;
+  if (existing.count <= 1) sayEchoSuppressionState.delete(key);
+  else sayEchoSuppressionState.set(key, { ...existing, count: existing.count - 1 });
+}
+
+export function consumeNextSayEcho(channel: unknown, speaker: unknown, text: unknown): boolean {
+  const key = sayEchoSuppressionKey(channel, speaker, text);
+  if (!key) return false;
+  const existing = sayEchoSuppressionState.get(key);
+  if (!existing) return false;
+  if (existing.until <= Date.now()) {
+    sayEchoSuppressionState.delete(key);
+    return false;
+  }
+  if (existing.count <= 1) sayEchoSuppressionState.delete(key);
+  else sayEchoSuppressionState.set(key, { ...existing, count: existing.count - 1 });
+  return true;
 }
 
 export function suppressSayForTenant(key: unknown, durationMs = SAY_SHOUTOUT_SUPPRESSION_MS, reason = 'shoutout'): void {
