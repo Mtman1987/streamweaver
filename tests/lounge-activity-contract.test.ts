@@ -238,3 +238,11 @@ test('Lounge live cards use current Twitch live members and DSH group metadata',
   assert.match(route, /dshByLogin\.get\(login\.toLowerCase\(\)\)/);
   assert.match(route, /details\.gameName, details\.game_name, row\.gameName, row\.game_name/);
 });
+
+
+test('walk-on greetings use the shared AI provider instead of an Eden-only greeting path', () => {
+  const shoutout = fs.readFileSync('src/services/walk-on-shoutout.ts', 'utf8');
+  assert.match(shoutout, /generateAIResponse\(/);
+  assert.match(shoutout, /Shared AI greeting provider failed/);
+  assert.doesNotMatch(shoutout, /api\.edenai\.run\/v2\/text\/chat/);
+});

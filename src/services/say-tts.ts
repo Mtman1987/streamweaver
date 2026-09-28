@@ -103,6 +103,10 @@ export function resolveSayStreamKey(tenantId: unknown, platform?: 'discord' | 't
 
   const normalizedPlatform = String(platform || '').trim().toLowerCase();
   const normalizedChannel = normalizeSayChannel(channelId);
+  // The 24-hour Lounge has one canonical public TTS lane. Twitch chat and the
+  // Lounge browser source must converge on the same stream key or the queue
+  // incorrectly reports that no listener is active.
+  if (normalizedPlatform === 'twitch' && normalizedChannel === 'spacemountainlive') return 'spacemountainlive';
   if (normalizedPlatform && normalizedChannel) return `${normalizedPlatform}:${normalizedChannel}`;
 
   return 'global';

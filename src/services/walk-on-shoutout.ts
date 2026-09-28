@@ -8,6 +8,7 @@ import { getShoutoutEligibility, getShoutoutCount, recordShoutout } from './welc
 import { auditError, recordShoutoutAudit } from './shoutout-audit';
 import { getAppConfig } from '../lib/app-config';
 import { getBotName, getBotPersonality } from '../lib/bot-settings-store';
+import { generateAIResponse } from './ai-provider';
 import { readUserConfigSync } from '../lib/user-config';
 import { resolveSayStreamKey, SAY_SHOUTOUT_SUPPRESSION_MS, suppressSayForTenant } from './say-tts';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
@@ -375,34 +376,16 @@ async function generateAIGreeting(persona: Persona, tenantId?: string): Promise<
     const fallbackGreeting = `Welcome, @${persona.displayName}! Glad you're here!`;
     const prompt = buildPrompt(persona, tenantId);
 
-    const edenaiKey = process.env.EDENAI_API_KEY;
-    if (edenaiKey) {
-        try {
-            const botPersonality = getBotPersonality(tenantId);
-
-            const response = await fetch('https://api.edenai.run/v2/text/chat', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${edenaiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    providers: 'openai',
-                    text: prompt,
-                    chatbot_global_action: botPersonality,
-                    temperature: 0.8,
-                    max_tokens: 180
-                })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const text = data.openai?.generated_text?.trim();
-                if (text) return text;
-            }
-        } catch (error) {
-            console.error('[WalkOn] EdenAI failed:', error);
-        }
+    try {
+        const text = (await generateAIResponse(
+            prompt,
+            `You are ${botName}. ${getBotPersonality(tenantId)}`,
+            tenantId,
+            { temperature: 0.8, maxTokens: 180, maxCharacters: 650 },
+        ))?.trim();
+        if (text) return text;
+    } catch (error) {
+        console.error('[WalkOn] Shared AI greeting provider failed:', error);
     }
 
     return fallbackGreeting;
