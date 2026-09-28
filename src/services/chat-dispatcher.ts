@@ -5408,7 +5408,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
                 && !isCommand
                 && !userIsKnownBot
-                && /(^|\W)stella(\W|$)/i.test(actualMessage)
+                && (
+                    /(^|\W)stella(\W|$)/i.test(actualMessage)
+                    || /^this (?:froze|is frozen|is stuck|crashed)[.!?]*$/i.test(actualMessage.trim())
+                )
             ) {
                 try {
                     const actorRole: BotActorRole = tags.badges?.broadcaster || actualUsername.toLowerCase() === replyChannel.toLowerCase()

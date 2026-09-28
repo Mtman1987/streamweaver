@@ -1,3 +1,27 @@
+import { readJsonFile, writeJsonFile } from './storage';
+
+const LOUNGE_REFRESH_FILE = 'lounge-browser-refresh.json';
+const LOUNGE_REFRESH_CONTEXT = { tenantId: 'spacemountainlive', username: 'lounge' };
+const LOUNGE_REFRESH_COOLDOWN_MS = 2 * 60_000;
+type LoungeRefreshState = { requestedAt: number; requestedBy: string };
+
+export async function getLoungeBrowserRefresh() {
+  const state = await readJsonFile<LoungeRefreshState>(
+    LOUNGE_REFRESH_FILE, { requestedAt: 0, requestedBy: '' }, LOUNGE_REFRESH_CONTEXT,
+  );
+  return { requestedAt: Number(state.requestedAt) || 0 };
+}
+
+export async function requestLoungeBrowserRefresh(actor: string) {
+  const state = await getLoungeBrowserRefresh();
+  const now = Date.now();
+  if (now - state.requestedAt < LOUNGE_REFRESH_COOLDOWN_MS) {
+    return { ...state, accepted: false };
+  }
+  await writeJsonFile(LOUNGE_REFRESH_FILE, { requestedAt: now, requestedBy: actor }, LOUNGE_REFRESH_CONTEXT);
+  return { requestedAt: now, accepted: true };
+}
+
 let spotlightRestartNonce = 0;
 let spotlightRestartedAt = '';
 

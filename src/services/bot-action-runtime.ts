@@ -19,7 +19,7 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { setLoungeMediaLayout } from '@/services/lounge-media-layout';
 import { startBRB, stopBRB } from '@/services/brb-clips';
-import { requestSpotlightRestart } from '@/services/lounge-player-control';
+import { requestSpotlightRestart, requestLoungeBrowserRefresh } from '@/services/lounge-player-control';
 import { executeNebulaCommand, manageNebulaOverlay, readNebulaChannelState, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
@@ -30,7 +30,7 @@ export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | '
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'nebula.command' | 'nebula.overlay.manage' | 'nebula.game.director' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'sw.lounge.browser.refresh' | 'nebula.command' | 'nebula.overlay.manage' | 'nebula.game.director' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -279,6 +279,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['start the BRB player', 'stop BRB', 'we are back from break'],
   },
   {
+    id: 'sw.lounge.browser.refresh',
+    title: 'Refresh the SpaceMountain Lounge browser source after a freeze report',
+    app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'member',
+    examples: ['Stella, this froze', 'Stella, the lounge browser source is frozen', 'Stella, refresh the lounge'],
+  },
+  {
     id: 'sw.lounge.spotlight.restart',
     title: 'Restart the tenant Lounge Spotlight player',
     app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
@@ -490,6 +496,14 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const overlayCreate=value.match(/\b(?:create|make|build)\b.*\bnebula\b.*\boverlay\b/);
   if(overlayCreate) return {action:'nebula.overlay.manage',args:{operation:'create'},detection:'explicit'};
 
+  if (
+    (/\bstella\b/.test(value) || /^this (?:froze|is frozen|is stuck|crashed)[.!?]*$/.test(value))
+    && (/\b(?:this|lounge|browser source|overlay|screen)\b.*\b(?:froze|frozen|stuck|crashed)\b/.test(value)
+      || /\b(?:froze|frozen|stuck|crashed)\b.*\b(?:lounge|browser source|overlay|screen)\b/.test(value)
+      || /\b(?:refresh|reload|restart)\b.*\b(?:lounge|browser source|overlay)\b/.test(value))
+  ) {
+    return { action: 'sw.lounge.browser.refresh', args: {}, detection: 'explicit' };
+  }
   if (/\b(?:restart|reboot|power[- ]?cycle|turn off and (?:back )?on)\b.*\bspotlight\b|\bspotlight\b.*\b(?:restart|reboot|power[- ]?cycle)\b/.test(value)) {
     return { action: 'sw.lounge.spotlight.restart', args: {}, detection: 'explicit' };
   }
@@ -866,6 +880,17 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'sw.lounge.browser.refresh') {
+      if (context.tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+        return { handled: true, action: request.action, status: 'forbidden', response: 'That Lounge source belongs to SpaceMountainLive.' };
+      }
+      const result = await requestLoungeBrowserRefresh(context.actor.username || context.botName);
+      return { handled: true, action: request.action, status: 'completed',
+        response: result.accepted
+          ? "I'm refreshing the Lounge browser source now. Tell me if it comes back."
+          : "I already requested a Lounge refresh. Tell me if it came back; I can retry in a couple of minutes.",
+        result };
+    }
     if (request.action === 'nebula.wordgame.stream-battle') {
       const gameId=request.args.gameId==='phraseguess'?'phraseguess':'wordchain';
       const requested=String(request.args.channels||'').split(',').map(v=>v.trim().replace(/^@/,'').toLowerCase()).filter(Boolean);
