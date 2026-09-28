@@ -62,12 +62,14 @@ test('Lounge shoutout TTS carries caption text and switches Stella immediately',
   assert.doesNotMatch(player, /phaseRef\.current === 'idle' && !boundaryTimerRef\.current/);
 });
 
-test('Lounge Stella captions stay inside the main panel and clamp to three lines', () => {
+test('Lounge Stella captions stay inside the main panel and scroll through three complete lines', () => {
   const player = fs.readFileSync('src/app/tts-player/page.tsx', 'utf8');
   assert.match(player, /left: loungePlacement \? '23%'/);
   assert.match(player, /right: loungePlacement \? '29%'/);
   assert.match(player, /bottom: loungePlacement \? '32%'/);
-  assert.match(player, /WebkitLineClamp: 3/);
+  assert.match(player, /height: loungePlacement \? '3\.48em'/);
+  assert.match(player, /captionWindowRef\.current\.scrollTop = captionWindowRef\.current\.scrollHeight/);
+  assert.doesNotMatch(player, /WebkitLineClamp/);
 });
 
 test('Lounge TTS layer carries the persistent attribution and alternating contextual marquee', () => {

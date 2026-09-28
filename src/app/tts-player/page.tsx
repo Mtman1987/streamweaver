@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { applySavedSink } from '@/services/audio-sink';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
@@ -351,6 +351,7 @@ export default function TTSPlayer() {
   const [visible, setVisible] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [captionText, setCaptionText] = useState('');
+  const captionWindowRef = useRef<HTMLDivElement>(null);
   const [captionVisible, setCaptionVisible] = useState(false);
   const captionTypeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const captionLingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -360,6 +361,14 @@ export default function TTSPlayer() {
   const isStella = overlayTenant === 'spacemountainlive';
   const loungePlacement = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('placement') === 'lounge';
+
+  useLayoutEffect(() => {
+    // Keep the newest three complete lines in view as the spoken text grows.
+    // A CSS line clamp inserts an ellipsis and permanently hides earlier words.
+    if (loungePlacement && captionWindowRef.current) {
+      captionWindowRef.current.scrollTop = captionWindowRef.current.scrollHeight;
+    }
+  }, [captionText, loungePlacement]);
   const stellaMixGain = useRef(1);
   const stellaLevel = useLoungeBroadcastVolume('stella');
   useEffect(() => {
@@ -710,16 +719,17 @@ export default function TTSPlayer() {
         </div>
       )}
 
-      <div style={{
+      <div ref={captionWindowRef} style={{
         position: 'absolute',
         left: loungePlacement ? '23%' : 320,
         right: loungePlacement ? '29%' : '5vw',
         bottom: loungePlacement ? '32%' : 54,
-        minHeight: loungePlacement ? 0 : 56,
-        maxHeight: loungePlacement ? '3.45em' : undefined,
+        minHeight: loungePlacement ? undefined : 56,
+        height: loungePlacement ? '3.48em' : undefined,
+        fontSize: loungePlacement ? 'clamp(16px, 2vw, 24px)' : undefined,
         overflow: loungePlacement ? 'hidden' : 'visible',
         display: 'flex',
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
         justifyContent: 'flex-start',
         pointerEvents: 'none',
         opacity: captionVisible ? 1 : 0,
@@ -730,19 +740,16 @@ export default function TTSPlayer() {
           color: '#ffd900',
           fontFamily: 'Arial Black, Inter, system-ui, sans-serif',
           fontWeight: 900,
-          fontSize: loungePlacement ? 'clamp(16px, 2vw, 24px)' : 'clamp(24px, 2.4vw, 48px)',
+          fontSize: loungePlacement ? '1em' : 'clamp(24px, 2.4vw, 48px)',
           lineHeight: 1.16,
           letterSpacing: '0.01em',
           textAlign: 'left',
           textWrap: 'balance',
           WebkitTextStroke: '1px rgba(0,0,0,.9)',
           textShadow: '0 3px 3px #000, 0 0 8px #000, 0 0 18px rgba(0,0,0,.9)',
-          ...(loungePlacement ? {
-            display: '-webkit-box',
-            WebkitBoxOrient: 'vertical' as const,
-            WebkitLineClamp: 3,
-            overflow: 'hidden',
-          } : {}),
+          marginTop: loungePlacement ? 'auto' : undefined,
+          flexShrink: loungePlacement ? 0 : undefined,
+          overflowWrap: 'anywhere',
         }}>
           {captionText}
         </div>

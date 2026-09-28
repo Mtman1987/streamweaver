@@ -49,6 +49,7 @@ import {
 } from '../lib/tenant';
 import { SPACEMOUNTAIN_LOUNGE_ROOM_ID } from '../lib/spacemountain-lounge';
 import { queueTtsOverlay } from './tts-overlay-queue';
+import { prepareStellaLoungeReply } from './stella-lounge-replies';
 import { buildPokemonBrowserUrl } from './pokemon-browser';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
@@ -2521,15 +2522,12 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: replyChannel } : undefined;
     
     // Helper: send chat message to Twitch (shared-chat aware)
-    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') =>
-        sendChatMessage(
-            msg,
-            tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
-                && replyChannel.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
-                ? 'broadcaster' : as,
-            replyChannel,
-            tenantId,
-        );
+    const reply = (msg: string, as: 'bot' | 'broadcaster' = 'broadcaster') => {
+        const lounge = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+            && replyChannel.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL;
+        const outgoing = lounge ? prepareStellaLoungeReply(msg, as) : { message: msg, as };
+        return sendChatMessage(outgoing.message, outgoing.as, replyChannel, tenantId);
+    };
 
     // Mirror Twitch dispatcher outputs to Kick for duel-stream mode.
     // Enable with: KICK_MIRROR_CHAT=true
