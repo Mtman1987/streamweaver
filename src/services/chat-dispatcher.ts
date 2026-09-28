@@ -4046,7 +4046,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         control: radioControl, query: match?.[2],
                     });
                     const current = result?.program?.music?.current?.item?.title;
-                    await reply(`📻 Lounge auto-radio is ${result.radio.enabled ? 'on' : 'off'} with ${result.radio.seedCount} songs${current ? `; now selected: ${current}` : '; request a song or add a public YouTube playlist to seed it'}.`, 'bot').catch(() => {});
+                    await reply(`📻 Lounge DJ is ${result.radio.enabled ? 'on' : 'off'}; ${result.radio.recentCount || 0} human picks guide it, and ${result.radio.seedCount || 0} playlist references help it start${current ? `; now selected: ${current}` : ''}.`, 'bot').catch(() => {});
                 } catch (error) { await replyFailure(error); }
                 return;
             }
