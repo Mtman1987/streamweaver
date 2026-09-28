@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { dirname } from 'path';
 
-import { globalPath, tenantPath } from '@/lib/tenant';
+import { globalPath, listTenants, tenantPath } from '@/lib/tenant';
 import type { WorldLoreCharacter } from '@/lib/world-lore-store';
 
 export type RelayThreadPlatform = 'twitch' | 'discord';
@@ -188,14 +188,40 @@ export async function getLatestRelayReplyThread(input: {
   recipientUsername: string;
   recipientUserId?: string;
 }): Promise<RelayReplyThread | null> {
-  const threads = await readThreads(input.recipientContextTenantId);
-  return threads
+  const findMatch = (threads: RelayReplyThread[]) => threads
     .filter((thread) =>
       thread.delivery.platform === input.platform
       && thread.delivery.channelId === input.channelId
       && isIntendedRecipient(thread, input.recipientUsername, input.recipientUserId)
     )
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] || null;
+
+  const directMatch = findMatch(await readThreads(input.recipientContextTenantId));
+  if (directMatch) return directMatch;
+
+  // Discord guild ingress may resolve to the guild owner's tenant even when the
+  // relay was stored under the recipient's tenant. Only broaden the lookup when
+  // Discord gives us an immutable recipient ID, then require the same delivery
+  // channel + exact recipient ID before returning another tenant's thread.
+  if (input.platform !== 'discord' || !String(input.recipientUserId || '').trim()) return null;
+
+  const currentContext = contextKey(input.recipientContextTenantId);
+  const tenantIds = await listTenants();
+  const fallbackContexts: Array<string | undefined> = [
+    ...tenantIds.filter((tenantId) => contextKey(tenantId) !== currentContext),
+    ...(currentContext === '__community__' ? [] : [undefined]),
+  ];
+
+  const candidates = (await Promise.all(
+    fallbackContexts.map(async (tenantId) => ({
+      tenantId,
+      match: findMatch(await readThreads(tenantId)),
+    })),
+  ))
+    .filter((candidate) => candidate.match)
+    .sort((a, b) => Date.parse(b.match!.createdAt) - Date.parse(a.match!.createdAt));
+
+  return candidates[0]?.match || null;
 }
 
 export async function completeRelayReplyThread(

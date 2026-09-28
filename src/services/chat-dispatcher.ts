@@ -1228,7 +1228,7 @@ export async function handleBotRelayReply(input: {
                 footerText: 'Relay closed • deletes 10m after last activity',
             }).catch(() => false)
             : false;
-        await completeRelayReplyThread(input.sourceContextTenantId, thread.id);
+        await completeRelayReplyThread(thread.recipientContextTenantId, thread.id);
         return { matched: true, closed: true, targetName: thread.origin.senderUsername, cardUpdated };
     }
     if (command.missingMessage || !command.message) {
@@ -1298,7 +1298,7 @@ export async function handleBotRelayReply(input: {
                 isPrivate: input.sourceDiscordIsPrivate ?? thread.delivery.isPrivate,
             }).catch(() => false);
         }
-        await completeRelayReplyThread(input.sourceContextTenantId, thread.id);
+        await completeRelayReplyThread(thread.recipientContextTenantId, thread.id);
     }
     return {
         matched: true,
