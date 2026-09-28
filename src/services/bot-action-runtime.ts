@@ -467,7 +467,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
     const switchGame=/\b(?:switch|swap|change)\b.*\b(?:game|to|into)\b/.test(value);
     const shuffle=/\b(?:shuffle|randomize|mix up|rotate)\b.*\b(?:game|games|rotation|overlay)\b/.test(value);
     const start=/\b(?:start|launch|begin|turn on)\b/.test(value);
-    const operation=shuffle?'shuffle':switchGame?'switch':stop&&hide?'stop-hide':hide?'hide':show&&start?'start-show':show?'show':stop?'stop':start?'start':'';
+    const operation=shuffle?'shuffle':switchGame?'switch':stop&&hide?'stop-hide':hide?'hide':show&&start?'start-show':show?'show':'';
     if(operation) return {action:'nebula.game.director',args:{operation,gameId},detection:'explicit'};
   }
   if(/\b(?:overlay|screen|stage)\b/.test(value)&&/\b(?:nebula|lounge|game)\b/.test(value)){
