@@ -33,6 +33,12 @@ export default function BRBPlayer() {
     let lastGif: { url: string; user: string } | undefined;
     let testTimer: ReturnType<typeof setTimeout>;
     let testGeneration = 0;
+    let automatic = false;
+    let spotlightHealthy = true;
+    let autoStartTimer: ReturnType<typeof setTimeout>;
+    let autoStopTimer: ReturnType<typeof setTimeout>;
+    let autoClipTimer: ReturnType<typeof setTimeout>;
+    let autoEpoch = 0;
 
     const showGif = (gif?: { url: string; user: string }) => {
       clearTimeout(embedTimer);
@@ -133,13 +139,111 @@ export default function BRBPlayer() {
       }
     };
 
+    // The Lounge forwards health from its persistent worker viewer. When the
+    // live picture is unavailable, cover it with the existing community clips.
+    // Manual BRB always takes priority over this automatic intermission.
+    const stopAutomatic = () => {
+      clearTimeout(autoStartTimer);
+      clearTimeout(autoStopTimer);
+      clearTimeout(autoClipTimer);
+      if (!automatic) return;
+      automatic = false;
+      autoEpoch++;
+      playbackEpoch++;
+      clearTimeout(embedTimer);
+      videoRef.current?.pause();
+      setEmbedUrl('');
+      setVideoPlaying(false);
+      setGifUrl('');
+      setSpotlight(false);
+      setClipUser('');
+      setActive(false);
+      notifyParent(false);
+    };
+
+    const startAutomatic = async () => {
+      if (stopped || manual || automatic || spotlightHealthy) return;
+      automatic = true;
+      const epoch = ++autoEpoch;
+      setActive(true);
+      notifyParent(true, 'gif');
+      let playlistReady = false;
+      // DSH's stored GIFs are quick to retrieve while clip discovery runs.
+      void fetch('https://discord-stream-hub-new.fly.dev/api/lounge/brb-gifs', {
+        cache: 'no-store', signal: AbortSignal.timeout(8000),
+      }).then(response => response.ok ? response.json() : { gifs: [] }).then(data => {
+        const quickGifs = Array.isArray(data.gifs) ? data.gifs.filter(
+          (gif: { url?: string }) => typeof gif.url === 'string'
+            && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/')) : [];
+        if (!quickGifs.length || !automatic || stopped || epoch !== autoEpoch || manual || playlistReady) return;
+        let gifIndex = 0;
+        const nextGif = () => {
+          if (!automatic || stopped || epoch !== autoEpoch || manual || playlistReady) return;
+          showGif(quickGifs[gifIndex++ % quickGifs.length]);
+          autoClipTimer = setTimeout(nextGif, 12000);
+        };
+        nextGif();
+      }).catch(() => {});
+      try {
+        const response = await fetch('/api/lounge/brb-fallback?tenant=spacemountainlive', {
+          cache: 'no-store', signal: AbortSignal.timeout(45000),
+        });
+        if (!response.ok) throw new Error('BRB playlist unavailable');
+        const media = await response.json();
+        if (!automatic || stopped || epoch !== autoEpoch || manual) return;
+        playlistReady = true;
+        clearTimeout(autoClipTimer);
+        const clips = Array.isArray(media.clips) ? media.clips.filter(
+          (clip: { clipUrl?: string }) => typeof clip.clipUrl === 'string' && clip.clipUrl.includes('clip=')) : [];
+        const gifs = Array.isArray(media.gifs) ? media.gifs.filter(
+          (gif: { url?: string }) => typeof gif.url === 'string' && gif.url.startsWith('https://')) : [];
+        let index = 0;
+        const next = () => {
+          if (!automatic || stopped || epoch !== autoEpoch || manual) return;
+          if (clips.length && (index % 2 === 0 || !gifs.length)) {
+            const clip = clips[Math.floor(index++ / 2) % clips.length];
+            const gif = gifs.length ? gifs[(index - 1) % gifs.length] : undefined;
+            setClipUser(clip.user || '');
+            // Use the clip itself; worker Spotlight cannot play source VODs.
+            void playClip(clip.clipUrl, clip.thumbnailUrl || '', gif, undefined);
+            autoClipTimer = setTimeout(next, Math.max(5000, Math.min(65000, Number(clip.duration) || 30000)));
+          } else if (gifs.length) {
+            showGif(gifs[index++ % gifs.length]);
+            autoClipTimer = setTimeout(next, 12000);
+          }
+        };
+        next();
+      } catch (error) {
+        if (automatic && epoch === autoEpoch) console.warn('[BRB] Automatic playlist unavailable:', error);
+      }
+    };
+
+    const onSpotlightHealth = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== 'https://spmt.live'
+        || event.data?.type !== 'spmt-lounge-spotlight-health'
+        || typeof event.data.healthy !== 'boolean') return;
+      spotlightHealthy = event.data.healthy;
+      if (spotlightHealthy) {
+        clearTimeout(autoStartTimer);
+        clearTimeout(autoStopTimer);
+        autoStopTimer = setTimeout(() => { if (spotlightHealthy) stopAutomatic(); }, 3000);
+      } else {
+        clearTimeout(autoStopTimer);
+        if (!automatic && !manual) {
+          clearTimeout(autoStartTimer);
+          autoStartTimer = setTimeout(() => { void startAutomatic(); }, 6000);
+        }
+      }
+    };
+    window.addEventListener('message', onSpotlightHealth);
+
     const stopTest = () => {
       testGeneration++;
       clearTimeout(testTimer);
       setTestStream(false);
     };
 
-    const onVideoError = () => { if (manual && lastGif) showGif(lastGif); };
+    const onVideoError = () => { if ((manual || automatic) && lastGif) showGif(lastGif); };
     videoRef.current?.addEventListener('error', onVideoError);
 
     const connect = () => {
@@ -155,6 +259,7 @@ export default function BRBPlayer() {
                 ? msg.payload.users.filter((user: unknown): user is string => typeof user === 'string' && /^[a-z0-9_]{3,25}$/.test(user)).slice(0, 24)
                 : [];
               if (!users.length) return;
+              stopAutomatic();
               stopTest();
               manual = true;
               playbackEpoch++;
@@ -196,6 +301,7 @@ export default function BRBPlayer() {
               notifyParent(true, 'gif');
             }
             if (msg.type === 'brb-clip' && msg.payload) {
+              stopAutomatic();
               stopTest();
               manual = true;
               setClipUser(msg.payload.user || '');
@@ -203,6 +309,7 @@ export default function BRBPlayer() {
               playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl, msg.payload.gifUrl ? { url: msg.payload.gifUrl, user: msg.payload.user } : undefined, msg.payload);
             }
             if (msg.type === 'brb-gif' && msg.payload) {
+              stopAutomatic();
               stopTest();
               manual = true;
               playbackEpoch++;
@@ -211,6 +318,7 @@ export default function BRBPlayer() {
             if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
               stopTest();
               if (msg.type === 'brb-stop') manual = false;
+              if (!manual && !spotlightHealthy) autoStartTimer = setTimeout(() => { void startAutomatic(); }, 8000);
               playbackEpoch++;
               clearTimeout(embedTimer);
               setEmbedUrl('');
@@ -230,7 +338,7 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(embedTimer); clearTimeout(testTimer); ws?.close(); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
+    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(embedTimer); clearTimeout(testTimer); clearTimeout(autoStartTimer); clearTimeout(autoStopTimer); clearTimeout(autoClipTimer); window.removeEventListener('message', onSpotlightHealth); ws?.close(); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
   }, []);
 
   return (
@@ -246,7 +354,7 @@ export default function BRBPlayer() {
       />
       {embedUrl && <iframe key={`${embedUrl}:${spotlightLevel === 0}`} src={embedUrl.replace('muted=false', `muted=${spotlightLevel === 0}`)} title="Twitch BRB clip" allow="autoplay; fullscreen" onLoad={() => embedLoadedRef.current()} onError={() => embedFailedRef.current()} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />}
       {active && gifUrl && <img onError={() => { setGifUrl(''); setClipUser(''); }} src={gifUrl} alt={clipUser ? `${clipUser}'s community GIF` : 'Community GIF'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />}
-      {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: '999px', background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{testStream ? 'TEST BRB' : 'BE RIGHT BACK'}</div>}
+      {active && <div style={{ position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 4, padding: '7px 20px', borderRadius: '999px', background: '#071127', border: '1px solid #54dffa', boxShadow: '0 0 15px rgba(58, 197, 248, .45)', color: '#eefaff', font: '800 clamp(14px, 2.6vw, 24px) system-ui, sans-serif', letterSpacing: '.15em', textAlign: 'center', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{testStream ? 'TEST BRB' : 'AND NOW A WORD FROM OUR SPONSORS'}</div>}
       {active && !embedUrl && !gifUrl && !videoPlaying && <div style={{ position: 'absolute', zIndex: 2, color: '#c4eefe', font: '600 18px system-ui, sans-serif', textAlign: 'center', pointerEvents: 'none' }}>Community clips are coming up</div>}
       {active && spotlight && (
         <div style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 5, padding: '8px 14px', borderRadius: 9,
