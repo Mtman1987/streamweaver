@@ -43,7 +43,9 @@ export async function GET(request: NextRequest) {
           avatarUrl: text(featured.avatarUrl, row.avatarUrl, row.profileImageUrl, row.profile_image_url),
           gameName: text(featured.gameTitle, row.gameName, row.game_name),
           title: text(featured.streamTitle, row.streamTitle, row.title),
-          viewerCount: Math.max(0, Number(featured.viewerCount ?? row.viewerCount ?? 0) || 0),
+          viewerCount: Number.isFinite(Number(featured.viewerCount ?? row.viewerCount))
+            ? Math.max(0, Number(featured.viewerCount ?? row.viewerCount))
+            : null,
           group: group === 'partner' ? 'Partner / Crew' : 'Community',
         };
       })
