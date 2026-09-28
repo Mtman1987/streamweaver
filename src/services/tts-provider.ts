@@ -177,9 +177,16 @@ export async function generateTTS(
 async function generatePortableDeepgramTTS(text: string, voice: TTSVoiceOption, config: TTSConfig, tenantId?: string): Promise<string> {
   // Provider failover preserves the exact model/speaker. Direct Deepgram uses
   // the account's credits first; Eden AI supplies that same voice on failure.
+  const openAiFallbackVoice = getTtsVoiceOption(
+    voice.gender === 'Male' ? 'edenai:openai:onyx' : 'edenai:openai:nova',
+  );
   const routes = [
     { name: 'Deepgram', key: config.deepgramApiKey, synthesize: () => generateDeepgramTTS(text, config.deepgramApiKey, voice.deepgramModel) },
     { name: 'Eden AI', key: process.env.EDENAI_CALLS_ENABLED === 'false' ? '' : config.apiKey, synthesize: () => generateEdenAIDeepgramTTS(text, voice, config.apiKey) },
+    // Last-resort continuity route. This intentionally changes speaker only
+    // after both same-speaker Deepgram routes are unavailable, so chat/Say
+    // still produces one audio event instead of failing silent.
+    { name: 'OpenAI fallback', key: config.openaiApiKey, synthesize: () => generateOpenAITTS(text, openAiFallbackVoice, config.openaiApiKey) },
   ];
   const failures: string[] = [];
   for (const route of routes) {
