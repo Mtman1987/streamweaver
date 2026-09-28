@@ -12,6 +12,10 @@ if (!source.includes(oldBlock)) {
     console.log('Rich live-member formatter already applied.');
     process.exit(0);
   }
+  if (source.includes('fetchDshLiveMembers(fetcher)') && source.includes('DSH_COMMUNITY_SPOTLIGHT_URL')) {
+    console.log('DSH live-community formatter supersedes the legacy rich live-member patch.');
+    process.exit(0);
+  }
   throw new Error('Expected simple live-members formatter was not found.');
 }
 
