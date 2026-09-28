@@ -12,6 +12,7 @@ type SayVoicePreferences = Record<string, string>;
 const saySpeakerState = new Map<string, { speaker: string; lastAt: number }>();
 const saySuppressionState = new Map<string, { until: number; reason: string }>();
 const sayEchoSuppressionState = new Map<string, { count: number; until: number }>();
+const sayEchoForceState = new Map<string, { count: number; until: number }>();
 const SAY_REPEAT_SPEAKER_WINDOW_MS = 2 * 60 * 1000;
 export const SAY_SHOUTOUT_SUPPRESSION_MS = 90 * 1000;
 
@@ -178,6 +179,38 @@ function sayEchoSuppressionKey(channel: unknown, speaker: unknown, text: unknown
   const normalizedText = String(text || '').trim().replace(/\s+/g, ' ');
   if (!normalizedChannel || !normalizedSpeaker || !normalizedText) return '';
   return `${normalizedChannel}\n${normalizedSpeaker}\n${normalizedText}`;
+}
+
+export function forceNextSayEcho(channel: unknown, speaker: unknown, text: unknown, ttlMs = 15_000): void {
+  const key = sayEchoSuppressionKey(channel, speaker, text);
+  if (!key) return;
+  const now = Date.now();
+  const existing = sayEchoForceState.get(key);
+  const count = existing && existing.until > now ? existing.count + 1 : 1;
+  sayEchoForceState.set(key, { count, until: now + Math.max(1_000, ttlMs) });
+}
+
+export function cancelForcedSayEcho(channel: unknown, speaker: unknown, text: unknown): void {
+  const key = sayEchoSuppressionKey(channel, speaker, text);
+  if (!key) return;
+  const existing = sayEchoForceState.get(key);
+  if (!existing) return;
+  if (existing.count <= 1) sayEchoForceState.delete(key);
+  else sayEchoForceState.set(key, { ...existing, count: existing.count - 1 });
+}
+
+export function consumeForcedSayEcho(channel: unknown, speaker: unknown, text: unknown): boolean {
+  const key = sayEchoSuppressionKey(channel, speaker, text);
+  if (!key) return false;
+  const existing = sayEchoForceState.get(key);
+  if (!existing) return false;
+  if (existing.until <= Date.now()) {
+    sayEchoForceState.delete(key);
+    return false;
+  }
+  if (existing.count <= 1) sayEchoForceState.delete(key);
+  else sayEchoForceState.set(key, { ...existing, count: existing.count - 1 });
+  return true;
 }
 
 export function suppressNextSayEcho(channel: unknown, speaker: unknown, text: unknown, ttlMs = 15_000): void {
