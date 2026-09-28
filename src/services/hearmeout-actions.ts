@@ -88,7 +88,9 @@ export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPaylo
       headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(effectivePayload),
       cache: 'no-store',
-      signal: AbortSignal.timeout(105_000),
+      // A failed source can require checking five alternate uploads before
+      // Stella tells chat that the requested song is unavailable.
+      signal: AbortSignal.timeout(200_000),
     });
     const data = await response.json().catch(() => ({})) as Record<string, unknown>;
     if (!response.ok || data.success !== true) throw new Error(String(data.error || `Lounge worker returned ${response.status}`));
