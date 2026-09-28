@@ -226,3 +226,5 @@ shell, sidebar, top bar, Radix tabs, avatars, marked chat surfaces, particles,
 and motion. OBS/player routes remain transparent and are not restyled by the
 dashboard shell adapter. Turn off follow mode in Settings to use StreamWeaver's
 app-owned fallback.
+
+<!-- Lounge autoplay recovery deploy trigger -->
