@@ -2916,8 +2916,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
     // Keep watch choices tied to the requester and channel; expire them so a
     // later number cannot silently queue a title from an old search.
-    if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && /^!follow(?:\\s|$)/i.test(actualMessage.trim())) {
-        const name = actualMessage.trim().replace(/^!follow\\s*/i, '').replace(/^@/, '').trim().toLowerCase();
+    if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && /^!follow(?:\s|$)/i.test(actualMessage.trim())) {
+        const name = actualMessage.trim().replace(/^!follow\s*/i, '').replace(/^@/, '').trim().toLowerCase();
         if (!/^[a-z0-9_]{3,25}$/.test(name)) {
             await reply(`@${actualUsername}, use !follow @creator to share their Twitch channel.`, 'bot').catch(() => {});
         } else {
