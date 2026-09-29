@@ -73,6 +73,7 @@ import {
 } from './discord-command-catalog';
 import {
     beginLoungeCommandMenu,
+    clearLoungeCommandMenu,
     consumeLoungeCommandMenuChoice,
     directLoungeCommandCategory,
 } from './lounge-command-menu';
@@ -1951,6 +1952,13 @@ const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
 // Track processed messages to prevent duplicates
 const processedMessages = new Set<string>();
 const pendingWatchChoices = new Map<string, { options: Array<{ id: string; title: string; year: number | null }>; expiresAt: number }>();
+function retireRedemptionNumberChoices(tenantId: string | undefined, username: string): void {
+    const { pendingCheckins, pendingPackRedeems } = require('./eventsub');
+    const tenantKey = tenantId || 'global';
+    pendingCheckins.get(tenantKey)?.delete(username.toLowerCase());
+    pendingPackRedeems.get(tenantKey)?.delete(username.toLowerCase());
+}
+
 
 // Track messages that already have TTS (e.g. from shoutout flow) to prevent double TTS
 const ttsHandledMessages = new Set<string>();
@@ -2664,6 +2672,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
 
     
+    // The broadcaster identity is also an automated Lounge speaker. Its
+    // data replies must not become new human chat, points, or Stella prompts.
+    // Keep explicit commands and numbered choices available for testing.
+    if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        && replyChannel.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+        && username.toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+        && !/^(?:!|spmt(?:\s|$)|[1-8]$)/i.test(message.trim())) return;
+
     // Prevent duplicate processing with more specific ID
     const messageId = `${tags.id || 'no-id'}-${username}-${message.slice(0, 50)}`;
     
@@ -2955,6 +2971,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     return;
                 }
             } else {
+                const searchNotice = setTimeout(() => {
+                    void reply(`@${actualUsername}, searching playable watch choices for "${query.slice(0, 70)}"…`, 'bot').catch(() => {});
+                }, 3000);
                 try {
                     const found: any = await executeHearMeOutBotAction({
                         action: 'hmo.media.search',
@@ -2974,6 +2993,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         await reply(`@${actualUsername}, the provider returned no playable choices for "${query.slice(0, 70)}". Try a different title or year.`, 'bot').catch(() => {});
                         return;
                     }
+                    clearLoungeCommandMenu({ platform: 'twitch', tenantId, channelId: replyChannel, username: actualUsername, isMod: Boolean(tags.mod || tags.badges?.broadcaster) });
+                    retireRedemptionNumberChoices(tenantId, actualUsername);
                     pendingWatchChoices.set(choiceKey, { options, expiresAt: Date.now() + 5 * 60_000 });
                     const list = options.map((option: { title: string; year: number | null }, index: number) =>
                         `${index + 1}) ${option.title}${option.year && !option.title.includes(String(option.year)) ? ` (${option.year})` : ''}`
@@ -2983,10 +3004,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     const message = error instanceof Error ? error.message : String(error);
                     console.error('[Dispatcher] SML !wr provider search failed:', error);
                     await reply(`@${actualUsername}, movie search failed: ${message.slice(0, 150)}. Please try !wr ${query.slice(0, 60)} again.`, 'bot').catch(() => {});
+                } finally {
+                    clearTimeout(searchNotice);
                 }
                 return;
             }
         }
+        const requestNotice = setTimeout(() => {
+            void reply(`@${actualUsername}, checking a playable ${lane === 'movie' ? 'watch choice' : 'song'} for "${(choice?.title || query).slice(0, 70)}"…`, 'bot').catch(() => {});
+        }, 3000);
         try {
             const result: any = await executeHearMeOutBotAction({
                 action: 'hmo.media.request',
@@ -3010,6 +3036,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[Dispatcher] SML !${command} HearMeOut request failed:`, error);
             await reply(`❌ @${actualUsername} HearMeOut could not queue !${command}: ${message.slice(0, 240)}`, 'broadcaster').catch(() => {});
+        } finally {
+            clearTimeout(requestNotice);
         }
         return;
     }
@@ -3212,6 +3240,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                             tenantSelections = new Map();
                             pendingCheckins.set(tenantKey, tenantSelections);
                         }
+                        clearLoungeCommandMenu({ platform: 'twitch', tenantId, channelId: replyChannel, username: actualUsername, isMod: Boolean(tags.mod || tags.badges?.broadcaster) });
+                        pendingWatchChoices.delete(watchChoiceKey);
+                        retireRedemptionNumberChoices(tenantId, actualUsername);
                         tenantSelections.set(actualUsername.toLowerCase(), { timestamp: Date.now(), kind: matchedCheckin.kind, pointCost });
                         if ((global as any).broadcast) {
                             (global as any).broadcast({ type: 'checkin-pending', payload: createPendingPayload(matchedCheckin.kind, actualUsername, source.sourceLabel) }, tenantId);
@@ -3271,6 +3302,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         tenantPackRedeems = new Map();
                         pendingPackRedeems.set(tenantKey, tenantPackRedeems);
                     }
+                    clearLoungeCommandMenu({ platform: 'twitch', tenantId, channelId: replyChannel, username: actualUsername, isMod: Boolean(tags.mod || tags.badges?.broadcaster) });
+                    pendingWatchChoices.delete(watchChoiceKey);
+                    retireRedemptionNumberChoices(tenantId, actualUsername);
                     tenantPackRedeems.set(actualUsername.toLowerCase(), { timestamp: Date.now(), pointCost, chatChannel: replyChannel });
                     return;
                 }
@@ -4112,12 +4146,15 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
             if (tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && command === 'unmute') {
                 try {
-                    await Promise.allSettled([
+                    const outcomes = await Promise.allSettled([
                         executeHearMeOutBotAction({ ...actionBase, action: 'hmo.media.control', sessionId: 'discord-music-room', control: 'unmute' }),
                         executeHearMeOutBotAction({ ...actionBase, action: 'hmo.media.control', sessionId: 'discord-watch-room', control: 'unmute' }),
                     ]);
                     await pulseLoungePlaybackUnmute();
-                    await reply('🔊 Lounge audio recovery sent to media + Spotlight.', 'bot').catch(() => {});
+                    const failed = outcomes.map((outcome, index) => outcome.status === 'rejected' ? (index === 0 ? 'music' : 'movie') : null).filter(Boolean);
+                    await reply(failed.length
+                        ? `⚠️ Lounge audio retry sent to Spotlight, but ${failed.join(' and ')} worker control failed.`
+                        : '🔊 Lounge audio recovery sent to media + Spotlight.', 'bot').catch(() => {});
                 } catch (error) {
                     await replyFailure(error);
                 }
@@ -4841,6 +4878,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     }).catch(() => {});
                 }
             } else {
+                if (!directCategory) {
+                    pendingWatchChoices.delete(watchChoiceKey);
+                    retireRedemptionNumberChoices(tenantId, actualUsername);
+                }
                 const lines = directCategory || [beginLoungeCommandMenu({
                     platform: 'twitch', tenantId, channelId: replyChannel, username: actualUsername, isMod,
                 })];

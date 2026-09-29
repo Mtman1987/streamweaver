@@ -29,6 +29,10 @@ export function beginLoungeCommandMenu(context: CommandMenuContext, now = Date.n
   return buildLoungeCommandMenu();
 }
 
+export function clearLoungeCommandMenu(context: CommandMenuContext) {
+  pendingMenus.delete(key(context));
+}
+
 export function directLoungeCommandCategory(messageValue: unknown, isMod: boolean) {
   const match = String(messageValue || '').trim().match(/^!commands\s+([1-8])$/i);
   return match ? buildLoungeCategoryReplies(Number(match[1]), isMod) : null;

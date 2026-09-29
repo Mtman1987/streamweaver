@@ -7,6 +7,7 @@ import {
 } from '../src/lib/lounge-command-directory';
 import {
   beginLoungeCommandMenu,
+  clearLoungeCommandMenu,
   consumeLoungeCommandMenuChoice,
   directLoungeCommandCategory,
   resetLoungeCommandMenusForTests,
@@ -47,4 +48,13 @@ test('!commands number works without pending state and hides restricted commands
   assert.doesNotMatch(publicReplies.join(' '), /!pause/);
   assert.match((directLoungeCommandCategory('!commands 8', false) || []).join(' '), /only shown to channel moderators/);
   assert.match((directLoungeCommandCategory('!commands 8', true) || []).join(' '), /!admin/);
+});
+
+
+test('a newer movie or pack prompt can retire the older numbered command menu', () => {
+  resetLoungeCommandMenusForTests();
+  const viewer = { platform: 'twitch' as const, tenantId: 'spacemountainlive', channelId: 'spacemountainlive', username: 'viewer', isMod: false };
+  beginLoungeCommandMenu(viewer, 1_000);
+  clearLoungeCommandMenu(viewer);
+  assert.equal(consumeLoungeCommandMenuChoice('1', viewer, 2_000), null);
 });

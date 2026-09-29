@@ -519,7 +519,7 @@ export function trackChatMessageForRedemption(username: string, message: string,
     const tenantCheckins = pendingCheckins.get(tKey) || new Map();
     const pending = tenantCheckins.get(key);
     if (pending && Date.now() - pending.timestamp < 30000) {
-        const num = parseInt(message.trim(), 10);
+        const num = /^\d+$/.test(message.trim()) ? Number(message.trim()) : 0;
         if (num >= 1) {
             tenantCheckins.delete(key);
             runCheckin(pending.kind, username, num, pending.pointCost, tenantId).catch(err => {
@@ -532,7 +532,7 @@ export function trackChatMessageForRedemption(username: string, message: string,
     const tenantPackRedeems = pendingPackRedeems.get(tKey) || new Map();
     const pendingPack = tenantPackRedeems.get(key);
     if (pendingPack && Date.now() - pendingPack.timestamp < 30000) {
-        const num = parseInt(message.trim(), 10);
+        const num = /^\d+$/.test(message.trim()) ? Number(message.trim()) : 0;
         if (num >= 1) {
             tenantPackRedeems.delete(key);
             handlePackOpen(username, num, pendingPack.pointCost, tenantId, pendingPack.chatChannel).catch(err => {
