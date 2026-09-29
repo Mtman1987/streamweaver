@@ -40,6 +40,28 @@ test('Stella translates explicit screen and game commands into real actions', as
   });
 });
 
+test('Stella starts and stops named Nebula games through their real command keys', async () => {
+  for (const [message, command] of [
+    ['Stella, start a game of Mosaic', 'spmt pixelbattle start'],
+    ['Stella stop playing Word Chain', 'spmt wordchain stop'],
+    ['Stella turn Mosaic off', 'spmt pixelbattle stop'],
+    ['Stella turn the Mosaic game off', 'spmt pixelbattle stop'],
+    ['Stella launch Emoji Tower', 'spmt emojitower start'],
+    ['Stella end Chat Garden', 'spmt chatgarden stop'],
+    ['Stella start Chat Tag', 'spmt chattag start'],
+  ]) {
+    assert.deepEqual(await detectBotAction(message), {
+      action: 'nebula.command', args: { command }, detection: 'explicit',
+    });
+  }
+  assert.deepEqual(await detectBotAction('Stella switch to Emoji Tower'), {
+    action: 'nebula.game.director', args: { operation: 'switch', gameId: 'emojitower' }, detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella stop the game'), {
+    action: 'nebula.game.director', args: { operation: 'stop', gameId: '' }, detection: 'explicit',
+  });
+});
+
 test('Stella directs flexible Nebula game and overlay changes without falling through to chat AI', async () => {
   assert.deepEqual(await detectBotAction('Stella start Bingo and put it on the overlay'), {
     action: 'nebula.game.director',
@@ -71,6 +93,52 @@ test('Stella directs flexible Nebula game and overlay changes without falling th
     args: { command: 'spmt bingo start' },
     detection: 'explicit',
   });
+});
+
+test('Stella confirms game state before announcing a start or changing the overlay', async () => {
+  const priorFetch = globalThis.fetch;
+  const priorSecret = process.env.CHAT_TAG_SECRET;
+  process.env.CHAT_TAG_SECRET = 'test-secret';
+  let activeGameIds: string[] = [];
+  let acceptStart = true;
+  let overlayCalls = 0;
+  const context: BotActionContext = {
+    tenantId: 'spacemountainlive', source: 'twitch', botName: 'Stella',
+    message: 'Stella start Mosaic', actor: { username: 'spacemountainlive', role: 'owner' },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/api/game-hub/channel?')) return new Response(JSON.stringify({ gameIds: activeGameIds }), { status: 200 });
+    if (url.endsWith('/api/game-hub/command')) {
+      if (acceptStart) activeGameIds = /bingo/i.test(String(JSON.parse(String(init?.body || '{}')).message)) ? ['bingo'] : ['pixelbattle'];
+      return new Response(JSON.stringify({
+        handled: acceptStart, activeGameIds, reply: acceptStart ? 'Mosaic is ACTIVE' : 'Command refused',
+      }), { status: 200 });
+    }
+    if (url.endsWith('/api/game-hub/bot-overlays')) {
+      overlayCalls += 1;
+      return new Response(JSON.stringify({ profile: { id: 'system-spacemountainlive-activity' } }), { status: 200 });
+    }
+    throw new Error(`Unexpected Nebula request: ${url}`);
+  }) as typeof fetch;
+  try {
+    const start = await executeBotAction({
+      action: 'nebula.command', args: { command: 'spmt pixelbattle start' }, detection: 'explicit',
+    }, context);
+    assert.equal(start.status, 'completed');
+    assert.equal((await executeBotAction({ action: 'nebula.command', args: { command: '!SPMT BINGO START' }, detection: 'explicit' }, context)).status, 'completed');
+    activeGameIds = [];
+    acceptStart = false;
+    const refused = await executeBotAction({
+      action: 'nebula.game.director', args: { operation: 'start-show', gameId: 'pixelbattle' }, detection: 'explicit',
+    }, context);
+    assert.equal(refused.status, 'failed');
+    assert.equal(overlayCalls, 0);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorSecret === undefined) delete process.env.CHAT_TAG_SECRET;
+    else process.env.CHAT_TAG_SECRET = priorSecret;
+  }
 });
 
 test('Stella maps movie fast-forward and rewind to the Lounge movie lane', async () => {

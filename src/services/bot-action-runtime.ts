@@ -461,10 +461,10 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   }
   const roleMatch=value.match(/\bstella\b.*\b(collab|producer|host|(?:arcade\s+)?steward)\b(?:\s+(?:with|for)\s+@?([a-z0-9_]{2,80}))?/);
   if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
-  const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse'};
+  const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse','chaos mode':'chaosmode','chat garden':'chatgarden','color symphony':'colorsymphony','emoji tower':'emojitower','pet race':'petrace','rhythm pulse':'rhythmpulse','word storm':'wordstorm'};
   const namedGame=Object.entries(gameNames).find(([name])=>value.includes(name));
   const gameDirectorIntent = /\b(?:start|launch|begin|stop|end|hide|remove|take|show|put|add|switch|swap|change|shuffle|randomize|rotate)\b/.test(value)
-    && /\b(?:game|games|nebula|overlay|screen|stage|rotation|chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/.test(value);
+    && (Boolean(namedGame) || /\b(?:game|games|nebula|overlay|screen|stage|rotation)\b/.test(value));
   if (gameDirectorIntent) {
     const gameId=namedGame?.[1]||'';
     const stop=/\b(?:stop|end|turn off)\b/.test(value);
@@ -473,7 +473,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
     const switchGame=/\b(?:switch|swap|change)\b.*\b(?:game|to|into)\b/.test(value);
     const shuffle=/\b(?:shuffle|randomize|mix up|rotate)\b.*\b(?:game|games|rotation|overlay)\b/.test(value);
     const start=/\b(?:start|launch|begin|turn on)\b/.test(value);
-    const operation=shuffle?'shuffle':switchGame?'switch':stop&&hide?'stop-hide':hide?'hide':show&&start?'start-show':show?'show':'';
+    const operation=shuffle?'shuffle':switchGame?'switch':stop&&hide?'stop-hide':hide?'hide':show&&start?'start-show':show?'show':stop&&!gameId?'stop':'';
     if(operation) return {action:'nebula.game.director',args:{operation,gameId},detection:'explicit'};
   }
   if(/\b(?:overlay|screen|stage)\b/.test(value)&&/\b(?:nebula|lounge|game)\b/.test(value)){
@@ -482,8 +482,13 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   }
   const battle=value.match(/\b(?:start|make|create|link)\b.*\b(?:chat wars|stream battle|stream vs stream)\b.*(?:against|with|versus|vs\.?)[\s@]+([a-z0-9_]{2,80})\b/);
   if(battle) return {action:'nebula.stream-battle',args:{opponent:battle[1]},detection:'explicit'};
-  const gameStartStop=value.match(/\b(start|launch|stop|end|turn on|turn off)\s+(?:the\s+)?(?:game\s+)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/);
-  if(gameStartStop){ const action=/^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start'; return {action:'nebula.command',args:{command:`spmt ${gameNames[gameStartStop[2]]} ${action}`},detection:'explicit'}; }
+  const gameStartStop=value.match(/\b(start|launch|begin|stop|end|turn on|turn off)\s+(?:(?:playing|up|the|a|an|our)\s+)*(?:(?:game|round)\s+(?:of\s+)?)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)\b/)
+    || value.match(/\b(turn)\s+(?:(?:the|a|an|our)\s+)*(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)(?:\s+game)?\s+(on|off)\b/);
+  if(gameStartStop){
+    const action=gameStartStop[1]==='turn' ? (gameStartStop[3]==='off'?'stop':'start') : /^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start';
+    const gameId=gameNames[gameStartStop[2]];
+    return {action:'nebula.command',args:{command:`spmt ${gameId==='chat-tag'?'chattag':gameId} ${action}`},detection:'explicit'};
+  }
 
   const stellaMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?|\d{1,7})\b/);
   if (stellaMode) {
@@ -927,7 +932,7 @@ export async function executeBotAction(
     }
     if (request.action === 'nebula.game.director') {
       const operation=String(request.args.operation||'');
-      const knownIds=new Set(['chatwars','bingo','pixelbattle','treasurehunt','wordchain','phraseguess','chickenroyale','emojirain','dancingparade','chat-tag','quackverse']);
+      const knownIds=new Set(['chatwars','bingo','pixelbattle','treasurehunt','wordchain','phraseguess','chickenroyale','emojirain','dancingparade','chat-tag','quackverse','chaosmode','chatgarden','colorsymphony','emojitower','petrace','rhythmpulse','wordstorm']);
       let gameId=String(request.args.gameId||'').trim();
       const state=await readNebulaChannelState(context.tenantId) as any;
       const activeIds=Array.isArray(state?.gameIds)?state.gameIds.map((value:any)=>String(value)).filter((value:string)=>knownIds.has(value)):[];
@@ -942,14 +947,22 @@ export async function executeBotAction(
         return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula game you want me to control.'};
       }
       const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
-      const run=async(action:'start'|'stop')=>executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:`spmt ${gameId} ${action}`});
-      if (operation === 'start' || operation === 'start-show') await run('start');
-      if (operation === 'stop' || operation === 'stop-hide') await run('stop');
+      const run=async(id:string,action:'start'|'stop')=>{
+        const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:`spmt ${id==='chat-tag'?'chattag':id} ${action}`}) as any;
+        const active=Array.isArray(result?.activeGameIds)?result.activeGameIds.map(String):null;
+        if(result?.handled!==true || !active || (id!=='quackverse' && active.includes(id)!==(action==='start'))) {
+          throw new Error(`Nebula did not confirm ${id} ${action}.`);
+        }
+        return result;
+      };
+      let gameResult:any;
+      if (operation === 'start' || operation === 'start-show') gameResult=await run(gameId,'start');
+      if (operation === 'stop' || operation === 'stop-hide') gameResult=await run(gameId,'stop');
       if (operation === 'switch') {
         for (const active of activeIds.filter((id:string)=>id!==gameId && id!=='chat-tag')) {
-          await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:`spmt ${active} stop`});
+          await run(active,'stop');
         }
-        await run('start');
+        await run(gameId,'start');
         const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:[gameId],layout:'focus'});
         return {handled:true,action:request.action,status:'completed',response:`✅ Switched Nebula to ${gameId} and focused it on the live overlay.`,result};
       }
@@ -962,7 +975,7 @@ export async function executeBotAction(
         const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:remaining,layout:remaining.length>1?'rotation':'focus'});
         return {handled:true,action:request.action,status:'completed',response:`✅ ${gameId} is off the live Nebula overlay.`,result};
       }
-      return {handled:true,action:request.action,status:'completed',response:`✅ Nebula ${gameId} ${operation} completed.`};
+      return {handled:true,action:request.action,status:'completed',response:clean(gameResult?.reply,500)||`✅ Nebula ${gameId} ${operation} completed.`,result:gameResult};
     }
     if (request.action === 'nebula.live-overlay') {
       const gameIds=String(request.args.gameIds||'').split(',').map(v=>v.trim()).filter(Boolean);
@@ -978,7 +991,15 @@ export async function executeBotAction(
       const command=clean(request.args.command,400); if(!command) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula command to run.'};
       const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
       const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:command});
-      if ((result as any).handled !== true) return {handled:true,action:request.action,status:'failed',response:'Nebula did not accept that game command; no game change was confirmed.',result};
+      const gameControl=command.match(/^!?spmt\s+(\S+)\s+(start|stop)$/i);
+      const rawGameId=String(gameControl?.[1]||'').toLowerCase();
+      const requestedId=rawGameId==='chattag'?'chat-tag':rawGameId;
+      const active=Array.isArray((result as any).activeGameIds)?(result as any).activeGameIds.map(String):null;
+      const confirmed=!gameControl || Boolean(active && (requestedId==='quackverse'
+        || active.includes(requestedId)===(gameControl[2].toLowerCase()==='start')));
+      if ((result as any).handled !== true || !confirmed) {
+        return {handled:true,action:request.action,status:'failed',response:'Nebula did not confirm that game change.',result};
+      }
       return {handled:true,action:request.action,status:'completed',response:clean((result as any).reply,500)||'Nebula accepted the command, but did not return a game status.',result};
     }
     if (request.action === 'nebula.overlay.manage') {
