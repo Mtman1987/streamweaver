@@ -40,6 +40,24 @@ test('Stella translates explicit screen and game commands into real actions', as
   });
 });
 
+test('Stella starts and stops named Nebula games through their real command keys', async () => {
+  for (const [message, command] of [
+    ['Stella, start a game of Mosaic', 'spmt pixelbattle start'],
+    ['Stella stop playing Word Chain', 'spmt wordchain stop'],
+    ['Stella turn Mosaic off', 'spmt pixelbattle stop'],
+    ['Stella launch Emoji Tower', 'spmt emojitower start'],
+    ['Stella end Chat Garden', 'spmt chatgarden stop'],
+    ['Stella start Chat Tag', 'spmt chattag start'],
+  ]) {
+    assert.deepEqual(await detectBotAction(message), {
+      action: 'nebula.command', args: { command }, detection: 'explicit',
+    });
+  }
+  assert.deepEqual(await detectBotAction('Stella stop the game'), {
+    action: 'nebula.game.director', args: { operation: 'stop', gameId: '' }, detection: 'explicit',
+  });
+});
+
 test('Stella directs flexible Nebula game and overlay changes without falling through to chat AI', async () => {
   assert.deepEqual(await detectBotAction('Stella start Bingo and put it on the overlay'), {
     action: 'nebula.game.director',
