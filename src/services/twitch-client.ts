@@ -18,6 +18,7 @@ import {
   readTheCountTwitchCredential,
 } from '../lib/the-count-twitch-vault.server';
 import { THE_COUNT_TWITCH_LOGIN } from '../lib/the-count';
+import { clearSpmtServiceTokenCache, getSpmtServiceToken } from '../lib/spmt-service-token';
 
 interface TenantClients {
   broadcasterClient: tmi.Client | null;
@@ -50,11 +51,56 @@ const tenantsNeedingReauth = new Set<string>();
 const reconnectRefreshGate = new ProactiveTwitchRefreshGate();
 const lastReauthNotice = new Map<string, number>();
 const REAUTH_NOTICE_INTERVAL_MS = 60_000;
+const CHAT_TAG_BLACKLIST_SCOPE = 'chat-tag:blacklist:read';
+const CHAT_TAG_BASE_URL = String(
+  process.env.CHAT_TAG_BASE_URL
+  || process.env.NEXT_PUBLIC_CHAT_TAG_URL
+  || 'https://chat-tag-new.fly.dev'
+).replace(/\/$/, '');
+const BOT_BLACKLIST_CACHE_MS = 30_000;
+let botBlacklistCache: { expiresAt: number; channels: Set<string> } | null = null;
 
 // One chat receipt speaks once, even if multiple IRC connections see it.
 const spokenLoungeStellaMessageIds = new Set<string>();
 // IRC can arrive before the Helix response; defer that echo's audio to the prepared send.
 const pendingLoungeStellaTexts = new Map<string, { ircMessageId?: string }>();
+async function getCanonicalBotBlacklist(): Promise<Set<string>> {
+  if (botBlacklistCache && botBlacklistCache.expiresAt > Date.now()) return botBlacklistCache.channels;
+
+  let token = await getSpmtServiceToken([CHAT_TAG_BLACKLIST_SCOPE]);
+  const request = (value: string) => fetch(`${CHAT_TAG_BASE_URL}/api/bot/blacklist`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${value}` },
+    cache: 'no-store',
+    signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(5000)
+      : undefined,
+  });
+  let response = await request(token);
+  if (response.status === 401) {
+    await response.body?.cancel().catch(() => undefined);
+    clearSpmtServiceTokenCache([CHAT_TAG_BLACKLIST_SCOPE]);
+    token = await getSpmtServiceToken([CHAT_TAG_BLACKLIST_SCOPE]);
+    response = await request(token);
+  }
+  if (!response.ok) throw new Error(`ChatTag bot blacklist unavailable: ${response.status}`);
+
+  const payload = await response.json().catch(() => null) as any;
+  const channels = new Set<string>(
+    (Array.isArray(payload?.blacklisted) ? payload.blacklisted : [])
+      .map((value: unknown) => String(value || '').replace(/^#/, '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  botBlacklistCache = { expiresAt: Date.now() + BOT_BLACKLIST_CACHE_MS, channels };
+  return channels;
+}
+
+async function botJoinAllowed(channel: string): Promise<boolean> {
+  const normalized = String(channel || '').replace(/^#/, '').trim().toLowerCase();
+  if (!normalized) return false;
+  const blacklist = await getCanonicalBotBlacklist();
+  return !blacklist.has(normalized);
+}
+
 function spokenLoungeStellaText(message: string): string {
   // Parenthesized check-in counts, points, and levels stay visible in Twitch.
   return message.replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim();
@@ -470,6 +516,15 @@ async function ensureCommunityBotForChannel(
 
   const channelLogin = String(channel || '').trim().replace(/^#+/, '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 25);
   if (!channelLogin) return null;
+  try {
+    if (!await botJoinAllowed(channelLogin)) {
+      console.log(`[Twitch:community-bot] Skipping blacklisted #${channelLogin}`);
+      return null;
+    }
+  } catch (error) {
+    console.warn(`[Twitch:community-bot] Refusing join while canonical blacklist is unavailable for #${channelLogin}:`, error);
+    return null;
+  }
   if (!communityBotChannels.has(channelLogin)) {
     try {
       await client.join(channelLogin);
@@ -539,6 +594,15 @@ async function ensureTheCountForChannel(
 ): Promise<tmi.Client | null> {
   const normalizedChannel = String(channel || '').replace(/^#/, '').trim().toLowerCase();
   if (!normalizedChannel) return null;
+  try {
+    if (!await botJoinAllowed(normalizedChannel)) {
+      console.log(`[Twitch:the-count] Skipping blacklisted #${normalizedChannel}`);
+      return null;
+    }
+  } catch (error) {
+    console.warn(`[Twitch:the-count] Refusing join while canonical blacklist is unavailable for #${normalizedChannel}:`, error);
+    return null;
+  }
 
   const client = await getOrConnectTheCountTwitchClient(clientId, clientSecret);
   if (!client) return null;
