@@ -45,6 +45,7 @@ test('Stella starts and stops named Nebula games through their real command keys
     ['Stella, start a game of Mosaic', 'spmt pixelbattle start'],
     ['Stella stop playing Word Chain', 'spmt wordchain stop'],
     ['Stella turn Mosaic off', 'spmt pixelbattle stop'],
+    ['Stella turn the Mosaic game off', 'spmt pixelbattle stop'],
     ['Stella launch Emoji Tower', 'spmt emojitower start'],
     ['Stella end Chat Garden', 'spmt chatgarden stop'],
     ['Stella start Chat Tag', 'spmt chattag start'],
@@ -53,6 +54,9 @@ test('Stella starts and stops named Nebula games through their real command keys
       action: 'nebula.command', args: { command }, detection: 'explicit',
     });
   }
+  assert.deepEqual(await detectBotAction('Stella switch to Emoji Tower'), {
+    action: 'nebula.game.director', args: { operation: 'switch', gameId: 'emojitower' }, detection: 'explicit',
+  });
   assert.deepEqual(await detectBotAction('Stella stop the game'), {
     action: 'nebula.game.director', args: { operation: 'stop', gameId: '' }, detection: 'explicit',
   });
@@ -106,7 +110,7 @@ test('Stella confirms game state before announcing a start or changing the overl
     const url = String(input);
     if (url.includes('/api/game-hub/channel?')) return new Response(JSON.stringify({ gameIds: activeGameIds }), { status: 200 });
     if (url.endsWith('/api/game-hub/command')) {
-      if (acceptStart) activeGameIds = ['pixelbattle'];
+      if (acceptStart) activeGameIds = /bingo/i.test(String(JSON.parse(String(init?.body || '{}')).message)) ? ['bingo'] : ['pixelbattle'];
       return new Response(JSON.stringify({
         handled: acceptStart, activeGameIds, reply: acceptStart ? 'Mosaic is ACTIVE' : 'Command refused',
       }), { status: 200 });
@@ -122,6 +126,7 @@ test('Stella confirms game state before announcing a start or changing the overl
       action: 'nebula.command', args: { command: 'spmt pixelbattle start' }, detection: 'explicit',
     }, context);
     assert.equal(start.status, 'completed');
+    assert.equal((await executeBotAction({ action: 'nebula.command', args: { command: '!SPMT BINGO START' }, detection: 'explicit' }, context)).status, 'completed');
     activeGameIds = [];
     acceptStart = false;
     const refused = await executeBotAction({

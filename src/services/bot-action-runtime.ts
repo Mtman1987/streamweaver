@@ -464,7 +464,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse','chaos mode':'chaosmode','chat garden':'chatgarden','color symphony':'colorsymphony','emoji tower':'emojitower','pet race':'petrace','rhythm pulse':'rhythmpulse','word storm':'wordstorm'};
   const namedGame=Object.entries(gameNames).find(([name])=>value.includes(name));
   const gameDirectorIntent = /\b(?:start|launch|begin|stop|end|hide|remove|take|show|put|add|switch|swap|change|shuffle|randomize|rotate)\b/.test(value)
-    && /\b(?:game|games|nebula|overlay|screen|stage|rotation|chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse)\b/.test(value);
+    && (Boolean(namedGame) || /\b(?:game|games|nebula|overlay|screen|stage|rotation)\b/.test(value));
   if (gameDirectorIntent) {
     const gameId=namedGame?.[1]||'';
     const stop=/\b(?:stop|end|turn off)\b/.test(value);
@@ -483,7 +483,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const battle=value.match(/\b(?:start|make|create|link)\b.*\b(?:chat wars|stream battle|stream vs stream)\b.*(?:against|with|versus|vs\.?)[\s@]+([a-z0-9_]{2,80})\b/);
   if(battle) return {action:'nebula.stream-battle',args:{opponent:battle[1]},detection:'explicit'};
   const gameStartStop=value.match(/\b(start|launch|begin|stop|end|turn on|turn off)\s+(?:(?:playing|up|the|a|an|our)\s+)*(?:(?:game|round)\s+(?:of\s+)?)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)\b/)
-    || value.match(/\b(turn)\s+(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)\s+(on|off)\b/);
+    || value.match(/\b(turn)\s+(?:(?:the|a|an|our)\s+)*(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)(?:\s+game)?\s+(on|off)\b/);
   if(gameStartStop){
     const action=gameStartStop[1]==='turn' ? (gameStartStop[3]==='off'?'stop':'start') : /^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start';
     const gameId=gameNames[gameStartStop[2]];
@@ -991,11 +991,12 @@ export async function executeBotAction(
       const command=clean(request.args.command,400); if(!command) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula command to run.'};
       const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
       const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:command});
-      const gameControl=command.match(/^spmt\s+(\S+)\s+(start|stop)$/i);
-      const requestedId=gameControl?.[1]==='chattag'?'chat-tag':String(gameControl?.[1]||'');
+      const gameControl=command.match(/^!?spmt\s+(\S+)\s+(start|stop)$/i);
+      const rawGameId=String(gameControl?.[1]||'').toLowerCase();
+      const requestedId=rawGameId==='chattag'?'chat-tag':rawGameId;
       const active=Array.isArray((result as any).activeGameIds)?(result as any).activeGameIds.map(String):null;
       const confirmed=!gameControl || Boolean(active && (requestedId==='quackverse'
-        || active.includes(requestedId)===(gameControl[2]==='start')));
+        || active.includes(requestedId)===(gameControl[2].toLowerCase()==='start')));
       if ((result as any).handled !== true || !confirmed) {
         return {handled:true,action:request.action,status:'failed',response:'Nebula did not confirm that game change.',result};
       }
