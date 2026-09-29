@@ -992,10 +992,11 @@ export async function executeBotAction(
       const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
       const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:command});
       const gameControl=command.match(/^spmt\s+(\S+)\s+(start|stop)$/i);
-      const requestedId=gameControl?.[1]==='chattag'?'chat-tag':gameControl?.[1];
+      const requestedId=gameControl?.[1]==='chattag'?'chat-tag':String(gameControl?.[1]||'');
       const active=Array.isArray((result as any).activeGameIds)?(result as any).activeGameIds.map(String):null;
-      if ((result as any).handled !== true || (gameControl && (!active || (requestedId!=='quackverse'
-          && active.includes(requestedId)!==(gameControl[2]==='start')))) {
+      const confirmed=!gameControl || Boolean(active && (requestedId==='quackverse'
+        || active.includes(requestedId)===(gameControl[2]==='start')));
+      if ((result as any).handled !== true || !confirmed) {
         return {handled:true,action:request.action,status:'failed',response:'Nebula did not confirm that game change.',result};
       }
       return {handled:true,action:request.action,status:'completed',response:clean((result as any).reply,500)||'Nebula accepted the command, but did not return a game status.',result};
