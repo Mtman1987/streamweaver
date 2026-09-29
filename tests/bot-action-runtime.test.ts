@@ -91,6 +91,51 @@ test('Stella directs flexible Nebula game and overlay changes without falling th
   });
 });
 
+test('Stella confirms game state before announcing a start or changing the overlay', async () => {
+  const priorFetch = globalThis.fetch;
+  const priorSecret = process.env.CHAT_TAG_SECRET;
+  process.env.CHAT_TAG_SECRET = 'test-secret';
+  let activeGameIds: string[] = [];
+  let acceptStart = true;
+  let overlayCalls = 0;
+  const context: BotActionContext = {
+    tenantId: 'spacemountainlive', source: 'twitch', botName: 'Stella',
+    message: 'Stella start Mosaic', actor: { username: 'spacemountainlive', role: 'owner' },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/api/game-hub/channel?')) return new Response(JSON.stringify({ gameIds: activeGameIds }), { status: 200 });
+    if (url.endsWith('/api/game-hub/command')) {
+      if (acceptStart) activeGameIds = ['pixelbattle'];
+      return new Response(JSON.stringify({
+        handled: acceptStart, activeGameIds, reply: acceptStart ? 'Mosaic is ACTIVE' : 'Command refused',
+      }), { status: 200 });
+    }
+    if (url.endsWith('/api/game-hub/bot-overlays')) {
+      overlayCalls += 1;
+      return new Response(JSON.stringify({ profile: { id: 'system-spacemountainlive-activity' } }), { status: 200 });
+    }
+    throw new Error(`Unexpected Nebula request: ${url}`);
+  }) as typeof fetch;
+  try {
+    const start = await executeBotAction({
+      action: 'nebula.command', args: { command: 'spmt pixelbattle start' }, detection: 'explicit',
+    }, context);
+    assert.equal(start.status, 'completed');
+    activeGameIds = [];
+    acceptStart = false;
+    const refused = await executeBotAction({
+      action: 'nebula.game.director', args: { operation: 'start-show', gameId: 'pixelbattle' }, detection: 'explicit',
+    }, context);
+    assert.equal(refused.status, 'failed');
+    assert.equal(overlayCalls, 0);
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorSecret === undefined) delete process.env.CHAT_TAG_SECRET;
+    else process.env.CHAT_TAG_SECRET = priorSecret;
+  }
+});
+
 test('Stella maps movie fast-forward and rewind to the Lounge movie lane', async () => {
   assert.deepEqual(await detectBotAction('Stella fast forward the movie 30 seconds'), {
     action: 'hmo.media.control',
