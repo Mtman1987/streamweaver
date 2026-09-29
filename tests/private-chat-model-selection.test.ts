@@ -12,8 +12,10 @@ process.env.APP_URL = 'https://streamweaver-new.fly.dev';
 test('private settings exposes advertised models and the effective auto-selected runtime model', async () => {
   const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-model-'));
   const originalPersistRoot = process.env.PERSIST_ROOT;
+  const originalLocalQwenEnabled = process.env.SPMT_LOCAL_LLM_ENABLED;
   const originalFetch = globalThis.fetch;
   process.env.PERSIST_ROOT = runtimeRoot;
+  process.env.SPMT_LOCAL_LLM_ENABLED = 'true';
 
   try {
     const { clearQwenModelCapabilityCacheForTests } = await import('../src/services/qwen-quality');
@@ -60,10 +62,24 @@ test('private settings exposes advertised models and the effective auto-selected
     assert.equal(postSettings.configuredQwenModel, 'spmt-qwen3-8b');
     assert.equal(postSettings.effectiveQwenModel, 'spmt-qwen3-8b');
     assert.equal(postSettings.qwenAutoSelectEnabled, false);
+
+    process.env.SPMT_LOCAL_LLM_ENABLED = 'false';
+    globalThis.fetch = (async () => {
+      throw new Error('shelved Qwen must not be probed');
+    }) as typeof fetch;
+    const shelvedResponse = await GET(new NextRequest('https://streamweaver-new.fly.dev/api/private-chat/settings', { headers }));
+    assert.equal(shelvedResponse.status, 200);
+    const shelvedPayload = await shelvedResponse.json();
+    const shelvedSettings = shelvedPayload.settings || shelvedPayload.data?.settings;
+    assert.deepEqual(shelvedSettings.availableQwenModels, []);
+    assert.equal(shelvedSettings.qwenModelDiscoveryAvailable, false);
+    assert.equal(shelvedSettings.qwenShelved, true);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
     else process.env.PERSIST_ROOT = originalPersistRoot;
+    if (originalLocalQwenEnabled === undefined) delete process.env.SPMT_LOCAL_LLM_ENABLED;
+    else process.env.SPMT_LOCAL_LLM_ENABLED = originalLocalQwenEnabled;
     await rm(runtimeRoot, { recursive: true, force: true });
   }
 });

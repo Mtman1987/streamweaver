@@ -11,6 +11,7 @@ import {
   type PrivateChatSettings,
 } from '@/lib/private-chat-settings-store';
 import { resolveQwenEndpoint } from '@/services/qwen-private-chat';
+import { isSpmtLocalLlmEnabled } from '@/services/spmt-local-llm';
 import {
   DEFAULT_BUILT_IN_QWEN_MODEL,
   discoverAvailableBuiltInQwenModels,
@@ -28,10 +29,10 @@ export const dynamic = 'force-dynamic';
 async function buildSettingsPayload(settings: PrivateChatSettings) {
   const qwenBaseUrl = getEffectiveQwenBaseUrl(settings);
   const configuredQwenModel = getEffectiveQwenModel(settings);
-  const availableQwenModels = await discoverAvailableBuiltInQwenModels({
-    baseUrl: qwenBaseUrl,
-    apiKey: process.env.PRIVATE_QWEN_API_KEY,
-  });
+  const localQwenEnabled = isSpmtLocalLlmEnabled();
+  const availableQwenModels = localQwenEnabled
+    ? await discoverAvailableBuiltInQwenModels({ baseUrl: qwenBaseUrl, apiKey: process.env.PRIVATE_QWEN_API_KEY })
+    : [];
   const effectiveQwenModel = selectPreferredBuiltInQwenModel(
     configuredQwenModel,
     availableQwenModels,
@@ -44,6 +45,7 @@ async function buildSettingsPayload(settings: PrivateChatSettings) {
     availableQwenModels,
     qwenAutoSelectEnabled: configuredQwenModel === DEFAULT_BUILT_IN_QWEN_MODEL,
     qwenModelDiscoveryAvailable: availableQwenModels.length > 0,
+    qwenShelved: !localQwenEnabled,
   };
 }
 

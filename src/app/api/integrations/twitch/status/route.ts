@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 
-import { getStoredTokens } from '@/lib/token-utils.server';
+import { getStoredTokens, getTwitchCredentialQuarantine } from '@/lib/token-utils.server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { communityBotTokensPath, isAdmin, SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
 import { getTheCountTwitchCredentialStatus } from '@/lib/the-count-twitch-vault.server';
@@ -47,8 +47,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const broadcasterConnected = !!(tokens?.broadcasterToken && tokens?.broadcasterRefreshToken);
-  const botConnected = !!(tokens?.botToken && tokens?.botRefreshToken);
+  const broadcasterQuarantine = getTwitchCredentialQuarantine(tokens, 'broadcaster');
+  const botQuarantine = getTwitchCredentialQuarantine(tokens, 'bot');
+  const broadcasterConnected = !broadcasterQuarantine && !!(tokens?.broadcasterToken && tokens?.broadcasterRefreshToken);
+  const botConnected = !botQuarantine && !!(tokens?.botToken && tokens?.botRefreshToken);
   const communityBotConfigured = owner && !!(
     communityFile?.communityBotToken &&
     communityFile?.communityBotRefreshToken
@@ -63,6 +65,11 @@ export async function GET(request: NextRequest) {
     botUsername: tokens?.botUsername || null,
     appLoginUsername: tokens?.loginUsername || null,
     lastUpdated: tokens?.lastUpdated || null,
+    broadcasterReconnectRequired: Boolean(broadcasterQuarantine),
+    broadcasterDeleteAfter: broadcasterQuarantine?.deleteAfter || null,
+    botReconnectRequired: Boolean(botQuarantine),
+    botDeleteAfter: botQuarantine?.deleteAfter || null,
+    credentialRetentionDays: 90,
     owner,
     ...(owner ? {
       communityBotConnected: runtimeState.connected || communityBotConfigured,

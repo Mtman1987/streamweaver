@@ -75,6 +75,91 @@ test('a replacement grant releases a pause even if timestamps are unchanged', as
   assert.equal(gate.shouldAttempt('123', tokens), false);
   assert.equal(gate.shouldAttempt('123', { ...tokens, broadcasterRefreshToken: 'replacement' }), true);
 });
+test('invalid grants are durably quarantined and do not retry after a process restart', async t => {
+  let requests = 0;
+  const api = await fixture(t, async (_url: any, init: any) => {
+    requests++;
+    if (init.method === 'POST') return new Response('Invalid refresh token', { status: 400, statusText: 'Bad Request' });
+    return new Response('', { status: 401 });
+  });
+  const expired = { ...tokens, broadcasterTokenExpiry: 1 };
+  await api.storeTokens(expired, '123');
+  await assert.rejects(
+    api.ensureValidToken('client', 'secret', 'broadcaster', expired, '123'),
+    /Invalid refresh token/,
+  );
+  const quarantined = await api.getStoredTokens('123');
+  assert.equal(quarantined.credentialQuarantine.broadcaster.status, 'quarantined');
+  assert.equal(
+    Date.parse(quarantined.credentialQuarantine.broadcaster.deleteAfter)
+      - Date.parse(quarantined.credentialQuarantine.broadcaster.quarantinedAt),
+    90 * 24 * 60 * 60 * 1000,
+  );
+
+  const requestsBeforeRestart = requests;
+  const restarted = api.fork();
+  await assert.rejects(
+    restarted.ensureValidToken('client', 'secret', 'broadcaster', quarantined, '123'),
+    /credential is quarantined/,
+  );
+  assert.equal(requests, requestsBeforeRestart);
+});
+
+test('quarantine is role-specific and replacement authorization clears it', async t => {
+  const api = await fixture(t, async (_url: any, init: any) => {
+    const refresh = new URLSearchParams(init.body).get('refresh_token');
+    if (refresh === 'test-old-refresh') return new Response('Invalid refresh token', { status: 400 });
+    return refreshed('bot');
+  });
+  const expired = {
+    ...tokens,
+    broadcasterTokenExpiry: 1,
+    botToken: 'bot-access',
+    botRefreshToken: 'bot-refresh',
+    botTokenExpiry: 1,
+  };
+  await api.storeTokens(expired, '123');
+  await assert.rejects(api.ensureValidToken('client', 'secret', 'broadcaster', expired, '123'));
+  assert.equal(await api.ensureValidToken('client', 'secret', 'bot', expired, '123'), 'test-new-bot');
+
+  await api.updateStoredTokens({
+    broadcasterToken: 'replacement-access',
+    broadcasterRefreshToken: 'replacement-refresh',
+    broadcasterTokenExpiry: Date.now() + 3600000,
+  }, '123');
+  const replaced = await api.getStoredTokens('123');
+  assert.equal(api.getTwitchCredentialQuarantine(replaced, 'broadcaster'), null);
+});
+
+test('expired quarantine removes only integration credentials after 90 days', async t => {
+  const api = await fixture(t, async (_url: any, init: any) =>
+    init.method === 'POST'
+      ? new Response('Invalid refresh token', { status: 400 })
+      : new Response('', { status: 401 }));
+  const duplicatedLogin = {
+    ...tokens,
+    broadcasterTokenExpiry: 1,
+    loginToken: tokens.broadcasterToken,
+    loginRefreshToken: tokens.broadcasterRefreshToken,
+    loginUsername: tokens.broadcasterUsername,
+  };
+  await api.storeTokens(duplicatedLogin, '123');
+  await assert.rejects(api.ensureValidToken('client', 'secret', 'broadcaster', duplicatedLogin, '123'));
+  const quarantined = await api.getStoredTokens('123');
+  const purged = await api.purgeExpiredTwitchCredentials(
+    '123',
+    Date.parse(quarantined.credentialQuarantine.broadcaster.deleteAfter) + 1,
+  );
+  assert.deepEqual(Array.from(purged), ['broadcaster']);
+  const saved = await api.getStoredTokens('123');
+  assert.equal(saved.broadcasterToken, undefined);
+  assert.equal(saved.broadcasterRefreshToken, undefined);
+  assert.equal(saved.broadcasterUsername, undefined);
+  assert.equal(saved.loginToken, undefined);
+  assert.equal(saved.loginRefreshToken, undefined);
+  assert.equal(saved.loginUsername, 'registered');
+});
+
 async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster') {
   const tokenApi = await fixture(t, async () => Response.json({}));
   let stored: any = { ...tokens, botToken: 'personal-token', botRefreshToken: 'personal-refresh' };

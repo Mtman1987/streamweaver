@@ -29,6 +29,7 @@ interface PrivateChatSettings {
   availableQwenModels: string[];
   qwenAutoSelectEnabled: boolean;
   qwenModelDiscoveryAvailable: boolean;
+  qwenShelved: boolean;
   qwenEndpointConfigured: boolean;
   qwenModelConfigured: boolean;
   qwenApiKeyConfigured: boolean;
@@ -45,6 +46,7 @@ const defaultSettings: PrivateChatSettings = {
   availableQwenModels: [],
   qwenAutoSelectEnabled: true,
   qwenModelDiscoveryAvailable: false,
+  qwenShelved: true,
   qwenEndpointConfigured: false,
   qwenModelConfigured: false,
   qwenApiKeyConfigured: false,
@@ -169,7 +171,7 @@ export default function PrivateChatPage() {
             <div className="space-y-1.5">
               <CardTitle className="text-base">Private Chat</CardTitle>
               <CardDescription>
-                These settings and this history belong to your signed-in StreamWeaver tenant. The SPMT worker URL stays managed by StreamWeaver, while the model selector below shows what the private worker actually advertises.
+                These settings and this history belong to your signed-in StreamWeaver tenant. Local-model controls remain visible for future use, but no local worker is contacted while Qwen is shelved.
               </CardDescription>
             </div>
             <Button asChild size="sm" variant="outline">
@@ -200,7 +202,9 @@ export default function PrivateChatPage() {
             <div>
               <div className="font-medium">Private LLM</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {`Effective runtime model: ${settings.effectiveQwenModel || settings.qwenModel || "SPMT Qwen"}`}
+                {settings.qwenShelved
+                  ? "Local Qwen is shelved. Private chat uses the active hosted provider."
+                  : `Effective runtime model: ${settings.effectiveQwenModel || settings.qwenModel || "SPMT Qwen"}`}
               </div>
             </div>
 
@@ -209,7 +213,7 @@ export default function PrivateChatPage() {
               <select
                 id="private-qwen-model"
                 value={settings.configuredQwenModel || AUTO_QWEN_MODEL}
-                disabled={savingModel}
+                disabled={savingModel || settings.qwenShelved}
                 onChange={(event) => void setQwenModel(event.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -221,9 +225,11 @@ export default function PrivateChatPage() {
                 ))}
               </select>
               <p className="text-xs text-muted-foreground">
-                {settings.qwenModelDiscoveryAvailable
-                  ? `Worker currently advertises: ${settings.availableQwenModels.join(", ")}.`
-                  : "The worker model list could not be read right now. Auto safely falls back to spmt-qwen3-4b."}
+                {settings.qwenShelved
+                  ? "Model discovery and all local inference calls are paused until a better operating design is enabled."
+                  : settings.qwenModelDiscoveryAvailable
+                    ? `Worker currently advertises: ${settings.availableQwenModels.join(", ")}.`
+                    : "The worker model list could not be read right now."}
               </p>
             </div>
           </div>

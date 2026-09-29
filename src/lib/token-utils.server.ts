@@ -10,6 +10,21 @@ export interface TokenData {
   token_type: string;
 }
 
+export type TwitchCredentialRole = 'broadcaster' | 'bot' | 'community-bot';
+
+export interface TwitchCredentialQuarantine {
+  provider: 'twitch';
+  role: TwitchCredentialRole;
+  status: 'quarantined';
+  reason: 'reauthorization_required';
+  quarantinedAt: string;
+  deleteAfter: string;
+  revision: string;
+}
+
+export const TWITCH_CREDENTIAL_RETENTION_DAYS = 90;
+const TWITCH_CREDENTIAL_RETENTION_MS = TWITCH_CREDENTIAL_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
 export interface StoredTokens {
   broadcasterToken?: string;
   botToken?: string;
@@ -38,6 +53,7 @@ export interface StoredTokens {
   communityBotTokenExpiry?: number;
   loginTokenExpiry?: number;
   lastUpdated?: string;
+  credentialQuarantine?: Partial<Record<TwitchCredentialRole, TwitchCredentialQuarantine>>;
 }
 
 const refreshLocks = new Map<string, Promise<string>>();
@@ -78,6 +94,119 @@ async function writeTokensFile(file: string, tokens: StoredTokens): Promise<void
     await fs.rename(temporary, file);
   } finally {
     await fs.unlink(temporary).catch(() => {});
+  }
+}
+
+const roleKeys: Record<TwitchCredentialRole, {
+  token: keyof StoredTokens;
+  refresh: keyof StoredTokens;
+  expiry: keyof StoredTokens;
+  username: keyof StoredTokens;
+  profile: keyof StoredTokens;
+  avatar: keyof StoredTokens;
+}> = {
+  broadcaster: {
+    token: 'broadcasterToken',
+    refresh: 'broadcasterRefreshToken',
+    expiry: 'broadcasterTokenExpiry',
+    username: 'broadcasterUsername',
+    profile: 'broadcasterProfileImageUrl',
+    avatar: 'broadcasterAvatarUrl',
+  },
+  bot: {
+    token: 'botToken',
+    refresh: 'botRefreshToken',
+    expiry: 'botTokenExpiry',
+    username: 'botUsername',
+    profile: 'botProfileImageUrl',
+    avatar: 'botAvatarUrl',
+  },
+  'community-bot': {
+    token: 'communityBotToken',
+    refresh: 'communityBotRefreshToken',
+    expiry: 'communityBotTokenExpiry',
+    username: 'communityBotUsername',
+    profile: 'communityBotProfileImageUrl',
+    avatar: 'communityBotAvatarUrl',
+  },
+};
+
+function credentialRevision(tokens: StoredTokens, role: TwitchCredentialRole): string {
+  const keys = roleKeys[role];
+  return createHash('sha256').update([
+    String(tokens[keys.token] || ''),
+    String(tokens[keys.refresh] || ''),
+    String(tokens[keys.expiry] || ''),
+  ].join(':')).digest('hex');
+}
+
+function currentQuarantine(
+  tokens: StoredTokens,
+  role: TwitchCredentialRole,
+): TwitchCredentialQuarantine | null {
+  const entry = tokens.credentialQuarantine?.[role];
+  if (!entry || entry.status !== 'quarantined') return null;
+  return entry.revision === credentialRevision(tokens, role) ? entry : null;
+}
+
+function clearStaleQuarantines(tokens: StoredTokens): StoredTokens {
+  if (!tokens.credentialQuarantine) return tokens;
+  const credentialQuarantine = { ...tokens.credentialQuarantine };
+  for (const role of Object.keys(credentialQuarantine) as TwitchCredentialRole[]) {
+    if (!currentQuarantine(tokens, role)) delete credentialQuarantine[role];
+  }
+  if (Object.keys(credentialQuarantine).length === 0) {
+    const { credentialQuarantine: _discarded, ...rest } = tokens;
+    return rest;
+  }
+  return { ...tokens, credentialQuarantine };
+}
+
+function quarantinedTokens(
+  tokens: StoredTokens,
+  role: TwitchCredentialRole,
+  now = Date.now(),
+): StoredTokens {
+  const existing = currentQuarantine(tokens, role);
+  if (existing) return tokens;
+  const quarantinedAt = new Date(now).toISOString();
+  return {
+    ...tokens,
+    credentialQuarantine: {
+      ...tokens.credentialQuarantine,
+      [role]: {
+        provider: 'twitch',
+        role,
+        status: 'quarantined',
+        reason: 'reauthorization_required',
+        quarantinedAt,
+        deleteAfter: new Date(now + TWITCH_CREDENTIAL_RETENTION_MS).toISOString(),
+        revision: credentialRevision(tokens, role),
+      },
+    },
+  };
+}
+
+export function getTwitchCredentialQuarantine(
+  tokens: StoredTokens | null | undefined,
+  role: TwitchCredentialRole,
+): TwitchCredentialQuarantine | null {
+  return tokens ? currentQuarantine(tokens, role) : null;
+}
+
+export function isTwitchCredentialQuarantined(
+  tokens: StoredTokens | null | undefined,
+  role: TwitchCredentialRole,
+): boolean {
+  return Boolean(getTwitchCredentialQuarantine(tokens, role));
+}
+
+export class TwitchCredentialQuarantinedError extends Error {
+  readonly code = 'TWITCH_CREDENTIAL_QUARANTINED';
+
+  constructor(readonly role: TwitchCredentialRole, readonly deleteAfter: string) {
+    super(`Twitch ${role} credential is quarantined; reauthorization is required before ${deleteAfter}`);
+    this.name = 'TwitchCredentialQuarantinedError';
   }
 }
 
@@ -152,7 +281,8 @@ export async function updateStoredTokens(
     try { current = JSON.parse(await fs.readFile(file, 'utf8')); }
     catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
     const next = typeof update === 'function' ? update(current) : { ...current, ...update };
-    await writeTokensFile(file, next);
+    // A newly-authorized role changes its credential revision, releasing only that role.
+    await writeTokensFile(file, clearStaleQuarantines(next));
   });
 }
 
@@ -183,7 +313,7 @@ export async function refreshAccessToken(
 
 export function isTwitchAuthFailure(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
-  return /login authentication failed|authentication failed|invalid oauth|bad auth|invalid refresh token/i.test(message);
+  return /login authentication failed|authentication failed|invalid oauth|bad auth|invalid refresh token|credential is quarantined|reauthorization is required/i.test(message);
 }
 
 export async function validateAccessToken(accessToken: string): Promise<boolean> {
@@ -223,6 +353,11 @@ async function refreshStoredToken(
   const expiryKey = tokenType === 'broadcaster' ? 'broadcasterTokenExpiry' : tokenType === 'bot' ? 'botTokenExpiry' : 'communityBotTokenExpiry';
 
   const tokens = await readCurrentTokensForType(tokenType, fallbackTokens, tenantId);
+  const quarantine = currentQuarantine(tokens, tokenType);
+  if (quarantine) {
+    throw new TwitchCredentialQuarantinedError(tokenType, quarantine.deleteAfter);
+  }
+
   let accessToken = tokens[tokenKey];
   const refreshToken = tokens[refreshTokenKey];
   const tokenExpiry = tokens[expiryKey];
@@ -247,7 +382,18 @@ async function refreshStoredToken(
   if (!refreshToken) throw new Error(`Invalid OAuth: ${tokenType} token expired and no refresh token is stored`);
 
   console.log(`[Token] ${tokenType} token is invalid or expired, refreshing...`);
-  const newTokenData = await refreshAccessToken(refreshToken, clientId, clientSecret);
+  let newTokenData: TokenData;
+  try {
+    newTokenData = await refreshAccessToken(refreshToken, clientId, clientSecret);
+  } catch (error) {
+    if (isTwitchAuthFailure(error)) {
+      const quarantined = quarantinedTokens(tokens, tokenType);
+      await writeTokensFile(getStorageTarget(tokenType, tenantId), quarantined);
+      const entry = currentQuarantine(quarantined, tokenType)!;
+      console.warn(`[Token] ${tokenType} credential quarantined until ${entry.deleteAfter}; automatic retries stopped`);
+    }
+    throw error;
+  }
   const newExpiry = now + (newTokenData.expires_in - 60) * 1000;
 
   // A different role may have rotated since this caller loaded its snapshot.
@@ -258,6 +404,7 @@ async function refreshStoredToken(
     [refreshTokenKey]: newTokenData.refresh_token || refreshToken,
     [expiryKey]: newExpiry,
     lastUpdated: new Date().toISOString(),
+    credentialQuarantine: tokens.credentialQuarantine,
   };
 
   if (tokenType === 'broadcaster' && tokens.loginUsername && tokens.broadcasterUsername &&
@@ -267,16 +414,59 @@ async function refreshStoredToken(
     updatedTokens.loginTokenExpiry = newExpiry;
   }
 
+  const cleanedTokens = clearStaleQuarantines(updatedTokens);
   if (tokenType === 'community-bot' && !tenantId) {
     const filePath = communityTokensFilePath();
-    await writeTokensFile(filePath, updatedTokens);
+    await writeTokensFile(filePath, cleanedTokens);
   } else {
-    await writeTokensFile(tokensFilePath(tenantId), updatedTokens);
+    await writeTokensFile(tokensFilePath(tenantId), cleanedTokens);
   }
 
   console.log(`[Token] Successfully refreshed ${tokenType} token`);
   accessToken = newTokenData.access_token;
   return accessToken;
+}
+
+export async function purgeExpiredTwitchCredentials(
+  tenantId: string,
+  now = Date.now(),
+): Promise<TwitchCredentialRole[]> {
+  const file = tokensFilePath(tenantId);
+  return serializeStorage(file, async () => {
+    let tokens: StoredTokens;
+    try {
+      tokens = JSON.parse(await fs.readFile(file, 'utf8'));
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return [];
+      throw error;
+    }
+
+    const purged: TwitchCredentialRole[] = [];
+    for (const role of ['broadcaster', 'bot'] as const) {
+      const quarantine = currentQuarantine(tokens, role);
+      if (!quarantine || Date.parse(quarantine.deleteAfter) > now) continue;
+      const keys = roleKeys[role];
+      const refreshToken = tokens[keys.refresh];
+      for (const key of Object.values(keys)) delete tokens[key];
+
+      if (role === 'broadcaster' && refreshToken && tokens.loginRefreshToken === refreshToken) {
+        delete tokens.loginToken;
+        delete tokens.loginRefreshToken;
+        delete tokens.loginTokenExpiry;
+      }
+
+      if (tokens.credentialQuarantine) delete tokens.credentialQuarantine[role];
+      purged.push(role);
+    }
+
+    if (purged.length === 0) return purged;
+    if (tokens.credentialQuarantine && Object.keys(tokens.credentialQuarantine).length === 0) {
+      delete tokens.credentialQuarantine;
+    }
+    tokens.lastUpdated = new Date(now).toISOString();
+    await writeTokensFile(file, tokens);
+    return purged;
+  });
 }
 
 export async function forceRefreshStoredToken(

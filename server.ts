@@ -640,36 +640,39 @@ async function startServer() {
                     const {
                         getStoredTokens,
                         ensureValidToken,
+                        getTwitchCredentialQuarantine,
                         isTwitchAuthFailure,
-                        ProactiveTwitchRefreshGate,
+                        purgeExpiredTwitchCredentials,
                     } = require('./src/lib/token-utils.server');
                     const fsRefresh = require('fs').promises;
-                    const runtimeGlobal = global as any;
-                    runtimeGlobal.__proactiveTwitchRefreshGate = runtimeGlobal.__proactiveTwitchRefreshGate || new ProactiveTwitchRefreshGate();
-                    const proactiveRefreshGate = runtimeGlobal.__proactiveTwitchRefreshGate;
 
                     const tenantIds = await listTenants();
                     for (const tid of tenantIds) {
-                        let tokens;
                         try {
-                            tokens = await getStoredTokens(tid);
+                            const purged = await purgeExpiredTwitchCredentials(tid);
+                            if (purged.length > 0) {
+                                console.log(`[Twitch:${tid}] Removed expired quarantined integration role(s): ${purged.join(', ')}`);
+                            }
+                            const tokens = await getStoredTokens(tid);
                             if (!tokens) continue;
-                            if (!proactiveRefreshGate.shouldAttempt(tid, tokens)) continue;
 
-                            if (tokens.broadcasterToken && tokens.broadcasterRefreshToken) {
-                                await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tid);
+                            for (const role of ['broadcaster', 'bot'] as const) {
+                                const tokenKey = role === 'broadcaster' ? 'broadcasterToken' : 'botToken';
+                                const refreshKey = role === 'broadcaster' ? 'broadcasterRefreshToken' : 'botRefreshToken';
+                                if (!tokens[tokenKey] || !tokens[refreshKey]) continue;
+                                if (getTwitchCredentialQuarantine(tokens, role)) continue;
+                                try {
+                                    await ensureValidToken(clientId, clientSecret, role, tokens, tid);
+                                } catch (error: any) {
+                                    if (isTwitchAuthFailure(error)) {
+                                        console.warn(`[Twitch:${tid}] ${role} token refresh paused until re-authorized:`, error?.message || error);
+                                    } else {
+                                        console.warn(`[Twitch:${tid}] ${role} token refresh failed:`, error?.message || error);
+                                    }
+                                }
                             }
-                            if (tokens.botToken && tokens.botRefreshToken) {
-                                await ensureValidToken(clientId, clientSecret, 'bot', tokens, tid);
-                            }
-                            proactiveRefreshGate.markSuccessful(tid);
                         } catch (error: any) {
-                            if (tokens && isTwitchAuthFailure(error)) {
-                                proactiveRefreshGate.markReauthorizationRequired(tid, tokens);
-                                console.warn(`[Twitch:${tid}] Proactive token refresh paused until re-authorized:`, error?.message || error);
-                            } else {
-                                console.warn(`[Twitch:${tid}] Proactive token refresh failed:`, error?.message || error);
-                            }
+                            console.warn(`[Twitch:${tid}] Credential lifecycle sweep failed:`, error?.message || error);
                         }
                     }
 

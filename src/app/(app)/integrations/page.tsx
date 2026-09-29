@@ -65,6 +65,10 @@ export default function IntegrationsPage() {
     loading: boolean;
     broadcasterConnected: boolean;
     botConnected: boolean;
+    broadcasterReconnectRequired: boolean;
+    broadcasterDeleteAfter: string | null;
+    botReconnectRequired: boolean;
+    botDeleteAfter: string | null;
     communityBotConnected: boolean;
     theCountConnected: boolean;
     spaceMountainBotConnected: boolean;
@@ -80,6 +84,10 @@ export default function IntegrationsPage() {
     loading: true,
     broadcasterConnected: false,
     botConnected: false,
+    broadcasterReconnectRequired: false,
+    broadcasterDeleteAfter: null,
+    botReconnectRequired: false,
+    botDeleteAfter: null,
     communityBotConnected: false,
     theCountConnected: false,
     spaceMountainBotConnected: false,
@@ -146,6 +154,10 @@ export default function IntegrationsPage() {
         loading: false,
         broadcasterConnected: !!data?.broadcasterConnected,
         botConnected: !!data?.botConnected,
+        broadcasterReconnectRequired: !!data?.broadcasterReconnectRequired,
+        broadcasterDeleteAfter: data?.broadcasterDeleteAfter ?? null,
+        botReconnectRequired: !!data?.botReconnectRequired,
+        botDeleteAfter: data?.botDeleteAfter ?? null,
         communityBotConnected: !!data?.communityBotConnected,
         theCountConnected: !!data?.theCountConnected,
         spaceMountainBotConnected: !!data?.spaceMountainBotConnected,
@@ -365,12 +377,16 @@ export default function IntegrationsPage() {
             connected={twitchStatus.broadcasterConnected}
             label="Broadcaster"
             username={twitchStatus.broadcasterUsername}
-            description="Your main Twitch account — connected when you sign in"
+            description={twitchStatus.broadcasterReconnectRequired
+              ? `Reconnect required. Automatic retries are paused; the saved integration will be removed ${twitchStatus.broadcasterDeleteAfter ? new Date(twitchStatus.broadcasterDeleteAfter).toLocaleDateString() : "after 90 days"}.`
+              : "Your main Twitch account — connected when you sign in"}
           >
             {twitchStatus.broadcasterConnected ? (
               <Button size="sm" variant="ghost" className="text-xs" onClick={() => connectTwitch("broadcaster")}>Re-authorize</Button>
             ) : (
-              <Button size="sm" onClick={() => connectTwitch("broadcaster")}>Connect</Button>
+              <Button size="sm" onClick={() => connectTwitch("broadcaster")}>
+                {twitchStatus.broadcasterReconnectRequired ? "Reconnect" : "Connect"}
+              </Button>
             )}
           </AccountRow>
 
@@ -378,12 +394,16 @@ export default function IntegrationsPage() {
             connected={twitchStatus.botConnected}
             label="Stream Bot"
             username={twitchStatus.botUsername}
-            description={twitchStatus.botConnected ? "Your dedicated chat bot account" : "Optional. Must be a different account than Broadcaster if you connect one"}
+            description={twitchStatus.botReconnectRequired
+              ? `Reconnect required. Automatic retries are paused; the saved integration will be removed ${twitchStatus.botDeleteAfter ? new Date(twitchStatus.botDeleteAfter).toLocaleDateString() : "after 90 days"}.`
+              : twitchStatus.botConnected ? "Your dedicated chat bot account" : "Optional. Must be a different account than Broadcaster if you connect one"}
           >
             {twitchStatus.botConnected ? (
               <Button size="sm" variant="ghost" className="text-xs" onClick={() => connectTwitch("bot")}>Re-authorize</Button>
             ) : (
-              <Button size="sm" onClick={() => connectTwitch("bot")}>Connect Optional Bot</Button>
+              <Button size="sm" onClick={() => connectTwitch("bot")}>
+                {twitchStatus.botReconnectRequired ? "Reconnect Bot" : "Connect Optional Bot"}
+              </Button>
             )}
           </AccountRow>
 
