@@ -20,7 +20,7 @@ import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { setLoungeMediaLayout } from '@/services/lounge-media-layout';
 import { startBRB, stopBRB } from '@/services/brb-clips';
 import { requestSpotlightRestart, requestLoungeBrowserRefresh } from '@/services/lounge-player-control';
-import { executeNebulaCommand, manageNebulaOverlay, readNebulaChannelState, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
+import { executeNebulaCommand, manageNebulaOverlay, readNebulaChannelState, readNebulaOverlayProfile, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
 import { SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID, SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID } from '@/lib/spacemountain-lounge';
@@ -463,18 +463,21 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
   const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse','chaos mode':'chaosmode','chat garden':'chatgarden','color symphony':'colorsymphony','emoji tower':'emojitower','pet race':'petrace','rhythm pulse':'rhythmpulse','word storm':'wordstorm'};
   const namedGame=Object.entries(gameNames).find(([name])=>value.includes(name));
-  const gameDirectorIntent = /\b(?:start|launch|begin|stop|end|hide|remove|take|show|put|add|switch|swap|change|shuffle|randomize|rotate)\b/.test(value)
+  const gameDirectorIntent = /\b(?:start|launch|begin|activate|stop|end|deactivate|hide|remove|take|show|put|place|display|add|switch|swap|change|shuffle|randomize|rotate|turn)\b/.test(value)
     && (Boolean(namedGame) || /\b(?:game|games|nebula|overlay|screen|stage|rotation)\b/.test(value));
   if (gameDirectorIntent) {
     const gameId=namedGame?.[1]||'';
-    const stop=/\b(?:stop|end|turn off)\b/.test(value);
-    const hide=/\b(?:hide|remove|take)\b.*\b(?:overlay|screen|stage|off)\b|\btake\b.*\boff\b/.test(value);
-    const show=/\b(?:show|put|add)\b.*\b(?:overlay|screen|stage|on)\b/.test(value);
+    const stop=/\b(?:stop|end|deactivate|turn off)\b|\bturn\b.*\boff\b/.test(value);
+    const start=/\b(?:start|launch|begin|activate|turn on)\b|\bturn\b.*\bon\b/.test(value);
+    const hide=/\b(?:hide|remove|take)\b/.test(value);
+    const show=/\b(?:show|put|place|display|add)\b/.test(value);
     const switchGame=/\b(?:switch|swap|change)\b.*\b(?:game|to|into)\b/.test(value);
     const shuffle=/\b(?:shuffle|randomize|mix up|rotate)\b.*\b(?:game|games|rotation|overlay)\b/.test(value);
-    const start=/\b(?:start|launch|begin|turn on)\b/.test(value);
-    const operation=shuffle?'shuffle':switchGame?'switch':stop&&hide?'stop-hide':hide?'hide':show&&start?'start-show':show?'show':stop&&!gameId?'stop':'';
-    if(operation) return {action:'nebula.game.director',args:{operation,gameId},detection:'explicit'};
+    const operation=shuffle?'shuffle':switchGame?'switch':stop?'stop-hide':hide?'hide':start?'start-show':show?'show':'';
+    if(operation) {
+      const surface=/\b(?:main|primary)\b.*\b(?:overlay|screen|stage|section|panel)\b/.test(value)?'main':/\bactivity\b/.test(value)?'activity':'';
+      return {action:'nebula.game.director',args:{operation,gameId,...(surface?{surface}:{})},detection:'explicit'};
+    }
   }
   if(/\b(?:overlay|screen|stage)\b/.test(value)&&/\b(?:nebula|lounge|game)\b/.test(value)){
     const ids=Object.entries(gameNames).filter(([name])=>value.includes(name)).map(([,id])=>id);
@@ -482,13 +485,6 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   }
   const battle=value.match(/\b(?:start|make|create|link)\b.*\b(?:chat wars|stream battle|stream vs stream)\b.*(?:against|with|versus|vs\.?)[\s@]+([a-z0-9_]{2,80})\b/);
   if(battle) return {action:'nebula.stream-battle',args:{opponent:battle[1]},detection:'explicit'};
-  const gameStartStop=value.match(/\b(start|launch|begin|stop|end|turn on|turn off)\s+(?:(?:playing|up|the|a|an|our)\s+)*(?:(?:game|round)\s+(?:of\s+)?)?(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)\b/)
-    || value.match(/\b(turn)\s+(?:(?:the|a|an|our)\s+)*(chat wars|bingo|mosaic|treasure hunt|word chain|phrase guess|chicken royale|emoji rain|dancing parade|chat tag|quackverse|chaos mode|chat garden|color symphony|emoji tower|pet race|rhythm pulse|word storm)(?:\s+game)?\s+(on|off)\b/);
-  if(gameStartStop){
-    const action=gameStartStop[1]==='turn' ? (gameStartStop[3]==='off'?'stop':'start') : /^(?:stop|end|turn off)$/.test(gameStartStop[1])?'stop':'start';
-    const gameId=gameNames[gameStartStop[2]];
-    return {action:'nebula.command',args:{command:`spmt ${gameId==='chat-tag'?'chattag':gameId} ${action}`},detection:'explicit'};
-  }
 
   const stellaMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?|\d{1,7})\b/);
   if (stellaMode) {
@@ -933,49 +929,74 @@ export async function executeBotAction(
     if (request.action === 'nebula.game.director') {
       const operation=String(request.args.operation||'');
       const knownIds=new Set(['chatwars','bingo','pixelbattle','treasurehunt','wordchain','phraseguess','chickenroyale','emojirain','dancingparade','chat-tag','quackverse','chaosmode','chatgarden','colorsymphony','emojitower','petrace','rhythmpulse','wordstorm']);
+      const channel=context.tenantId;
       let gameId=String(request.args.gameId||'').trim();
-      const state=await readNebulaChannelState(context.tenantId) as any;
-      const activeIds=Array.isArray(state?.gameIds)?state.gameIds.map((value:any)=>String(value)).filter((value:string)=>knownIds.has(value)):[];
-      if(!gameId && activeIds.length===1) gameId=activeIds[0];
-      if (operation === 'shuffle') {
-        if (!activeIds.length) return {handled:true,action:request.action,status:'needs_input',response:'There are no active Nebula games to shuffle.'};
-        const shuffled=[...activeIds].sort(()=>Math.random()-.5);
-        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:shuffled,layout:'rotation'});
-        return {handled:true,action:request.action,status:'completed',response:`✅ Shuffled the live Nebula game rotation: ${shuffled.join(', ')}.`,result};
+      const state=await readNebulaChannelState(channel) as any;
+      const activeIds=Array.isArray(state?.gameIds)?state.gameIds.map(String).filter((id:string)=>knownIds.has(id)):[];
+      if (!gameId && activeIds.length===1) gameId=activeIds[0];
+      const surface=request.args.surface==='main'?'main':request.args.surface==='activity'?'activity':gameId==='wordchain'||gameId==='phraseguess'?'main':'activity';
+      const readProfile=async(target:'main'|'activity')=>{
+        const body=await readNebulaOverlayProfile(channel,target) as any;
+        if(!Array.isArray(body?.profile?.gameIds)) throw new Error('Nebula did not return the live overlay games.');
+        return body.profile as {gameIds:string[];layout:string};
+      };
+      const setProfile=async(target:'main'|'activity',ids:string[],layout:string)=>{
+        await reshapeNebulaLiveOverlay({channel,surface:target,gameIds:ids,layout});
+        const saved=await readProfile(target);
+        if(ids.length!==saved.gameIds.length || ids.some((id,index)=>saved.gameIds[index]!==id)) throw new Error('Nebula did not confirm the live overlay change.');
+        return saved;
+      };
+      if(operation==='shuffle'){
+        const profile=await readProfile(surface);
+        const visible=profile.gameIds.filter((id:string)=>activeIds.includes(id) && id!=='chat-tag' && id!=='quackverse');
+        if(!visible.length) return {handled:true,action:request.action,status:'needs_input',response:'There are no active games visible on that overlay to shuffle.'};
+        const shuffled=[...visible].sort(()=>Math.random()-.5);
+        const result=await setProfile(surface,shuffled,'rotation');
+        return {handled:true,action:request.action,status:'completed',response:'✅ Shuffled the '+surface+' game rotation: '+shuffled.join(', ')+'.',result};
       }
-      if (!gameId || !knownIds.has(gameId)) {
-        return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula game you want me to control.'};
+      if(!gameId || !knownIds.has(gameId)) return {handled:true,action:request.action,status:'needs_input',response:'Tell me which Nebula game you want me to control.'};
+      if(gameId==='chat-tag') return {handled:true,action:request.action,status:'needs_input',response:'Chat Tag runs globally and has no per-channel start or stop. Name another game to control in the Lounge.'};
+      if(gameId==='quackverse') {
+        if(operation==='start-show'||operation==='show') {
+          const username=clean(context.actor.username||context.actor.displayName||channel,80);
+          const result=await executeNebulaCommand({channel,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:'spmt quackverse start'}) as any;
+          if(result?.handled!==true || result?.overlayMode!=='pack-only' || !result?.launchUrl) throw new Error('Quackverse did not confirm its play link.');
+          return {handled:true,action:request.action,status:'completed',response:'🦆 Quackverse is ready at '+result.launchUrl+'. Packs use their own overlay.',result};
+        }
+        return {handled:true,action:request.action,status:'needs_input',response:'Quackverse is a browser game with a separate pack overlay and no persistent Lounge game to remove or stop.'};
       }
-      const username=clean(context.actor.username||context.actor.displayName||context.tenantId,80);
+      const username=clean(context.actor.username||context.actor.displayName||channel,80);
       const run=async(id:string,action:'start'|'stop')=>{
-        const result=await executeNebulaCommand({channel:context.tenantId,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:`spmt ${id==='chat-tag'?'chattag':id} ${action}`}) as any;
-        const active=Array.isArray(result?.activeGameIds)?result.activeGameIds.map(String):null;
-        if(result?.handled!==true || !active || (id!=='quackverse' && active.includes(id)!==(action==='start'))) {
-          throw new Error(`Nebula did not confirm ${id} ${action}.`);
+        const result=await executeNebulaCommand({channel,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:'spmt '+id+' '+action}) as any;
+        const confirmed=await readNebulaChannelState(channel) as any;
+        if(result?.handled!==true || !Array.isArray(confirmed?.gameIds) || confirmed.gameIds.includes(id)!==(action==='start')) {
+          throw new Error('Nebula did not confirm '+id+' '+action+'.');
         }
         return result;
       };
-      let gameResult:any;
-      if (operation === 'start' || operation === 'start-show') gameResult=await run(gameId,'start');
-      if (operation === 'stop' || operation === 'stop-hide') gameResult=await run(gameId,'stop');
-      if (operation === 'switch') {
-        for (const active of activeIds.filter((id:string)=>id!==gameId && id!=='chat-tag')) {
-          await run(active,'stop');
-        }
-        await run(gameId,'start');
-        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:[gameId],layout:'focus'});
-        return {handled:true,action:request.action,status:'completed',response:`✅ Switched Nebula to ${gameId} and focused it on the live overlay.`,result};
+      const profile=await readProfile(surface);
+      const visible=profile.gameIds.filter((id:string)=>knownIds.has(id) && activeIds.includes(id) && id!=='chat-tag' && id!=='quackverse');
+      const shouldStart=operation==='start-show'||operation==='show'||operation==='switch';
+      const shouldStop=operation==='stop-hide';
+      if(shouldStart && !activeIds.includes(gameId)) await run(gameId,'start');
+      if(operation==='switch'){
+        const otherActive=visible.filter((id:string)=>id!==gameId);
+        for(const id of otherActive) await run(id,'stop');
+        const result=await setProfile(surface,[gameId],'focus');
+        return {handled:true,action:request.action,status:'completed',response:'✅ Switched to '+gameId+' on the '+surface+' overlay.',result};
       }
-      if (operation === 'show' || operation === 'start-show') {
-        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:[gameId],layout:'focus'});
-        return {handled:true,action:request.action,status:'completed',response:`✅ ${gameId} is on the live Nebula overlay.`,result};
+      if(shouldStop && activeIds.includes(gameId)) await run(gameId,'stop');
+      if(shouldStart){
+        const ids=visible.includes(gameId)?visible:[...visible,gameId];
+        const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout==='focus'?'rotation':profile.layout);
+        return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is active and visible on the '+surface+' overlay.',result};
       }
-      if (operation === 'hide' || operation === 'stop-hide') {
-        const remaining=activeIds.filter((id:string)=>id!==gameId);
-        const result=await reshapeNebulaLiveOverlay({channel:context.tenantId,gameIds:remaining,layout:remaining.length>1?'rotation':'focus'});
-        return {handled:true,action:request.action,status:'completed',response:`✅ ${gameId} is off the live Nebula overlay.`,result};
+      if(operation==='hide'||shouldStop){
+        const ids=visible.filter((id:string)=>id!==gameId);
+        const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout);
+        return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+(shouldStop?' is stopped and removed':' is removed')+' from the '+surface+' overlay.',result};
       }
-      return {handled:true,action:request.action,status:'completed',response:clean(gameResult?.reply,500)||`✅ Nebula ${gameId} ${operation} completed.`,result:gameResult};
+      return {handled:true,action:request.action,status:'needs_input',response:'Tell me whether to start, add, remove, or stop '+gameId+'.'};
     }
     if (request.action === 'nebula.live-overlay') {
       const gameIds=String(request.args.gameIds||'').split(',').map(v=>v.trim()).filter(Boolean);

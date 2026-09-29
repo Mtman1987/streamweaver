@@ -28,116 +28,83 @@ test('publishes a persona-neutral suite action catalog', () => {
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Moonbeam'), false);
 });
 
-test('Stella translates explicit screen and game commands into real actions', async () => {
+test('Stella routes named Lounge games to the director', async () => {
   assert.deepEqual(await detectBotAction('Stella swap the screens'), {
     action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit',
   });
-  assert.deepEqual(await detectBotAction('Stella bump them'), {
-    action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella start the game bingo'), {
-    action: 'nebula.command', args: { command: 'spmt bingo start' }, detection: 'explicit',
-  });
-});
-
-test('Stella starts and stops named Nebula games through their real command keys', async () => {
-  for (const [message, command] of [
-    ['Stella, start a game of Mosaic', 'spmt pixelbattle start'],
-    ['Stella stop playing Word Chain', 'spmt wordchain stop'],
-    ['Stella turn Mosaic off', 'spmt pixelbattle stop'],
-    ['Stella turn the Mosaic game off', 'spmt pixelbattle stop'],
-    ['Stella launch Emoji Tower', 'spmt emojitower start'],
-    ['Stella end Chat Garden', 'spmt chatgarden stop'],
-    ['Stella start Chat Tag', 'spmt chattag start'],
-  ]) {
+  for(const [message,operation,gameId,surface] of [
+    ['Stella start the game bingo','start-show','bingo',''],
+    ['Stella, start a game of Mosaic','start-show','pixelbattle',''],
+    ['Stella start mosaic and place its visuals back to the activity section of the overlay','start-show','pixelbattle','activity'],
+    ['Stella stop playing Word Chain','stop-hide','wordchain',''],
+    ['Stella turn Mosaic off','stop-hide','pixelbattle',''],
+    ['Stella turn the Mosaic game off','stop-hide','pixelbattle',''],
+    ['Stella launch Emoji Tower','start-show','emojitower',''],
+    ['Stella end Chat Garden','stop-hide','chatgarden',''],
+    ['Stella start Chat Tag','start-show','chat-tag',''],
+    ['Stella add Bingo to the activity overlay','show','bingo','activity'],
+    ['Stella remove Bingo from the activity overlay','hide','bingo','activity'],
+    ['Stella switch to Emoji Tower','switch','emojitower',''],
+    ['Stella stop the game','stop-hide','',''],
+    ['Stella take it off the game overlay','hide','',''],
+    ['Stella shuffle the games','shuffle','',''],
+  ] as const) {
     assert.deepEqual(await detectBotAction(message), {
-      action: 'nebula.command', args: { command }, detection: 'explicit',
-    });
+      action:'nebula.game.director',args:{operation,gameId,...(surface?{surface}:{})},detection:'explicit',
+    },message);
   }
-  assert.deepEqual(await detectBotAction('Stella switch to Emoji Tower'), {
-    action: 'nebula.game.director', args: { operation: 'switch', gameId: 'emojitower' }, detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella stop the game'), {
-    action: 'nebula.game.director', args: { operation: 'stop', gameId: '' }, detection: 'explicit',
-  });
 });
 
-test('Stella directs flexible Nebula game and overlay changes without falling through to chat AI', async () => {
-  assert.deepEqual(await detectBotAction('Stella start Bingo and put it on the overlay'), {
-    action: 'nebula.game.director',
-    args: { operation: 'start-show', gameId: 'bingo' },
-    detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella take Word Chain off the overlay'), {
-    action: 'nebula.game.director',
-    args: { operation: 'hide', gameId: 'wordchain' },
-    detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella switch to Chat Wars'), {
-    action: 'nebula.game.director',
-    args: { operation: 'switch', gameId: 'chatwars' },
-    detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella shuffle the games'), {
-    action: 'nebula.game.director',
-    args: { operation: 'shuffle', gameId: '' },
-    detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella take it off the game overlay'), {
-    action: 'nebula.game.director',
-    args: { operation: 'hide', gameId: '' },
-    detection: 'explicit',
-  });
-  assert.deepEqual(await detectBotAction('Stella start the game bingo'), {
-    action: 'nebula.command',
-    args: { command: 'spmt bingo start' },
-    detection: 'explicit',
-  });
-});
-
-test('Stella confirms game state before announcing a start or changing the overlay', async () => {
-  const priorFetch = globalThis.fetch;
-  const priorSecret = process.env.CHAT_TAG_SECRET;
-  process.env.CHAT_TAG_SECRET = 'test-secret';
-  let activeGameIds: string[] = [];
-  let acceptStart = true;
-  let overlayCalls = 0;
-  const context: BotActionContext = {
-    tenantId: 'spacemountainlive', source: 'twitch', botName: 'Stella',
-    message: 'Stella start Mosaic', actor: { username: 'spacemountainlive', role: 'owner' },
+test('Stella starts, adds, removes, and stops a Lounge game with saved-state readback', async () => {
+  const priorFetch=globalThis.fetch;
+  const priorSecret=process.env.CHAT_TAG_SECRET;
+  process.env.CHAT_TAG_SECRET='test-secret';
+  let activeGameIds=['bingo'];
+  let overlayGameIds=['bingo'];
+  let acceptStart=true;
+  let saveOverlay=true;
+  const context:BotActionContext={
+    tenantId:'spacemountainlive',source:'twitch',botName:'Stella',
+    message:'Stella start Mosaic',actor:{username:'mtman1987',role:'moderator'},
   };
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (url.includes('/api/game-hub/channel?')) return new Response(JSON.stringify({ gameIds: activeGameIds }), { status: 200 });
-    if (url.endsWith('/api/game-hub/command')) {
-      if (acceptStart) activeGameIds = /bingo/i.test(String(JSON.parse(String(init?.body || '{}')).message)) ? ['bingo'] : ['pixelbattle'];
-      return new Response(JSON.stringify({
-        handled: acceptStart, activeGameIds, reply: acceptStart ? 'Mosaic is ACTIVE' : 'Command refused',
-      }), { status: 200 });
+  globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
+    const url=String(input);
+    if(url.includes('/api/game-hub/channel?')) return new Response(JSON.stringify({gameIds:activeGameIds}));
+    if(url.includes('/api/overlay/game-hub/system-spacemountainlive-activity')) return new Response(JSON.stringify({profile:{gameIds:overlayGameIds,layout:'rotation'}}));
+    if(url.endsWith('/api/game-hub/command')) {
+      const message=JSON.parse(String(init?.body||'{}')).message;
+      if(acceptStart) activeGameIds=/ stop$/.test(message)?activeGameIds.filter(id=>id!=='pixelbattle'):[...new Set([...activeGameIds,'pixelbattle'])];
+      return new Response(JSON.stringify({handled:acceptStart,activeGameIds}));
     }
-    if (url.endsWith('/api/game-hub/bot-overlays')) {
-      overlayCalls += 1;
-      return new Response(JSON.stringify({ profile: { id: 'system-spacemountainlive-activity' } }), { status: 200 });
+    if(url.endsWith('/api/game-hub/bot-overlays')) {
+      const body=JSON.parse(String(init?.body||'{}'));
+      if(saveOverlay) overlayGameIds=body.gameIds;
+      return new Response(JSON.stringify({profile:{id:body.id,gameIds:body.gameIds}}));
     }
-    throw new Error(`Unexpected Nebula request: ${url}`);
+    throw new Error('Unexpected Nebula request: '+url);
   }) as typeof fetch;
+  const action=(operation:string)=>executeBotAction({action:'nebula.game.director',args:{operation,gameId:'pixelbattle'},detection:'explicit'},context);
   try {
-    const start = await executeBotAction({
-      action: 'nebula.command', args: { command: 'spmt pixelbattle start' }, detection: 'explicit',
-    }, context);
-    assert.equal(start.status, 'completed');
-    assert.equal((await executeBotAction({ action: 'nebula.command', args: { command: '!SPMT BINGO START' }, detection: 'explicit' }, context)).status, 'completed');
-    activeGameIds = [];
-    acceptStart = false;
-    const refused = await executeBotAction({
-      action: 'nebula.game.director', args: { operation: 'start-show', gameId: 'pixelbattle' }, detection: 'explicit',
-    }, context);
-    assert.equal(refused.status, 'failed');
-    assert.equal(overlayCalls, 0);
+    assert.equal((await action('start-show')).status,'completed');
+    assert.deepEqual(activeGameIds,['bingo','pixelbattle']);
+    assert.deepEqual(overlayGameIds,['bingo','pixelbattle']);
+    assert.equal((await action('hide')).status,'completed');
+    assert.deepEqual(overlayGameIds,['bingo']);
+    assert.ok(activeGameIds.includes('pixelbattle'));
+    assert.equal((await action('show')).status,'completed');
+    assert.deepEqual(overlayGameIds,['bingo','pixelbattle']);
+    assert.equal((await action('stop-hide')).status,'completed');
+    assert.deepEqual(activeGameIds,['bingo']);
+    assert.deepEqual(overlayGameIds,['bingo']);
+    acceptStart=false;
+    assert.equal((await action('start-show')).status,'failed');
+    assert.deepEqual(overlayGameIds,['bingo']);
+    acceptStart=true; saveOverlay=false;
+    assert.equal((await action('start-show')).status,'failed');
   } finally {
-    globalThis.fetch = priorFetch;
-    if (priorSecret === undefined) delete process.env.CHAT_TAG_SECRET;
-    else process.env.CHAT_TAG_SECRET = priorSecret;
+    globalThis.fetch=priorFetch;
+    if(priorSecret===undefined) delete process.env.CHAT_TAG_SECRET;
+    else process.env.CHAT_TAG_SECRET=priorSecret;
   }
 });
 
