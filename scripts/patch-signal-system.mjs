@@ -17,22 +17,24 @@ function patch(relativePath, transform) {
 
 patch('src/services/chat-dispatcher.ts', (source) => {
   const importMarker = "import { sendDiscordCommandShoutout } from './discord-command-shoutout';";
-  const signalImport = "import { handleDiscordSignalCommand, handleTwitchSignalCommand, toggleSignalScheduler } from './signal-system';";
+  const legacySignalImport = "import { handleDiscordSignalCommand, handleTwitchSignalCommand, toggleSignalScheduler } from './signal-system';";
+  const signalImport = "import { handleDiscordSignalCommand, handleTwitchSignalCommand } from './signal-system';";
+  source = source.replace(legacySignalImport, signalImport);
   if (!source.includes(signalImport)) {
     if (!source.includes(importMarker)) throw new Error('Signal patch: command import marker missing');
     source = source.replace(importMarker, `${importMarker}\n${signalImport}`);
   }
 
   const nativeMarker = "    'commands', 'admin', 'so', 'watchtime', 'time', 'coinflip', 'leaderboard',";
-  const nativeReplacement = "    'commands', 'admin', 'so', 'signal', 'signalbot', 'watchtime', 'time', 'coinflip', 'leaderboard',";
+  const legacyNativeReplacement = "    'commands', 'admin', 'so', 'signal', 'signalbot', 'watchtime', 'time', 'coinflip', 'leaderboard',";
+  const nativeReplacement = "    'commands', 'admin', 'so', 'signal', 'watchtime', 'time', 'coinflip', 'leaderboard',";
+  source = source.replace(legacyNativeReplacement, nativeReplacement);
   if (!source.includes(nativeReplacement)) {
     if (!source.includes(nativeMarker)) throw new Error('Signal patch: native command marker missing');
     source = source.replace(nativeMarker, nativeReplacement);
   }
 
-  if (!source.includes("if (cmdName === 'signal')")) {
-    const soMarker = "    if (cmdName === 'so') {";
-    const signalBlock = `    if (cmdName === 'signalbot') {
+  const signalBotBlock = `    if (cmdName === 'signalbot') {
         if (!isPermanentDiscordOwner(msg)) {
             await reply('@' + actualUsername + ', this control is restricted to the StreamWeaver owner.');
             return true;
@@ -44,7 +46,12 @@ patch('src/services/chat-dispatcher.ts', (source) => {
         return true;
     }
 
-    if (cmdName === 'signal') {\n        try {\n            const result = await handleDiscordSignalCommand({\n                msg,\n                tenantId,\n                actualUsername,\n                actualMessage,\n                sourceChannelId,\n                sourceUserAvatarUrl,\n            });\n            if (!result.ok && result.message) {\n                await reply(\`@\${actualUsername}, \${result.message}\`);\n            }\n        } catch (error: any) {\n            console.error('[Discord Dispatcher] !signal failed:', error);\n            await reply(\`@\${actualUsername}, Signal failed: \${error?.message || 'unknown error'}\`);\n        }\n        return true;\n    }\n\n`;
+`;
+  source = source.replace(signalBotBlock, '');
+
+  if (!source.includes("if (cmdName === 'signal')")) {
+    const soMarker = "    if (cmdName === 'so') {";
+    const signalBlock = `    if (cmdName === 'signal') {\n        try {\n            const result = await handleDiscordSignalCommand({\n                msg,\n                tenantId,\n                actualUsername,\n                actualMessage,\n                sourceChannelId,\n                sourceUserAvatarUrl,\n            });\n            if (!result.ok && result.message) {\n                await reply(\`@\${actualUsername}, \${result.message}\`);\n            }\n        } catch (error: any) {\n            console.error('[Discord Dispatcher] !signal failed:', error);\n            await reply(\`@\${actualUsername}, Signal failed: \${error?.message || 'unknown error'}\`);\n        }\n        return true;\n    }\n\n`;
     if (!source.includes(soMarker)) throw new Error('Signal patch: Discord !so marker missing');
     source = source.replace(soMarker, `${signalBlock}${soMarker}`);
   }
@@ -130,10 +137,8 @@ patch('server.ts', (source) => {
     source = source.replace(marker, `${carrierBlock}${marker}`);
   }
 
-  if (!source.includes('startSignalScheduler();')) {
-    const schedulerBlock = `        try {\n            const { startSignalScheduler } = await import('./src/services/signal-system');\n            startSignalScheduler();\n            console.log('[Signal] Lost Signal scheduler control armed');\n        } catch (error) {\n            console.warn('[Signal] Scheduler startup skipped:', error);\n        }\n\n`;
-    source = source.replace(marker, `${schedulerBlock}${marker}`);
-  }
+  const schedulerBlock = `        try {\n            const { startSignalScheduler } = await import('./src/services/signal-system');\n            startSignalScheduler();\n            console.log('[Signal] Lost Signal scheduler control armed');\n        } catch (error) {\n            console.warn('[Signal] Scheduler startup skipped:', error);\n        }\n\n`;
+  source = source.replace(schedulerBlock, '');
 
   return source;
 });

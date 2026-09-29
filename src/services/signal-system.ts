@@ -272,21 +272,18 @@ async function schedulerTick(): Promise<void> {
   await writeJson(SIGNAL_SCHEDULER_STATE, state);
 }
 
-export async function toggleSignalScheduler(force?: boolean): Promise<{ enabled: boolean; nextAt?: number }> {
-  const current = await readJson<SchedulerState>(SIGNAL_SCHEDULER_STATE, { enabled: false, bag: [], nextAt: Date.now() });
-  const enabled = typeof force === 'boolean' ? force : current.enabled !== true;
-  const next: SchedulerState = { ...current, enabled, nextAt: enabled ? Date.now() : current.nextAt };
-  await writeJson(SIGNAL_SCHEDULER_STATE, next);
-  if (enabled) await schedulerTick();
-  return { enabled, nextAt: next.nextAt };
+export async function toggleSignalScheduler(_force?: boolean): Promise<{ enabled: false; nextAt: 0 }> {
+  const disabled: SchedulerState = { enabled: false, bag: [], nextAt: 0 };
+  await writeJson(SIGNAL_SCHEDULER_STATE, disabled);
+  return { enabled: false, nextAt: 0 };
 }
 
-let schedulerTimer: NodeJS.Timeout | null = null;
 export function startSignalScheduler(): void {
-  if (schedulerTimer) return;
-  schedulerTimer = setInterval(() => void schedulerTick().catch((error) => console.warn('[Signal] scheduler tick failed', error)), 60_000);
-  schedulerTimer.unref?.();
-  void schedulerTick().catch((error) => console.warn('[Signal] scheduler bootstrap failed', error));
+  // Random Discord Signal posting is permanently disabled. Signals are opened
+  // only by the explicit bare !signal command handled by DiscordStreamHub.
+  void writeJson(SIGNAL_SCHEDULER_STATE, { enabled: false, bag: [], nextAt: 0 }).catch((error) => {
+    console.warn('[Signal] unable to persist disabled scheduler state', error);
+  });
 }
 
 function dayKey(now = new Date()): string {

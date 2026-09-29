@@ -4,11 +4,15 @@ import fs from 'node:fs';
 
 const signal = fs.readFileSync('src/services/signal-system.ts', 'utf8');
 const countPatch = fs.readFileSync('scripts/patch-the-count-easter-egg.mjs', 'utf8');
+const dispatcher = fs.readFileSync('src/services/chat-dispatcher.ts', 'utf8');
+const server = fs.readFileSync('server.ts', 'utf8');
 
-test('Signal scheduler requires an explicit toggle before posting clues', () => {
-  assert.match(signal, /SIGNAL_SCHEDULER_STATE, \{ enabled: false/);
-  assert.match(signal, /if \(state\.enabled !== true\) \{/);
-  assert.match(signal, /export async function toggleSignalScheduler/);
+test('Signal scheduler remains permanently disabled', () => {
+  assert.match(signal, /enabled: false, bag: \[\], nextAt: 0/);
+  assert.match(signal, /return \{ enabled: false, nextAt: 0 \}/);
+  assert.doesNotMatch(signal, /schedulerTimer = setInterval/);
+  assert.doesNotMatch(dispatcher, /cmdName === 'signalbot'/);
+  assert.doesNotMatch(server, /startSignalScheduler/);
 });
 
 test('Count direct summon remains Black Hole egg gated', () => {

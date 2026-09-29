@@ -10,18 +10,17 @@ const signal = read('src/services/signal-system.ts');
 const carrierSync = read('src/services/signal-carrier-sync.ts');
 const carrierAthena = read('src/services/carrier-athena.ts');
 const patch = read('scripts/patch-signal-system.mjs');
+const dispatcher = read('src/services/chat-dispatcher.ts');
+const server = read('server.ts');
 
-test('Signal clue scheduler starts with comms-lounge and uses a persistent 2-5 hour shuffle bag', () => {
-  assert.match(signal, /SIGNAL_CHANNEL_NAME = 'comms-lounge'/);
-  assert.match(signal, /SIGNAL_MIN_DELAY_MS = 2 \* 60 \* 60 \* 1000/);
-  assert.match(signal, /SIGNAL_MAX_DELAY_MS = 5 \* 60 \* 60 \* 1000/);
-  assert.match(signal, /signal-scheduler\.json/);
-  assert.match(signal, /if \(!lastChannelId && first\) return \[first\.id, \.\.\.rest\]/);
-  assert.match(signal, /bag\[0\] === lastChannelId/);
-  assert.match(signal, /log\|staff\|admin\|support\|ticket\|announce/);
-  assert.match(signal, /postDiscordStreamHubSignalDrop/);
-  assert.match(signal, /guildId/);
-  assert.match(signal, /channelId/);
+test('random Signal posting is permanently disabled and command-only', () => {
+  assert.match(signal, /export async function toggleSignalScheduler/);
+  assert.match(signal, /enabled: false, bag: \[\], nextAt: 0/);
+  assert.match(signal, /return \{ enabled: false, nextAt: 0 \}/);
+  assert.doesNotMatch(signal, /schedulerTimer = setInterval/);
+  assert.doesNotMatch(server, /startSignalScheduler/);
+  assert.doesNotMatch(dispatcher, /cmdName === 'signalbot'/);
+  assert.doesNotMatch(dispatcher, /toggleSignalScheduler/);
 });
 
 test('Signal clues stay neutral and never load an unrelated tenant AI persona', () => {
@@ -131,31 +130,20 @@ test('ChatTag no-bot blacklist overrides DSH shoutout carrier membership', () =>
   assert.doesNotMatch(carrierSync, /syncSignalCarrierChannels\(channels\)/);
 });
 
-test('runtime patch wires owner-only control for the existing Signal scheduler', () => {
+test('runtime patch removes legacy random Signal scheduler controls', () => {
   assert.match(patch, /handleDiscordSignalCommand/);
   assert.match(patch, /handleTwitchSignalCommand/);
-  assert.match(patch, /toggleSignalScheduler/);
-  assert.match(patch, /cmdName === 'signalbot'/);
-  assert.match(patch, /isPermanentDiscordOwner\(msg\)/);
-  assert.match(patch, /requested === 'on'/);
-  assert.match(patch, /requested === 'off'/);
-  assert.match(patch, /startSignalScheduler/);
-  assert.doesNotMatch(patch, /SIGNAL_SCHEDULER_ENABLED/);
-  assert.doesNotMatch(carrierSync, /startSignalScheduler/);
+  assert.match(patch, /source = source\.replace\(signalBotBlock, ''\)/);
+  assert.match(patch, /source\.replace\(schedulerBlock, ''\)/);
+  assert.doesNotMatch(server, /startSignalScheduler/);
+  assert.doesNotMatch(dispatcher, /cmdName === 'signalbot'/);
+  assert.doesNotMatch(dispatcher, /toggleSignalScheduler/);
 });
 
-test('the existing scheduler persists its toggle, fires immediately when enabled, and reports posts and clicks', () => {
-  assert.match(signal, /enabled\?: boolean/);
-  assert.match(signal, /toggleSignalScheduler/);
-  assert.match(signal, /enabled: false, bag: \[\], nextAt: Date\.now\(\)/);
-  assert.match(signal, /nextAt: enabled \? Date\.now\(\) : current\.nextAt/);
-  assert.match(signal, /if \(enabled\) await schedulerTick\(\)/);
-  assert.match(signal, /Signal clue fired/);
-  assert.match(signal, /Channel:/);
-  assert.match(signal, /Bot:/);
-  assert.match(signal, /Message:/);
-  assert.match(signal, /recordSignalClueClick/);
-  assert.match(signal, /Signal clue clicked/);
-  assert.match(signal, /Total clicks:/);
-  assert.doesNotMatch(signal, /SIGNAL_SCHEDULER_ENABLED/);
+test('disabled scheduler exports cannot be used to re-enable random posts', () => {
+  assert.match(signal, /toggleSignalScheduler\(_force\?: boolean\)/);
+  assert.match(signal, /const disabled: SchedulerState = \{ enabled: false, bag: \[\], nextAt: 0 \}/);
+  assert.match(signal, /writeJson\(SIGNAL_SCHEDULER_STATE, disabled\)/);
+  assert.match(signal, /Signals are opened[\s\S]*explicit bare !signal command/);
+  assert.doesNotMatch(signal, /schedulerTimer/);
 });

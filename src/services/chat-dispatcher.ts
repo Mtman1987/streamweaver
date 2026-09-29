@@ -57,7 +57,7 @@ import { appendPublicChatMessages } from '../lib/public-chat-store';
 import type { StorageContext } from './storage';
 import { getChatOutputContext, runWithChatOutputContext } from './chat-output-context';
 import { sendDiscordCommandShoutout } from './discord-command-shoutout';
-import { handleDiscordSignalCommand, handleTwitchSignalCommand, toggleSignalScheduler } from './signal-system';
+import { handleDiscordSignalCommand, handleTwitchSignalCommand } from './signal-system';
 import {
     deleteStructuredDiscordReply,
     editStructuredDiscordReply,
@@ -307,7 +307,7 @@ const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
 
 const DISCORD_NATIVE_COMMAND_NAMES = new Set([
     ...DISCORD_NATIVE_SOCIAL_COMMANDS,
-    'commands', 'admin', 'so', 'signal', 'signalbot', 'watchtime', 'time', 'coinflip', 'leaderboard',
+    'commands', 'admin', 'so', 'signal', 'watchtime', 'time', 'coinflip', 'leaderboard',
     'followers', 'uptime', 'stats',
     'timeout', 'raidmessage', 'mtfixit',
     'ignore',
@@ -1618,18 +1618,6 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             console.error('[Discord Dispatcher] !leaderboard failed:', error);
             await reply(`@${actualUsername}, I couldn't render the DiscordStreamHub leaderboard right now.`);
         }
-        return true;
-    }
-
-    if (cmdName === 'signalbot') {
-        if (!isPermanentDiscordOwner(msg)) {
-            await reply('@' + actualUsername + ', this control is restricted to the StreamWeaver owner.');
-            return true;
-        }
-        const requested = actualMessage.replace(/^!signalbot\b/i, '').trim().toLowerCase();
-        const force = requested === 'on' ? true : requested === 'off' ? false : undefined;
-        const result = await toggleSignalScheduler(force);
-        await reply('Signal clue scheduler is now ' + (result.enabled ? 'ON' : 'OFF') + '.' + (result.enabled ? ' The first clue was fired immediately and a DM receipt was sent.' : ''));
         return true;
     }
 
