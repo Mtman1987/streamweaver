@@ -160,6 +160,36 @@ test('expired quarantine removes only integration credentials after 90 days', as
   assert.equal(saved.loginUsername, 'registered');
 });
 
+
+test('expired shared community bot quarantine removes only its integration credential', async t => {
+  const api = await fixture(t, async (_url: any, init: any) =>
+    init.method === 'POST'
+      ? new Response('Invalid refresh token', { status: 400 })
+      : new Response('', { status: 401 }));
+  const community = {
+    communityBotToken: 'community-access',
+    communityBotRefreshToken: 'community-refresh',
+    communityBotTokenExpiry: 1,
+    communityBotUsername: 'streamweaverbot',
+    unrelatedSetting: 'preserved',
+  };
+  await fs.writeFile(path.join(api.root, 'community.json'), JSON.stringify(community));
+  await assert.rejects(api.ensureValidToken('client', 'secret', 'community-bot', community));
+  const quarantined = JSON.parse(await fs.readFile(path.join(api.root, 'community.json'), 'utf8'));
+  assert.equal(api.getTwitchCredentialQuarantine(quarantined, 'community-bot').status, 'quarantined');
+  assert.equal(
+    await api.purgeExpiredCommunityBotCredential(
+      Date.parse(quarantined.credentialQuarantine['community-bot'].deleteAfter) + 1,
+    ),
+    true,
+  );
+  const saved = JSON.parse(await fs.readFile(path.join(api.root, 'community.json'), 'utf8'));
+  assert.equal(saved.communityBotToken, undefined);
+  assert.equal(saved.communityBotRefreshToken, undefined);
+  assert.equal(saved.communityBotUsername, undefined);
+  assert.equal(saved.unrelatedSetting, 'preserved');
+});
+
 async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster') {
   const tokenApi = await fixture(t, async () => Response.json({}));
   let stored: any = { ...tokens, botToken: 'personal-token', botRefreshToken: 'personal-refresh' };

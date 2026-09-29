@@ -643,6 +643,7 @@ async function startServer() {
                         getTwitchCredentialQuarantine,
                         isTwitchAuthFailure,
                         purgeExpiredTwitchCredentials,
+                        purgeExpiredCommunityBotCredential,
                     } = require('./src/lib/token-utils.server');
                     const fsRefresh = require('fs').promises;
 
@@ -677,10 +678,18 @@ async function startServer() {
                     }
 
                     try {
+                        const purged = await purgeExpiredCommunityBotCredential();
+                        if (purged) {
+                            console.log('[Twitch:community-bot] Removed expired quarantined integration credential');
+                        }
                         const communityFile = communityBotTokensPath();
                         const raw = await fsRefresh.readFile(communityFile, 'utf-8');
                         const communityTokens = JSON.parse(raw);
-                        if (communityTokens.communityBotToken && communityTokens.communityBotRefreshToken) {
+                        if (
+                            communityTokens.communityBotToken
+                            && communityTokens.communityBotRefreshToken
+                            && !getTwitchCredentialQuarantine(communityTokens, 'community-bot')
+                        ) {
                             await ensureValidToken(clientId, clientSecret, 'community-bot', communityTokens);
                         }
                     } catch (error: any) {

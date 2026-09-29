@@ -469,6 +469,35 @@ export async function purgeExpiredTwitchCredentials(
   });
 }
 
+export async function purgeExpiredCommunityBotCredential(
+  now = Date.now(),
+): Promise<boolean> {
+  const file = communityTokensFilePath();
+  return serializeStorage(file, async () => {
+    let tokens: StoredTokens;
+    try {
+      tokens = JSON.parse(await fs.readFile(file, 'utf8'));
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return false;
+      throw error;
+    }
+
+    const role: TwitchCredentialRole = 'community-bot';
+    const quarantine = currentQuarantine(tokens, role);
+    if (!quarantine || Date.parse(quarantine.deleteAfter) > now) return false;
+
+    const keys = roleKeys[role];
+    for (const key of Object.values(keys)) delete tokens[key];
+    if (tokens.credentialQuarantine) delete tokens.credentialQuarantine[role];
+    if (tokens.credentialQuarantine && Object.keys(tokens.credentialQuarantine).length === 0) {
+      delete tokens.credentialQuarantine;
+    }
+    tokens.lastUpdated = new Date(now).toISOString();
+    await writeTokensFile(file, tokens);
+    return true;
+  });
+}
+
 export async function forceRefreshStoredToken(
   clientId: string,
   clientSecret: string,
