@@ -21,6 +21,14 @@ test('SML !sr and !wr bypass imported command actions and reach the Lounge worke
   assert.match(dispatcher, /HearMeOut could not queue/);
 });
 
+test('SML song requests use one Stella receipt without a song-search progress post', () => {
+  assert.doesNotMatch(dispatcher, /checking a playable \$\{lane === 'movie' \? 'watch choice' : 'song'\}/);
+  assert.match(dispatcher, /lane === 'movie'\s*\? setTimeout/);
+  assert.match(dispatcher, /"\$\{title\}" is queued for the Lounge\./);
+  assert.match(dispatcher, /await reply\(successText, 'bot'\)/);
+  assert.doesNotMatch(dispatcher, /24-Hour Lounge: \$\{title\} — \$\{confirmation\}/);
+});
+
 test('SML media keeps separate permanent music and movie sessions', () => {
   assert.match(lounge, /SPACEMOUNTAIN_LOUNGE_MUSIC_SESSION_ID/);
   assert.match(lounge, /SPACEMOUNTAIN_LOUNGE_MOVIE_SESSION_ID/);
