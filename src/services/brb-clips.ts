@@ -274,6 +274,48 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
 
   let noMediaNotified = false;
   let gifIndex = 0;
+
+  if (loungeBRB) {
+    // The SpaceMountain Lounge owns a large stored GIF bank. Do not rebuild a
+    // viewer/community playlist between every GIF; that creates visible gaps
+    // when chat is quiet. Fetch once, shuffle, and run ~3 minutes continuously.
+    const stored = await getStoredShoutoutGifs([]);
+    const shuffle = <T,>(items: T[]): T[] => {
+      const copy = [...items];
+      for (let index = copy.length - 1; index > 0; index--) {
+        const swap = Math.floor(Math.random() * (index + 1));
+        [copy[index], copy[swap]] = [copy[swap], copy[index]];
+      }
+      return copy;
+    };
+    let block = shuffle(stored).slice(0, 15);
+    while (!runtime.stopRequested) {
+      if (!block.length) {
+        if (!noMediaNotified) {
+          bc({ type: 'brb-no-media' }, tenantId);
+          noMediaNotified = true;
+          console.warn('[BRB] No stored sponsor GIFs are available');
+        }
+        await new Promise(r => setTimeout(r, 5000));
+        block = shuffle(await getStoredShoutoutGifs([])).slice(0, 15);
+        continue;
+      }
+      noMediaNotified = false;
+      for (const gif of block) {
+        if (runtime.stopRequested) break;
+        bc({ type: 'brb-gif', payload: gif }, tenantId);
+        const endTime = Date.now() + 12_000;
+        while (Date.now() < endTime && !runtime.stopRequested) await new Promise(r => setTimeout(r, 500));
+      }
+      block = shuffle(await getStoredShoutoutGifs([])).slice(0, 15);
+    }
+
+    if (!testBRBActiveTenants.has(tenantId)) bc({ type: 'brb-stop' }, tenantId);
+    runtime.isPlaying = false;
+    console.log('[BRB] Stopped');
+    return;
+  }
+
   while (!runtime.stopRequested) {
     const useViewerClips = loungeBRB || await getClipModeFromStorage(tenantId);
     const playlist: BRBMedia = useViewerClips
