@@ -3004,9 +3004,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
         }
-        const requestNotice = setTimeout(() => {
-            void reply(`@${actualUsername}, checking a playable ${lane === 'movie' ? 'watch choice' : 'song'} for "${(choice?.title || query).slice(0, 70)}"…`, 'bot').catch(() => {});
-        }, 3000);
+        const requestNotice = lane === 'movie'
+            ? setTimeout(() => {
+                void reply(`@${actualUsername}, checking a playable watch choice for "${(choice?.title || query).slice(0, 70)}"…`, 'bot').catch(() => {});
+            }, 3000)
+            : null;
         try {
             const result: any = await executeHearMeOutBotAction({
                 action: 'hmo.media.request',
@@ -3022,8 +3024,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 idempotencyKey: `twitch:${replyChannel}:${String(tags.id || '') || Date.now()}:${command}`,
             });
             const title = String(result?.request?.item?.title || query);
-            const confirmation = String(result?.message || 'Added to the 24-Hour Lounge queue.').replace(/[.]+$/, '');
-            await reply(`✅ @${actualUsername} 24-Hour Lounge: ${title} — ${confirmation}.`, 'broadcaster').catch(() => {});
+            const successText = lane === 'music'
+                ? `@${actualUsername}, "${title}" is queued for the Lounge.`
+                : `@${actualUsername}, "${title}" is queued for the Lounge watch lane.`;
+            await reply(successText, 'bot').catch(() => {});
             if (choice) pendingWatchChoices.delete(choiceKey);
             console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`);
         } catch (error) {
@@ -3031,7 +3035,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             console.error(`[Dispatcher] SML !${command} HearMeOut request failed:`, error);
             await reply(`❌ @${actualUsername} HearMeOut could not queue !${command}: ${message.slice(0, 240)}`, 'broadcaster').catch(() => {});
         } finally {
-            clearTimeout(requestNotice);
+            if (requestNotice) clearTimeout(requestNotice);
         }
         return;
     }
