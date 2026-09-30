@@ -53,6 +53,8 @@ test('EdenAI is primary, OpenAI is secondary, and local Qwen is opt-in', () => {
   assert.ok(edenCall < openAiCall && openAiCall < qwenCall, 'AI fallbacks must be attempted in order');
   assert.match(provider, /EdenAI primary failed/);
   assert.match(provider, /OpenAI fallback failed/);
+  assert.match(provider, /tenantConfig = readUserConfigSync\(tenantId\)/);
+  assert.match(provider, /tenantConfig\.OPENAI_API_KEY/);
   assert.match(provider, /configuredProvider\.provider === 'openai'/);
   assert.match(provider, /apiKey: configuredOpenAiKey \|\| undefined/);
 });
