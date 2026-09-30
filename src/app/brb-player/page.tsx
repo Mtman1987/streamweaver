@@ -11,6 +11,8 @@ type SponsorGif = { url: string; user: string };
 
 export default function BRBPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const overlayTenantId = String(getOverlayTenantId() || '').trim().toLowerCase();
+  const spaceMountainLounge = overlayTenantId === 'spacemountainlive' || overlayTenantId === '539605850';
   const spotlightLevel = useLoungeBroadcastVolume('spotlight');
   const spotlightLevelRef = useRef<number | null>(null);
   useEffect(() => {
@@ -366,6 +368,26 @@ export default function BRBPlayer() {
               notifyParent(true, 'gif');
             }
             if (msg.type === 'brb-clip' && msg.payload) {
+              // SpaceMountain sponsor breaks are GIF-only. Refuse Twitch clip
+              // playback client-side too, so any stale/generic BRB event cannot
+              // open a clip or create another preroll.
+              if (spaceMountainLounge) {
+                stopAutomatic();
+                stopTest();
+                manual = true;
+                playbackEpoch++;
+                if (msg.payload.gifUrl) {
+                  showGif({ url: msg.payload.gifUrl, user: msg.payload.user || '' });
+                } else {
+                  setEmbedUrl('');
+                  setVideoPlaying(false);
+                  setGifUrl('');
+                  setClipUser('');
+                  setActive(true);
+                  notifyParent(true, 'gif');
+                }
+                return;
+              }
               stopAutomatic();
               stopTest();
               manual = true;
