@@ -11,12 +11,9 @@ export async function GET() {
       const mediaResponse = await fetch(`${worker}/lounge/media/program`, { cache: 'no-store' });
       if (mediaResponse.ok) {
         const program = await mediaResponse.json();
-        const mediaActive = Boolean(
-          program?.movie?.current && program?.movie?.playback?.status === 'playing'
-          || program?.music?.current && program?.music?.playback?.status === 'playing'
-        );
+        const mediaPresent = Boolean(program?.movie?.current || program?.music?.current);
         const mediaQueued = Number(program?.movie?.queueCount || 0) > 0 || Number(program?.music?.queueCount || 0) > 0;
-        if (!mediaActive && !mediaQueued) {
+        if (!mediaPresent && !mediaQueued) {
           layout = await setLoungeMediaLayout('stream', 'auto:empty-media');
         }
       }
