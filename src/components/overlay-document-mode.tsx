@@ -11,6 +11,7 @@ const OVERLAY_PREFIXES = [
 
 const OVERLAY_PATHS = new Set([
   '/brb-player',
+  '/commercial-break-player',
   '/classic-gamble-overlay',
   '/gamble-overlay',
   '/gym-battle-overlay',
