@@ -1,4 +1,4 @@
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -27,7 +27,7 @@ COPY . .
 RUN mkdir -p config logs MasterStats data/default data/runtime/global data/runtime/tenants tokens actions commands sb plugin-exports tmp scripts
 RUN npm run prebuild:simple && node scripts/patch-card-pack-event.mjs && node scripts/patch-signal-discord-presentation.mjs && node scripts/patch-discord-lore-tenant-routing.mjs && node scripts/patch-signal-carrier-join-hardening.mjs && node scripts/patch-signal-carrier-runtime-recovery.mjs && node scripts/patch-discord-bot-mentioned-say-tts.mjs && npx next build
 
-FROM node:20-slim AS runner
+FROM node:22-slim AS runner
 
 ARG GITHUB_SHA=unknown
 ARG GH_SHA=unknown
