@@ -5,7 +5,7 @@ import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
-const SPONSOR_GIF_BUFFER_SIZE = 10;
+const SPONSOR_GIF_BUFFER_SIZE = 15;
 const SPONSOR_GIF_DURATION_MS = 12_000;
 type SponsorGif = { url: string; user: string };
 
@@ -173,9 +173,6 @@ export default function BRBPlayer() {
       setActive(true);
       notifyParent(true, 'gif');
 
-      let clips: Array<{ clipUrl: string; thumbnailUrl?: string; user?: string; duration?: number }> = [];
-      let clipIndex = 0;
-      let lastSponsorKind: 'clip' | 'gif' = 'clip';
       let sponsorLoopStarted = false;
       let readyGifBuffer: SponsorGif[] = [];
       let gifPool: SponsorGif[] = [];
@@ -231,22 +228,7 @@ export default function BRBPlayer() {
           usedGifUrls.clear();
           fresh = candidates.filter((gif) => !queued.has(gif.url));
         }
-
-        // Prefer different creators before taking a second GIF from the same one.
-        const randomized = shuffle(fresh);
-        const users = new Set<string>();
-        const distinct: SponsorGif[] = [];
-        const repeats: SponsorGif[] = [];
-        for (const gif of randomized) {
-          const userKey = gif.user.toLowerCase();
-          if (userKey && !users.has(userKey)) {
-            users.add(userKey);
-            distinct.push(gif);
-          } else {
-            repeats.push(gif);
-          }
-        }
-        gifPool = [...distinct, ...repeats];
+        gifPool = shuffle(fresh);
       };
 
       const refillReadyGifBuffer = async () => {
@@ -254,9 +236,7 @@ export default function BRBPlayer() {
         if (refillPromise) return refillPromise;
         refillPromise = (async () => {
           try {
-            if (gifPool.length < SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length) {
-              await fetchGifPool();
-            }
+            if (gifPool.length < SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length) await fetchGifPool();
             if (!stillAutomatic()) return;
             const need = Math.max(0, SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length);
             const selected: SponsorGif[] = [];
@@ -276,83 +256,28 @@ export default function BRBPlayer() {
         return refillPromise;
       };
 
-      const nextSponsorItem = () => {
+      const nextSponsorGif = () => {
         if (!stillAutomatic()) return;
-        if (readyGifBuffer.length <= 3) void refillReadyGifBuffer();
-
-        if (clips.length && lastSponsorKind === 'gif') {
-          const clip = clips[clipIndex++ % clips.length];
-          const fallback = readyGifBuffer[0];
-          lastSponsorKind = 'clip';
-          setClipUser(clip.user || '');
-          // Use the clip itself; worker Spotlight cannot play source VODs.
-          void playClip(clip.clipUrl, clip.thumbnailUrl || '', fallback, undefined);
-          autoClipTimer = setTimeout(
-            nextSponsorItem,
-            Math.max(5000, Math.min(65000, Number(clip.duration) || 30000)),
-          );
-          return;
-        }
-
+        if (readyGifBuffer.length <= 5) void refillReadyGifBuffer();
         const gif = readyGifBuffer.shift();
         if (gif) {
-          lastSponsorKind = 'gif';
           showGif(gif);
-          autoClipTimer = setTimeout(nextSponsorItem, SPONSOR_GIF_DURATION_MS);
+          autoClipTimer = setTimeout(nextSponsorGif, SPONSOR_GIF_DURATION_MS);
           return;
         }
-
-        if (clips.length) {
-          const clip = clips[clipIndex++ % clips.length];
-          lastSponsorKind = 'clip';
-          setClipUser(clip.user || '');
-          void playClip(clip.clipUrl, clip.thumbnailUrl || '', undefined, undefined);
-          autoClipTimer = setTimeout(
-            nextSponsorItem,
-            Math.max(5000, Math.min(65000, Number(clip.duration) || 30000)),
-          );
-          return;
-        }
-
         void refillReadyGifBuffer();
-        autoClipTimer = setTimeout(nextSponsorItem, 1000);
+        autoClipTimer = setTimeout(nextSponsorGif, 500);
       };
 
       const ensureSponsorLoop = () => {
-        if (!stillAutomatic() || sponsorLoopStarted || (!readyGifBuffer.length && !clips.length)) return;
+        if (!stillAutomatic() || sponsorLoopStarted || !readyGifBuffer.length) return;
         sponsorLoopStarted = true;
-        nextSponsorItem();
+        nextSponsorGif();
       };
 
-      // Prime ten already-downloaded DSH GIFs before relying on slower Twitch clip discovery.
+      // Load ~3 minutes of already-stored GIFs first. Automatic Spotlight cover
+      // never opens Twitch clips, so prerolls cannot recurse into another stall.
       void refillReadyGifBuffer().then(() => ensureSponsorLoop());
-
-      try {
-        const response = await fetch('/api/lounge/brb-fallback?tenant=spacemountainlive', {
-          cache: 'no-store', signal: AbortSignal.timeout(45000),
-        });
-        if (!response.ok) throw new Error('BRB playlist unavailable');
-        const media = await response.json();
-        if (!stillAutomatic()) return;
-        clips = Array.isArray(media.clips) ? media.clips.filter(
-          (clip: { clipUrl?: string }) => typeof clip.clipUrl === 'string' && clip.clipUrl.includes('clip=')) : [];
-
-        // Keep DSH GIFs as a persistent ready buffer. The clip playlist must never
-        // cancel it; clips simply alternate with whatever is already preloaded.
-        const mediaGifs: SponsorGif[] = Array.isArray(media.gifs) ? media.gifs.filter(
-          (gif: { url?: string }) => typeof gif.url === 'string'
-            && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/'))
-          .map((gif: { url: string; user?: string }) => ({ url: gif.url, user: String(gif.user || '') })) : [];
-        if (mediaGifs.length) gifPool.push(...shuffle(mediaGifs));
-        void refillReadyGifBuffer();
-        ensureSponsorLoop();
-      } catch (error) {
-        if (stillAutomatic()) {
-          console.warn('[BRB] Automatic playlist unavailable:', error);
-          void refillReadyGifBuffer();
-          ensureSponsorLoop();
-        }
-      }
     };
 
     const onSpotlightHealth = (event: MessageEvent) => {
