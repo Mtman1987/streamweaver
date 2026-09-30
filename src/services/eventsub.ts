@@ -8,6 +8,7 @@ import { formatCheckinList, createPendingPayload, runCheckin, runBulkCheckin } f
 import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 import { getPointsWalletContext } from './points-wallet-context';
+import { beginCommercialBreak } from './commercial-break';
 
 const eventSubSockets = new Map<string, WebSocket>();
 const CHAT_TAG_API_BASE = String(process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
@@ -196,6 +197,62 @@ async function createChannelPointSubscription(auth: { clientId: string; accessTo
     return typeof createdId === 'string' ? createdId : null;
 }
 
+
+
+async function deleteExistingAdBreakSubscriptions(auth: { clientId: string; accessToken: string; broadcasterId: string }, keepId?: string): Promise<void> {
+    try {
+        const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions?first=100', {
+            headers: { 'Client-ID': auth.clientId, Authorization: `Bearer ${auth.accessToken}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json() as any;
+        const subs = Array.isArray(data?.data) ? data.data : [];
+        for (const sub of subs.filter((value: any) =>
+            value?.type === 'channel.ad_break.begin'
+            && String(value?.condition?.broadcaster_user_id || '') === String(auth.broadcasterId)
+        )) {
+            const id = String(sub?.id || '');
+            if (!id || id === keepId) continue;
+            await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+                headers: { 'Client-ID': auth.clientId, Authorization: `Bearer ${auth.accessToken}` },
+            }).catch(() => null);
+        }
+    } catch (error) {
+        console.warn('[EventSub] Error deleting old ad-break subscriptions:', error);
+    }
+}
+
+async function createAdBreakSubscription(auth: { clientId: string; accessToken: string; broadcasterId: string }, sessionId: string, tenantId?: string): Promise<string | null> {
+    const body = {
+        type: 'channel.ad_break.begin',
+        version: '1',
+        condition: { broadcaster_user_id: auth.broadcasterId },
+        transport: { method: 'websocket', session_id: sessionId },
+    };
+    const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+        method: 'POST',
+        headers: {
+            'Client-ID': auth.clientId,
+            Authorization: `Bearer ${auth.accessToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        if (res.status === 400 && /websocket transport session does not exist|already disconnected/i.test(text)) {
+            scheduleEventSubReconnect('wss://eventsub.wss.twitch.tv/ws', 1000, tenantId);
+            return null;
+        }
+        console.warn('[EventSub] Ad-break subscription create rejected:', res.status, text);
+        return null;
+    }
+    const data = await res.json().catch(() => null) as any;
+    const createdId = data?.data?.[0]?.id;
+    console.log('[EventSub] Ad-break subscription created:', createdId || '(unknown id)');
+    return typeof createdId === 'string' ? createdId : null;
+}
 export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void> {
     try {
         const auth = await getBroadcasterAuth(tenantId);
@@ -229,10 +286,13 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
     }
     
     const hasRedemptionsScope = scopes.includes('channel:read:redemptions') || scopes.includes('channel:manage:redemptions');
-    if (!hasRedemptionsScope) {
-        console.warn('[EventSub] Missing channel point scope');
+    const hasAdsScope = scopes.includes('channel:read:ads');
+    if (!hasRedemptionsScope && !hasAdsScope) {
+        console.warn('[EventSub] Missing both channel point and ad-break scopes');
         return false;
     }
+    if (!hasRedemptionsScope) console.warn('[EventSub] Missing channel point scope; redemption EventSub disabled');
+    if (!hasAdsScope) console.warn('[EventSub] Missing channel:read:ads; commercial EventSub disabled');
 
     console.log(`[EventSub:${tKey}] Connecting:`, url);
     const socket = new WebSocket(url);
@@ -265,9 +325,13 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 if (!sessionId) return;
                 console.log(`[EventSub:${tKey}] Session established:`, sessionId);
                 
-                const createdId = await createChannelPointSubscription(auth, sessionId, tenantId);
-                if (createdId) {
-                    await deleteExistingChannelPointSubscriptions(auth, createdId);
+                if (hasRedemptionsScope) {
+                    const createdId = await createChannelPointSubscription(auth, sessionId, tenantId);
+                    if (createdId) await deleteExistingChannelPointSubscriptions(auth, createdId);
+                }
+                if (hasAdsScope) {
+                    const adId = await createAdBreakSubscription(auth, sessionId, tenantId);
+                    if (adId) await deleteExistingAdBreakSubscriptions(auth, adId);
                 }
                 return;
             }
@@ -283,6 +347,21 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
 
             if (messageType === 'notification') {
                 const subType = msg?.payload?.subscription?.type;
+                if (subType === 'channel.ad_break.begin') {
+                    const event = msg?.payload?.event;
+                    const messageId = String(msg?.metadata?.message_id || '').trim();
+                    if (event && messageId && tenantId) {
+                        const result = await beginCommercialBreak({
+                            tenantId,
+                            messageId,
+                            startedAt: String(event?.started_at || new Date().toISOString()),
+                            durationSeconds: Number(event?.duration_seconds || 0),
+                            isAutomatic: Boolean(event?.is_automatic),
+                        });
+                        console.log(`[EventSub:${tKey}] Commercial break ${result.reason}; phase=${result.state.phase}`);
+                    }
+                    return;
+                }
                 if (subType === 'channel.channel_points_custom_reward_redemption.add') {
                     const event = msg?.payload?.event;
                     if (event) {

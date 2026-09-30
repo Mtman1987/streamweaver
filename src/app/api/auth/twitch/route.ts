@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     'clips:edit',
     'moderator:manage:announcements',
     'channel:read:redemptions',
+    'channel:read:ads',
     'user:write:chat',
     'user:bot',
     'channel:bot',
