@@ -144,7 +144,8 @@ export async function generateAIResponse(
 
   let openAiFailure = '';
   const configuredProvider = getAIConfig(tenantId);
-  const configuredOpenAiKey = process.env.OPENAI_API_KEY || (configuredProvider.provider === 'openai' ? configuredProvider.apiKey : '');
+  const tenantConfig = readUserConfigSync(tenantId);
+  const configuredOpenAiKey = process.env.OPENAI_API_KEY || tenantConfig.OPENAI_API_KEY || (configuredProvider.provider === 'openai' ? configuredProvider.apiKey : '');
   if (isOpenAiFallbackConfigured(configuredOpenAiKey)) {
     try {
       const response = await generateOpenAiFallbackResponse(prompt, governedPrompt(systemPrompt), {
