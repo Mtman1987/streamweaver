@@ -8,15 +8,15 @@ test('Stella speaks conversational lounge replies even when the legacy call requ
   });
 });
 
-test('links, machine receipts, and command lists stay with the broadcaster', () => {
+test('links and command lists stay with the broadcaster while HearMeOut confirmations stay Stella', () => {
   for (const text of [
     'Follow @friend: https://twitch.tv/friend',
-    '✅ @viewer 24-Hour Lounge: Song — Queued up.',
     'Use !sr song title to request a song.',
     '1) First | 2) Second | Reply 1 or 2',
   ]) {
     assert.equal(prepareStellaLoungeReply(text, 'bot').as, 'broadcaster', text);
   }
+  assert.equal(prepareStellaLoungeReply('⏭️ @viewer, skipped. Now playing: Different Song.', 'bot').as, 'bot');
 });
 
 test('exact numbers remain in chat parentheses while Stella gets a varied spoken lead', () => {
