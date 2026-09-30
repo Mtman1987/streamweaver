@@ -37,6 +37,8 @@ test('Stella routes named Lounge games to the director', async () => {
     ['Stella, start a game of Mosaic','start-show','pixelbattle',''],
     ['Stella start mosaic and place its visuals back to the activity section of the overlay','start-show','pixelbattle','activity'],
     ['Stella stop playing Word Chain','stop-hide','wordchain',''],
+    ['Stella shut down Word Chain','stop-hide','wordchain',''],
+    ['Stella close Word Chain','stop-hide','wordchain',''],
     ['Stella turn Mosaic off','stop-hide','pixelbattle',''],
     ['Stella turn the Mosaic game off','stop-hide','pixelbattle',''],
     ['Stella launch Emoji Tower','start-show','emojitower',''],
