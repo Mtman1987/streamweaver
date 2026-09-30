@@ -50,6 +50,7 @@ import {
 import { SPACEMOUNTAIN_LOUNGE_ROOM_ID } from '../lib/spacemountain-lounge';
 import { queueTtsOverlay } from './tts-overlay-queue';
 import { prepareStellaLoungeReply } from './stella-lounge-replies';
+import { rewriteSpmtLegacyAlias } from './spmt-command-aliases';
 import { buildPokemonBrowserUrl } from './pokemon-browser';
 import { readDiscordConfig } from '../lib/discord-config';
 import { recordDashboardActivity } from '../lib/dashboard-activity-store';
@@ -2744,6 +2745,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             console.log(`[Dispatcher] Failed to parse Discord message: ${message}`);
         }
     }
+
+    // Canonical SPMT aliases reuse the proven legacy command handlers.
+    // Unrecognized/game-shaped SPMT commands remain untouched for Nebula.
+    const canonicalSpmtAlias = rewriteSpmtLegacyAlias(actualMessage);
+    if (canonicalSpmtAlias) actualMessage = canonicalSpmtAlias;
 
     const mtFixItIntent = detectMtFixItIntent(actualMessage);
 
