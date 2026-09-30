@@ -61,6 +61,14 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies for command smoke
+        run: npm ci --ignore-scripts
+      - name: Run live command smoke tests
+        run: node --import tsx --test tests/spmt-command-aliases.test.ts tests/stella-lounge-replies.test.ts tests/root-command-runtime-coverage.test.ts tests/bot-action-runtime.test.ts
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy app from GitHub runner
         run: flyctl deploy --local-only --no-cache --lease-timeout 2m --deploy-retries 3 --build-arg BUILD_SHA=${{ github.sha }} --build-arg GITHUB_SHA=${{ github.sha }} --build-arg GH_SHA=${{ github.sha }}
