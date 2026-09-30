@@ -463,11 +463,11 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if(roleMatch){ const raw=roleMatch[1]; const role=raw.includes('steward')?'arcade-steward':raw; return {action:'stella.role',args:{role,partner:roleMatch[2]||''},detection:'explicit'}; }
   const gameNames:Record<string,string>={'chat wars':'chatwars','bingo':'bingo','mosaic':'pixelbattle','treasure hunt':'treasurehunt','word chain':'wordchain','phrase guess':'phraseguess','chicken royale':'chickenroyale','emoji rain':'emojirain','dancing parade':'dancingparade','chat tag':'chat-tag','quackverse':'quackverse','chaos mode':'chaosmode','chat garden':'chatgarden','color symphony':'colorsymphony','emoji tower':'emojitower','pet race':'petrace','rhythm pulse':'rhythmpulse','word storm':'wordstorm'};
   const namedGame=Object.entries(gameNames).find(([name])=>value.includes(name));
-  const gameDirectorIntent = /\b(?:start|launch|begin|activate|stop|end|deactivate|hide|remove|take|show|put|place|display|add|switch|swap|change|shuffle|randomize|rotate|turn)\b/.test(value)
+  const gameDirectorIntent = /\b(?:start|launch|begin|activate|stop|end|deactivate|shut|close|hide|remove|take|show|put|place|display|add|switch|swap|change|shuffle|randomize|rotate|turn)\b/.test(value)
     && (Boolean(namedGame) || /\b(?:game|games|nebula|overlay|screen|stage|rotation)\b/.test(value));
   if (gameDirectorIntent) {
     const gameId=namedGame?.[1]||'';
-    const stop=/\b(?:stop|end|deactivate|turn off)\b|\bturn\b.*\boff\b/.test(value);
+    const stop=/\b(?:stop|end|deactivate|close)\b|\bshut\b(?:\s+(?:down|off))?|\bturn\b.*\boff\b/.test(value);
     const start=/\b(?:start|launch|begin|activate|turn on)\b|\bturn\b.*\bon\b/.test(value);
     const hide=/\b(?:hide|remove|take)\b/.test(value);
     const show=/\b(?:show|put|place|display|add)\b/.test(value);
@@ -936,6 +936,19 @@ export async function executeBotAction(
       const state=await readNebulaChannelState(channel) as any;
       const activeIds=Array.isArray(state?.gameIds)?state.gameIds.map(String).filter((id:string)=>knownIds.has(id)):[];
       if (!gameId && activeIds.length===1) gameId=activeIds[0];
+      if (!gameId && activeIds.length > 1) {
+        const visibleCandidates = new Set<string>();
+        for (const target of ['main', 'activity'] as const) {
+          const body = await readNebulaOverlayProfile(channel, target) as any;
+          for (const id of Array.isArray(body?.profile?.gameIds) ? body.profile.gameIds : []) {
+            const normalizedId = String(id);
+            if (activeIds.includes(normalizedId) && normalizedId !== 'chat-tag' && normalizedId !== 'quackverse') {
+              visibleCandidates.add(normalizedId);
+            }
+          }
+        }
+        if (visibleCandidates.size === 1) gameId = [...visibleCandidates][0];
+      }
       const surface=request.args.surface==='main'?'main':request.args.surface==='activity'?'activity':gameId==='wordchain'||gameId==='phraseguess'?'main':'activity';
       const readProfile=async(target:'main'|'activity')=>{
         const body=await readNebulaOverlayProfile(channel,target) as any;
