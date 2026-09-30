@@ -14,8 +14,8 @@ import { readDiscordConfig } from '@/lib/discord-config';
 import { publishSpmtEvent } from '@/lib/spmt-client';
 import {
   hasMountainViewBridgeAccess,
+  hasMountainViewOwnerAccess,
   internalServiceHeaders,
-  isMountainViewBridgeSecretEnforced,
 } from '@/lib/internal-service-auth';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
         // A bare bridge marker is legacy-compatible but is not proof of owner
         // authority. Privileged app actions require the scoped MountainView
         // bearer to be explicitly enforced and already validated above.
-        role: isMountainViewBridgeSecretEnforced() ? 'owner' : 'member',
+        role: hasMountainViewOwnerAccess(request) ? 'owner' : 'member',
       },
     });
     if (botAction) {
