@@ -3031,9 +3031,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (choice) pendingWatchChoices.delete(choiceKey);
             console.log(`[Dispatcher] SML !${command} queued in HearMeOut Lounge for @${actualUsername}`);
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
             console.error(`[Dispatcher] SML !${command} HearMeOut request failed:`, error);
-            await reply(`❌ @${actualUsername} HearMeOut could not queue !${command}: ${message.slice(0, 240)}`, 'broadcaster').catch(() => {});
+            const failureText = lane === 'music'
+                ? `@${actualUsername}, I couldn't find a playable upload for that song. Try the title with the artist, or paste a YouTube link.`
+                : `@${actualUsername}, I couldn't queue that Lounge watch request. Try another title or year.`;
+            await reply(failureText, 'bot').catch(() => {});
         } finally {
             if (requestNotice) clearTimeout(requestNotice);
         }
