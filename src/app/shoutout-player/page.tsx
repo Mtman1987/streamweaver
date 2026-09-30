@@ -13,6 +13,19 @@ export default function ShoutoutPlayer() {
     spotlightLevelRef.current = spotlightLevel;
     if (videoRef.current && spotlightLevel !== null) videoRef.current.volume = spotlightLevel;
   }, [spotlightLevel]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== 'https://spmt.live'
+        || event.data?.type !== 'spmt-lounge-brb-audio'
+        || typeof event.data.active !== 'boolean') return;
+      brbMutedRef.current = event.data.active;
+      setBrbMuted(event.data.active);
+      if (videoRef.current) videoRef.current.muted = event.data.active;
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
   const websocketRef = useRef<WebSocket | null>(null);
   const activeEventIdRef = useRef<string>('');
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,6 +35,9 @@ export default function ShoutoutPlayer() {
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [fallbackEmbedUrl, setFallbackEmbedUrl] = useState('');
+  const brbMutedRef = useRef(false);
+  const [brbMuted, setBrbMuted] = useState(false);
+
 
   const acknowledgePlayback = (eventId: string, phase: 'started' | 'ended' | 'failed') => {
     if (!eventId || websocketRef.current?.readyState !== WebSocket.OPEN) return;
@@ -101,7 +117,7 @@ export default function ShoutoutPlayer() {
       if (videoRef.current) {
         const video = videoRef.current;
         video.src = src;
-        video.muted = false;
+        video.muted = brbMutedRef.current;
         if (spotlightLevelRef.current !== null) video.volume = spotlightLevelRef.current;
         video.load();
         setVisible(true);
@@ -120,7 +136,7 @@ export default function ShoutoutPlayer() {
       // clip embed remains the reliable fallback for OBS browser sources.
       const parent = window.location.hostname;
       fallbackDurationRef.current = Math.max(1, duration);
-      const fallbackUrl = `https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=false`;
+      const fallbackUrl = `https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(parent)}&autoplay=true&muted=${brbMutedRef.current ? 'true' : 'false'}`;
       fallbackEmbedUrlRef.current = fallbackUrl;
       setFallbackEmbedUrl(fallbackUrl);
       setVisible(true);
@@ -204,8 +220,8 @@ export default function ShoutoutPlayer() {
       />
       {fallbackEmbedUrl && (
         <iframe
-          key={`${fallbackEmbedUrl}:${spotlightLevel === 0}`}
-          src={fallbackEmbedUrl.replace('muted=false', `muted=${spotlightLevel === 0}`)}
+          key={`${fallbackEmbedUrl}:${spotlightLevel === 0}:${brbMuted}`}
+          src={fallbackEmbedUrl.replace(/muted=(?:true|false)/, `muted=${brbMuted || spotlightLevel === 0}`)}
           title="Twitch shoutout clip"
           allow="autoplay; fullscreen"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: visible ? 'block' : 'none' }}
