@@ -266,7 +266,7 @@ export async function startBRB(broadcasterName: string, tenantId?: string): Prom
   const scene = obsConfig?.scenes?.brb || 'BRB';
   const liveScene = obsConfig?.scenes?.live || 'Live';
 
-  const loungeBRB = tenantId === 'spacemountainlive';
+  const loungeBRB = tenantId === 'spacemountainlive' || tenantId === '539605850' || broadcasterName.toLowerCase() === 'spacemountainlive';
   if (!loungeBRB) bc({ type: 'obs-switch-scene', payload: { sceneName: scene } }, tenantId);
   bc({ type: 'brb-start', payload: { scene } }, tenantId);
 
