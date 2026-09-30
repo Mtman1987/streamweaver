@@ -251,16 +251,17 @@ test('walk-on greetings use the shared AI provider instead of an Eden-only greet
 });
 
 
-test('Lounge sponsor fallback keeps ten DSH sponsor GIFs ready across Twitch clips', () => {
+test('Lounge automatic sponsor cover preloads three minutes of GIFs and never opens Twitch clips', () => {
   const player = fs.readFileSync('src/app/brb-player/page.tsx', 'utf8');
-  assert.match(player, /SPONSOR_GIF_BUFFER_SIZE = 10/);
+  assert.match(player, /SPONSOR_GIF_BUFFER_SIZE = 15/);
   assert.match(player, /preloadSponsorGif/);
   assert.match(player, /readyGifBuffer\.push\(\.\.\.preloaded\)/);
-  assert.match(player, /readyGifBuffer\.length <= 3/);
-  assert.match(player, /if \(clips\.length && lastSponsorKind === 'gif'\)/);
-  assert.match(player, /showGif\(gif\)/);
-  assert.doesNotMatch(player, /playlistReady/);
-  assert.match(player, /clip playlist must never\s*\/\/ cancel it|clip playlist must never[\s\S]*cancel it/);
+  assert.match(player, /readyGifBuffer\.length <= 5/);
+  assert.match(player, /const nextSponsorGif = \(\) =>/);
+  assert.match(player, /setTimeout\(nextSponsorGif, SPONSOR_GIF_DURATION_MS\)/);
+  const automatic = player.slice(player.indexOf('const startAutomatic'), player.indexOf('const onSpotlightHealth'));
+  assert.doesNotMatch(automatic, /playClip\(/);
+  assert.doesNotMatch(automatic, /clipUrl/);
 });
 
 
