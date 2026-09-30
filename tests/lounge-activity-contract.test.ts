@@ -251,17 +251,16 @@ test('walk-on greetings use the shared AI provider instead of an Eden-only greet
 });
 
 
-test('Lounge automatic sponsor cover preloads three minutes of GIFs and never opens Twitch clips', () => {
-  const player = fs.readFileSync('src/app/brb-player/page.tsx', 'utf8');
-  assert.match(player, /SPONSOR_GIF_BUFFER_SIZE = 15/);
-  assert.match(player, /preloadSponsorGif/);
-  assert.match(player, /readyGifBuffer\.push\(\.\.\.preloaded\)/);
-  assert.match(player, /readyGifBuffer\.length <= 5/);
-  assert.match(player, /const nextSponsorGif = \(\) =>/);
-  assert.match(player, /setTimeout\(nextSponsorGif, SPONSOR_GIF_DURATION_MS\)/);
-  const automatic = player.slice(player.indexOf('const startAutomatic'), player.indexOf('const onSpotlightHealth'));
-  assert.doesNotMatch(automatic, /playClip\(/);
-  assert.doesNotMatch(automatic, /clipUrl/);
+test('Lounge commercials use a dedicated GIF player and manual BRB has no automatic Spotlight-health trigger', () => {
+  const commercial = fs.readFileSync('src/app/commercial-break-player/page.tsx', 'utf8');
+  const brb = fs.readFileSync('src/app/brb-player/page.tsx', 'utf8');
+  assert.match(commercial, /const GIF_COUNT = 15/);
+  assert.match(commercial, /const GIF_DURATION_MS = 12_000/);
+  assert.match(commercial, /discord-stream-hub-new\.fly\.dev\/api\/lounge\/brb-gifs/);
+  assert.match(commercial, /mediaActive/);
+  assert.match(commercial, /audio\.pause\(\)/);
+  assert.doesNotMatch(commercial, /clips\.twitch\.tv|playClip\(/);
+  assert.doesNotMatch(brb, /startAutomatic|onSpotlightHealth|SPONSOR_GIF_BUFFER_SIZE/);
 });
 
 
