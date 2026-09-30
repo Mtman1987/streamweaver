@@ -592,12 +592,15 @@ test('application decisions remain owner-only and call the DSH adapter', async (
   assert.equal(payload.decision, 'approved');
 });
 
-test('MountainView grants privileged actions only with enforced scoped-secret authentication', () => {
+test('MountainView grants privileged actions only with a matching scoped-secret bearer', () => {
   const route = readFileSync(fileURLToPath(new URL('../src/app/api/mountainview/voice-commander/route.ts', import.meta.url)), 'utf8');
   const authIndex = route.indexOf('hasMountainViewBridgeAccess(request)');
   const actionIndex = route.indexOf('const botAction = await routeBotAction');
   assert.ok(authIndex >= 0 && actionIndex > authIndex);
-  assert.match(route, /role: isMountainViewBridgeSecretEnforced\(\) \? 'owner' : 'member'/);
+  assert.match(route, /role: hasMountainViewOwnerAccess\(request\) \? 'owner' : 'member'/);
+  const auth = readFileSync(fileURLToPath(new URL('../src/lib/internal-service-auth.ts', import.meta.url)), 'utf8');
+  assert.match(auth, /function hasMountainViewOwnerAccess/);
+  assert.match(auth, /expected && bearerToken\(request\) === expected/);
 });
 
 
