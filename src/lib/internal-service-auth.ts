@@ -43,6 +43,12 @@ export function isMountainViewBridgeSecretEnforced(): boolean {
   return String(process.env.MOUNTAINVIEW_BRIDGE_ENFORCE_SECRET || '').trim() === 'true';
 }
 
+export function hasMountainViewOwnerAccess(request: NextRequest): boolean {
+  if (request.headers.get('x-mountainview-bridge') !== '1') return false;
+  const expected = configuredSecret('MOUNTAINVIEW_STREAMWEAVER_SECRET');
+  return Boolean(expected && bearerToken(request) === expected);
+}
+
 export function hasMountainViewBridgeAccess(request: NextRequest): boolean {
   if (request.headers.get('x-mountainview-bridge') !== '1') return false;
   // Default: trust the bridge header alone so the bridge works without
