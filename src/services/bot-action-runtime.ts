@@ -486,7 +486,9 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const battle=value.match(/\b(?:start|make|create|link)\b.*\b(?:chat wars|stream battle|stream vs stream)\b.*(?:against|with|versus|vs\.?)[\s@]+([a-z0-9_]{2,80})\b/);
   if(battle) return {action:'nebula.stream-battle',args:{opponent:battle[1]},detection:'explicit'};
 
-  const stellaMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?|\d{1,7})\b/);
+  const stellaNamedMode = value.match(/\bstella\b.*\b(chill(?: vibes?)?|normal|playful|chaos|ludicrous|insanity|wtf(?:\s+(?:one\s+)?million)?)\b/);
+  const stellaNumericMode = value.match(/\bstella\b.*\b(?:mode|intensity|chaos\s+level)\b\s*(?:to|at|=)?\s*(\d{1,7})\b/);
+  const stellaMode = stellaNamedMode || stellaNumericMode;
   if (stellaMode) {
     const raw=stellaMode[1]; const numeric=/^\d+$/.test(raw)?raw:'';
     const mode = /chill/.test(raw)?'chill':/playful/.test(raw)?'playful':/(?:chaos|ludicrous|insanity)/.test(raw)?'chaos':/wtf/.test(raw)?'wtf-million':'normal';
