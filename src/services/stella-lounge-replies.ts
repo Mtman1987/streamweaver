@@ -13,7 +13,6 @@ export function prepareStellaLoungeReply(message: string, requestedAs: ReplyIden
   const text = message.trim();
   if (/https?:\/\/|www\.|\n|\s\|\s/.test(text)
     || text.length > 240
-    || /^\s*[✅❌📡]\s*(?:@\S+\s*)?(?:24-Hour Lounge|HearMeOut|!sr|!wr)\b/i.test(text)
     || /\busage:|(?:\buse|\btype)\s+!|\breply\s+[1-9]\b/i.test(text)) {
     return { message, as: 'broadcaster' };
   }
