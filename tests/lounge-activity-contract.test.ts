@@ -288,3 +288,11 @@ test('Lounge audio unlock pulse reaches Stella and public chat TTS', () => {
   assert.match(stella, /streamweaver:lounge-audio-unlock/);
   assert.match(say, /streamweaver:lounge-audio-unlock/);
 });
+
+
+test('commercial-break-player is an overlay-document route so idle frames are truly transparent', () => {
+  const mode = fs.readFileSync('src/components/overlay-document-mode.tsx', 'utf8');
+  assert.match(mode, /'\/commercial-break-player'/);
+  const css = fs.readFileSync('src/app/globals.css', 'utf8');
+  assert.match(css, /html\.overlay-document,[\s\S]*background: transparent !important/);
+});
