@@ -5,10 +5,6 @@ import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
-const SPONSOR_GIF_BUFFER_SIZE = 15;
-const SPONSOR_GIF_DURATION_MS = 12_000;
-type SponsorGif = { url: string; user: string };
-
 export default function BRBPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayTenantId = String(getOverlayTenantId() || '').trim().toLowerCase();
@@ -39,12 +35,6 @@ export default function BRBPlayer() {
     let lastGif: { url: string; user: string } | undefined;
     let testTimer: ReturnType<typeof setTimeout>;
     let testGeneration = 0;
-    let automatic = false;
-    let spotlightHealthy = true;
-    let autoStartTimer: ReturnType<typeof setTimeout> | undefined;
-    let autoStopTimer: ReturnType<typeof setTimeout>;
-    let autoClipTimer: ReturnType<typeof setTimeout>;
-    let autoEpoch = 0;
 
     const showGif = (gif?: { url: string; user: string }) => {
       clearTimeout(embedTimer);
@@ -145,172 +135,13 @@ export default function BRBPlayer() {
       }
     };
 
-    // The Lounge forwards health from its persistent worker viewer. When the
-    // live picture is unavailable, cover it with the existing community clips.
-    // Manual BRB always takes priority over this automatic intermission.
-    const stopAutomatic = () => {
-      clearTimeout(autoStartTimer);
-      autoStartTimer = undefined;
-      clearTimeout(autoStopTimer);
-      clearTimeout(autoClipTimer);
-      if (!automatic) return;
-      automatic = false;
-      autoEpoch++;
-      playbackEpoch++;
-      clearTimeout(embedTimer);
-      videoRef.current?.pause();
-      setEmbedUrl('');
-      setVideoPlaying(false);
-      setGifUrl('');
-      setSpotlight(false);
-      setClipUser('');
-      setActive(false);
-      notifyParent(false);
-    };
-
-    const startAutomatic = async () => {
-      if (stopped || manual || automatic || spotlightHealthy) return;
-      automatic = true;
-      const epoch = ++autoEpoch;
-      setActive(true);
-      notifyParent(true, 'gif');
-
-      let sponsorLoopStarted = false;
-      let readyGifBuffer: SponsorGif[] = [];
-      let gifPool: SponsorGif[] = [];
-      let refillPromise: Promise<void> | null = null;
-      const usedGifUrls = new Set<string>();
-
-      const stillAutomatic = () => automatic && !stopped && epoch === autoEpoch && !manual;
-
-      const shuffle = <T,>(items: T[]): T[] => {
-        const copy = [...items];
-        for (let i = copy.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [copy[i], copy[j]] = [copy[j], copy[i]];
-        }
-        return copy;
-      };
-
-      const preloadSponsorGif = (gif: SponsorGif): Promise<SponsorGif | null> => new Promise((resolve) => {
-        const image = new Image();
-        const timeout = setTimeout(() => {
-          image.onload = null;
-          image.onerror = null;
-          resolve(null);
-        }, 8_000);
-        image.onload = () => {
-          clearTimeout(timeout);
-          image.onload = null;
-          image.onerror = null;
-          resolve(gif);
-        };
-        image.onerror = () => {
-          clearTimeout(timeout);
-          image.onload = null;
-          image.onerror = null;
-          resolve(null);
-        };
-        image.src = gif.url;
-      });
-
-      const fetchGifPool = async () => {
-        const response = await fetch('https://discord-stream-hub-new.fly.dev/api/lounge/brb-gifs', {
-          cache: 'no-store', signal: AbortSignal.timeout(8000),
-        });
-        if (!response.ok) throw new Error(`DSH sponsor GIF bank unavailable: ${response.status}`);
-        const data = await response.json();
-        const candidates: SponsorGif[] = Array.isArray(data.gifs) ? data.gifs
-          .filter((gif: { url?: string }) => typeof gif.url === 'string'
-            && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/'))
-          .map((gif: { url: string; user?: string }) => ({ url: gif.url, user: String(gif.user || '') })) : [];
-        const queued = new Set(readyGifBuffer.map((gif) => gif.url));
-        let fresh = candidates.filter((gif) => !usedGifUrls.has(gif.url) && !queued.has(gif.url));
-        if (!fresh.length && candidates.length) {
-          usedGifUrls.clear();
-          fresh = candidates.filter((gif) => !queued.has(gif.url));
-        }
-        gifPool = shuffle(fresh);
-      };
-
-      const refillReadyGifBuffer = async () => {
-        if (!stillAutomatic() || readyGifBuffer.length >= SPONSOR_GIF_BUFFER_SIZE) return;
-        if (refillPromise) return refillPromise;
-        refillPromise = (async () => {
-          try {
-            if (gifPool.length < SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length) await fetchGifPool();
-            if (!stillAutomatic()) return;
-            const need = Math.max(0, SPONSOR_GIF_BUFFER_SIZE - readyGifBuffer.length);
-            const selected: SponsorGif[] = [];
-            while (selected.length < need && gifPool.length) {
-              const gif = gifPool.shift()!;
-              if (usedGifUrls.has(gif.url) || readyGifBuffer.some((queued) => queued.url === gif.url)) continue;
-              usedGifUrls.add(gif.url);
-              selected.push(gif);
-            }
-            const preloaded = (await Promise.all(selected.map(preloadSponsorGif)))
-              .filter((gif): gif is SponsorGif => Boolean(gif));
-            if (stillAutomatic()) readyGifBuffer.push(...preloaded);
-          } catch (error) {
-            if (stillAutomatic()) console.warn('[BRB] Sponsor GIF buffer refill failed:', error);
-          }
-        })().finally(() => { refillPromise = null; });
-        return refillPromise;
-      };
-
-      const nextSponsorGif = () => {
-        if (!stillAutomatic()) return;
-        if (readyGifBuffer.length <= 5) void refillReadyGifBuffer();
-        const gif = readyGifBuffer.shift();
-        if (gif) {
-          showGif(gif);
-          autoClipTimer = setTimeout(nextSponsorGif, SPONSOR_GIF_DURATION_MS);
-          return;
-        }
-        void refillReadyGifBuffer();
-        autoClipTimer = setTimeout(nextSponsorGif, 500);
-      };
-
-      const ensureSponsorLoop = () => {
-        if (!stillAutomatic() || sponsorLoopStarted || !readyGifBuffer.length) return;
-        sponsorLoopStarted = true;
-        nextSponsorGif();
-      };
-
-      // Load ~3 minutes of already-stored GIFs first. Automatic Spotlight cover
-      // never opens Twitch clips, so prerolls cannot recurse into another stall.
-      void refillReadyGifBuffer().then(() => ensureSponsorLoop());
-    };
-
-    const onSpotlightHealth = (event: MessageEvent) => {
-      if (event.source !== window.parent || event.origin !== 'https://spmt.live'
-        || event.data?.type !== 'spmt-lounge-spotlight-health'
-        || typeof event.data.healthy !== 'boolean') return;
-      spotlightHealthy = event.data.healthy;
-      if (spotlightHealthy) {
-        clearTimeout(autoStartTimer);
-        autoStartTimer = undefined;
-        clearTimeout(autoStopTimer);
-        autoStopTimer = setTimeout(() => { if (spotlightHealthy) stopAutomatic(); }, 3000);
-      } else {
-        clearTimeout(autoStopTimer);
-        if (!automatic && !manual) {
-          if (!autoStartTimer) autoStartTimer = setTimeout(() => {
-            autoStartTimer = undefined;
-            void startAutomatic();
-          }, 6000);
-        }
-      }
-    };
-    window.addEventListener('message', onSpotlightHealth);
-
     const stopTest = () => {
       testGeneration++;
       clearTimeout(testTimer);
       setTestStream(false);
     };
 
-    const onVideoError = () => { if ((manual || automatic) && lastGif) showGif(lastGif); };
+    const onVideoError = () => { if (manual && lastGif) showGif(lastGif); };
     videoRef.current?.addEventListener('error', onVideoError);
 
     const connect = () => {
@@ -326,7 +157,6 @@ export default function BRBPlayer() {
                 ? msg.payload.users.filter((user: unknown): user is string => typeof user === 'string' && /^[a-z0-9_]{3,25}$/.test(user)).slice(0, 24)
                 : [];
               if (!users.length) return;
-              stopAutomatic();
               stopTest();
               manual = true;
               playbackEpoch++;
@@ -372,8 +202,7 @@ export default function BRBPlayer() {
               // playback client-side too, so any stale/generic BRB event cannot
               // open a clip or create another preroll.
               if (spaceMountainLounge) {
-                stopAutomatic();
-                stopTest();
+                  stopTest();
                 manual = true;
                 playbackEpoch++;
                 if (msg.payload.gifUrl) {
@@ -388,7 +217,6 @@ export default function BRBPlayer() {
                 }
                 return;
               }
-              stopAutomatic();
               stopTest();
               manual = true;
               setClipUser(msg.payload.user || '');
@@ -396,7 +224,6 @@ export default function BRBPlayer() {
               playClip(msg.payload.clipUrl, msg.payload.thumbnailUrl, msg.payload.gifUrl ? { url: msg.payload.gifUrl, user: msg.payload.user } : undefined, msg.payload);
             }
             if (msg.type === 'brb-gif' && msg.payload) {
-              stopAutomatic();
               stopTest();
               manual = true;
               playbackEpoch++;
@@ -405,10 +232,6 @@ export default function BRBPlayer() {
             if (msg.type === 'brb-no-media' || msg.type === 'brb-stop') {
               stopTest();
               if (msg.type === 'brb-stop') manual = false;
-              if (!manual && !spotlightHealthy && !autoStartTimer) autoStartTimer = setTimeout(() => {
-                autoStartTimer = undefined;
-                void startAutomatic();
-              }, 6000);
               playbackEpoch++;
               clearTimeout(embedTimer);
               setEmbedUrl('');
@@ -428,7 +251,7 @@ export default function BRBPlayer() {
     };
 
     connect();
-    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(embedTimer); clearTimeout(testTimer); clearTimeout(autoStartTimer); clearTimeout(autoStopTimer); clearTimeout(autoClipTimer); window.removeEventListener('message', onSpotlightHealth); ws?.close(); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
+    return () => { stopped = true; clearTimeout(reconnect); clearTimeout(embedTimer); clearTimeout(testTimer); ws?.close(); videoRef.current?.removeEventListener('error', onVideoError); notifyParent(false); };
   }, []);
 
   return (
