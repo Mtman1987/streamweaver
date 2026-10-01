@@ -306,3 +306,12 @@ test('commercial state never extends an active break from duplicate EventSub not
   assert.match(state, /hardActiveCap/);
   assert.match(state, /state\.breakStartedAt \+ Math\.max\(COMMERCIAL_MIN_ACTIVE_MS/);
 });
+
+
+test('manual BRB banner is distinct from Twitch commercial sponsor banner', () => {
+  const brb = fs.readFileSync('src/app/brb-player/page.tsx', 'utf8');
+  const commercial = fs.readFileSync('src/app/commercial-break-player/page.tsx', 'utf8');
+  assert.match(brb, /BE RIGHT BACK/);
+  assert.doesNotMatch(brb, /AND NOW A WORD FROM OUR SPONSORS/);
+  assert.match(commercial, /AND NOW A WORD FROM OUR SPONSORS/);
+});
