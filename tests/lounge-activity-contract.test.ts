@@ -296,3 +296,13 @@ test('commercial-break-player is an overlay-document route so idle frames are tr
   const css = fs.readFileSync('src/app/globals.css', 'utf8');
   assert.match(css, /html\.overlay-document,[\s\S]*background: transparent !important/);
 });
+
+
+test('commercial state never extends an active break from duplicate EventSub notifications', () => {
+  const state = fs.readFileSync('src/services/commercial-break.ts', 'utf8');
+  assert.match(state, /reason: 'active-duplicate'/);
+  assert.doesNotMatch(state, /extended-active-window/);
+  assert.doesNotMatch(state, /Math\.max\(current\.activeUntil, candidateUntil\)/);
+  assert.match(state, /hardActiveCap/);
+  assert.match(state, /state\.breakStartedAt \+ Math\.max\(COMMERCIAL_MIN_ACTIVE_MS/);
+});
