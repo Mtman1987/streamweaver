@@ -41,6 +41,9 @@ function filePath(tenantId: string) {
 function normalized(value: Partial<CommercialBreakState> | null): CommercialBreakState {
   const state = { ...empty(), ...(value || {}), schemaVersion: 1 as const };
   const now = Date.now();
+  const hardActiveCap = state.breakStartedAt > 0 ? state.breakStartedAt + COMMERCIAL_MIN_ACTIVE_MS : 0;
+  if (state.activeUntil > hardActiveCap && hardActiveCap > 0) state.activeUntil = hardActiveCap;
+  if (state.cooldownUntil > state.activeUntil + COMMERCIAL_COOLDOWN_MS) state.cooldownUntil = state.activeUntil + COMMERCIAL_COOLDOWN_MS;
   if (state.activeUntil > now) state.phase = 'ACTIVE';
   else if (state.cooldownUntil > now) state.phase = 'COOLDOWN';
   else state.phase = 'IDLE';
@@ -103,17 +106,12 @@ export async function beginCommercialBreak(input: {
   if (current.phase === 'ACTIVE') {
     const next = {
       ...current,
-      activeUntil: Math.max(current.activeUntil, candidateUntil),
-      cooldownUntil: Math.max(current.cooldownUntil, Math.max(current.activeUntil, candidateUntil) + COMMERCIAL_COOLDOWN_MS),
       lastEventMessageId: messageId,
       lastEventStartedAt: start,
-      durationSeconds: Math.max(current.durationSeconds, durationSeconds),
-      isAutomatic: current.isAutomatic && input.isAutomatic,
       updatedAt: now,
     };
     await writeStored(tenantId, next);
-    if (next.activeUntil > current.activeUntil) broadcast(tenantId, next);
-    return { state: next, accepted: next.activeUntil > current.activeUntil, reason: next.activeUntil > current.activeUntil ? 'extended-active-window' : 'active-duplicate' };
+    return { state: next, accepted: false, reason: 'active-duplicate' };
   }
 
   if (current.phase === 'COOLDOWN' && now < current.cooldownUntil) {
