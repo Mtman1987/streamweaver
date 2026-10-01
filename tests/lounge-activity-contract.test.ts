@@ -315,3 +315,14 @@ test('manual BRB banner is distinct from Twitch commercial sponsor banner', () =
   assert.doesNotMatch(brb, /AND NOW A WORD FROM OUR SPONSORS/);
   assert.match(commercial, /AND NOW A WORD FROM OUR SPONSORS/);
 });
+
+
+test('command spotlight card is driven by the canonical Lounge command directory', () => {
+  const card = fs.readFileSync('src/app/overlay/command-card/page.tsx', 'utf8');
+  assert.match(card, /LOUNGE_COMMAND_CATEGORIES\.flatMap/);
+  assert.match(card, /COMMAND SPOTLIGHT/);
+  assert.match(card, /card\.description/);
+  assert.match(card, /commandExample\(card\.command\)/);
+  assert.match(card, /30_000/);
+  assert.match(card, /background: transparent !important/);
+});
