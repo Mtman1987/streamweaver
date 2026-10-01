@@ -47,16 +47,18 @@ test('curse words and punctuation pass through without masking or rewriting', ()
   assert.deepEqual(f.sent, [transcript]);
 });
 
-test('normal single-result speech still sends once and interim-only speech never posts', () => {
+test('normal single-result speech sends once and interim-only browser speech is preserved at end', () => {
   const f = fixture();
   f.result(['unfinished'], false);
   f.result(['A complete sentence']);
   f.recognition.onend();
   assert.deepEqual(f.sent, ['A complete sentence']);
+
   const interim = fixture();
   interim.result(['not finalized'], false);
-  interim.recognition.onend();
   assert.deepEqual(interim.sent, []);
+  interim.recognition.onend();
+  assert.deepEqual(interim.sent, ['not finalized']);
 });
 
 test('PTT release waits for the final result and ignores repeated stop requests', () => {
@@ -71,16 +73,26 @@ test('PTT release waits for the final result and ignores repeated stop requests'
   assert.deepEqual(f.sent, ['finished after release']);
 });
 
-test('navigation cancellation and recognition errors cannot publish captured speech', () => {
-  for (const cancel of [true, false]) {
-    const f = fixture();
-    f.result(['do not send']);
-    if (cancel) f.capture.cancel(); else f.recognition.onerror();
-    f.recognition.onend();
-    f.result(['late callback']);
-    assert.deepEqual(f.sent, []);
-    assert.equal(f.errors(), cancel ? 0 : 1);
-  }
+test('navigation cancellation drops speech while browser errors preserve speech already heard', () => {
+  const cancelled = fixture();
+  cancelled.result(['do not send']);
+  cancelled.capture.cancel();
+  cancelled.recognition.onend();
+  cancelled.result(['late callback']);
+  assert.deepEqual(cancelled.sent, []);
+  assert.equal(cancelled.errors(), 0);
+
+  const recovered = fixture();
+  recovered.result(['browser heard this'], false);
+  recovered.recognition.onerror({ error: 'no-speech' });
+  recovered.recognition.onend();
+  assert.deepEqual(recovered.sent, ['browser heard this']);
+  assert.equal(recovered.errors(), 0);
+
+  const empty = fixture();
+  empty.recognition.onerror({ error: 'no-speech' });
+  assert.deepEqual(empty.sent, []);
+  assert.equal(empty.errors(), 1);
 });
 
 test('concurrent retries share a single post and independently readable responses', async () => {
