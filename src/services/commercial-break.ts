@@ -41,7 +41,9 @@ function filePath(tenantId: string) {
 function normalized(value: Partial<CommercialBreakState> | null): CommercialBreakState {
   const state = { ...empty(), ...(value || {}), schemaVersion: 1 as const };
   const now = Date.now();
-  const hardActiveCap = state.breakStartedAt > 0 ? state.breakStartedAt + COMMERCIAL_MIN_ACTIVE_MS : 0;
+  const hardActiveCap = state.breakStartedAt > 0
+    ? state.breakStartedAt + Math.max(COMMERCIAL_MIN_ACTIVE_MS, Math.max(0, Number(state.durationSeconds) || 0) * 1000)
+    : 0;
   if (state.activeUntil > hardActiveCap && hardActiveCap > 0) state.activeUntil = hardActiveCap;
   if (state.cooldownUntil > state.activeUntil + COMMERCIAL_COOLDOWN_MS) state.cooldownUntil = state.activeUntil + COMMERCIAL_COOLDOWN_MS;
   if (state.activeUntil > now) state.phase = 'ACTIVE';
