@@ -5,7 +5,7 @@ type Recognition = {
   interimResults: boolean;
   lang: string;
   onresult: ((event: any) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event?: any) => void) | null;
   onend: (() => void) | null;
   stop(): void;
   abort(): void;
@@ -18,30 +18,39 @@ export function captureSpeechChat(recognition: Recognition, callbacks: {
   complete(text: string): void;
   error(): void;
 }) {
-  let transcript = '';
+  let finalTranscript = '';
+  let latestTranscript = '';
   let ended = false;
   let stopping = false;
   recognition.continuous = false;
-  recognition.interimResults = false;
+  recognition.interimResults = true;
   recognition.lang = 'en-US';
   recognition.onresult = (event) => {
     if (ended) return;
+    const latestSegments: string[] = [];
     const finalSegments: string[] = [];
     for (let i = 0; i < (event.results?.length || 0); i++) {
-      if (event.results[i]?.isFinal) finalSegments.push(event.results[i][0]?.transcript || '');
+      const segment = String(event.results[i]?.[0]?.transcript || '').trim();
+      if (!segment) continue;
+      latestSegments.push(segment);
+      if (event.results[i]?.isFinal) finalSegments.push(segment);
     }
-    transcript = mergeSpeechRecognitionSegments(finalSegments);
-    callbacks.preview(transcript);
+    latestTranscript = mergeSpeechRecognitionSegments(latestSegments);
+    const nextFinal = mergeSpeechRecognitionSegments(finalSegments);
+    if (nextFinal) finalTranscript = nextFinal;
+    callbacks.preview(finalTranscript || latestTranscript);
   };
   recognition.onerror = () => {
     if (ended) return;
+    const captured = finalTranscript || latestTranscript;
     ended = true;
-    callbacks.error();
+    if (captured) callbacks.complete(captured);
+    else callbacks.error();
   };
   recognition.onend = () => {
     if (ended) return;
     ended = true;
-    callbacks.complete(transcript);
+    callbacks.complete(finalTranscript || latestTranscript);
   };
   return {
     stop() {
