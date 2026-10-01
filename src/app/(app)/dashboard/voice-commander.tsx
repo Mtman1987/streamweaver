@@ -386,13 +386,39 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
         }
         
         // Feed the authenticated broadcaster transcript into Stella's Lounge
-        // short-term context. This is context only; it does not post the words
-        // to Twitch or make Stella answer automatically.
+        // short-term context and publish the recognized words to the live
+        // SpaceMountain Twitch chat. Do not report success unless the chat post
+        // itself succeeds.
         void fetch('/api/lounge/streamer-transcript', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: transcription }),
         }).catch((error) => console.warn('[VoiceCommander] Lounge transcript context failed:', error));
+
+        try {
+            const chatResponse = await fetch('/api/say/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: transcription,
+                    streamKey: 'twitch:spacemountainlive',
+                    captureId: crypto.randomUUID(),
+                }),
+            });
+            const chatResult = await chatResponse.json().catch(() => null);
+            if (!chatResponse.ok || chatResult?.ok === false) {
+                throw new Error(chatResult?.error || chatResult?.data?.error || 'Speech-to-chat post failed');
+            }
+            console.log('[VoiceCommander] Speech transcript posted to SpaceMountainLive chat');
+        } catch (error) {
+            console.error('[VoiceCommander] Speech transcript chat post failed:', error);
+            toast({
+                variant: "destructive",
+                title: "Speech-to-chat failed",
+                description: error instanceof Error ? error.message : String(error),
+            });
+            return;
+        }
 
         const lowerTranscription = transcription.toLowerCase();
         
