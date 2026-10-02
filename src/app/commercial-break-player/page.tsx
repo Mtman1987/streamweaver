@@ -49,7 +49,7 @@ export default function CommercialBreakPlayer() {
 
   useEffect(() => {
     if (audioRef.current && level !== null) {
-      audioRef.current.volume = Math.min(0.3, level * 0.35);
+      audioRef.current.volume = Math.min(0.15, level * 0.2);
       audioRef.current.muted = level <= 0;
     }
   }, [level]);
@@ -94,6 +94,8 @@ export default function CommercialBreakPlayer() {
       audio.currentTime = 0;
       audio.load();
     }
+    audio.volume = Math.min(0.15, level * 0.2);
+    audio.muted = level <= 0;
     audio.play().catch(() => {});
   }, [state.phase, state.breakStartedAt, state.activeUntil, state.mediaActive, gifReady, level]);
 
@@ -117,18 +119,11 @@ export default function CommercialBreakPlayer() {
   }, []);
 
   useEffect(() => {
-    if (state.phase !== 'ACTIVE') {
-      setVisibleGifUrl('');
-      setGifs([]);
-      setGifIndex(0);
-      return;
-    }
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout>;
-    setVisibleGifUrl('');
     const load = async () => {
       try {
-        const response = await fetch(DSH_GIFS, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+        const response = await fetch(DSH_GIFS, { cache: 'no-store', signal: AbortSignal.timeout(30_000) });
         if (!response.ok) throw new Error('GIF list unavailable');
         const payload = await response.json();
         const candidates: Gif[] = (Array.isArray(payload?.gifs) ? payload.gifs : [])
@@ -142,11 +137,21 @@ export default function CommercialBreakPlayer() {
         if (!cancelled) {
           setGifs(selected);
           setGifIndex(0);
+          // Warm the first visible image before a commercial starts.
+          for (const gif of selected.slice(0, 2)) {
+            const image = new Image();
+            image.src = gif.url;
+          }
         }
       } catch { if (!cancelled) retry = setTimeout(load, 3000); }
     };
     void load();
     return () => { cancelled = true; clearTimeout(retry); };
+  }, [state.breakStartedAt]);
+
+  useEffect(() => {
+    if (state.phase !== 'ACTIVE') setVisibleGifUrl('');
+    setGifIndex(0);
   }, [state.breakStartedAt, state.phase]);
 
   useEffect(() => {
