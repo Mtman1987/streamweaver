@@ -1410,9 +1410,31 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         if (subcommand === 'rewards') {
             const summary = await raffle.getRaffleSummary();
             const rows = summary.rewardRules.length
-                ? summary.rewardRules.map((rule) => `• ${rule.title} → ${rule.tickets} ticket${rule.tickets === 1 ? '' : 's'}`).join('\n')
-                : 'No raffle reward has been observed yet. Rewards are learned automatically from Twitch titles containing both “raffle” and “ticket”.';
-            await reply(rows, { title: '🎟️ Raffle Reward Mapping' });
+                ? summary.rewardRules.map((rule, index) => `${index + 1}. ${rule.title} → ${rule.tickets} ticket${rule.tickets === 1 ? '' : 's'}`).join('\n')
+                : 'No raffle reward has been observed yet. Use !raffle sync to import the current Twitch raffle rewards.';
+            await reply(rows + '\n\nAdjust one with: !raffle set <number> <tickets>', { title: '🎟️ Raffle Reward Mapping' });
+            return true;
+        }
+        if (subcommand === 'sync') {
+            try {
+                const result = await raffle.syncRaffleRedemptionsFromTwitch(SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                await reply(
+                    `Synced ${result.rewards} raffle reward${result.rewards === 1 ? '' : 's'} and ${result.imported} redemption records. Ledger now has ${result.uniqueEntrants} entrants / ${result.totalTickets} tickets.`,
+                    { title: '🔄 Raffle Sync Complete' },
+                );
+            } catch (error: any) {
+                await reply(error?.message || 'Raffle sync failed.');
+            }
+            return true;
+        }
+        const setReward = subcommand.match(/^set\s+(\d+)\s+(\d+)$/);
+        if (setReward) {
+            try {
+                const rule = await raffle.setRaffleRewardTickets(setReward[1], Number(setReward[2]));
+                await reply(`${rule.title} now awards ${rule.tickets} raffle ticket${rule.tickets === 1 ? '' : 's'} per redemption. Existing entries were recalculated too.`, { title: '🎟️ Raffle Reward Updated' });
+            } catch (error: any) {
+                await reply(error?.message || 'Raffle reward update failed.');
+            }
             return true;
         }
         if (subcommand === 'reset confirm') {
@@ -1424,7 +1446,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             await reply('To archive the current raffle and clear all tickets, send !raffle reset confirm.');
             return true;
         }
-        await reply('Owner raffle commands: !raffle, !raffle list, !raffle rewards, !raffle draw, !raffle reset confirm.');
+        await reply('Owner raffle commands: !raffle, !raffle list, !raffle sync, !raffle rewards, !raffle set <number> <tickets>, !raffle draw, !raffle reset confirm.');
         return true;
     }
 
