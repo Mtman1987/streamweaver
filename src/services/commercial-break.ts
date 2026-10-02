@@ -34,6 +34,29 @@ const empty = (): CommercialBreakState => ({
   updatedAt: 0,
 });
 
+// The selected Spotlight broadcaster's stitched ads do not send EventSub
+// events to the SpaceMountain tenant. Cover them using the relay's confirmed
+// marker, while preserving any longer SpaceMountain commercial already active.
+export function withSpotlightCommercialBreak(
+  state: CommercialBreakState, program: unknown, now = Date.now(),
+): CommercialBreakState {
+  const marker = (program as { commercialBreak?: {
+    active?: boolean; id?: string; breakStartedAt?: number; activeUntil?: number;
+  } } | null)?.commercialBreak;
+  if (!marker?.active || typeof marker.id !== 'string' || !marker.id
+    || !Number.isFinite(marker.breakStartedAt) || !Number.isFinite(marker.activeUntil)
+    || marker.breakStartedAt! <= 0 || marker.breakStartedAt! > now
+    || marker.activeUntil! <= now || marker.activeUntil! <= marker.breakStartedAt!) return state;
+  if (state.phase === 'ACTIVE' && state.activeUntil >= marker.activeUntil!) return state;
+  return {
+    ...state, phase: 'ACTIVE', breakStartedAt: marker.breakStartedAt!,
+    activeUntil: marker.activeUntil!, cooldownUntil: marker.activeUntil!,
+    lastEventMessageId: `spotlight:${marker.id}`, lastEventStartedAt: marker.breakStartedAt!,
+    durationSeconds: Math.ceil((marker.activeUntil! - marker.breakStartedAt!) / 1000),
+    isAutomatic: true, updatedAt: now,
+  };
+}
+
 function filePath(tenantId: string) {
   return tenantPath(tenantId, 'data/commercial-break-state.json');
 }
