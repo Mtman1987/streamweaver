@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const DSH_URL = String(process.env.DSH_COMMUNITY_SPOTLIGHT_URL || 'https://discord-stream-hub-new.fly.dev/api/community-spotlight');
+// Use the same animated SpaceMountain thumbnail as DSH's Spotlight cards.
+const SPOTLIGHT_AVATAR = 'https://cdn.discordapp.com/emojis/1284931162896334929.gif';
 
 function text(...values: unknown[]): string {
   for (const value of values) {
@@ -36,11 +38,12 @@ export async function GET(request: NextRequest) {
       .filter((row: any) => group === 'partner' ? isPriorityCreator(row) : !isPriorityCreator(row))
       .map((row: any) => {
         const username = text(row.twitchLogin, row.twitchUsername, row.login, row.username);
-        const featured = String(spotlight?.twitchLogin || '').toLowerCase() === username.toLowerCase() ? spotlight : {};
+        const isFeatured = Boolean(username) && String(spotlight?.twitchLogin || '').toLowerCase() === username.toLowerCase();
+        const featured = isFeatured ? spotlight : {};
         return {
           username,
           displayName: text(row.displayName, row.username, row.twitchDisplayName, username) || 'Live creator',
-          avatarUrl: text(featured.gifUrl, featured.avatarUrl, row.avatarUrl, row.profileImageUrl, row.profile_image_url),
+          avatarUrl: isFeatured ? SPOTLIGHT_AVATAR : text(row.avatarUrl, row.profileImageUrl, row.profile_image_url),
           gameName: text(featured.gameTitle, row.gameName, row.game_name),
           title: text(featured.streamTitle, row.streamTitle, row.title),
           viewerCount: Number.isFinite(Number(featured.viewerCount ?? row.viewerCount))
