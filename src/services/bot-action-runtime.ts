@@ -1009,7 +1009,7 @@ export async function executeBotAction(
       if(operation==='hide'||shouldStop){
         const ids=visible.filter((id:string)=>id!==gameId);
         const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout);
-        return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+(shouldStop?' is stopped and removed':' is removed')+' from the '+surface+' overlay.',result};
+        return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is stopped and removed from the '+surface+' overlay.',result};
       }
       return {handled:true,action:request.action,status:'needs_input',response:'Tell me whether to start, add, remove, or stop '+gameId+'.'};
     }

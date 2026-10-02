@@ -626,3 +626,11 @@ test('plays the requested Prof song in the authenticated companion session witho
   assert.equal(calls[0].sessionId, 'watch-companion-owned-session');
   assert.equal(calls[0].roomId, undefined);
 });
+
+
+test('Stella hide/remove deactivates the game instead of only hiding its overlay', () => {
+  const source = require('node:fs').readFileSync('src/services/bot-action-runtime.ts', 'utf8');
+  require('node:assert/strict').match(source, /const shouldStop=operation==='stop-hide'\|\|operation==='hide'/);
+  require('node:assert/strict').match(source, /if\(shouldStop && activeIds\.includes\(gameId\)\) await run\(gameId,'stop'\)/);
+  require('node:assert/strict').match(source, /is stopped and removed from the/);
+});

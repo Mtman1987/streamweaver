@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         return {
           username,
           displayName: text(row.displayName, row.username, row.twitchDisplayName, username) || 'Live creator',
-          avatarUrl: text(featured.avatarUrl, row.avatarUrl, row.profileImageUrl, row.profile_image_url),
+          avatarUrl: text(featured.gifUrl, featured.avatarUrl, row.avatarUrl, row.profileImageUrl, row.profile_image_url),
           gameName: text(featured.gameTitle, row.gameName, row.game_name),
           title: text(featured.streamTitle, row.streamTitle, row.title),
           viewerCount: Number.isFinite(Number(featured.viewerCount ?? row.viewerCount))

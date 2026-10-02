@@ -164,6 +164,7 @@ test('Lounge has separate partner and community live shoutout rotations', () => 
   assert.doesNotMatch(overlay, /creator\.gameName \|\| creator\.title/);
   assert.match(route, /isPriorityCreator/);
   assert.match(route, /viewerCount/);
+  assert.match(route, /featured\.gifUrl, featured\.avatarUrl/);
   assert.match(route, /discord-stream-hub-new\.fly\.dev\/api\/community-spotlight/);
   assert.doesNotMatch(route, /chat-tag-new\.fly\.dev|CHAT_TAG_URL|api\/discord\/live-members/);
 });
