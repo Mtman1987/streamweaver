@@ -3,8 +3,14 @@ import { getLoungeBrowserRefresh } from '@/services/lounge-player-control';
 
 export const dynamic = 'force-dynamic';
 
+const FORCE_REFRESH_AT = Date.parse('2026-10-02T05:46:30Z');
+
 export async function GET() {
-  const response = NextResponse.json(await getLoungeBrowserRefresh());
+  const state = await getLoungeBrowserRefresh();
+  const response = NextResponse.json({
+    ...state,
+    requestedAt: Math.max(Number(state.requestedAt) || 0, FORCE_REFRESH_AT),
+  });
   response.headers.set('cache-control', 'no-store');
   response.headers.set('access-control-allow-origin', '*');
   return response;
