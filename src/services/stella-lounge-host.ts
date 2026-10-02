@@ -653,6 +653,13 @@ export async function runStellaLoungeGameTick(now = Date.now()): Promise<{ deliv
   if (gameWatchRunning) return { delivered: false, reason: 'already-running' };
   gameWatchRunning = true;
   try {
+    const channelState = unwrapData(await fetchJson(fetch, NEBULA_URL + '/api/game-hub/channel?channel=' + encodeURIComponent(SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL)));
+    const activeGameIds = Array.isArray(channelState?.gameIds) ? channelState.gameIds.map(String) : [];
+    if (!activeGameIds.includes('wordchain')) {
+      lastWordChainWatch = null;
+      wordChainPlayOrdinal = 0;
+      return { delivered: false, reason: 'wordchain-inactive' };
+    }
     const query = new URLSearchParams({ channel: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, game: 'wordchain' });
     const current = wordChainWatch(await fetchJson(fetch, NEBULA_URL + '/api/game-hub/word-stage?' + query.toString()));
     if (!current) return { delivered: false, reason: 'wordchain-unavailable' };
