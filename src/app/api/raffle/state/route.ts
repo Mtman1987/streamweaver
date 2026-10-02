@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiOk } from '@/lib/api-response';
-import { claimDueRaffleAnnouncement, getRaffleSummary, markRaffleAnnounced } from '@/services/raffle-system';
+import { claimDueRaffleAnnouncement, getRaffleSummary, markRaffleAnnounced, syncRaffleRedemptionsFromTwitch } from '@/services/raffle-system';
 import { reactStellaLoungeEvent } from '@/services/stella-lounge-host';
 import { sendTwitchChatMessage } from '@/services/twitch';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
@@ -8,7 +8,22 @@ import { SPACEMOUNTAIN_SYSTEM_TENANT_ID, SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL } f
 
 export const dynamic = 'force-dynamic';
 
+let lastAutoSyncAt = 0;
+let autoSyncPromise: Promise<unknown> | null = null;
+const AUTO_SYNC_INTERVAL_MS = 5 * 60_000;
+
 export async function GET(_request: NextRequest) {
+  let summary = await getRaffleSummary();
+  const now = Date.now();
+  if (summary.rewardRules.length === 0 && now - lastAutoSyncAt >= AUTO_SYNC_INTERVAL_MS) {
+    lastAutoSyncAt = now;
+    autoSyncPromise ||= syncRaffleRedemptionsFromTwitch(SPACEMOUNTAIN_SYSTEM_TENANT_ID)
+      .catch((error) => console.warn('[Raffle] Automatic Twitch backfill failed:', error))
+      .finally(() => { autoSyncPromise = null; });
+    await autoSyncPromise;
+    summary = await getRaffleSummary();
+  }
+
   const due = await claimDueRaffleAnnouncement();
   if (due) {
     let delivered = false;
@@ -29,6 +44,6 @@ export async function GET(_request: NextRequest) {
     } catch (error) { console.warn('[Raffle] Stella winner announcement failed:', error); }
     await markRaffleAnnounced(due.id, delivered);
   }
-  const summary = await getRaffleSummary();
+  summary = await getRaffleSummary();
   return apiOk({ cycleId: summary.cycleId, totalTickets: summary.totalTickets, uniqueEntrants: summary.uniqueEntrants, draw: summary.draw, serverTime: new Date().toISOString() });
 }

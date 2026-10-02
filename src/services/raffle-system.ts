@@ -34,7 +34,7 @@ async function writeState(state: RaffleState) { await writeJsonFile(RAFFLE_FILE,
 
 export function inferRaffleTicketQuantity(title: string): number | null {
   const normalized = String(title || '').toLowerCase().replace(/[×]/g, 'x').replace(/\s+/g, ' ').trim();
-  if (!normalized.includes('raffle') || !normalized.includes('ticket')) return null;
+  if (!normalized.includes('raffle') && !normalized.includes('ticket')) return null;
   for (const pattern of [/(?:x\s*)(\d{1,3})\b/, /\b(\d{1,3})\s*x\b/, /\b(\d{1,3})\s+(?:raffle\s+)?tickets?\b/, /\b(\d{1,3})\s+(?:entries|entry)\b/]) {
     const value = Number(normalized.match(pattern)?.[1] || 0);
     if (Number.isFinite(value) && value > 0) return Math.min(1000, Math.floor(value));
