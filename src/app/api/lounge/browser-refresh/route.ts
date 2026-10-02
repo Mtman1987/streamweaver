@@ -3,7 +3,7 @@ import { getLoungeBrowserRefresh } from '@/services/lounge-player-control';
 
 export const dynamic = 'force-dynamic';
 
-const FORCE_REFRESH_AT = Date.parse('2026-10-02T05:46:30Z');
+const FORCE_REFRESH_AT = Date.parse('2026-10-02T10:11:58Z');
 
 export async function GET() {
   const state = await getLoungeBrowserRefresh();
