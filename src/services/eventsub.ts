@@ -9,7 +9,8 @@ import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 import { getPointsWalletContext } from './points-wallet-context';
 import { beginCommercialBreak } from './commercial-break';
-import { recordRaffleRedemption } from './raffle-system';
+import { recordRaffleRedemption, syncRaffleRedemptionsFromTwitch } from './raffle-system';
+import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '../lib/tenant';
 
 const eventSubSockets = new Map<string, WebSocket>();
 const CHAT_TAG_API_BASE = String(process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
@@ -34,6 +35,7 @@ async function resolvePointsCtx(tenantId?: string, chatChannel?: string): Promis
 }
 const eventSubReconnectTimeouts = new Map<string, NodeJS.Timeout>();
 const recentChatMessages = new Map<string, { message: string; timestamp: number }>();
+const raffleBackfillStarted = new Set<string>();
 
 type PendingCheckin = {
     timestamp: number;
@@ -340,6 +342,15 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 if (hasAdsScope) {
                     const adId = await createAdBreakSubscription(auth, sessionId, tenantId);
                     if (adId) await deleteExistingAdBreakSubscriptions(auth, adId);
+                }
+                if (hasRedemptionsScope && tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID && !raffleBackfillStarted.has(tKey)) {
+                    raffleBackfillStarted.add(tKey);
+                    void syncRaffleRedemptionsFromTwitch(tenantId)
+                        .then((result) => console.log('[Raffle] Twitch redemption backfill complete:', result))
+                        .catch((error) => {
+                            raffleBackfillStarted.delete(tKey);
+                            console.warn('[Raffle] Twitch redemption backfill failed:', error);
+                        });
                 }
                 return;
             }
