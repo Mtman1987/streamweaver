@@ -1370,14 +1370,22 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             await reply('Raffle administration is DM-only. Send me !raffle in our private DM.');
             return true;
         }
-        const subcommand = actualMessage.replace(/^!raffle\b/i, '').trim().toLowerCase();
+        let subcommand = actualMessage.replace(/^!raffle\b/i, '').trim().toLowerCase();
         const raffle = await import('./raffle-system');
+        const selected = subcommand.match(/^(merch|giftcard|general)(?:\s|$)/)?.[1] as import('./raffle-system').RaffleId | undefined;
+        if (!selected && subcommand !== 'sync') {
+            const summaries = await Promise.all(raffle.RAFFLE_IDS.map(id => raffle.getRaffleSummary(id)));
+            await reply(summaries.map(s => `${s.label}: ${s.uniqueEntrants} entrants / ${s.totalTickets} tickets.`).join('\n') + '\n\nChoose a drawing: !raffle merch or !raffle giftcard. Draw with !raffle merch draw / !raffle giftcard draw. Use !raffle sync to import both rewards.', { title: '🎟️ Separate Raffles' });
+            return true;
+        }
+        const raffleId = selected || 'general';
+        if (selected) subcommand = subcommand.slice(selected.length).trim();
         if (!subcommand || subcommand === 'list' || subcommand === 'status') {
-            const summary = await raffle.getRaffleSummary();
+            const summary = await raffle.getRaffleSummary(raffleId);
             const lines = summary.entrants.map((entry, index) =>
                 `${index + 1}. ${entry.displayName || entry.username} — ${entry.tickets} ticket${entry.tickets === 1 ? '' : 's'}`
             );
-            const header = `Raffle #${summary.cycleId}: ${summary.uniqueEntrants} entrant${summary.uniqueEntrants === 1 ? '' : 's'}, ${summary.totalTickets} total tickets.`;
+            const header = `${summary.label} #${summary.cycleId}: ${summary.uniqueEntrants} entrant${summary.uniqueEntrants === 1 ? '' : 's'}, ${summary.totalTickets} total tickets.`;
             const chunks: string[] = [];
             let current = header;
             for (const line of lines) {
@@ -1396,10 +1404,10 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         }
         if (subcommand === 'draw' || subcommand === 'spin') {
             try {
-                const draw = await raffle.startRaffleDraw();
+                const draw = await raffle.startRaffleDraw(raffleId);
                 const seconds = Math.max(1, Math.ceil((Date.parse(draw.revealAt) - Date.parse(draw.startedAt)) / 1000));
                 await reply(
-                    `Raffle draw #${draw.cycleId} started: ${draw.entrants.length} entrants / ${draw.totalTickets} tickets. Stella's elimination wheel is live in the Lounge; winner reveal in about ${seconds}s.`,
+                    `${draw.label} draw #${draw.cycleId} started: ${draw.entrants.length} entrants / ${draw.totalTickets} tickets. Stella's elimination wheel is live in the Lounge; winner reveal in about ${seconds}s.`,
                     { title: '🎡 Raffle Draw Started' },
                 );
             } catch (error: any) {
@@ -1408,11 +1416,11 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             return true;
         }
         if (subcommand === 'rewards') {
-            const summary = await raffle.getRaffleSummary();
+            const summary = await raffle.getRaffleSummary(raffleId);
             const rows = summary.rewardRules.length
                 ? summary.rewardRules.map((rule, index) => `${index + 1}. ${rule.title} → ${rule.tickets} ticket${rule.tickets === 1 ? '' : 's'}`).join('\n')
                 : 'No raffle reward has been observed yet. Use !raffle sync to import the current Twitch raffle rewards.';
-            await reply(rows + '\n\nAdjust one with: !raffle set <number> <tickets>', { title: '🎟️ Raffle Reward Mapping' });
+            await reply(rows + `\n\nAdjust one with: !raffle ${raffleId} set <number> <tickets>`, { title: '🎟️ Raffle Reward Mapping' });
             return true;
         }
         if (subcommand === 'sync') {
@@ -1430,7 +1438,7 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
         const setReward = subcommand.match(/^set\s+(\d+)\s+(\d+)$/);
         if (setReward) {
             try {
-                const rule = await raffle.setRaffleRewardTickets(setReward[1], Number(setReward[2]));
+                const rule = await raffle.setRaffleRewardTickets(setReward[1], Number(setReward[2]), raffleId);
                 await reply(`${rule.title} now awards ${rule.tickets} raffle ticket${rule.tickets === 1 ? '' : 's'} per redemption. Existing entries were recalculated too.`, { title: '🎟️ Raffle Reward Updated' });
             } catch (error: any) {
                 await reply(error?.message || 'Raffle reward update failed.');
@@ -1438,15 +1446,15 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
             return true;
         }
         if (subcommand === 'reset confirm') {
-            const next = await raffle.resetRaffleCycle();
+            const next = await raffle.resetRaffleCycle(raffleId);
             await reply(`Raffle ledger archived and cleared. New raffle cycle: #${next.cycleId}.`, { title: '🧹 Raffle Reset' });
             return true;
         }
         if (subcommand === 'reset') {
-            await reply('To archive the current raffle and clear all tickets, send !raffle reset confirm.');
+            await reply(`To archive ${raffle.RAFFLE_LABELS[raffleId]} and clear its tickets, send !raffle ${raffleId} reset confirm.`);
             return true;
         }
-        await reply('Owner raffle commands: !raffle, !raffle list, !raffle sync, !raffle rewards, !raffle set <number> <tickets>, !raffle draw, !raffle reset confirm.');
+        await reply(`Owner raffle commands: !raffle ${raffleId} list, !raffle sync, !raffle ${raffleId} rewards, !raffle ${raffleId} set <number> <tickets>, !raffle ${raffleId} draw, !raffle ${raffleId} reset confirm.`);
         return true;
     }
 
@@ -3425,9 +3433,10 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (/^!tickets(?:\s|$)/i.test(actualMessage) && tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
             try {
                 const { getRaffleTicketBalance } = await import('./raffle-system');
-                const total = await getRaffleTicketBalance(actualUsername, String(tags['user-id'] || tags.userId || ''));
+                const userId = String(tags['user-id'] || tags.userId || '');
+                const [merch, giftcard, total] = await Promise.all(['merch', 'giftcard', 'general'].map(id => getRaffleTicketBalance(actualUsername, userId, id as import('./raffle-system').RaffleId)));
                 await reply(
-                    `🎟️ @${actualUsername}, you have ${total} raffle ticket${total === 1 ? '' : 's'}.`,
+                    `🎟️ @${actualUsername}, your entries: Merch ${merch} · $25 gift card ${giftcard}${total ? ` · General ${total}` : ''}.`,
                     'bot',
                 ).catch(() => {});
             } catch (error) {
