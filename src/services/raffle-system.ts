@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { raffleDurationMs, raffleAnnouncementReady } from '@/lib/raffle-wheel-timing';
 import { readJsonFile, writeJsonFile } from './storage';
 import { ensureValidToken, getStoredTokens } from '@/lib/token-utils.server';
 
@@ -32,6 +33,7 @@ export type RaffleRedemption = {
 };
 export type RaffleDraw = {
   id: string; testOnly?: boolean; raffleId?: RaffleId; label?: string; cycleId: number; status: 'drawing' | 'complete'; startedAt: string; revealAt: string;
+  spinDurationsMs?: number[]; presentedAt?: string; visualRevealedAt?: string;
   stepMs: number; totalTickets: number; entrants: RaffleEntrant[]; eliminationOrder: string[];
   winner: RaffleEntrant; announcementClaimedAt?: string; announcedAt?: string;
 };
@@ -150,12 +152,13 @@ async function startRaffleDrawUnlocked(raffleId: RaffleId = 'general'): Promise<
   let winner = entrants[0];
   for (const entrant of entrants) { if (ticket < entrant.tickets) { winner = entrant; break; } ticket -= entrant.tickets; }
   const eliminationOrder = shuffle(entrants.filter((row) => row.username !== winner.username).map((row) => row.username));
-  const stepMs = entrants.length <= 10 ? 2200 : entrants.length <= 25 ? 1600 : entrants.length <= 60 ? 1100 : 800;
+  const spinDurationsMs = eliminationOrder.map(() => randomInt(8000, 16001));
+  const stepMs = 12000; // Compatibility for older overlays; current overlays use each spin's duration.
   const started = Date.now();
   const draw: RaffleDraw = {
     id: randomUUID(), testOnly: Object.values(state.redemptions).some(e => active(e) && e.testOnly), raffleId, label: (Object.values(state.redemptions).some(e => active(e) && e.testOnly) ? 'TEST · ' : '') + RAFFLE_LABELS[raffleId], cycleId: state.cycleId, status: 'drawing', startedAt: new Date(started).toISOString(),
-    revealAt: new Date(started + Math.max(1, eliminationOrder.length) * stepMs + 3000).toISOString(),
-    stepMs, totalTickets, entrants, eliminationOrder, winner,
+    revealAt: new Date(started + raffleDurationMs(spinDurationsMs)).toISOString(),
+    spinDurationsMs, stepMs, totalTickets, entrants, eliminationOrder, winner,
   };
   state.draw = draw;
   await writeState(state, raffleId);
@@ -163,10 +166,30 @@ async function startRaffleDrawUnlocked(raffleId: RaffleId = 'general'): Promise<
 }
 export function startRaffleDraw(raffleId: RaffleId = 'general') { return mutate(() => startRaffleDrawUnlocked(raffleId)); }
 
+// Only acknowledges presentation of an existing draw; never changes its selected winner.
+export function acknowledgeRafflePresentation(drawId: string, stage: 'shown' | 'revealed', now = Date.now()) {
+  return mutate(async () => {
+    for (const raffleId of RAFFLE_IDS) {
+      const state = await readState(raffleId);
+      const draw = state.draw;
+      if (!draw || draw.id !== drawId || !draw.spinDurationsMs || draw.announcedAt) continue;
+      if (stage === 'shown' && !draw.presentedAt) {
+        draw.presentedAt = new Date(now).toISOString();
+        draw.startedAt = draw.presentedAt;
+        draw.revealAt = new Date(now + raffleDurationMs(draw.spinDurationsMs)).toISOString();
+      } else if (stage === 'revealed' && draw.presentedAt && !draw.visualRevealedAt && now >= Date.parse(draw.revealAt)) {
+        draw.visualRevealedAt = new Date(now).toISOString();
+      } else return;
+      await writeState(state, raffleId);
+      return;
+    }
+  });
+}
+
 async function claimDueRaffleAnnouncementUnlocked(now = Date.now(), raffleId: RaffleId = 'general'): Promise<RaffleDraw | null> {
   const state = await readState(raffleId);
   const draw = state.draw;
-  if (!draw || draw.announcedAt || draw.announcementClaimedAt || Date.parse(draw.revealAt) > now) return null;
+  if (!draw || draw.announcedAt || draw.announcementClaimedAt || !raffleAnnouncementReady(draw, now)) return null;
   draw.status = 'complete'; draw.announcementClaimedAt = new Date(now).toISOString(); state.draw = draw; await writeState(state, raffleId); return draw;
 }
 export function claimDueRaffleAnnouncement(now = Date.now(), raffleId: RaffleId = 'general') { return mutate(() => claimDueRaffleAnnouncementUnlocked(now, raffleId)); }

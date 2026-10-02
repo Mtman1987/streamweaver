@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiOk } from '@/lib/api-response';
-import { RAFFLE_IDS, claimDueRaffleAnnouncement, getRaffleSummary, markRaffleAnnounced, syncRaffleRedemptionsFromTwitch } from '@/services/raffle-system';
+import { RAFFLE_IDS, acknowledgeRafflePresentation, claimDueRaffleAnnouncement, getRaffleSummary, markRaffleAnnounced, syncRaffleRedemptionsFromTwitch } from '@/services/raffle-system';
 import { reactStellaLoungeEvent } from '@/services/stella-lounge-host';
 import { sendTwitchChatMessage } from '@/services/twitch';
 import { queueTtsOverlay } from '@/services/tts-overlay-queue';
@@ -13,6 +13,11 @@ let autoSyncPromise: Promise<unknown> | null = null;
 const AUTO_SYNC_INTERVAL_MS = 5 * 60_000;
 
 export async function GET(_request: NextRequest) {
+  const presentationId = _request.nextUrl.searchParams.get('presentationId');
+  const stage = _request.nextUrl.searchParams.get('presentationStage');
+  if (presentationId && (stage === 'shown' || stage === 'revealed')) {
+    await acknowledgeRafflePresentation(presentationId, stage);
+  }
   let summaries = await Promise.all(RAFFLE_IDS.map(id => getRaffleSummary(id)));
   const now = Date.now();
   if (summaries.some(s => s.rewardRules.length === 0) && now - lastAutoSyncAt >= AUTO_SYNC_INTERVAL_MS) {
@@ -20,10 +25,11 @@ export async function GET(_request: NextRequest) {
     autoSyncPromise ||= syncRaffleRedemptionsFromTwitch(SPACEMOUNTAIN_SYSTEM_TENANT_ID)
       .catch((error) => console.warn('[Raffle] Automatic Twitch backfill failed:', error))
       .finally(() => { autoSyncPromise = null; });
-    await autoSyncPromise;
+    // Backfill must not delay the wheel's first frame.
     summaries = await Promise.all(RAFFLE_IDS.map(id => getRaffleSummary(id)));
   }
 
+  void (async () => {
   for (const raffleId of RAFFLE_IDS) {
     const due = await claimDueRaffleAnnouncement(now, raffleId);
     if (due) {
@@ -46,7 +52,8 @@ export async function GET(_request: NextRequest) {
       await markRaffleAnnounced(due.id, delivered, raffleId);
     }
   }
-  summaries = await Promise.all(RAFFLE_IDS.map(id => getRaffleSummary(id)));
+  }
+  )().catch(error => console.warn('[Raffle] Announcement poll failed:', error));
   const selected = _request.nextUrl.searchParams.get('raffle');
   const summary = summaries.find(s => s.raffleId === selected) || [...summaries].filter(s => s.draw).sort((a,b) => Date.parse(b.draw!.startedAt) - Date.parse(a.draw!.startedAt))[0] || summaries[0];
   return apiOk({ raffles: summaries.map(({entrants, ...summary}) => summary), raffleId: summary.raffleId, label: summary.label, cycleId: summary.cycleId, totalTickets: summary.totalTickets, uniqueEntrants: summary.uniqueEntrants, draw: summary.draw, serverTime: new Date().toISOString() });
