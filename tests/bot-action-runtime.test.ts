@@ -92,7 +92,7 @@ test('Stella starts, adds, removes, and stops a Lounge game with saved-state rea
     assert.deepEqual(overlayGameIds,['bingo','pixelbattle']);
     assert.equal((await action('hide')).status,'completed');
     assert.deepEqual(overlayGameIds,['bingo']);
-    assert.ok(activeGameIds.includes('pixelbattle'));
+    assert.equal(activeGameIds.includes('pixelbattle'), false);
     assert.equal((await action('show')).status,'completed');
     assert.deepEqual(overlayGameIds,['bingo','pixelbattle']);
     assert.equal((await action('stop-hide')).status,'completed');
