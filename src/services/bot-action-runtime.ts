@@ -19,7 +19,7 @@ import { resolveBotPersonaForAction } from '@/services/bot-persona-catalog';
 import { setLoungeMixVolume } from '@/services/lounge-audio-mix';
 import { setLoungeMediaLayout } from '@/services/lounge-media-layout';
 import { startBRB, stopBRB } from '@/services/brb-clips';
-import { requestSpotlightRestart, requestLoungeBrowserRefresh } from '@/services/lounge-player-control';
+import { requestSpotlightRestart, requestLoungeBrowserRefresh, requestLoungeMediaPlayerRestart } from '@/services/lounge-player-control';
 import { executeNebulaCommand, manageNebulaOverlay, readNebulaChannelState, readNebulaOverlayProfile, reshapeNebulaLiveOverlay, createNebulaStreamBattle, linkChatWarsStreams, linkWordGameStreams } from '@/services/nebula-actions';
 import { setStellaChaosMode, setStellaRoleMode } from '@/services/stella-chaos-mode';
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '@/lib/tenant';
@@ -30,7 +30,7 @@ export type BotActionSource = 'discord' | 'twitch' | 'kick' | 'mountainview' | '
 export type BotActorRole = 'guest' | 'member' | 'moderator' | 'admin' | 'owner';
 export type BotActionRisk = 'read' | 'write' | 'broadcast' | 'destructive';
 
-export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'sw.lounge.browser.refresh' | 'nebula.command' | 'nebula.overlay.manage' | 'nebula.game.director' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
+export type StreamWeaverBotAction = 'sw.image.generate' | 'sw.lounge.volume' | 'sw.lounge.layout' | 'sw.lounge.brb' | 'sw.lounge.spotlight.restart' | 'sw.lounge.media.restart' | 'sw.lounge.browser.refresh' | 'nebula.command' | 'nebula.overlay.manage' | 'nebula.game.director' | 'stella.mode' | 'stella.role' | 'nebula.live-overlay' | 'nebula.stream-battle' | 'nebula.chatwars.stream-battle' | 'nebula.wordgame.stream-battle';
 export type BotActionId = DiscordStreamHubBotAction | HearMeOutBotAction | StreamWeaverBotAction;
 
 export type BotActionDescriptor = {
@@ -279,6 +279,12 @@ export const BOT_ACTION_CATALOG: readonly BotActionDescriptor[] = [
     examples: ['start the BRB player', 'stop BRB', 'we are back from break'],
   },
   {
+    id: 'sw.lounge.media.restart',
+    title: 'Restart only the SpaceMountain Lounge HearMeOut media player',
+    app: 'StreamWeaver', risk: 'write', minimumRole: 'moderator',
+    examples: ['Stella restart the media player', 'Stella reconnect the Lounge media player'],
+  },
+  {
     id: 'sw.lounge.browser.refresh',
     title: 'Refresh the SpaceMountain Lounge browser source after a freeze report',
     app: 'StreamWeaver', risk: 'broadcast', minimumRole: 'member',
@@ -499,6 +505,12 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   const overlayCreate=value.match(/\b(?:create|make|build)\b.*\bnebula\b.*\boverlay\b/);
   if(overlayCreate) return {action:'nebula.overlay.manage',args:{operation:'create'},detection:'explicit'};
 
+  if (
+    /\b(?:restart|reload|reconnect|reset)\b.*\b(?:lounge\s+)?(?:media|movie|hearmeout|hear me out)\s+(?:player|viewer)\b/.test(value)
+    || /\b(?:media|movie|hearmeout|hear me out)\s+(?:player|viewer)\b.*\b(?:restart|reload|reconnect|reset)\b/.test(value)
+  ) {
+    return { action: 'sw.lounge.media.restart', args: {}, detection: 'explicit' };
+  }
   if (
     (/\bstella\b/.test(value) || /^this (?:froze|is frozen|is stuck|crashed)[.!?]*$/.test(value))
     && (/\b(?:this|lounge|browser source|overlay|screen)\b.*\b(?:froze|frozen|stuck|crashed)\b/.test(value)
@@ -883,6 +895,18 @@ export async function executeBotAction(
   }
 
   try {
+    if (request.action === 'sw.lounge.media.restart') {
+      if (context.tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+        return { handled: true, action: request.action, status: 'forbidden', response: 'That Lounge media player belongs to SpaceMountainLive.' };
+      }
+      const result = await requestLoungeMediaPlayerRestart(context.actor.username || context.botName);
+      invalidateStellaLoungeSnapshot();
+      return { handled: true, action: request.action, status: 'completed',
+        response: result.accepted
+          ? '✅ Restarting only the Lounge media player. Spotlight and the HearMeOut movie/session stay running.'
+          : '✅ The Lounge media player restart was already requested a few seconds ago. Spotlight and the movie/session were left alone.',
+        result };
+    }
     if (request.action === 'sw.lounge.browser.refresh') {
       if (context.tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
         return { handled: true, action: request.action, status: 'forbidden', response: 'That Lounge source belongs to SpaceMountainLive.' };
