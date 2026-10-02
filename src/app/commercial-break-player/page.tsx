@@ -13,7 +13,7 @@ const THEME_TRACKS = [
   'https://hearmeout-main.fly.dev/api/lounge/theme-music?track=spmt4',
 ];
 
-type Gif = { url: string; user: string };
+type Gif = { url: string; user: string; bytes?: number };
 type State = {
   phase: 'IDLE' | 'ACTIVE' | 'COOLDOWN';
   breakStartedAt: number;
@@ -38,13 +38,18 @@ export default function CommercialBreakPlayer() {
   const themeRef = useRef(0);
   const mediaActiveRef = useRef(true);
   const activeRef = useRef(false);
+  const gifReadyRef = useRef(false);
   const [state, setState] = useState<State>({ phase: 'IDLE', breakStartedAt: 0, activeUntil: 0, cooldownUntil: 0, mediaActive: true });
   const [gifs, setGifs] = useState<Gif[]>([]);
   const [gifIndex, setGifIndex] = useState(0);
+  const [visibleGifUrl, setVisibleGifUrl] = useState('');
+  const displayedGif = gifs.length ? gifs[gifIndex % gifs.length] : null;
+  const gifReady = Boolean(displayedGif && visibleGifUrl === displayedGif.url);
+  gifReadyRef.current = gifReady;
 
   useEffect(() => {
     if (audioRef.current && level !== null) {
-      audioRef.current.volume = level;
+      audioRef.current.volume = Math.min(0.3, level * 0.35);
       audioRef.current.muted = level <= 0;
     }
   }, [level]);
@@ -77,7 +82,7 @@ export default function CommercialBreakPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (!active || state.mediaActive) {
+    if (!active || state.mediaActive || !gifReady || level === null) {
       audio.pause();
       return;
     }
@@ -90,13 +95,13 @@ export default function CommercialBreakPlayer() {
       audio.load();
     }
     audio.play().catch(() => {});
-  }, [state.phase, state.breakStartedAt, state.activeUntil, state.mediaActive]);
+  }, [state.phase, state.breakStartedAt, state.activeUntil, state.mediaActive, gifReady, level]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     const nextTheme = () => {
-      if (!activeRef.current || mediaActiveRef.current) return;
+      if (!activeRef.current || mediaActiveRef.current || !gifReadyRef.current || audio.volume <= 0) return;
       themeRef.current = (themeRef.current + 1) % THEME_TRACKS.length;
       audio.src = THEME_TRACKS[themeRef.current];
       audio.currentTime = 0;
@@ -113,42 +118,42 @@ export default function CommercialBreakPlayer() {
 
   useEffect(() => {
     if (state.phase !== 'ACTIVE') {
+      setVisibleGifUrl('');
       setGifs([]);
       setGifIndex(0);
       return;
     }
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout>;
+    setVisibleGifUrl('');
     const load = async () => {
       try {
         const response = await fetch(DSH_GIFS, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-        if (!response.ok) return;
+        if (!response.ok) throw new Error('GIF list unavailable');
         const payload = await response.json();
         const candidates: Gif[] = (Array.isArray(payload?.gifs) ? payload.gifs : [])
           .filter((gif: any) => typeof gif?.url === 'string' && gif.url.startsWith('https://discord-stream-hub-new.fly.dev/api/media/'))
-          .map((gif: any) => ({ url: gif.url, user: String(gif.user || '') }));
-        const selected = shuffle(candidates).slice(0, GIF_COUNT);
-        await Promise.all(selected.map((gif) => new Promise<void>((resolve) => {
-          const image = new Image();
-          const done = () => resolve();
-          image.onload = done;
-          image.onerror = done;
-          image.src = gif.url;
-        })));
+          .map((gif: any) => ({ url: gif.url, user: String(gif.user || ''), bytes: Number(gif.bytes) || undefined }));
+        // Legacy recordings can exceed 30 MB. Prefer bounded GIFs and let the
+        // visible image load first instead of waiting for every download.
+        const smaller = candidates.filter((gif) => !gif.bytes || gif.bytes <= 8 * 1024 * 1024);
+        const selected = shuffle(smaller.length ? smaller : candidates).slice(0, GIF_COUNT);
+        if (!selected.length) throw new Error('No GIFs available');
         if (!cancelled) {
           setGifs(selected);
           setGifIndex(0);
         }
-      } catch {}
+      } catch { if (!cancelled) retry = setTimeout(load, 3000); }
     };
     void load();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(retry); };
   }, [state.breakStartedAt, state.phase]);
 
   useEffect(() => {
-    if (state.phase !== 'ACTIVE' || gifs.length < 2) return;
-    const timer = setInterval(() => setGifIndex((index) => (index + 1) % gifs.length), GIF_DURATION_MS);
-    return () => clearInterval(timer);
-  }, [state.phase, gifs]);
+    if (state.phase !== 'ACTIVE' || gifs.length < 2 || !gifReady) return;
+    const timer = setTimeout(() => setGifIndex((index) => (index + 1) % gifs.length), GIF_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [state.phase, gifs, gifReady, gifIndex]);
 
   const active = state.phase === 'ACTIVE' && Date.now() < state.activeUntil;
   const gif = active && gifs.length ? gifs[gifIndex % gifs.length] : null;
@@ -156,11 +161,11 @@ export default function CommercialBreakPlayer() {
   return (
     <main style={{
       position: 'fixed', inset: 0, overflow: 'hidden',
-      background: active ? '#071127' : 'transparent',
-      opacity: active ? 1 : 0, pointerEvents: 'none',
+      background: active && gifReady ? '#071127' : 'transparent',
+      opacity: active && gifReady ? 1 : 0, pointerEvents: 'none',
     }}>
       <audio ref={audioRef} preload="auto" />
-      {active && gif && <img src={gif.url} alt={gif.user ? `${gif.user}'s community GIF` : 'Community GIF'} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {active && gif && <img key={gif.url} src={gif.url} onLoad={() => setVisibleGifUrl(gif.url)} onError={() => { setVisibleGifUrl(''); setGifs((current) => current.filter((entry) => entry.url !== gif.url)); }} alt={gif.user ? `${gif.user}'s community GIF` : 'Community GIF'} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
       {active && <div style={{
         position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)',
         padding: '7px 20px', borderRadius: 999, background: '#071127',
