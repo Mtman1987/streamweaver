@@ -9,6 +9,7 @@ import { getConfigValue } from '../lib/app-config';
 import { getConfigSection } from '../lib/local-config/service';
 import { getPointsWalletContext } from './points-wallet-context';
 import { beginCommercialBreak } from './commercial-break';
+import { recordRaffleRedemption } from './raffle-system';
 
 const eventSubSockets = new Map<string, WebSocket>();
 const CHAT_TAG_API_BASE = String(process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
@@ -107,7 +108,7 @@ async function getBroadcasterTokenScopes(auth: { accessToken: string }): Promise
     return Array.isArray(data?.scopes) ? data.scopes : [];
 }
 
-async function deleteExistingChannelPointSubscriptions(auth: { clientId: string; accessToken: string; broadcasterId: string }, keepId?: string): Promise<void> {
+async function deleteExistingChannelPointSubscriptions(auth: { clientId: string; accessToken: string; broadcasterId: string }, keepIds: string[] = []): Promise<void> {
     try {
         const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions?first=100', {
             headers: {
@@ -123,14 +124,17 @@ async function deleteExistingChannelPointSubscriptions(auth: { clientId: string;
         const data = await res.json() as any;
         const subs = Array.isArray(data?.data) ? data.data : [];
         const matches = subs.filter((s: any) =>
-            s?.type === 'channel.channel_points_custom_reward_redemption.add' &&
+            (
+                s?.type === 'channel.channel_points_custom_reward_redemption.add' ||
+                s?.type === 'channel.channel_points_custom_reward_redemption.update'
+            ) &&
             String(s?.condition?.broadcaster_user_id || '') === String(auth.broadcasterId)
         );
 
         for (const sub of matches) {
             const id = String(sub?.id || '');
             if (!id) continue;
-            if (keepId && id === keepId) continue;
+            if (keepIds.includes(id)) continue;
             const del = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`, {
                 method: 'DELETE',
                 headers: {
@@ -150,9 +154,9 @@ async function deleteExistingChannelPointSubscriptions(auth: { clientId: string;
     }
 }
 
-async function createChannelPointSubscription(auth: { clientId: string; accessToken: string; broadcasterId: string }, sessionId: string, tenantId?: string): Promise<string | null> {
+async function createChannelPointSubscription(auth: { clientId: string; accessToken: string; broadcasterId: string }, sessionId: string, event: 'add' | 'update', tenantId?: string): Promise<string | null> {
     const body = {
-        type: 'channel.channel_points_custom_reward_redemption.add',
+        type: `channel.channel_points_custom_reward_redemption.${event}`,
         version: '1',
         condition: {
             broadcaster_user_id: auth.broadcasterId,
@@ -326,8 +330,12 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 console.log(`[EventSub:${tKey}] Session established:`, sessionId);
                 
                 if (hasRedemptionsScope) {
-                    const createdId = await createChannelPointSubscription(auth, sessionId, tenantId);
-                    if (createdId) await deleteExistingChannelPointSubscriptions(auth, createdId);
+                    const createdIds: string[] = [];
+                    const addId = await createChannelPointSubscription(auth, sessionId, 'add', tenantId);
+                    if (addId) createdIds.push(addId);
+                    const updateId = await createChannelPointSubscription(auth, sessionId, 'update', tenantId);
+                    if (updateId) createdIds.push(updateId);
+                    if (createdIds.length) await deleteExistingChannelPointSubscriptions(auth, createdIds);
                 }
                 if (hasAdsScope) {
                     const adId = await createAdBreakSubscription(auth, sessionId, tenantId);
@@ -362,7 +370,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                     }
                     return;
                 }
-                if (subType === 'channel.channel_points_custom_reward_redemption.add') {
+                if (subType === 'channel.channel_points_custom_reward_redemption.add' || subType === 'channel.channel_points_custom_reward_redemption.update') {
                     const event = msg?.payload?.event;
                     if (event) {
                         if (VERBOSE_LOGS) {
@@ -373,6 +381,33 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                         const userLogin = String(event?.user_login || '');
                         const userInput = String(event?.user_input || '').trim();
                         console.log(`[EventSub] Channel point redeem: ${rewardTitle} by ${userLogin}, input: "${userInput}"`);
+
+                        const raffle = await recordRaffleRedemption({
+                            redemptionId: String(event?.id || ''),
+                            userId: String(event?.user_id || ''),
+                            username: userLogin,
+                            displayName: String(event?.user_name || userLogin),
+                            rewardId: String(event?.reward?.id || ''),
+                            rewardTitle,
+                            status: String(event?.status || 'unfulfilled'),
+                            redeemedAt: String(event?.redeemed_at || new Date().toISOString()),
+                        }).catch((error) => {
+                            console.warn('[Raffle] Failed to record Twitch redemption:', error);
+                            return { tracked: false, added: false, ticketsAdded: 0, totalTickets: 0 };
+                        });
+                        if (raffle.tracked) {
+                            if (subType.endsWith('.add') && raffle.added) {
+                                const ticketWord = raffle.ticketsAdded === 1 ? 'ticket' : 'tickets';
+                                sendChatMessage(
+                                    `🎟️ @${userLogin} added ${raffle.ticketsAdded} raffle ${ticketWord}! (Total: ${raffle.totalTickets})`,
+                                    'bot',
+                                    undefined,
+                                    tenantId,
+                                ).catch(() => {});
+                            }
+                            return;
+                        }
+                        if (subType.endsWith('.update')) return;
 
                         if (rewardTitle.trim().toLowerCase() === DANCE_PARTY_REWARD_TITLE) {
                             const context = await resolvePointsCtx(tenantId);

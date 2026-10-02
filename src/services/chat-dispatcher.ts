@@ -308,7 +308,7 @@ const DISCORD_NATIVE_SOCIAL_COMMANDS = new Set(SOCIAL_COMMAND_NAMES);
 
 const DISCORD_NATIVE_COMMAND_NAMES = new Set([
     ...DISCORD_NATIVE_SOCIAL_COMMANDS,
-    'commands', 'admin', 'so', 'signal', 'watchtime', 'time', 'coinflip', 'leaderboard',
+    'commands', 'admin', 'so', 'signal', 'watchtime', 'time', 'coinflip', 'leaderboard', 'raffle', 'tickets',
     'followers', 'uptime', 'stats',
     'timeout', 'raidmessage', 'mtfixit',
     'ignore',
@@ -1359,6 +1359,74 @@ async function executeDiscordCommandMessage(msg: any, tenantId?: string, options
     let modAccess: Promise<boolean> | undefined;
     const resolveIsMod = () => (modAccess ||= hasEffectiveDiscordModAccess(msg));
     const discordServerId = msg.guildId || msg.guild_id;
+
+    if (/^!raffle(?:\s|$)/i.test(actualMessage)) {
+        const isDm = Boolean(msg.isDM || msg.isDirectMessage || msg.is_direct_message);
+        if (!isPermanentDiscordOwner(msg)) {
+            await reply('@' + actualUsername + ', raffle administration is owner-only.');
+            return true;
+        }
+        if (!isDm) {
+            await reply('Raffle administration is DM-only. Send me !raffle in our private DM.');
+            return true;
+        }
+        const subcommand = actualMessage.replace(/^!raffle\b/i, '').trim().toLowerCase();
+        const raffle = await import('./raffle-system');
+        if (!subcommand || subcommand === 'list' || subcommand === 'status') {
+            const summary = await raffle.getRaffleSummary();
+            const lines = summary.entrants.map((entry, index) =>
+                `${index + 1}. ${entry.displayName || entry.username} — ${entry.tickets} ticket${entry.tickets === 1 ? '' : 's'}`
+            );
+            const header = `Raffle #${summary.cycleId}: ${summary.uniqueEntrants} entrant${summary.uniqueEntrants === 1 ? '' : 's'}, ${summary.totalTickets} total tickets.`;
+            const chunks: string[] = [];
+            let current = header;
+            for (const line of lines) {
+                if ((current + '\n' + line).length > 3400) {
+                    chunks.push(current);
+                    current = line;
+                } else {
+                    current += '\n' + line;
+                }
+            }
+            chunks.push(current);
+            for (let index = 0; index < chunks.length; index += 1) {
+                await reply(chunks[index], { title: index === 0 ? '🎟️ Space Mountain Raffle Master List' : '🎟️ Raffle Master List · continued' });
+            }
+            return true;
+        }
+        if (subcommand === 'draw' || subcommand === 'spin') {
+            try {
+                const draw = await raffle.startRaffleDraw();
+                const seconds = Math.max(1, Math.ceil((Date.parse(draw.revealAt) - Date.parse(draw.startedAt)) / 1000));
+                await reply(
+                    `Raffle draw #${draw.cycleId} started: ${draw.entrants.length} entrants / ${draw.totalTickets} tickets. Stella's elimination wheel is live in the Lounge; winner reveal in about ${seconds}s.`,
+                    { title: '🎡 Raffle Draw Started' },
+                );
+            } catch (error: any) {
+                await reply(error?.message || 'The raffle could not start.');
+            }
+            return true;
+        }
+        if (subcommand === 'rewards') {
+            const summary = await raffle.getRaffleSummary();
+            const rows = summary.rewardRules.length
+                ? summary.rewardRules.map((rule) => `• ${rule.title} → ${rule.tickets} ticket${rule.tickets === 1 ? '' : 's'}`).join('\n')
+                : 'No raffle reward has been observed yet. Rewards are learned automatically from Twitch titles containing both “raffle” and “ticket”.';
+            await reply(rows, { title: '🎟️ Raffle Reward Mapping' });
+            return true;
+        }
+        if (subcommand === 'reset confirm') {
+            const next = await raffle.resetRaffleCycle();
+            await reply(`Raffle ledger archived and cleared. New raffle cycle: #${next.cycleId}.`, { title: '🧹 Raffle Reset' });
+            return true;
+        }
+        if (subcommand === 'reset') {
+            await reply('To archive the current raffle and clear all tickets, send !raffle reset confirm.');
+            return true;
+        }
+        await reply('Owner raffle commands: !raffle, !raffle list, !raffle rewards, !raffle draw, !raffle reset confirm.');
+        return true;
+    }
 
     if (/^!say(?:\s|$)/i.test(actualMessage)) {
         const args = actualMessage.substring('!say'.length).trim().split(/\s+/).filter(Boolean);
@@ -3332,6 +3400,21 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
+        if (/^!tickets(?:\s|$)/i.test(actualMessage) && tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID) {
+            try {
+                const { getRaffleTicketBalance } = await import('./raffle-system');
+                const total = await getRaffleTicketBalance(actualUsername, String(tags['user-id'] || tags.userId || ''));
+                await reply(
+                    `🎟️ @${actualUsername}, you have ${total} raffle ticket${total === 1 ? '' : 's'}.`,
+                    'bot',
+                ).catch(() => {});
+            } catch (error) {
+                console.error('[Raffle] !tickets failed:', error);
+                await reply(`@${actualUsername}, I couldn't load your raffle tickets right now.`, 'bot').catch(() => {});
+            }
+            return;
+        }
+
         // Handle !coinflip command (works for everyone)
         if (actualMessage.toLowerCase() === '!coinflip') {
             const result = Math.random() < 0.5 ? 'Heads' : 'Tails';

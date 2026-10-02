@@ -21,7 +21,7 @@ const DISCORD_SECONDARY_TRIGGER_COMMANDS = ['!yes', '!yup', '!no'];
 const DISCORD_LINK_COMMANDS: string[] = [];
 
 const DISCORD_INFO_COMMANDS = [
-  '!points', '!watchtime', '!leader', '!leaderboard', '!pleader', '!wleader',
+  '!points', '!tickets', '!watchtime', '!leader', '!leaderboard', '!pleader', '!wleader',
   '!cleader', '!bleader', '!bitsleader', '!time', '!followers', '!uptime',
   '!stats', '!pack [set]', '!collection', '!collections', '!show <card>',
   '!eevee', '!deck',

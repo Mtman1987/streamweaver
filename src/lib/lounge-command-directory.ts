@@ -39,6 +39,7 @@ export const LOUNGE_COMMAND_CATEGORIES: LoungeCommandCategory[] = [
     commands: [
       entry('!commands', 'Open this numbered command directory.', 'StreamWeaver'),
       entry('!points', 'Show your points balance.', 'DiscordStreamHub'),
+      entry('!tickets', 'Show how many Twitch raffle tickets you currently have.', 'StreamWeaver', 'Twitch'),
       entry('!watchtime', 'Show your StreamWeaver watch activity.', 'StreamWeaver'),
       entry('!followage [@user]', 'Show how long someone has followed.', 'Twitch', 'Twitch'),
       entry('!followed', 'Check whether you follow the channel.', 'Twitch', 'Twitch'),
