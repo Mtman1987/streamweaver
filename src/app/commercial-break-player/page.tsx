@@ -47,7 +47,8 @@ export default function CommercialBreakPlayer() {
   const [gifIndex, setGifIndex] = useState(0);
   const [visibleGifUrl, setVisibleGifUrl] = useState('');
   const displayedGif = gifs.length ? gifs[gifIndex % gifs.length] : null;
-  const gifReady = Boolean(displayedGif && visibleGifUrl === displayedGif.url);
+  const visibleGif = gifs.find(gif => gif.url === visibleGifUrl) || null;
+  const gifReady = Boolean(visibleGif);
   gifReadyRef.current = gifReady;
 
   useEffect(() => {
@@ -103,13 +104,15 @@ export default function CommercialBreakPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
+    if (!active) breakRef.current = 0;
     if (!active || state.mediaActive || !gifReady || !parentVisible || level === null) {
       audio.pause();
       return;
     }
 
-    if (breakRef.current !== state.breakStartedAt) {
-      breakRef.current = state.breakStartedAt;
+    // Individual Twitch ads can change their marker during one continuous break.
+    if (breakRef.current === 0) {
+      breakRef.current = state.breakStartedAt || Date.now();
       themeRef.current = Math.abs(Math.floor(state.breakStartedAt / 1000)) % THEME_TRACKS.length;
       audio.src = THEME_TRACKS[themeRef.current];
       audio.currentTime = 0;
@@ -184,26 +187,29 @@ export default function CommercialBreakPlayer() {
 
   useEffect(() => {
     if (state.phase !== 'ACTIVE') setVisibleGifUrl('');
-    setGifIndex(0);
-  }, [state.breakStartedAt, state.phase]);
+    if (state.phase !== 'ACTIVE') setGifIndex(0);
+  }, [state.phase]);
 
   useEffect(() => {
-    if (state.phase !== 'ACTIVE' || gifs.length < 2 || !gifReady) return;
+    if (state.phase !== 'ACTIVE' || gifs.length < 2 || !gifReady || displayedGif?.url !== visibleGifUrl) return;
     const timer = setTimeout(() => setGifIndex((index) => (index + 1) % gifs.length), GIF_DURATION_MS);
     return () => clearTimeout(timer);
-  }, [state.phase, gifs, gifReady, gifIndex]);
+  }, [state.phase, gifs, gifReady, gifIndex, displayedGif?.url, visibleGifUrl]);
 
   const active = state.phase === 'ACTIVE' && Date.now() < state.activeUntil;
-  const gif = active && gifs.length ? gifs[gifIndex % gifs.length] : null;
+  const gif = active ? visibleGif : null;
+  const pendingGif = active && displayedGif?.url !== visibleGifUrl ? displayedGif : null;
 
   return (
-    <main style={{
+    <main data-commercial-playback="continuous-v2" style={{
       position: 'fixed', inset: 0, overflow: 'hidden',
       background: active && gifReady ? '#071127' : 'transparent',
       opacity: active && gifReady ? 1 : 0, pointerEvents: 'none',
     }}>
       <audio ref={audioRef} preload="auto" />
-      {active && gif && <img key={gif.url} src={gif.url} onLoad={() => setVisibleGifUrl(gif.url)} onError={() => { setVisibleGifUrl(''); setGifs((current) => current.filter((entry) => entry.url !== gif.url)); }} alt={gif.user ? `${gif.user}'s community GIF` : 'Community GIF'} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {/* Keep the loaded GIF on screen while its replacement downloads. */}
+      {active && gif && <img src={gif.url} alt={gif.user ? `${gif.user}'s community GIF` : 'Community GIF'} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+      {pendingGif && <img key={pendingGif.url} src={pendingGif.url} onLoad={() => setVisibleGifUrl(pendingGif.url)} onError={() => setGifs(current => current.filter(entry => entry.url !== pendingGif.url))} alt="" aria-hidden="true" style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} />}
       {active && <div style={{
         position: 'absolute', left: '50%', top: 12, transform: 'translateX(-50%)',
         padding: '7px 20px', borderRadius: 999, background: '#071127',

@@ -4,8 +4,8 @@ import { getLoungeBrowserRefresh } from '@/services/lounge-player-control';
 export const dynamic = 'force-dynamic';
 
 // Refresh once all matching overlay fixes are live, preserving the media prompt.
-const PREVIOUS_REFRESH_AT = Date.parse('2026-10-02T13:06:48Z');
-const FORCE_REFRESH_AT = Date.parse('2026-10-02T13:35:00Z');
+const PREVIOUS_REFRESH_AT = Date.parse('2026-10-02T13:35:00Z');
+const FORCE_REFRESH_AT = Date.parse('2026-10-02T14:22:27Z');
 let recoveryReady = false;
 let recoveryCheckedAt = 0;
 

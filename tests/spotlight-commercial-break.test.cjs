@@ -109,3 +109,42 @@ test('commercial theme waits for a loaded GIF, respects active media, and stays 
   assert.equal(playing.plays, 1);
   assert.equal(playing.volume, .15);
 });
+
+test('GIF swaps and successive ad markers preserve a continuous song; hidden and ended breaks stop it', () => {
+  const now = Date.now(), refs = [];
+  const gifs = [{ url: 'https://example.test/one.gif', user: 'One' }, { url: 'https://example.test/two.gif', user: 'Two' }];
+  const audio = { paused: true, volume: 1, currentTime: 0, loads: 0,
+    pause() { this.paused = true; }, load() { this.loads++; },
+    play() { this.paused = false; return Promise.resolve(); } };
+  const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/app/commercial-break-player/page.tsx'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  function render({ marker = now, phase = 'ACTIVE', visible = true, index = 0, loaded = gifs[0].url } = {}) {
+    const effects = [], states = [visible, { phase, breakStartedAt: marker, activeUntil: now + 120000, mediaActive: false }, gifs, index, loaded];
+    let ref = 0, state = 0;
+    const exports = {};
+    vm.runInNewContext(code, { exports, module: { exports }, Date,
+      require(name) {
+        if (name === 'react') return { useEffect(fn) { effects.push(fn); },
+          useRef(value) { const i = ref++; return refs[i] ||= { current: i === 1 ? audio : value }; },
+          useState() { return [states[state++], () => {}]; } };
+        if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
+        if (name === '@/lib/lounge-broadcast-volume') return { useLoungeBroadcastVolume: () => 1 };
+        throw Error(name);
+      } });
+    const tree = exports.default(); effects[0](); effects[2](); return tree;
+  }
+  render(); const source = audio.src; audio.currentTime = 35;
+  const tree = render({ marker: now + 15000, index: 1 });
+  assert.equal(audio.loads, 1, 'the next ad marker cannot reload the theme');
+  assert.equal(audio.src, source); assert.equal(audio.currentTime, 35); assert.equal(audio.paused, false);
+  const images = tree.props.children.filter(child => child && child.type === 'img');
+  assert.equal(images.find(child => !child.props['aria-hidden']).props.src, gifs[0].url, 'loaded GIF stays visible while the next downloads');
+  assert.equal(images.find(child => child.props['aria-hidden']).props.src, gifs[1].url);
+  render({ marker: now + 30000, index: 1, loaded: gifs[1].url });
+  assert.equal(audio.loads, 1); assert.equal(audio.currentTime, 35);
+  render({ visible: false }); assert.equal(audio.paused, true);
+  render(); assert.equal(audio.loads, 1, 'visibility restoration resumes without restarting');
+  render({ phase: 'IDLE' }); assert.equal(audio.paused, true);
+  render({ marker: now + 60000 }); assert.equal(audio.loads, 2, 'a genuinely new break starts a new song');
+});
