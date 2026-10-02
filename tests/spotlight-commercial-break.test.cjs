@@ -79,11 +79,11 @@ test('buffered playback keeps the cover after the source expires and clears it a
 });
 
 test('commercial theme waits for a loaded GIF, respects active media, and stays capped', () => {
-  function render({ ready, mediaActive }) {
+  function render({ ready, mediaActive, visible = true }) {
     const effects = [], now = Date.now(), gif = { url: 'https://example.test/community.gif', user: 'Crew' };
     const audio = { paused: true, volume: 1, currentTime: 0, plays: 0, pause() { this.paused = true; }, load() {},
       play() { this.paused = false; this.plays++; return Promise.resolve(); } };
-    const states = [{ phase: 'ACTIVE', breakStartedAt: now - 1000, activeUntil: now + 30000, mediaActive }, [gif], 0, ready ? gif.url : ''];
+    const states = [visible, { phase: 'ACTIVE', breakStartedAt: now - 1000, activeUntil: now + 30000, mediaActive }, [gif], 0, ready ? gif.url : ''];
     let ref = 0, state = 0;
     const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/app/commercial-break-player/page.tsx'), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
@@ -103,6 +103,7 @@ test('commercial theme waits for a loaded GIF, respects active media, and stays 
   }
   assert.equal(render({ ready: false, mediaActive: false }).plays, 0, 'no audio before the visible GIF loads');
   assert.equal(render({ ready: true, mediaActive: true }).plays, 0, 'a movie or music session suppresses the commercial theme');
+  assert.equal(render({ ready: true, mediaActive: false, visible: false }).plays, 0, 'hidden commercial frames cannot play music');
   const playing = render({ ready: true, mediaActive: false });
   assert.equal(playing.plays, 1);
   assert.equal(playing.volume, .15);

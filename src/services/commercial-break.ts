@@ -68,7 +68,7 @@ function normalized(value: Partial<CommercialBreakState> | null): CommercialBrea
   const state = { ...empty(), ...(value || {}), schemaVersion: 1 as const };
   const now = Date.now();
   const hardActiveCap = state.breakStartedAt > 0
-    ? state.breakStartedAt + Math.max(COMMERCIAL_MIN_ACTIVE_MS, Math.max(0, Number(state.durationSeconds) || 0) * 1000)
+    ? state.breakStartedAt + Math.max(1000, Math.max(0, Number(state.durationSeconds) || 0) * 1000)
     : 0;
   if (state.activeUntil > hardActiveCap && hardActiveCap > 0) state.activeUntil = hardActiveCap;
   if (state.cooldownUntil > state.activeUntil + COMMERCIAL_COOLDOWN_MS) state.cooldownUntil = state.activeUntil + COMMERCIAL_COOLDOWN_MS;
@@ -124,7 +124,7 @@ export async function beginCommercialBreak(input: {
   const now = Date.now();
   const start = Number.isFinite(Date.parse(input.startedAt)) ? Date.parse(input.startedAt) : now;
   const durationSeconds = Math.max(0, Math.round(Number(input.durationSeconds) || 0));
-  const candidateUntil = start + Math.max(COMMERCIAL_MIN_ACTIVE_MS, durationSeconds * 1000);
+  const candidateUntil = start + Math.max(1000, durationSeconds * 1000);
   const current = await getCommercialBreakState(tenantId);
 
   if (current.lastEventMessageId === messageId) {

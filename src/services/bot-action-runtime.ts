@@ -479,7 +479,7 @@ function detectExplicitAction(message: string): BotActionRequest | null {
     const show=/\b(?:show|put|place|display|add)\b/.test(value);
     const switchGame=/\b(?:switch|swap|change)\b.*\b(?:game|to|into)\b/.test(value);
     const shuffle=/\b(?:shuffle|randomize|mix up|rotate)\b.*\b(?:game|games|rotation|overlay)\b/.test(value);
-    const operation=shuffle?'shuffle':switchGame?'switch':stop?'stop-hide':hide?'hide':start?'start-show':show?'show':'';
+    const operation=shuffle?'shuffle':switchGame?'switch':(stop||hide)?'stop-hide':start?'start-show':show?'show':'';
     if(operation) {
       const surface=/\b(?:main|primary)\b.*\b(?:overlay|screen|stage|section|panel)\b/.test(value)?'main':/\bactivity\b/.test(value)?'activity':'';
       return {action:'nebula.game.director',args:{operation,gameId,...(surface?{surface}:{})},detection:'explicit'};
@@ -1024,7 +1024,7 @@ export async function executeBotAction(
         const result=await setProfile(surface,[gameId],'focus');
         return {handled:true,action:request.action,status:'completed',response:'✅ Switched to '+gameId+' on the '+surface+' overlay.',result};
       }
-      if(shouldStop && activeIds.includes(gameId)) await run(gameId,'stop');
+      if(shouldStop) { await run(gameId,'stop'); invalidateStellaLoungeSnapshot(); }
       if(shouldStart){
         const ids=visible.includes(gameId)?visible:[...visible,gameId];
         const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout==='focus'?'rotation':profile.layout);

@@ -18,7 +18,7 @@ async function currentSpotlightProgram(): Promise<unknown> {
     try {
       const response = await fetch(`${SPOTLIGHT_WORKER_URL}/spotlight/program`, {
         cache: 'no-store', headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(2000),
       });
       if (response.ok) spotlightProgram = await response.json();
     } catch { /* A confirmed marker still expires at its original activeUntil. */ }
@@ -33,7 +33,7 @@ async function mediaActive(): Promise<boolean> {
     const response = await fetch(`${LOUNGE_WORKER_URL}/lounge/media/program`, {
       cache: 'no-store',
       headers: { Accept: 'application/json' },
-      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(2_000) : undefined,
     });
     if (!response.ok) return true;
     const program = await response.json();

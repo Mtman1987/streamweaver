@@ -40,6 +40,8 @@ export default function CommercialBreakPlayer() {
   const mediaActiveRef = useRef(true);
   const activeRef = useRef(false);
   const gifReadyRef = useRef(false);
+  const visibleRef = useRef(false);
+  const [parentVisible, setParentVisible] = useState(false);
   const [state, setState] = useState<State>({ phase: 'IDLE', breakStartedAt: 0, activeUntil: 0, cooldownUntil: 0, mediaActive: true });
   const [gifs, setGifs] = useState<Gif[]>([]);
   const [gifIndex, setGifIndex] = useState(0);
@@ -60,7 +62,8 @@ export default function CommercialBreakPlayer() {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const response = await fetch(`/api/lounge/commercial-break?playbackDelayMs=${Math.round(playbackDelayRef.current)}`, { cache: 'no-store' });
+        const response = await fetch(`/api/lounge/commercial-break?playbackDelayMs=${Math.round(playbackDelayRef.current)}`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error('Commercial state unavailable');
         if (response.ok) {
           const next = await response.json() as State;
           if (!stopped) {
@@ -69,9 +72,20 @@ export default function CommercialBreakPlayer() {
             setState(next);
           }
         }
-      } catch {}
+      } catch {
+        activeRef.current = false;
+        audioRef.current?.pause();
+        if (!stopped) setState(current => ({ ...current, phase: 'IDLE', activeUntil: 0 }));
+      }
       if (!stopped) timer = setTimeout(poll, 1000);
     };
+    const receiveVisibility = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== 'https://spmt.live' || event.data?.type !== 'spmt-commercial-visibility') return;
+      visibleRef.current = event.data.visible === true && Date.now() < Number(event.data.activeUntil || 0);
+      setParentVisible(visibleRef.current);
+      if (!visibleRef.current) audioRef.current?.pause();
+    };
+    window.addEventListener('message', receiveVisibility);
     const receiveDelay = (event: MessageEvent) => {
       if (event.source !== window.parent || event.origin !== 'https://spmt.live' || event.data?.type !== 'spmt-lounge-spotlight-delay') return;
       const delay = Number(event.data.delayMs);
@@ -79,7 +93,7 @@ export default function CommercialBreakPlayer() {
     };
     window.addEventListener('message', receiveDelay);
     void poll();
-    return () => { stopped = true; clearTimeout(timer); window.removeEventListener('message', receiveDelay); };
+    return () => { stopped = true; clearTimeout(timer); window.removeEventListener('message', receiveDelay); window.removeEventListener('message', receiveVisibility); audioRef.current?.pause(); };
   }, []);
 
   useEffect(() => {
@@ -89,7 +103,7 @@ export default function CommercialBreakPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (!active || state.mediaActive || !gifReady || level === null) {
+    if (!active || state.mediaActive || !gifReady || !parentVisible || level === null) {
       audio.pause();
       return;
     }
@@ -104,13 +118,25 @@ export default function CommercialBreakPlayer() {
     audio.volume = Math.min(0.15, level * 0.2);
     audio.muted = level <= 0;
     audio.play().catch(() => {});
-  }, [state.phase, state.breakStartedAt, state.activeUntil, state.mediaActive, gifReady, level]);
+  }, [state.phase, state.breakStartedAt, state.activeUntil, state.mediaActive, gifReady, parentVisible, level]);
+
+  useEffect(() => {
+    const report = () => window.parent.postMessage({ type: 'spmt-commercial-ready', ready: state.phase === 'ACTIVE' && gifReady && Date.now() < state.activeUntil }, 'https://spmt.live');
+    report();
+    const heartbeat = setInterval(report, 1000);
+    const expiry = setTimeout(() => {
+      activeRef.current = false;
+      audioRef.current?.pause();
+      setState(current => ({ ...current, phase: 'IDLE' }));
+    }, Math.max(0, state.activeUntil - Date.now()));
+    return () => { clearInterval(heartbeat); clearTimeout(expiry); };
+  }, [state.phase, state.activeUntil, gifReady]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     const nextTheme = () => {
-      if (!activeRef.current || mediaActiveRef.current || !gifReadyRef.current || audio.volume <= 0) return;
+      if (!activeRef.current || mediaActiveRef.current || !gifReadyRef.current || !visibleRef.current || audio.volume <= 0) return;
       themeRef.current = (themeRef.current + 1) % THEME_TRACKS.length;
       audio.src = THEME_TRACKS[themeRef.current];
       audio.currentTime = 0;

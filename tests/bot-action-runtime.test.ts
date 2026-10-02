@@ -61,10 +61,10 @@ test('Stella routes named Lounge games to the director', async () => {
     ['Stella end Chat Garden','stop-hide','chatgarden',''],
     ['Stella start Chat Tag','start-show','chat-tag',''],
     ['Stella add Bingo to the activity overlay','show','bingo','activity'],
-    ['Stella remove Bingo from the activity overlay','hide','bingo','activity'],
+    ['Stella remove Bingo from the activity overlay','stop-hide','bingo','activity'],
     ['Stella switch to Emoji Tower','switch','emojitower',''],
     ['Stella stop the game','stop-hide','',''],
-    ['Stella take it off the game overlay','hide','',''],
+    ['Stella take it off the game overlay','stop-hide','',''],
     ['Stella shuffle the games','shuffle','',''],
   ] as const) {
     assert.deepEqual(await detectBotAction(message), {
@@ -647,6 +647,6 @@ test('plays the requested Prof song in the authenticated companion session witho
 test('Stella hide/remove deactivates the game instead of only hiding its overlay', () => {
   const source = require('node:fs').readFileSync('src/services/bot-action-runtime.ts', 'utf8');
   require('node:assert/strict').match(source, /const shouldStop=operation==='stop-hide'\|\|operation==='hide'/);
-  require('node:assert/strict').match(source, /if\(shouldStop && activeIds\.includes\(gameId\)\) await run\(gameId,'stop'\)/);
+  require('node:assert/strict').match(source, /if\(shouldStop\) \{ await run\(gameId,'stop'\); invalidateStellaLoungeSnapshot\(\); \}/);
   require('node:assert/strict').match(source, /is stopped and removed from the/);
 });
