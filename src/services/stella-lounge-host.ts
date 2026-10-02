@@ -46,6 +46,7 @@ export type StellaLoungeSnapshot = {
     playerCount: number;
     activePlayerCount: number;
     currentPlayer?: string;
+    playerNamesById: Record<string, string>;
     games: Array<{ name: string; joinCommand?: string }>;
   };
   community: {
@@ -136,18 +137,70 @@ function liveCommunityRows(payload: any): any[] {
   ));
 }
 
+function isInternalPlayerReference(value: unknown): boolean {
+  return /^(?:user|manual|discord|twitch)_[a-z0-9_-]+$/i.test(String(value || '').trim());
+}
+
 function publicPlayerName(player: any): string {
-  return String(
-    player?.twitchDisplayName
-    || player?.displayName
-    || player?.twitchUsername
-    || player?.username
-    || player?.discordDisplayName
-    || player?.name
-    || player?.twitchLogin
-    || player?.login
-    || '',
-  ).replace(/\s+/g, ' ').trim().slice(0, 80);
+  const candidates = [
+    player?.twitchDisplayName,
+    player?.displayName,
+    player?.twitchUsername,
+    player?.username,
+    player?.discordDisplayName,
+    player?.name,
+    player?.twitchLogin,
+    player?.login,
+  ];
+  for (const candidate of candidates) {
+    const name = String(candidate || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (name && !isInternalPlayerReference(name)) return name;
+  }
+  return '';
+}
+
+function playerNameMap(players: any[]): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const player of players) {
+    const name = publicPlayerName(player);
+    if (!name) continue;
+    for (const value of [
+      player?.id,
+      player?.userId,
+      player?.user_id,
+      player?.twitchUserId,
+      player?.discordUserId,
+      player?.twitchUsername,
+      player?.username,
+    ]) {
+      const key = String(value || '').trim();
+      if (!key) continue;
+      names[key] = name;
+      names[key.toLowerCase()] = name;
+    }
+  }
+  return names;
+}
+
+function publicPlayerReference(value: unknown, names: Record<string, string>): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return names[raw] || names[raw.toLowerCase()] || (isInternalPlayerReference(raw) ? '' : raw);
+}
+
+function sanitizePublicUserFacts(value: unknown, names: Record<string, string>): unknown {
+  if (typeof value === 'string') {
+    return value.replace(/\b(?:user|manual|discord|twitch)_[a-z0-9_-]+\b/gi, (match) =>
+      names[match] || names[match.toLowerCase()] || 'a player');
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizePublicUserFacts(item, names));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      key,
+      sanitizePublicUserFacts(item, names),
+    ]));
+  }
+  return value;
 }
 
 export async function buildStellaLoungeSnapshot(
@@ -186,7 +239,8 @@ export async function buildStellaLoungeSnapshot(
   const nebulaData = nebulaResult.status === 'fulfilled' ? unwrapData(nebulaResult.value) : null;
   const nebulaState = nebulaData?.state && typeof nebulaData.state === 'object' ? nebulaData.state : nebulaData;
   const players = Array.isArray(nebulaState?.players) ? nebulaState.players : [];
-  const currentPlayer = String(nebulaState?.currentIt || '').trim()
+  const playerNamesById = playerNameMap(players);
+  const currentPlayer = publicPlayerReference(nebulaState?.currentIt, playerNamesById)
     || publicPlayerName(players.find((player: any) => player?.isIt));
 
   const gamesData = gamesResult.status === 'fulfilled' ? unwrapData(gamesResult.value) : null;
@@ -231,6 +285,7 @@ export async function buildStellaLoungeSnapshot(
       playerCount: players.length,
       activePlayerCount: players.filter((player: any) => player?.isActive).length,
       currentPlayer: currentPlayer || undefined,
+      playerNamesById,
       games,
     },
     community: {
@@ -450,17 +505,21 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
   const policy = eventInstruction(event);
   const interrupt = policy.priority >= 90;
   if (isStreamerSpeaking(now) && !interrupt) { recordStellaDecision('silence', 'streamer-speaking', now); return { delivered: false, reason: 'streamer-speaking' }; }
-  if (event.kind === 'raid') { setStellaEnergy('excited'); rememberCallback(`A raid arrived from ${event.actor || 'the community'}`, event.actor, 75 * 60_000, now); }
-  if (event.kind === 'game-winner') rememberCallback(`${event.actor || 'A player'} won ${String(event.metadata?.game || 'a Lounge game')}`, event.actor, 75 * 60_000, now);
-  if (event.kind === 'game-winner' || event.kind === 'milestone') setStellaEnergy('playful');
-  rememberStellaThought({ kind: event.kind === 'upcoming-event' ? 'plan' : 'event', actor: event.actor, text: [event.kind, event.actor, event.text].filter(Boolean).join(': '), ttlMs: interrupt ? 60 * 60_000 : 30 * 60_000 }, now);
-  if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) { recordStellaDecision('silence', 'speech-cooldown', now); return { delivered: false, reason: 'speech-cooldown' }; }
-  if (event.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) { rememberProducerOpportunity(event.text || 'Upcoming community event', 60 * 60_000, now); return { delivered: false, reason: 'promo-cooldown' }; }
+
   const snapshot = await buildStellaLoungeSnapshot();
-  const facts = JSON.stringify({ event, energy: getStellaEnergy(), stellaMode: getStellaChaosMode(), thoughtBoard: stellaThoughtBoard(now), live: { media: snapshot.media, nebula: snapshot.nebula, community: snapshot.community } });
+  const publicEvent = sanitizePublicUserFacts(event, snapshot.nebula.playerNamesById) as StellaLoungeEvent;
+  if (publicEvent.kind === 'raid') { setStellaEnergy('excited'); rememberCallback(`A raid arrived from ${publicEvent.actor || 'the community'}`, publicEvent.actor, 75 * 60_000, now); }
+  if (publicEvent.kind === 'game-winner') rememberCallback(`${publicEvent.actor || 'A player'} won ${String(publicEvent.metadata?.game || 'a Lounge game')}`, publicEvent.actor, 75 * 60_000, now);
+  if (publicEvent.kind === 'game-winner' || publicEvent.kind === 'milestone') setStellaEnergy('playful');
+  rememberStellaThought({ kind: publicEvent.kind === 'upcoming-event' ? 'plan' : 'event', actor: publicEvent.actor, text: [publicEvent.kind, publicEvent.actor, publicEvent.text].filter(Boolean).join(': '), ttlMs: interrupt ? 60 * 60_000 : 30 * 60_000 }, now);
+  if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) { recordStellaDecision('silence', 'speech-cooldown', now); return { delivered: false, reason: 'speech-cooldown' }; }
+  if (publicEvent.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) { rememberProducerOpportunity(publicEvent.text || 'Upcoming community event', 60 * 60_000, now); return { delivered: false, reason: 'promo-cooldown' }; }
+
+  const { playerNamesById: _privatePlayerNames, ...publicNebula } = snapshot.nebula;
+  const facts = JSON.stringify({ event: publicEvent, energy: getStellaEnergy(), stellaMode: getStellaChaosMode(), thoughtBoard: stellaThoughtBoard(now), live: { media: snapshot.media, nebula: publicNebula, community: snapshot.community } });
   const result = await deliverStellaHostLine(policy.instruction + '\nLive facts: ' + facts + '\nSuggested physical reaction: ' + policy.gesture, now);
-  if (result.delivered) recordStellaDecision('speak', `event:${event.kind}`, now);
-  if (result.delivered && event.kind === 'upcoming-event') lastPromoAt = now;
+  if (result.delivered) recordStellaDecision('speak', `event:${publicEvent.kind}`, now);
+  if (result.delivered && publicEvent.kind === 'upcoming-event') lastPromoAt = now;
   return result;
 }
 

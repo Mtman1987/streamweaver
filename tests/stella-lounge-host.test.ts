@@ -30,10 +30,10 @@ function fixtureFetch(input: string | URL | Request): Promise<Response> {
   if (url.includes('/spotlight/program')) return Promise.resolve(new Response(JSON.stringify({ ready: true, currentLogin: 'CaptainOne' }), { status: 200 }));
   if (url.includes('/api/integrations/chat-tag/state') || url.endsWith('/api/tag')) {
     return Promise.resolve(new Response(JSON.stringify({
-      currentIt: 'Nova',
+      currentIt: 'user_8f3c9b',
       players: [
-        { username: 'Nova', isIt: true, isActive: true },
-        { username: 'Orion', isActive: false },
+        { id: 'user_8f3c9b', username: 'Nova', isIt: true, isActive: true },
+        { id: 'user_223abc', username: 'Orion', isActive: false },
       ],
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
   }
@@ -65,6 +65,8 @@ test('builds one bounded snapshot from the live services', async () => {
   assert.equal(snapshot.nebula.playerCount, 2);
   assert.equal(snapshot.nebula.activePlayerCount, 1);
   assert.equal(snapshot.nebula.currentPlayer, 'Nova');
+  assert.equal(snapshot.nebula.playerNamesById.user_8f3c9b, 'Nova');
+  assert.doesNotMatch(formatStellaLoungeContext(snapshot), /user_8f3c9b/);
   assert.deepEqual(snapshot.nebula.games, [{ name: 'Bingo', joinCommand: '!bingo join' }]);
   assert.equal(snapshot.community.liveCount, 2);
   assert.deepEqual(snapshot.community.liveNames, ['CaptainOne', 'CaptainTwo']);
