@@ -16,7 +16,7 @@ test('the live lounge refresh waits for the media request prompt and stays stabl
       if (name === '@/services/lounge-player-control') return { getLoungeBrowserRefresh: async () => ({ requestedAt: 0 }) };
       throw Error(name);
     },
-    fetch: async url => { requests++; return { ok: url.includes('hearmeout') ? ready : overlays, text: async () => 'data-empty-request-prompt="v3" spmt-commercial-ready data-chat-tag-rotation="full-size-v2"' }; },
+    fetch: async url => { requests++; return { ok: url.includes('hearmeout') ? ready : overlays, text: async () => 'data-empty-request-prompt="v3" spmt-commercial-ready data-chat-tag-rotation="player-cards-v3"' }; },
   });
   assert.equal((await exports.GET()).requestedAt, previous);
   assert.equal((await exports.GET()).requestedAt, previous);

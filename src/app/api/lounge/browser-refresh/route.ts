@@ -4,8 +4,8 @@ import { getLoungeBrowserRefresh } from '@/services/lounge-player-control';
 export const dynamic = 'force-dynamic';
 
 // Refresh once all matching overlay fixes are live, preserving the media prompt.
-const PREVIOUS_REFRESH_AT = Date.parse('2026-10-02T13:04:27Z');
-const FORCE_REFRESH_AT = Date.parse('2026-10-02T13:06:48Z');
+const PREVIOUS_REFRESH_AT = Date.parse('2026-10-02T13:06:48Z');
+const FORCE_REFRESH_AT = Date.parse('2026-10-02T13:35:00Z');
 let recoveryReady = false;
 let recoveryCheckedAt = 0;
 
@@ -23,7 +23,7 @@ async function mediaPromptReady() {
       ]);
       recoveryReady = lounge.ok && chatTag.ok
         && (await lounge.text()).includes('spmt-commercial-ready')
-        && (await chatTag.text()).includes('data-chat-tag-rotation="full-size-v2"');
+        && (await chatTag.text()).includes('data-chat-tag-rotation="player-cards-v3"');
     }
   } catch {}
   return recoveryReady;
