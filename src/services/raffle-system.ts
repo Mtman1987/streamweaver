@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { readJsonFile, writeJsonFile } from './storage';
+import { ensureValidToken, getStoredTokens } from '@/lib/token-utils.server';
 
 const RAFFLE_FILE = 'raffle-state.json';
 const RAFFLE_CONTEXT = { tenantId: 'spacemountainlive', username: 'raffle' };
@@ -130,6 +131,70 @@ export async function markRaffleAnnounced(drawId: string, delivered: boolean) {
   if (delivered) { state.draw.status = 'complete'; state.draw.announcedAt = new Date().toISOString(); }
   else delete state.draw.announcementClaimedAt;
   await writeState(state);
+}
+export async function setRaffleRewardTickets(selector: string, tickets: number) {
+  const state = await readState();
+  const rules = Object.values(state.rewardRules).sort((a, b) => a.title.localeCompare(b.title));
+  const numeric = /^\d+$/.test(String(selector || '').trim()) ? Number(selector) : 0;
+  const target = numeric >= 1 && numeric <= rules.length
+    ? rules[numeric - 1]
+    : rules.find((rule) => rule.rewardId === selector || rule.title.toLowerCase() === String(selector || '').trim().toLowerCase());
+  if (!target) throw new Error('I could not find that raffle reward. Use !raffle rewards first.');
+  const nextTickets = Math.max(1, Math.min(1000, Math.floor(Number(tickets) || 0)));
+  target.tickets = nextTickets;
+  state.rewardRules[target.rewardId] = target;
+  for (const redemption of Object.values(state.redemptions)) {
+    if (redemption.rewardId === target.rewardId) redemption.ticketCount = nextTickets;
+  }
+  await writeState(state);
+  return target;
+}
+
+export async function syncRaffleRedemptionsFromTwitch(tenantId = 'spacemountainlive') {
+  const tokens = await getStoredTokens(tenantId);
+  if (!tokens) throw new Error('No Twitch broadcaster OAuth is available for the raffle sync.');
+  const clientId = tokens.twitchClientId || process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Twitch credentials are incomplete.');
+  const accessToken = await ensureValidToken(clientId, clientSecret, 'broadcaster', tokens, tenantId);
+  const validate = await fetch('https://id.twitch.tv/oauth2/validate', { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!validate.ok) throw new Error('Twitch broadcaster token validation failed.');
+  const validated = await validate.json() as any;
+  const broadcasterId = String(validated?.user_id || '');
+  if (!broadcasterId) throw new Error('Twitch broadcaster ID is unavailable.');
+  const headers = { 'Client-ID': clientId, Authorization: `Bearer ${accessToken}` };
+  const rewardsResponse = await fetch(`https://api.twitch.tv/helix/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(broadcasterId)}`, { headers });
+  if (!rewardsResponse.ok) throw new Error('Twitch raffle rewards could not be loaded.');
+  const rewardsPayload = await rewardsResponse.json() as any;
+  const rewards = (Array.isArray(rewardsPayload?.data) ? rewardsPayload.data : []).filter((reward: any) => inferRaffleTicketQuantity(String(reward?.title || '')) !== null);
+  let imported = 0;
+  for (const reward of rewards) {
+    const rewardId = String(reward?.id || '');
+    const title = String(reward?.title || '');
+    if (!rewardId) continue;
+    for (const status of ['UNFULFILLED', 'FULFILLED', 'CANCELED']) {
+      let after = '';
+      do {
+        const query = new URLSearchParams({ broadcaster_id: broadcasterId, reward_id: rewardId, status, first: '50' });
+        if (after) query.set('after', after);
+        const response = await fetch(`https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions?${query.toString()}`, { headers });
+        if (!response.ok) break;
+        const payload = await response.json() as any;
+        const entries = Array.isArray(payload?.data) ? payload.data : [];
+        for (const event of entries) {
+          const result = await recordRaffleRedemption({
+            redemptionId: String(event?.id || ''), userId: String(event?.user_id || ''), username: String(event?.user_login || ''),
+            displayName: String(event?.user_name || event?.user_login || ''), rewardId, rewardTitle: title,
+            status: String(event?.status || status).toLowerCase(), redeemedAt: String(event?.redeemed_at || new Date().toISOString()),
+          });
+          if (result.tracked) imported += 1;
+        }
+        after = String(payload?.pagination?.cursor || '');
+      } while (after);
+    }
+  }
+  const summary = await getRaffleSummary();
+  return { rewards: rewards.length, imported, totalTickets: summary.totalTickets, uniqueEntrants: summary.uniqueEntrants };
 }
 export async function resetRaffleCycle() {
   const state = await readState(); const entrants = aggregate(state);
