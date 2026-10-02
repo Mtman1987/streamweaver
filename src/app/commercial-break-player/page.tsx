@@ -147,7 +147,7 @@ export default function CommercialBreakPlayer() {
     };
     void load();
     return () => { cancelled = true; clearTimeout(retry); };
-  }, []);
+  }, [state.breakStartedAt]);
 
   useEffect(() => {
     if (state.phase !== 'ACTIVE') setVisibleGifUrl('');
