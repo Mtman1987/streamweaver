@@ -13,10 +13,10 @@ async function mediaPromptReady() {
   if (recoveryReady || Date.now() - recoveryCheckedAt < 10000) return recoveryReady;
   recoveryCheckedAt = Date.now();
   try {
-    const response = await fetch('https://hearmeout-main.fly.dev/lounge-media/player', {
+    const response = await fetch('https://hearmeout-main.fly.dev/lounge-media/direct', {
       cache: 'no-store', signal: AbortSignal.timeout(3000),
     });
-    if (response.ok && (await response.text()).includes('What should we play next?')) recoveryReady = true;
+    if (response.ok && (await response.text()).includes('data-empty-request-prompt="v1"')) recoveryReady = true;
   } catch {}
   return recoveryReady;
 }
