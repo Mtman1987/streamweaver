@@ -506,8 +506,8 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if(overlayCreate) return {action:'nebula.overlay.manage',args:{operation:'create'},detection:'explicit'};
 
   if (
-    /\b(?:restart|reload|reconnect|reset)\b.*\b(?:lounge\s+)?(?:media|movie|hearmeout|hear me out)\s+(?:player|viewer)\b/.test(value)
-    || /\b(?:media|movie|hearmeout|hear me out)\s+(?:player|viewer)\b.*\b(?:restart|reload|reconnect|reset)\b/.test(value)
+    /\b(?:restart|reload|reconnect|reset|clear)\b.*\b(?:lounge\s+)?(?:media|movie|hearmeout|hear me out)(?:\s+(?:player|viewer))?\b/.test(value)
+    || /\b(?:media|movie|hearmeout|hear me out)(?:\s+(?:player|viewer))?\b.*\b(?:restart|reload|reconnect|reset|clear)\b/.test(value)
   ) {
     return { action: 'sw.lounge.media.restart', args: {}, detection: 'explicit' };
   }
