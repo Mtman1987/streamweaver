@@ -44,7 +44,7 @@ test('unknown, future and expired markers cannot fire the GIF; longer tenant com
 test('commercial API carries relay markers to the existing player and preserves HMO audio protection', async () => {
   let time = now, fail = false, reads = 0;
   const route = load('src/app/api/lounge/commercial-break/route.ts', {
-    'next/server': { NextResponse: { json: value => value } },
+    'next/server': { NextResponse: { json: (value, options) => ({ ...value, headers: options?.headers }) } },
     '@/lib/tenant': { SPACEMOUNTAIN_SYSTEM_TENANT_ID: 'spacemountainlive' },
     '@/services/commercial-break': { ...service, getCommercialBreakState: async () => idle,
       withSpotlightCommercialBreak: (s, p) => service.withSpotlightCommercialBreak(s, p, time) },
@@ -58,6 +58,7 @@ test('commercial API carries relay markers to the existing player and preserves 
   let result = await route.GET();
   assert.equal(result.phase, 'ACTIVE');
   assert.equal(result.mediaActive, true);
+  assert.equal(result.headers['access-control-allow-origin'], '*', 'the spmt.live parent can read the same state as its commercial iframe');
   await route.GET(); assert.equal(reads, 1, 'one-second player polls reuse the worker status briefly');
   time += 3000; fail = true;
   result = await route.GET(); assert.equal(result.phase, 'ACTIVE');

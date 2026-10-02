@@ -56,6 +56,6 @@ export async function GET(request?: Request) {
     currentSpotlightProgram(),
   ]);
   return NextResponse.json({ ...withSpotlightCommercialBreak(state, spotlight, Date.now(), delay), mediaActive: hasMedia }, {
-    headers: { 'cache-control': 'no-store, no-cache, must-revalidate' },
+    headers: { 'cache-control': 'no-store, no-cache, must-revalidate', 'access-control-allow-origin': '*' },
   });
 }

@@ -3,9 +3,9 @@ import { getLoungeBrowserRefresh } from '@/services/lounge-player-control';
 
 export const dynamic = 'force-dynamic';
 
-// Refresh existing lounge viewers once the new empty-media prompt is live.
-const PREVIOUS_REFRESH_AT = Date.parse('2026-10-02T12:44:44Z');
-const FORCE_REFRESH_AT = Date.parse('2026-10-02T13:04:27Z');
+// Refresh once all matching overlay fixes are live, preserving the media prompt.
+const PREVIOUS_REFRESH_AT = Date.parse('2026-10-02T13:04:27Z');
+const FORCE_REFRESH_AT = Date.parse('2026-10-02T13:06:48Z');
 let recoveryReady = false;
 let recoveryCheckedAt = 0;
 
@@ -16,7 +16,15 @@ async function mediaPromptReady() {
     const response = await fetch('https://hearmeout-main.fly.dev/lounge-media/direct', {
       cache: 'no-store', signal: AbortSignal.timeout(3000),
     });
-    if (response.ok && (await response.text()).includes('data-empty-request-prompt="v3"')) recoveryReady = true;
+    if (response.ok && (await response.text()).includes('data-empty-request-prompt="v3"')) {
+      const [lounge, chatTag] = await Promise.all([
+        fetch('https://spmt.live/tenant/mtman1987/lounge', { cache: 'no-store', signal: AbortSignal.timeout(3000) }),
+        fetch('https://chat-tag-new.fly.dev/overlay/preview?compact=lounge', { cache: 'no-store', signal: AbortSignal.timeout(3000) }),
+      ]);
+      recoveryReady = lounge.ok && chatTag.ok
+        && (await lounge.text()).includes('spmt-commercial-ready')
+        && (await chatTag.text()).includes('data-chat-tag-rotation="full-size-v2"');
+    }
   } catch {}
   return recoveryReady;
 }
