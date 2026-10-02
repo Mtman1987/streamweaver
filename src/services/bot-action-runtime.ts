@@ -992,7 +992,7 @@ export async function executeBotAction(
       const profile=await readProfile(surface);
       const visible=profile.gameIds.filter((id:string)=>knownIds.has(id) && activeIds.includes(id) && id!=='chat-tag' && id!=='quackverse');
       const shouldStart=operation==='start-show'||operation==='show'||operation==='switch';
-      const shouldStop=operation==='stop-hide';
+      const shouldStop=operation==='stop-hide'||operation==='hide';
       if(shouldStart && !activeIds.includes(gameId)) await run(gameId,'start');
       if(operation==='switch'){
         const otherActive=visible.filter((id:string)=>id!==gameId);
