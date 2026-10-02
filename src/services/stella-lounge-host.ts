@@ -79,7 +79,7 @@ export type StellaWordChainWatch = {
   phase: 'play' | 'review' | 'tally';
   secondsLeft: number;
   lastPlay: { word: string; displayName: string; points: number; combo: number; position: number } | null;
-  reviewWords: Array<{ displayName: string; points: number }>;
+  reviewWords: Array<{ word?: string; displayName: string; points: number }>;
   reviewLeaders: Array<{ displayName: string; points: number }>;
   gameEnded: boolean;
   gameParticipants: Array<{ displayName: string; points: number }>;
