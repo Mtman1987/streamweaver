@@ -5,6 +5,7 @@ import {
   buildStellaLoungeSnapshot,
   detectStellaLoungeIntent,
   formatStellaLoungeContext,
+  planStellaWordChainEvent,
   resolveStellaLoungeIntent,
 } from '../src/services/stella-lounge-host';
 
@@ -105,4 +106,69 @@ test('reports a paused movie alongside playing music without saying the movie en
   assert.equal(snapshot.media.kind, 'music');
   assert.equal(snapshot.media.pausedMovieTitle, 'The Fifth Element');
   assert.match(formatStellaLoungeContext(snapshot), /Rocket Man.*playing.*The movie The Fifth Element is selected but not playing/);
+});
+
+
+test('Stella reacts selectively to Word Chain plays, round transitions, and the five-round finish', () => {
+  const base = {
+    roundSlot: 4,
+    roundNumber: 5,
+    theme: 'Movies',
+    currentWord: 'SCENE',
+    phase: 'play' as const,
+    secondsLeft: 200,
+    lastPlay: null,
+    reviewWords: [],
+    reviewLeaders: [],
+    gameEnded: false,
+    gameParticipants: [],
+    gameWinner: null,
+    gameWinners: [],
+  };
+
+  const ordinary = {
+    ...base,
+    lastPlay: { word: 'EDIT', displayName: 'Nova', points: 4, combo: 1, position: 1 },
+  };
+  assert.equal(planStellaWordChainEvent(base, ordinary, 1), null, 'Stella should not narrate every word');
+  const sampled = planStellaWordChainEvent(base, ordinary, 3);
+  assert.equal(sampled?.kind, 'game-play');
+  assert.equal(sampled?.actor, 'Nova');
+  assert.match(sampled?.text || '', /EDIT/);
+
+  const combo = planStellaWordChainEvent(base, {
+    ...ordinary,
+    lastPlay: { word: 'TRAILER', displayName: 'Orion', points: 10, combo: 2, position: 2 },
+  }, 2);
+  assert.equal(combo?.kind, 'game-play');
+  assert.match(combo?.text || '', /2x combo/);
+
+  const voting = planStellaWordChainEvent(ordinary, {
+    ...ordinary,
+    phase: 'review',
+    secondsLeft: 60,
+    reviewWords: [{ word: 'EDIT', displayName: 'Nova', points: 4 }],
+  }, 3);
+  assert.equal(voting?.kind, 'game-round');
+  assert.match(voting?.text || '', /voting is open for 60 seconds/i);
+
+  const finished = planStellaWordChainEvent({
+    ...ordinary,
+    phase: 'review',
+  }, {
+    ...ordinary,
+    phase: 'tally',
+    secondsLeft: 30,
+    gameEnded: true,
+    gameParticipants: [
+      { displayName: 'Nova', points: 31 },
+      { displayName: 'Orion', points: 24 },
+    ],
+    gameWinner: { displayName: 'Nova', points: 31 },
+    gameWinners: [{ displayName: 'Nova', points: 31 }],
+  }, 3);
+  assert.equal(finished?.kind, 'game-winner');
+  assert.equal(finished?.actor, 'Nova');
+  assert.match(finished?.text || '', /GAME OVER/);
+  assert.match(finished?.text || '', /#1 Nova 31/);
 });
