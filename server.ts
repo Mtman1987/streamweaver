@@ -507,6 +507,15 @@ async function startServer() {
                 console.warn('[Stella Lounge Host] Tick failed:', e);
             }
         }, 60000);
+        pollingService.addTask('stella-lounge-games', async () => {
+            try {
+                const { runStellaLoungeGameTick } = require('./src/services/stella-lounge-host');
+                const result = await runStellaLoungeGameTick();
+                if (result.delivered) console.log('[Stella Lounge Host] Live game reaction delivered');
+            } catch (e) {
+                console.warn('[Stella Lounge Host] Game tick failed:', e);
+            }
+        }, 10000);
         pollingService.addTask('kick-health', async () => {
             try {
                 const { getAllKickInstances } = require('./src/services/kick');
