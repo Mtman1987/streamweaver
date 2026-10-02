@@ -981,35 +981,57 @@ export async function executeBotAction(
         return {handled:true,action:request.action,status:'needs_input',response:'Quackverse is a browser game with a separate pack overlay and no persistent Lounge game to remove or stop.'};
       }
       const username=clean(context.actor.username||context.actor.displayName||channel,80);
+      let currentActiveIds=[...activeIds];
       const run=async(id:string,action:'start'|'stop')=>{
         const result=await executeNebulaCommand({channel,username,userId:context.actor.userId,displayName:context.actor.displayName||username,message:'spmt '+id+' '+action}) as any;
         const confirmed=await readNebulaChannelState(channel) as any;
         if(result?.handled!==true || !Array.isArray(confirmed?.gameIds) || confirmed.gameIds.includes(id)!==(action==='start')) {
           throw new Error('Nebula did not confirm '+id+' '+action+'.');
         }
+        currentActiveIds=confirmed.gameIds.map(String).filter((value:string)=>knownIds.has(value));
         return result;
       };
-      const profile=await readProfile(surface);
-      const visible=profile.gameIds.filter((id:string)=>knownIds.has(id) && activeIds.includes(id) && id!=='chat-tag' && id!=='quackverse');
       const shouldStart=operation==='start-show'||operation==='show'||operation==='switch';
       const shouldStop=operation==='stop-hide'||operation==='hide';
-      if(shouldStart && !activeIds.includes(gameId)) await run(gameId,'start');
+      if(shouldStart && !currentActiveIds.includes(gameId)) await run(gameId,'start');
+      if(shouldStop && currentActiveIds.includes(gameId)) await run(gameId,'stop');
+      let profile:{gameIds:string[];layout:string};
+      try {
+        profile=await readProfile(surface);
+      } catch(error:any) {
+        if(shouldStart||shouldStop) {
+          return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+(shouldStart?' is active.':' is stopped.')+' The '+surface+' game overlay could not be updated right now.',result:{gameId,active:shouldStart,overlayUpdated:false,error:clean(error?.message||'overlay unavailable',180)}};
+        }
+        throw error;
+      }
+      const visible=profile.gameIds.filter((id:string)=>knownIds.has(id) && currentActiveIds.includes(id) && id!=='chat-tag' && id!=='quackverse');
       if(operation==='switch'){
         const otherActive=visible.filter((id:string)=>id!==gameId);
         for(const id of otherActive) await run(id,'stop');
-        const result=await setProfile(surface,[gameId],'focus');
-        return {handled:true,action:request.action,status:'completed',response:'✅ Switched to '+gameId+' on the '+surface+' overlay.',result};
+        try {
+          const result=await setProfile(surface,[gameId],'focus');
+          return {handled:true,action:request.action,status:'completed',response:'✅ Switched to '+gameId+' on the '+surface+' overlay.',result};
+        } catch(error:any) {
+          return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is active and the other visible games are stopped. The '+surface+' overlay could not be updated right now.',result:{gameId,active:true,overlayUpdated:false,error:clean(error?.message||'overlay unavailable',180)}};
+        }
       }
-      if(shouldStop && activeIds.includes(gameId)) await run(gameId,'stop');
       if(shouldStart){
         const ids=visible.includes(gameId)?visible:[...visible,gameId];
-        const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout==='focus'?'rotation':profile.layout);
-        return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is active and visible on the '+surface+' overlay.',result};
+        try {
+          const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout==='focus'?'rotation':profile.layout);
+          return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is active and visible on the '+surface+' overlay.',result};
+        } catch(error:any) {
+          return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is active. The '+surface+' overlay could not be updated right now.',result:{gameId,active:true,overlayUpdated:false,error:clean(error?.message||'overlay unavailable',180)}};
+        }
       }
       if(operation==='hide'||shouldStop){
         const ids=visible.filter((id:string)=>id!==gameId);
-        const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout);
-        return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is stopped and removed from the '+surface+' overlay.',result};
+        try {
+          const result=await setProfile(surface,ids,ids.length===1?'focus':profile.layout);
+          return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is stopped and removed from the '+surface+' overlay.',result};
+        } catch(error:any) {
+          return {handled:true,action:request.action,status:'completed',response:'✅ '+gameId+' is stopped. The '+surface+' overlay could not be updated right now.',result:{gameId,active:false,overlayUpdated:false,error:clean(error?.message||'overlay unavailable',180)}};
+        }
       }
       return {handled:true,action:request.action,status:'needs_input',response:'Tell me whether to start, add, remove, or stop '+gameId+'.'};
     }
