@@ -71,6 +71,22 @@ export type StellaLoungeSnapshot = {
   };
 };
 
+export type StellaWordChainWatch = {
+  roundSlot: number;
+  roundNumber: number;
+  theme: string;
+  currentWord: string;
+  phase: 'play' | 'review' | 'tally';
+  secondsLeft: number;
+  lastPlay: { word: string; displayName: string; points: number; combo: number; position: number } | null;
+  reviewWords: Array<{ word: string; displayName: string; points: number }>;
+  reviewLeaders: Array<{ displayName: string; points: number }>;
+  gameEnded: boolean;
+  gameParticipants: Array<{ displayName: string; points: number }>;
+  gameWinner: { displayName: string; points: number } | null;
+  gameWinners: Array<{ displayName: string; points: number }>;
+};
+
 type FetchLike = typeof fetch;
 
 const SPMT_URL = (process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/+$/, '');
@@ -87,8 +103,8 @@ const DSH_COMMUNITY_SPOTLIGHT_URL = String(
 );
 
 const SNAPSHOT_CACHE_MS = 15_000;
-const AMBIENT_MIN_MS = 9 * 60_000;
-const AMBIENT_MAX_MS = 18 * 60_000;
+const AMBIENT_MIN_MS = 6 * 60_000;
+const AMBIENT_MAX_MS = 12 * 60_000;
 const EVENT_SPEECH_GAP_MS = 12_000;
 const PROMO_GAP_MS = 30 * 60_000;
 
@@ -104,6 +120,9 @@ let lastSpokeAt = 0;
 let lastPromoAt = 0;
 const recentHostTopics: string[] = [];
 const recentEventFingerprints = new Map<string, number>();
+let gameWatchRunning = false;
+let lastWordChainWatch: StellaWordChainWatch | null = null;
+let wordChainPlayOrdinal = 0;
 
 function randomDelay(minimum: number, maximum: number): number {
   return minimum + Math.floor(Math.random() * Math.max(1, maximum - minimum + 1));
@@ -449,7 +468,7 @@ const AMBIENT_TOPICS = [
 
 
 export type StellaLoungeEvent = {
-  kind: 'raid' | 'game-winner' | 'milestone' | 'social' | 'follow' | 'subscribe' | 'cheer' | 'screen' | 'upcoming-event';
+  kind: 'raid' | 'game-winner' | 'game-play' | 'game-round' | 'milestone' | 'social' | 'follow' | 'subscribe' | 'cheer' | 'screen' | 'upcoming-event';
   actor?: string;
   text?: string;
   amount?: number;
@@ -459,7 +478,9 @@ export type StellaLoungeEvent = {
 
 function eventInstruction(event: StellaLoungeEvent): { priority: number; gesture: string; instruction: string } {
   if (event.kind === 'raid') return { priority: 100, gesture: '[dance_gesture]', instruction: 'A raid just arrived. Welcome the raider and their community with genuine energy, connect them to what is happening in the Lounge right now, and never use a stock raid line.' };
-  if (event.kind === 'game-winner') return { priority: 95, gesture: '[happy_gesture]', instruction: 'A game just ended with a winner. Congratulate the winner by name and react to the supplied game/result facts. Do not invent a score or play.' };
+  if (event.kind === 'game-winner') return { priority: 95, gesture: '[happy_gesture]', instruction: 'A game just ended with a winner. Congratulate the winner by name, make the ending feel final, and react to the supplied standings/result facts. Do not invent a score or play.' };
+  if (event.kind === 'game-round') return { priority: 78, gesture: '[look_gesture]', instruction: 'A real game phase or round just changed. Host the moment like you are at the table: name a verified leader/player when one is supplied, make voting or the next phase clear when relevant, and vary between concise hype, tactical observation, playful pressure, and encouragement. Do not recite the full rules.' };
+  if (event.kind === 'game-play') return { priority: 64, gesture: '[happy_gesture]', instruction: 'A verified player just made a noteworthy game play. React to that player and the actual play with one fresh, playful line. You can tease the situation, praise the move, or make a quick tactical observation, but do not narrate every move or invent what happens next.' };
   if (event.kind === 'milestone') return { priority: 90, gesture: '[happy_gesture]', instruction: 'A real community or stream milestone was reached. Recognize it briefly and naturally using only the supplied facts.' };
   if (event.kind === 'social') return { priority: 75, gesture: '[happy_gesture]', instruction: 'A social interaction happened. React to the specific people and interaction with a fresh playful line; do not reuse a canned response.' };
   if (event.kind === 'subscribe' || event.kind === 'cheer') return { priority: 72, gesture: '[wave_gesture]', instruction: 'A viewer support event happened. Thank the person naturally and briefly without sounding like an alert bot.' };
@@ -476,6 +497,7 @@ async function deliverStellaHostLine(prompt: string, now = Date.now()): Promise<
     'Do not announce analytics numbers unless the number itself is the event.',
     'Vary openings, sentence shape, pacing and humor. Avoid recent topics: ' + (recentHostTopics.slice(-6).join(' | ') || 'none'),
     'Draw naturally on Stella’s SpaceMountain, Commander, Passenger, bridge and Arcade lore when it fits. Do not force the same catchphrase into each reply.',
+    'During games, sound like a playful live co-host rather than a referee: use player names, respond to the specific verified move or result, vary your energy, and leave room for players to talk. Do not repeat the same praise template.',
     'If an exact count or other dull operational readout is needed in chat, put that portion in parentheses after a complete spoken sentence. Parenthesized text is visible but skipped by Lounge TTS.',
     'Do not say you checked a system. Do not invent viewers, events, scores, media, plans or memories.',
     'Truth rule: intent is not outcome. Never turn selected/requested/queued into playing, visible, audible, completed, or successful unless supplied facts explicitly verify it.',
@@ -510,7 +532,7 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
   const publicEvent = sanitizePublicUserFacts(event, snapshot.nebula.playerNamesById) as StellaLoungeEvent;
   if (publicEvent.kind === 'raid') { setStellaEnergy('excited'); rememberCallback(`A raid arrived from ${publicEvent.actor || 'the community'}`, publicEvent.actor, 75 * 60_000, now); }
   if (publicEvent.kind === 'game-winner') rememberCallback(`${publicEvent.actor || 'A player'} won ${String(publicEvent.metadata?.game || 'a Lounge game')}`, publicEvent.actor, 75 * 60_000, now);
-  if (publicEvent.kind === 'game-winner' || publicEvent.kind === 'milestone') setStellaEnergy('playful');
+  if (publicEvent.kind === 'game-winner' || publicEvent.kind === 'game-play' || publicEvent.kind === 'game-round' || publicEvent.kind === 'milestone') setStellaEnergy('playful');
   rememberStellaThought({ kind: publicEvent.kind === 'upcoming-event' ? 'plan' : 'event', actor: publicEvent.actor, text: [publicEvent.kind, publicEvent.actor, publicEvent.text].filter(Boolean).join(': '), ttlMs: interrupt ? 60 * 60_000 : 30 * 60_000 }, now);
   if (!interrupt && now - lastSpokeAt < EVENT_SPEECH_GAP_MS) { recordStellaDecision('silence', 'speech-cooldown', now); return { delivered: false, reason: 'speech-cooldown' }; }
   if (publicEvent.kind === 'upcoming-event' && now - lastPromoAt < PROMO_GAP_MS) { rememberProducerOpportunity(publicEvent.text || 'Upcoming community event', 60 * 60_000, now); return { delivered: false, reason: 'promo-cooldown' }; }
@@ -521,6 +543,135 @@ export async function reactStellaLoungeEvent(event: StellaLoungeEvent, now = Dat
   if (result.delivered) recordStellaDecision('speak', `event:${publicEvent.kind}`, now);
   if (result.delivered && publicEvent.kind === 'upcoming-event') lastPromoAt = now;
   return result;
+}
+
+
+function wordChainWatch(payload: any): StellaWordChainWatch | null {
+  const root = unwrapData(payload);
+  const value = root?.snapshot && typeof root.snapshot === 'object' ? root.snapshot : root;
+  const roundSlot = Number(value?.roundSlot);
+  const roundNumber = Number(value?.roundNumber);
+  if (!Number.isSafeInteger(roundSlot) || !Number.isFinite(roundNumber)) return null;
+  const phase = value?.phase === 'review' || value?.phase === 'tally' ? value.phase : 'play';
+  const person = (entry: any) => ({
+    displayName: String(entry?.displayName || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    points: Math.max(0, Math.floor(Number(entry?.points || 0))),
+  });
+  const last = value?.lastPlay && typeof value.lastPlay === 'object' ? {
+    word: String(value.lastPlay.word || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 30),
+    displayName: String(value.lastPlay.displayName || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    points: Math.max(0, Math.floor(Number(value.lastPlay.points || 0))),
+    combo: Math.max(1, Number(value.lastPlay.combo || 1)),
+    position: Math.max(0, Math.floor(Number(value.lastPlay.position || 0))),
+  } : null;
+  return {
+    roundSlot,
+    roundNumber: Math.max(1, Math.min(5, Math.floor(roundNumber))),
+    theme: String(value?.theme || 'General').replace(/\s+/g, ' ').trim().slice(0, 60),
+    currentWord: String(value?.currentWord || '').replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 30),
+    phase,
+    secondsLeft: Math.max(0, Math.floor(Number(value?.secondsLeft || 0))),
+    lastPlay: last?.word && last.displayName ? last : null,
+    reviewWords: (Array.isArray(value?.reviewWords) ? value.reviewWords : []).map(person).filter((entry: any) => entry.displayName).slice(0, 50),
+    reviewLeaders: (Array.isArray(value?.reviewLeaders) ? value.reviewLeaders : []).map(person).filter((entry: any) => entry.displayName).slice(0, 10),
+    gameEnded: Boolean(value?.gameEnded),
+    gameParticipants: (Array.isArray(value?.gameParticipants) ? value.gameParticipants : []).map(person).filter((entry: any) => entry.displayName).slice(0, 50),
+    gameWinner: value?.gameWinner?.displayName ? person(value.gameWinner) : null,
+    gameWinners: (Array.isArray(value?.gameWinners) ? value.gameWinners : []).map(person).filter((entry: any) => entry.displayName).slice(0, 10),
+  };
+}
+
+export function planStellaWordChainEvent(
+  previous: StellaWordChainWatch,
+  current: StellaWordChainWatch,
+  playOrdinal = 1,
+): StellaLoungeEvent | null {
+  if (current.gameEnded && (!previous.gameEnded || previous.roundSlot !== current.roundSlot)) {
+    const winners = current.gameWinners.length ? current.gameWinners : current.gameWinner ? [current.gameWinner] : [];
+    const standings = current.gameParticipants.map((entry, index) => '#' + (index + 1) + ' ' + entry.displayName + ' ' + entry.points).join(', ');
+    if (!winners.length) {
+      return {
+        kind: 'game-round',
+        text: 'Word Chain GAME OVER after five rounds. No scored winner.' + (standings ? ' Final standings: ' + standings + '.' : ''),
+        metadata: { game: 'Word Chain', round: 5, standings: current.gameParticipants },
+      };
+    }
+    const actor = winners.map((entry) => entry.displayName).join(' and ');
+    return {
+      kind: 'game-winner',
+      actor,
+      text: 'Word Chain GAME OVER after five rounds. ' + actor + ' ' + (winners.length > 1 ? 'tied for the win' : 'won') + ' with ' + winners[0]!.points + ' points.' + (standings ? ' Final standings: ' + standings + '.' : ''),
+      metadata: { game: 'Word Chain', rounds: 5, standings: current.gameParticipants, winners },
+    };
+  }
+
+  if (current.roundSlot !== previous.roundSlot) {
+    return {
+      kind: 'game-round',
+      text: 'Word Chain round ' + current.roundNumber + '/5 started. Theme: ' + current.theme + '. Starting word: ' + current.currentWord + '.',
+      metadata: { game: 'Word Chain', round: current.roundNumber, theme: current.theme, currentWord: current.currentWord },
+    };
+  }
+
+  if (current.phase === 'review' && previous.phase !== 'review') {
+    return {
+      kind: 'game-round',
+      text: 'Word Chain round ' + current.roundNumber + '/5 is over and voting is open for ' + current.secondsLeft + ' seconds on ' + current.reviewWords.length + ' played words.',
+      metadata: { game: 'Word Chain', round: current.roundNumber, phase: 'voting', words: current.reviewWords.length, secondsLeft: current.secondsLeft },
+    };
+  }
+
+  if (current.phase === 'tally' && previous.phase !== 'tally') {
+    const leader = current.reviewLeaders[0];
+    return {
+      kind: 'game-round',
+      actor: leader?.displayName,
+      text: leader
+        ? 'Word Chain round ' + current.roundNumber + '/5 results are locked. ' + leader.displayName + ' led the round with ' + leader.points + ' points.'
+        : 'Word Chain round ' + current.roundNumber + '/5 results are locked.',
+      metadata: { game: 'Word Chain', round: current.roundNumber, phase: 'results', leaders: current.reviewLeaders },
+    };
+  }
+
+  const before = previous.lastPlay;
+  const play = current.lastPlay;
+  const changedPlay = Boolean(play && (!before || play.position !== before.position || play.word !== before.word || play.displayName !== before.displayName));
+  if (current.phase === 'play' && changedPlay && play) {
+    const noteworthy = play.combo > 1 || play.points >= 8 || Math.max(1, playOrdinal) % 3 === 0;
+    if (!noteworthy) return null;
+    return {
+      kind: 'game-play',
+      actor: play.displayName,
+      text: play.displayName + ' played ' + play.word + ' for ' + play.points + ' provisional points' + (play.combo > 1 ? ' on a ' + play.combo + 'x combo' : '') + ' in Word Chain round ' + current.roundNumber + '/5.',
+      metadata: { game: 'Word Chain', round: current.roundNumber, word: play.word, points: play.points, combo: play.combo, theme: current.theme },
+    };
+  }
+  return null;
+}
+
+export async function runStellaLoungeGameTick(now = Date.now()): Promise<{ delivered: boolean; reason: string }> {
+  if (gameWatchRunning) return { delivered: false, reason: 'already-running' };
+  gameWatchRunning = true;
+  try {
+    const query = new URLSearchParams({ channel: SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL, game: 'wordchain' });
+    const current = wordChainWatch(await fetchJson(fetch, NEBULA_URL + '/api/game-hub/word-stage?' + query.toString()));
+    if (!current) return { delivered: false, reason: 'wordchain-unavailable' };
+    const previous = lastWordChainWatch;
+    const before = previous?.lastPlay;
+    const changedPlay = Boolean(current.lastPlay && (!before || current.lastPlay.position !== before.position || current.lastPlay.word !== before.word || current.lastPlay.displayName !== before.displayName));
+    if (changedPlay) wordChainPlayOrdinal += 1;
+    lastWordChainWatch = current;
+    if (!previous) return { delivered: false, reason: 'initialized' };
+    const event = planStellaWordChainEvent(previous, current, wordChainPlayOrdinal);
+    if (!event) return { delivered: false, reason: 'no-noteworthy-game-change' };
+    const result = await reactStellaLoungeEvent(event, now);
+    return { delivered: result.delivered, reason: result.reason };
+  } catch (error) {
+    console.warn('[Stella Lounge Host] Game watch failed:', error);
+    return { delivered: false, reason: 'game-watch-failed' };
+  } finally {
+    gameWatchRunning = false;
+  }
 }
 
 function chooseAmbientTopic(snapshot: StellaLoungeSnapshot): string {
@@ -563,7 +714,7 @@ export async function runStellaLoungeHostTick(now = Date.now()): Promise<{ deliv
   if (ambientRunning) return { delivered: false, reason: 'already-running' };
   if (now < nextAmbientAt) return { delivered: false, reason: 'not-due' };
   if (isStreamerSpeaking(now)) { recordStellaDecision('silence', 'streamer-speaking', now); return { delivered: false, reason: 'streamer-speaking' }; }
-  if (Math.random() < 0.45) {
+  if (Math.random() < 0.30) {
     recordStellaDecision('silence', 'ambient-restraint', now);
     scheduleNextAmbient(now);
     return { delivered: false, reason: 'chose-silence' };
@@ -623,5 +774,8 @@ export function resetStellaLoungeHostForTests(now = Date.now()): void {
   lastSpokeAt = 0;
   lastPromoAt = 0;
   recentHostTopics.splice(0);
+  gameWatchRunning = false;
+  lastWordChainWatch = null;
+  wordChainPlayOrdinal = 0;
   recentEventFingerprints.clear();
 }
