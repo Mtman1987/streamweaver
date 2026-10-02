@@ -28,15 +28,15 @@ export type RaffleRewardRule = { rewardId: string; title: string; tickets: numbe
 export type RaffleRedemption = {
   redemptionId: string; userId: string; username: string; displayName: string;
   rewardId: string; rewardTitle: string; ticketCount: number; status: string;
-  redeemedAt: string; updatedAt: string;
+  redeemedAt: string; updatedAt: string; testOnly?: boolean;
 };
 export type RaffleDraw = {
-  id: string; raffleId?: RaffleId; label?: string; cycleId: number; status: 'drawing' | 'complete'; startedAt: string; revealAt: string;
+  id: string; testOnly?: boolean; raffleId?: RaffleId; label?: string; cycleId: number; status: 'drawing' | 'complete'; startedAt: string; revealAt: string;
   stepMs: number; totalTickets: number; entrants: RaffleEntrant[]; eliminationOrder: string[];
   winner: RaffleEntrant; announcementClaimedAt?: string; announcedAt?: string;
 };
 export type RaffleState = {
-  version: 1; cycleId: number; openedAt: string; rewardRules: Record<string, RaffleRewardRule>;
+  testSeedId?: string; version: 1; cycleId: number; openedAt: string; rewardRules: Record<string, RaffleRewardRule>;
   redemptions: Record<string, RaffleRedemption>; draw: RaffleDraw | null;
   history: Array<{ cycleId: number; closedAt: string; totalTickets: number; entrants: number; winner?: string }>;
 };
@@ -112,7 +112,25 @@ export async function getRaffleTicketBalance(username: string, userId?: string, 
   const normalized = String(username || '').trim().toLowerCase();
   return aggregate(await readState(raffleId)).filter((row) => (userId && row.userId === userId) || row.username === normalized).reduce((sum, row) => sum + row.tickets, 0);
 }
+// Owner-requested test fixture for the already-reset Merch cycle only.
+// Persist the marker with its entries so polling/restarts cannot re-add names.
+async function ensureRequestedMerchTest() {
+  return mutate(async () => {
+    const state = await readState('merch');
+    if (state.cycleId !== 2 || state.openedAt !== '2026-10-02T14:47:10.192Z' || state.testSeedId || state.draw) return;
+    const names = shuffle(['Orbit','Comet','Nova','Rocket','Lunar','Astro','Cosmo','Meteor','Saturn','Pluto','Galaxy','Solar','Nebula','Star']);
+    const now = new Date().toISOString();
+    for (const name of names.slice(0,10)) {
+      const username = 'test_' + name.toLowerCase();
+      const id = 'test:20261002:' + username;
+      state.redemptions[id] = { redemptionId:id, userId:id, username, displayName:'Test ' + name, rewardId:'test-only', rewardTitle:'Test entry (no Twitch points)', ticketCount:1, status:'fulfilled', redeemedAt:now, updatedAt:now, testOnly:true };
+    }
+    state.testSeedId = 'owner-request-20261002';
+    await writeState(state, 'merch');
+  });
+}
 export async function getRaffleSummary(raffleId: RaffleId = 'general') {
+  if (raffleId === 'merch') await ensureRequestedMerchTest();
   const state = await readState(raffleId);
   const entrants = aggregate(state);
   return { raffleId, label: RAFFLE_LABELS[raffleId], cycleId: state.cycleId, openedAt: state.openedAt, entrants, uniqueEntrants: entrants.length, totalTickets: entrants.reduce((sum, row) => sum + row.tickets, 0), rewardRules: Object.values(state.rewardRules).sort((a, b) => a.title.localeCompare(b.title)), draw: state.draw };
@@ -135,7 +153,7 @@ async function startRaffleDrawUnlocked(raffleId: RaffleId = 'general'): Promise<
   const stepMs = entrants.length <= 10 ? 2200 : entrants.length <= 25 ? 1600 : entrants.length <= 60 ? 1100 : 800;
   const started = Date.now();
   const draw: RaffleDraw = {
-    id: randomUUID(), raffleId, label: RAFFLE_LABELS[raffleId], cycleId: state.cycleId, status: 'drawing', startedAt: new Date(started).toISOString(),
+    id: randomUUID(), testOnly: Object.values(state.redemptions).some(e => active(e) && e.testOnly), raffleId, label: (Object.values(state.redemptions).some(e => active(e) && e.testOnly) ? 'TEST · ' : '') + RAFFLE_LABELS[raffleId], cycleId: state.cycleId, status: 'drawing', startedAt: new Date(started).toISOString(),
     revealAt: new Date(started + Math.max(1, eliminationOrder.length) * stepMs + 3000).toISOString(),
     stepMs, totalTickets, entrants, eliminationOrder, winner,
   };
