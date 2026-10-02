@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
-test('the live lounge refresh waits for the game recovery script and stays stable afterwards', async () => {
+test('the live lounge refresh waits for the media request prompt and stays stable afterwards', async () => {
   let now = Date.now(), ready = false, requests = 0;
   const source = fs.readFileSync('src/app/api/lounge/browser-refresh/route.ts', 'utf8');
   const previous = Date.parse(source.match(/PREVIOUS_REFRESH_AT = Date.parse\('([^']+)'/)[1]);
@@ -16,7 +16,7 @@ test('the live lounge refresh waits for the game recovery script and stays stabl
       if (name === '@/services/lounge-player-control') return { getLoungeBrowserRefresh: async () => ({ requestedAt: 0 }) };
       throw Error(name);
     },
-    fetch: async () => { requests++; return { ok: ready, text: async () => 'nebula:chunk-recovery:' }; },
+    fetch: async () => { requests++; return { ok: ready, text: async () => 'What should we play next?' }; },
   });
   assert.equal((await exports.GET()).requestedAt, previous);
   assert.equal((await exports.GET()).requestedAt, previous);
