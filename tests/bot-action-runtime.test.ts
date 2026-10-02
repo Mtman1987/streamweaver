@@ -102,7 +102,10 @@ test('Stella starts, adds, removes, and stops a Lounge game with saved-state rea
     assert.equal((await action('start-show')).status,'failed');
     assert.deepEqual(overlayGameIds,['bingo']);
     acceptStart=true; saveOverlay=false;
-    assert.equal((await action('start-show')).status,'failed');
+    const overlayFailure=await action('start-show');
+    assert.equal(overlayFailure.status,'completed');
+    assert.equal(activeGameIds.includes('pixelbattle'), true);
+    assert.match(overlayFailure.response,/active.*overlay could not be updated/i);
   } finally {
     globalThis.fetch=priorFetch;
     if(priorSecret===undefined) delete process.env.CHAT_TAG_SECRET;
