@@ -33,6 +33,7 @@ function shuffle<T>(items: T[]) {
 
 export default function CommercialBreakPlayer() {
   const level = useLoungeBroadcastVolume('media');
+  const playbackDelayRef = useRef(60000);
   const audioRef = useRef<HTMLAudioElement>(null);
   const breakRef = useRef(0);
   const themeRef = useRef(0);
@@ -59,7 +60,7 @@ export default function CommercialBreakPlayer() {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const response = await fetch('/api/lounge/commercial-break', { cache: 'no-store' });
+        const response = await fetch(`/api/lounge/commercial-break?playbackDelayMs=${Math.round(playbackDelayRef.current)}`, { cache: 'no-store' });
         if (response.ok) {
           const next = await response.json() as State;
           if (!stopped) {
@@ -71,8 +72,14 @@ export default function CommercialBreakPlayer() {
       } catch {}
       if (!stopped) timer = setTimeout(poll, 1000);
     };
+    const receiveDelay = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== 'https://spmt.live' || event.data?.type !== 'spmt-lounge-spotlight-delay') return;
+      const delay = Number(event.data.delayMs);
+      if (Number.isFinite(delay) && delay >= 12000 && delay <= 300000) playbackDelayRef.current = delay;
+    };
+    window.addEventListener('message', receiveDelay);
     void poll();
-    return () => { stopped = true; clearTimeout(timer); };
+    return () => { stopped = true; clearTimeout(timer); window.removeEventListener('message', receiveDelay); };
   }, []);
 
   useEffect(() => {
@@ -135,8 +142,8 @@ export default function CommercialBreakPlayer() {
         const selected = shuffle(smaller.length ? smaller : candidates).slice(0, GIF_COUNT);
         if (!selected.length) throw new Error('No GIFs available');
         if (!cancelled) {
-          setGifs(selected);
-          setGifIndex(0);
+          setGifs((current) => activeRef.current && current.length ? current : selected);
+          if (!activeRef.current) setGifIndex(0);
           // Warm the first visible image before a commercial starts.
           for (const gif of selected.slice(0, 2)) {
             const image = new Image();

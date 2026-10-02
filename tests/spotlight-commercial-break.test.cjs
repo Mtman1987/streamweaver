@@ -64,3 +64,46 @@ test('commercial API carries relay markers to the existing player and preserves 
   time = now + 32_000;
   result = await route.GET(); assert.equal(result.phase, 'IDLE', 'a failed worker request never extends an ad');
 });
+
+
+test('buffered playback keeps the cover after the source expires and clears it after the ad tail', () => {
+  const relay = { commercialBreak: null, recentCommercialBreak: { active: true, id: 'buffered-ad',
+    breakStartedAt: now - 47000, sourceEndsAt: now - 17000, activeUntil: now - 5000 } };
+  const covered = service.withSpotlightCommercialBreak(idle, relay, now, 36000);
+  assert.equal(covered.phase, 'ACTIVE');
+  assert.equal(covered.activeUntil, now + 19000);
+  assert.equal(service.withSpotlightCommercialBreak(idle, relay, now, 12000), idle);
+  assert.equal(service.withSpotlightCommercialBreak(idle, relay, now + 19000, 36000), idle);
+  // Pausing grows live latency by the same amount that wall time advances.
+  assert.equal(service.withSpotlightCommercialBreak(idle, relay, now + 30000, 66000).phase, 'ACTIVE');
+});
+
+test('commercial theme waits for a loaded GIF, respects active media, and stays capped', () => {
+  function render({ ready, mediaActive }) {
+    const effects = [], now = Date.now(), gif = { url: 'https://example.test/community.gif', user: 'Crew' };
+    const audio = { paused: true, volume: 1, currentTime: 0, plays: 0, pause() { this.paused = true; }, load() {},
+      play() { this.paused = false; this.plays++; return Promise.resolve(); } };
+    const states = [{ phase: 'ACTIVE', breakStartedAt: now - 1000, activeUntil: now + 30000, mediaActive }, [gif], 0, ready ? gif.url : ''];
+    let ref = 0, state = 0;
+    const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/app/commercial-break-player/page.tsx'), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+    }).outputText;
+    const exports = {};
+    vm.runInNewContext(code, { exports, module: { exports }, Date,
+      require(name) {
+        if (name === 'react') return { useEffect(fn) { effects.push(fn); }, useRef(value) { return { current: ref++ === 1 ? audio : value }; },
+          useState() { return [states[state++], () => {}]; } };
+        if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
+        if (name === '@/lib/lounge-broadcast-volume') return { useLoungeBroadcastVolume: () => 1 };
+        throw Error(name);
+      } });
+    exports.default();
+    effects[0](); effects[2]();
+    return audio;
+  }
+  assert.equal(render({ ready: false, mediaActive: false }).plays, 0, 'no audio before the visible GIF loads');
+  assert.equal(render({ ready: true, mediaActive: true }).plays, 0, 'a movie or music session suppresses the commercial theme');
+  const playing = render({ ready: true, mediaActive: false });
+  assert.equal(playing.plays, 1);
+  assert.equal(playing.volume, .15);
+});

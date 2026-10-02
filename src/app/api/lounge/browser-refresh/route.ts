@@ -3,7 +3,8 @@ import { getLoungeBrowserRefresh } from '@/services/lounge-player-control';
 
 export const dynamic = 'force-dynamic';
 
-const FORCE_REFRESH_AT = Date.parse('2026-10-02T10:11:58Z');
+// Load the playback-aware commercial renderer once after this release.
+const FORCE_REFRESH_AT = Date.parse('2026-10-02T11:21:22Z');
 
 export async function GET() {
   const state = await getLoungeBrowserRefresh();
