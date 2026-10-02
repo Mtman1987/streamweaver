@@ -393,24 +393,25 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                         const userInput = String(event?.user_input || '').trim();
                         console.log(`[EventSub] Channel point redeem: ${rewardTitle} by ${userLogin}, input: "${userInput}"`);
 
-                        const raffle = await recordRaffleRedemption({
+                        const raffle = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID ? await recordRaffleRedemption({
                             redemptionId: String(event?.id || ''),
                             userId: String(event?.user_id || ''),
                             username: userLogin,
                             displayName: String(event?.user_name || userLogin),
                             rewardId: String(event?.reward?.id || ''),
                             rewardTitle,
+                            rewardCost: Number(event?.reward?.cost),
                             status: String(event?.status || 'unfulfilled'),
                             redeemedAt: String(event?.redeemed_at || new Date().toISOString()),
                         }).catch((error) => {
                             console.warn('[Raffle] Failed to record Twitch redemption:', error);
                             return { tracked: false, added: false, ticketsAdded: 0, totalTickets: 0 };
-                        });
+                        }) : { tracked: false, added: false, ticketsAdded: 0, totalTickets: 0 };
                         if (raffle.tracked) {
                             if (subType.endsWith('.add') && raffle.added) {
                                 const ticketWord = raffle.ticketsAdded === 1 ? 'ticket' : 'tickets';
                                 sendChatMessage(
-                                    `🎟️ @${userLogin} added ${raffle.ticketsAdded} raffle ${ticketWord}! (Total: ${raffle.totalTickets})`,
+                                    `🎟️ @${userLogin} added ${raffle.ticketsAdded} ${('raffleLabel' in raffle && raffle.raffleLabel) || 'raffle'} ${ticketWord}! (Total: ${raffle.totalTickets})`,
                                     'bot',
                                     undefined,
                                     tenantId,
