@@ -64,3 +64,16 @@ test('commercial API carries relay markers to the existing player and preserves 
   time = now + 32_000;
   result = await route.GET(); assert.equal(result.phase, 'IDLE', 'a failed worker request never extends an ad');
 });
+
+
+test('buffered playback keeps the cover after the source expires and clears it after the ad tail', () => {
+  const relay = { commercialBreak: null, recentCommercialBreak: { active: true, id: 'buffered-ad',
+    breakStartedAt: now - 47000, sourceEndsAt: now - 17000, activeUntil: now - 5000 } };
+  const covered = service.withSpotlightCommercialBreak(idle, relay, now, 36000);
+  assert.equal(covered.phase, 'ACTIVE');
+  assert.equal(covered.activeUntil, now + 19000);
+  assert.equal(service.withSpotlightCommercialBreak(idle, relay, now, 12000), idle);
+  assert.equal(service.withSpotlightCommercialBreak(idle, relay, now + 19000, 36000), idle);
+  // Pausing grows live latency by the same amount that wall time advances.
+  assert.equal(service.withSpotlightCommercialBreak(idle, relay, now + 30000, 66000).phase, 'ACTIVE');
+});

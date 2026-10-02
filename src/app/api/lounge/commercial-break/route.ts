@@ -47,13 +47,15 @@ async function mediaActive(): Promise<boolean> {
   }
 }
 
-export async function GET() {
+export async function GET(request?: Request) {
+  const rawDelay = request ? new URL(request.url).searchParams.get('playbackDelayMs') : null;
+  const delay = rawDelay === null ? 60000 : Number(rawDelay);
   const [state, hasMedia, spotlight] = await Promise.all([
     getCommercialBreakState(SPACEMOUNTAIN_SYSTEM_TENANT_ID),
     mediaActive(),
     currentSpotlightProgram(),
   ]);
-  return NextResponse.json({ ...withSpotlightCommercialBreak(state, spotlight), mediaActive: hasMedia }, {
+  return NextResponse.json({ ...withSpotlightCommercialBreak(state, spotlight, Date.now(), delay), mediaActive: hasMedia }, {
     headers: { 'cache-control': 'no-store, no-cache, must-revalidate' },
   });
 }

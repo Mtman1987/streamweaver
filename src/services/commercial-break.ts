@@ -38,11 +38,14 @@ const empty = (): CommercialBreakState => ({
 // events to the SpaceMountain tenant. Cover them using the relay's confirmed
 // marker, while preserving any longer SpaceMountain commercial already active.
 export function withSpotlightCommercialBreak(
-  state: CommercialBreakState, program: unknown, now = Date.now(),
+  state: CommercialBreakState, program: unknown, now = Date.now(), playbackDelayMs = 60000,
 ): CommercialBreakState {
-  const marker = (program as { commercialBreak?: {
-    active?: boolean; id?: string; breakStartedAt?: number; activeUntil?: number;
-  } } | null)?.commercialBreak;
+  type Marker = { active?: boolean; id?: string; breakStartedAt?: number; activeUntil?: number; sourceEndsAt?: number };
+  const relay = program as { commercialBreak?: Marker; recentCommercialBreak?: Marker } | null;
+  const confirmed = relay?.recentCommercialBreak || relay?.commercialBreak;
+  const delay = Number.isFinite(playbackDelayMs) ? Math.min(300000, Math.max(12000, playbackDelayMs)) : 60000;
+  const marker = confirmed && Number.isFinite(confirmed.sourceEndsAt)
+    ? { ...confirmed, activeUntil: confirmed.sourceEndsAt! + delay } : confirmed;
   if (!marker?.active || typeof marker.id !== 'string' || !marker.id
     || !Number.isFinite(marker.breakStartedAt) || !Number.isFinite(marker.activeUntil)
     || marker.breakStartedAt! <= 0 || marker.breakStartedAt! > now
