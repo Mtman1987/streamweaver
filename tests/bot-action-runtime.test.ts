@@ -35,6 +35,12 @@ test('Stella can restart only the Lounge media player', async () => {
   assert.deepEqual(await detectBotAction('Stella reconnect the Lounge media player'), {
     action: 'sw.lounge.media.restart', args: {}, detection: 'explicit',
   });
+  assert.deepEqual(await detectBotAction('Stella restart the media'), {
+    action: 'sw.lounge.media.restart', args: {}, detection: 'explicit',
+  });
+  assert.deepEqual(await detectBotAction('Stella clear the media'), {
+    action: 'sw.lounge.media.restart', args: {}, detection: 'explicit',
+  });
   assert.notEqual((await detectBotAction('Stella restart the Spotlight player'))?.action, 'sw.lounge.media.restart');
 });
 
