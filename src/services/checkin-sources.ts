@@ -326,39 +326,7 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
       userId: auth.broadcasterId,
     });
 
-    // Filter out known bots
-    const { isKnownBot: isBot } = require('./known-bots');
-    const filtered: typeof chatters = [];
-    for (const c of chatters) {
-      if (!(await isBot(c.login, tenantId))) filtered.push(c);
-    }
-    chatters = filtered;
-
-    // Space Mountain is the active Twitch chatter list intersected with the
-    // shared Discord membership. A tenant can override the guild, but every
-    // StreamWeaver automatically falls back to DSH's public Space Mountain ID.
-    const redeemsConfig = await getConfigSection('redeems', tenantId);
-    const configuredGuildId = String(redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
-    const guildId = configuredGuildId || await getDiscordStreamHubDefaultGuildId();
-    const discordMembers = await getDiscordStreamHubCheckinMembers(guildId);
-    const discordNames = discordCheckinNames(discordMembers);
-    chatters = chatters.filter(c => discordNames.has(c.login) || discordNames.has(c.name.toLowerCase()));
-    console.log(`[Space Mountain] Filtered to ${chatters.length} active chatters linked to Discord server ${guildId}`);
-
-    const entries = sortAndAssignIds(chatters.map(c => ({
-      key: toEntryKey('space-mountain', c.userId || c.login, c.name),
-      name: c.name,
-      imageUrl: '',
-      twitchUserId: c.userId,
-    })));
-
-    return {
-      kind: 'space-mountain',
-      label: 'Space Mountain Check-In',
-      sourceLabel: 'Space Mountain Riders',
-      selectionMode: 'bulk',
-      entries,
-    };
+    return await spaceMountainSourceFromChatters(chatters, tenantId);
   } catch (error) {
     console.warn('[Space Mountain] Source fetch failed:', error);
     return {
@@ -370,6 +338,47 @@ async function fetchSpaceMountainSource(tenantId?: string, actorUsername?: strin
       error: error instanceof Error ? error.message : 'Space Mountain rider lookup failed',
     };
   }
+}
+
+/**
+ * Chat Tag already observes its players chatting. Reuse the same Discord
+ * membership intersection without requiring each channel to connect OAuth.
+ */
+export async function spaceMountainSourceFromChatters(chatters: SpaceMountainChatter[], tenantId?: string): Promise<CheckinSourceResult> {
+  // Filter out known bots
+  const { isKnownBot: isBot } = require('./known-bots');
+  const filtered: typeof chatters = [];
+  for (const c of chatters) {
+    if (!(await isBot(c.login, tenantId))) filtered.push(c);
+  }
+  chatters = filtered;
+
+  // Space Mountain is the active Twitch chatter list intersected with the
+  // shared Discord membership. A tenant can override the guild, but every
+  // StreamWeaver automatically falls back to DSH's public Space Mountain ID.
+  const redeemsConfig = await getConfigSection('redeems', tenantId);
+  const configuredGuildId = String(redeemsConfig.spaceMountainCheckin?.discordGuildId || '').trim();
+  const guildId = configuredGuildId || await getDiscordStreamHubDefaultGuildId();
+  const discordMembers = await getDiscordStreamHubCheckinMembers(guildId);
+  const discordNames = discordCheckinNames(discordMembers);
+  chatters = chatters.filter(c => discordNames.has(c.login) || discordNames.has(c.name.toLowerCase()));
+  console.log(`[Space Mountain] Filtered to ${chatters.length} active chatters linked to Discord server ${guildId}`);
+
+  const entries = sortAndAssignIds(chatters.map(c => ({
+    key: toEntryKey('space-mountain', c.userId || c.login, c.name),
+    name: c.name,
+    imageUrl: '',
+    twitchUserId: c.userId,
+  })));
+
+  return {
+    kind: 'space-mountain',
+    label: 'Space Mountain Check-In',
+    sourceLabel: 'Space Mountain Riders',
+    selectionMode: 'bulk',
+    entries,
+  };
+
 }
 
 /**

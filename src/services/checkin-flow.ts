@@ -1,6 +1,6 @@
 import { sendChatMessage } from './twitch';
 import { recordDetailedCheckin } from './checkin-stats';
-import { getCheckinSource, type CheckinEntry, type CheckinKind } from './checkin-sources';
+import { getCheckinSource, type CheckinEntry, type CheckinKind, type CheckinSourceResult } from './checkin-sources';
 import { getStoredTokens } from '../lib/token-utils.server';
 import { readJsonFile, writeJsonFile } from './storage';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
@@ -333,21 +333,33 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
 
 }
 
-export async function runBulkCheckin(kind: CheckinKind, username: string, pointCost: number, tenantId?: string): Promise<void> {
-  const source = await getCheckinSource(kind, tenantId, username);
+export interface BulkCheckinResult {
+  reply: string;
+  payload?: Record<string, unknown>;
+}
+export interface BulkCheckinOptions {
+  source?: CheckinSourceResult;
+  deliver?: (message: string) => Promise<void>;
+}
+
+export async function runBulkCheckin(kind: CheckinKind, username: string, pointCost: number, tenantId?: string, options: BulkCheckinOptions = {}): Promise<BulkCheckinResult> {
+  const source = options.source || await getCheckinSource(kind, tenantId, username);
   const copy = labels(kind);
   if (source.entries.length === 0) {
     const message = source.error
       ? `@${username}, ${copy.title} rider lookup is unavailable right now: ${source.error}`
       : `@${username}, no eligible Space Mountain members are active in chat right now.`;
-    await sendChatMessage(message, 'broadcaster', undefined, tenantId).catch(() => {});
-    return;
+    if (options.deliver) await options.deliver(message);
+    else await sendChatMessage(message, 'broadcaster', undefined, tenantId).catch(() => {});
+    return { reply: message };
   }
 
   const insufficient = await chargePoints(username, pointCost, `${kind}-checkin`, tenantId);
   if (insufficient !== null) {
-    await sendChatMessage(`@${username}, you need ${pointCost} points for ${copy.title}! (You have ${insufficient})`, 'broadcaster', undefined, tenantId).catch(() => {});
-    return;
+    const reply = `@${username}, you need ${pointCost} points for ${copy.title}! (You have ${insufficient})`;
+    if (options.deliver) await options.deliver(reply);
+    else await sendChatMessage(reply, 'broadcaster', undefined, tenantId).catch(() => {});
+    return { reply };
   }
 
   broadcastCheckin('pending', createPendingPayload(kind, username, source.sourceLabel, { count: source.entries.length }), tenantId);
@@ -365,7 +377,7 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
 
   // Show the result immediately; speech generation can take longer than the
   // reveal window and must not make the card disappear before it ever displays.
-  broadcastCheckin('reveal', {
+  const payload: Record<string, unknown> = {
     kind,
     username,
     sourceLabel: source.sourceLabel,
@@ -377,7 +389,8 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     frontSeat: frontSeatRider.name,
     frontSeatBonusPoints: FRONT_SEAT_BONUS_POINTS,
     entry: frontSeatRider,
-  }, tenantId);
+  };
+  broadcastCheckin('reveal', payload, tenantId);
 
   const greeting = await generateBulkGreeting(username, frontSeatRider.name, kind, tenantId);
   const statsParts = [`Riders: ${checkedIn.length}`, `Front seat: ${frontSeatRider.name}`, `Bonus: ${FRONT_SEAT_BONUS_POINTS} pts`];
@@ -385,5 +398,8 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
     const balance = await getBalance(username, tenantId);
     if (typeof balance === 'number') statsParts.push(`Balance: ${balance} pts`);
   }
-  await playGreeting(`${greeting} (${statsParts.join(' | ')})`, tenantId);
+  const reply = `${greeting} (${statsParts.join(' | ')})`;
+  if (options.deliver) await options.deliver(reply);
+  else await playGreeting(reply, tenantId);
+  return { reply, payload };
 }

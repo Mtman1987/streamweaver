@@ -2632,6 +2632,9 @@ async function getExplicitTwitchBotMentions(message: string): Promise<Array<{
 }
 
 export async function handleTwitchMessage(channel: string, tags: any, message: string, self: boolean) {
+    // Chat Tag owns this SPMT command in every player channel and delivers
+    // its own chat/overlay result. Leave legacy !space commands here.
+    if (/^!?@?spmt\s+checkin(?:\s|$)/i.test(message.trim())) return;
     const username = tags.username!;
     const displayName = tags['display-name'] || username;
     const replyChannel = channel.replace(/^#/, '');
