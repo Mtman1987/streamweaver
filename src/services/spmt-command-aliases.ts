@@ -25,7 +25,7 @@ const DIRECT_ALIASES: Record<string, string> = {
   translate: 't',
   t: 't',
   say: 'say',
-  checkin: 'checkin',
+  checkin: 'spacemountain',
   partner: 'partner',
   crew: 'crew',
   crewcheckin: 'crewcheckin',
