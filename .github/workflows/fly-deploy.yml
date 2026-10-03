@@ -69,6 +69,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run live command smoke tests
         run: node --import tsx --test tests/spmt-command-aliases.test.ts tests/stella-lounge-replies.test.ts tests/root-command-runtime-coverage.test.ts tests/bot-action-runtime.test.ts
+      - name: Verify Chat Tag check-in bridge
+        run: node --test tests/chat-tag-checkin-bridge.test.cjs
       - name: Check Spotlight commercial overlay
         run: node --test tests/spotlight-commercial-break.test.cjs
       - uses: superfly/flyctl-actions/setup-flyctl@master

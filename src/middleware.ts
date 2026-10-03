@@ -34,7 +34,7 @@ const MACHINE_PATHS = [
   '/api/speech/transcribe',
   // These routes perform their own service-auth checks. Do not force a human SPMT
   // session in middleware before machine credentials can be evaluated by the route itself.
-  '/api/internal/known-bots',
+  '/api/internal/known-bots', '/api/internal/chat-tag/checkin',
 ];
 
 const MACHINE_PREFIXES = ['/api/discord-avatar/', '/api/discord-media/', '/api/say/', '/api/webhooks/'];
