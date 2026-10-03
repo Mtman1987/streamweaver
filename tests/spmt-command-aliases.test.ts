@@ -14,7 +14,9 @@ test('canonical SPMT aliases preserve legacy handlers without stealing Nebula ro
   assert.equal(rewriteSpmtLegacyAlias('spmt pokemon pack base set'), '!pack base set');
   assert.equal(rewriteSpmtLegacyAlias('spmt pokemon show Pikachu'), '!show Pikachu');
   assert.equal(rewriteSpmtLegacyAlias('spmt economy gamble 100'), '!gamble 100');
-  assert.equal(rewriteSpmtLegacyAlias('spmt checkin'), '!checkin');
+  assert.equal(rewriteSpmtLegacyAlias('spmt checkin'), '!spacemountain');
+  assert.equal(rewriteSpmtLegacyAlias('spmt partner'), '!partner');
+  assert.equal(rewriteSpmtLegacyAlias('spmt spacemountain'), '!spacemountain');
   assert.equal(rewriteSpmtLegacyAlias('spmt mtfixit video froze'), '!mtfixit video froze');
 
   for (const command of [

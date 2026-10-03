@@ -152,6 +152,7 @@ export const LOUNGE_COMMAND_CATEGORIES: LoungeCommandCategory[] = [
     icon: '🛰️',
     description: 'Community check-ins, support, Discord controls and ecosystem discovery.',
     commands: [
+      entry('spmt checkin / !spacemountain', 'Run the Space Mountain group check-in.', 'DiscordStreamHub'),
       entry('!checkin / !partner', 'Run the partner community check-in.', 'DiscordStreamHub'),
       entry('!crew / !crewcheckin', 'Run the crew check-in.', 'DiscordStreamHub'),
       entry('!mod / !modcheckin', 'Run the moderator check-in.', 'DiscordStreamHub'),
