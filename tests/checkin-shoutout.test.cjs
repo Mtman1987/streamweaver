@@ -10,8 +10,8 @@ function load(file, req = () => ({}), env = {}) {
   });
   return m.exports;
 }
-const { createStellaCheckinShoutout, formatCheckinShoutoutReply } = load('src/services/checkin-shoutout.ts');
-function fixture({ identity, status = 204, getCredential } = {}) {
+const { createStellaCheckinShoutout, formatCheckinShoutoutReply, formatCheckinChatShoutoutReply } = load('src/services/checkin-shoutout.ts');
+function fixture({ identity, status = 204, getCredential, chatStatus = 200, chatReceipt = { is_sent: true, message_id: 'chat-receipt' } } = {}) {
   let timestamp = 1_000_000;
   const calls = [];
   const service = createStellaCheckinShoutout({
@@ -19,11 +19,12 @@ function fixture({ identity, status = 204, getCredential } = {}) {
     now: () => timestamp,
     fetchImpl: async (url, options) => {
       calls.push({ url, ...options });
-      if (url.includes('/validate')) return { ok: true, json: async () => identity || ({ login: 'stellabot87', user_id: 'stella-id', client_id: 'client', scopes: ['moderator:manage:shoutouts'] }) };
+      if (url.includes('/validate')) return { ok: true, json: async () => identity || ({ login: 'stellabot87', user_id: 'stella-id', client_id: 'client', scopes: ['moderator:manage:shoutouts', 'user:write:chat'] }) };
       if (url.includes('/users?')) return { ok: true, json: async () => ({ data: [
         { login: 'spacemountainlive', id: 'lounge-id' },
         { login: new URL(url).searchParams.getAll('login')[1], id: 'source-id' },
       ] }) };
+      if (url.endsWith('/chat/messages')) return { ok: chatStatus === 200, status: chatStatus, json: async () => ({ data: [chatReceipt] }) };
       return { status };
     },
   });
@@ -46,6 +47,64 @@ test('Stella executes the native action in the Lounge for the source channel', a
   assert.equal(send.headers.Authorization, 'Bearer test-only-credential');
   assert.match(formatCheckinShoutoutReply(result), /#player_channel/);
   assert.doesNotMatch(JSON.stringify(result), /test-only-credential/);
+});
+
+test('Stella also posts the exact !so command in the Lounge using her confirmed chat identity', async () => {
+  const f = fixture();
+  assert.equal((await f.service.send('player_channel')).status, 'sent');
+  assert.equal((await f.service.send('player_channel')).status, 'cooldown');
+  const result = await f.service.sendChatCommand('#Player_Channel');
+  assert.equal(result.status, 'sent');
+  assert.equal(result.messageId, 'chat-receipt');
+  assert.equal(result.sender, 'stellabot87');
+  assert.equal(result.destination, 'spacemountainlive');
+  const sends = f.calls.filter(call => call.url.endsWith('/chat/messages'));
+  assert.equal(sends.length, 1);
+  assert.deepEqual(JSON.parse(sends[0].body), {
+    broadcaster_id: 'lounge-id', sender_id: 'stella-id', message: '!so player_channel',
+  });
+  assert.equal(sends[0].headers.Authorization, 'Bearer test-only-credential');
+  assert.equal(formatCheckinChatShoutoutReply(result), '');
+  assert.doesNotMatch(JSON.stringify(result), /test-only-credential/);
+});
+
+test('chat and native permissions are independent, and a chat send does not consume native cooldown', async () => {
+  const f = fixture();
+  assert.equal((await f.service.sendChatCommand('source')).status, 'sent');
+  assert.equal((await f.service.send('source')).status, 'sent');
+  const chatOnly = fixture({ identity: { login: 'stellabot87', user_id: 'stella-id', client_id: 'client', scopes: ['user:write:chat'] } });
+  assert.equal((await chatOnly.service.send('source')).status, 'missing-shoutout-permission');
+  assert.equal((await chatOnly.service.sendChatCommand('source')).status, 'sent');
+  const nativeOnly = fixture({ identity: { login: 'stellabot87', user_id: 'stella-id', client_id: 'client', scopes: ['moderator:manage:shoutouts'] } });
+  assert.equal((await nativeOnly.service.sendChatCommand('source')).status, 'missing-chat-permission');
+  assert.equal(nativeOnly.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+for (const [chatStatus, chatReceipt, expected] of [
+  [200, { is_sent: false, message_id: '', drop_reason: { code: 'automod_held' } }, 'not-sent'],
+  [200, { is_sent: true }, 'not-sent'],
+  [401, null, 'authorization-required'],
+  [403, null, 'authorization-required'],
+  [429, null, 'rate-limited'],
+  [500, null, 'unavailable'],
+]) test(`!so requires confirmed delivery: ${chatStatus} / ${JSON.stringify(chatReceipt)}`, async () => {
+  const f = fixture({ chatStatus, chatReceipt });
+  const result = await f.service.sendChatCommand('source');
+  assert.equal(result.status, expected);
+  assert.equal(result.messageId, undefined);
+  assert.match(formatCheckinChatShoutoutReply(result), /could not post !so/);
+  assert.equal(f.calls.filter(call => call.method === 'POST').length, 1);
+  assert.equal((await f.service.send('source')).status, 'sent', 'chat failure must not block native shoutouts');
+});
+
+test('!so refuses wrong accounts, invalid targets, and Lounge self-check-ins', async () => {
+  const f = fixture();
+  assert.equal((await f.service.sendChatCommand('bad/channel')).status, 'invalid-channel');
+  assert.equal((await f.service.sendChatCommand('spacemountainlive')).status, 'self-shoutout');
+  assert.equal(f.calls.length, 0);
+  const wrong = fixture({ identity: { login: 'spacemountainlive', user_id: 'lounge-id', client_id: 'client', scopes: ['user:write:chat'] } });
+  assert.equal((await wrong.service.sendChatCommand('source')).status, 'wrong-stella-account');
+  assert.equal(wrong.calls.filter(call => call.method === 'POST').length, 0);
 });
 
 test('concurrent check-ins obey the global and per-channel Twitch cooldowns', async () => {
