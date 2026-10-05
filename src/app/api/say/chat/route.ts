@@ -45,16 +45,22 @@ export async function POST(request: NextRequest) {
         if (!/^\d{16,20}$/.test(channelId)) return apiError('Invalid Discord room', { status: 400, code: 'INVALID_DISCORD_ROOM' });
         await sendWebhookMessage(channelId, text, identity.username, identity.avatarUrl);
       } else {
-        const targetChannel = streamKey.startsWith('twitch:') ? streamKey.slice('twitch:'.length) : undefined;
+        // The Lounge's canonical TTS stream omits the twitch: prefix. Keep its
+        // chat destination instead of falling back to the signed-in user's room.
+        const targetChannel = streamKey === 'spacemountainlive'
+          ? streamKey
+          : streamKey.startsWith('twitch:') ? streamKey.slice('twitch:'.length) : undefined;
         const wsPort = process.env.WS_PORT || '8090';
         const response = await fetch(`http://127.0.0.1:${wsPort}/api/twitch/send-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text, as: 'broadcaster', tenantId: targetChannel ? undefined : session.tenantId, targetChannel, forceSayTts: true }),
         });
-        if (!response.ok) {
-          const result = await response.json().catch(() => ({}));
-          throw new Error(result?.error || 'Twitch chat post failed');
+        const result = await response.json().catch(() => null);
+        if (!response.ok || result?.success !== true || result?.skipped === true) {
+          throw new Error(result?.error || (result?.skipped === true
+            ? 'Twitch chat post was skipped; your speech was not posted.'
+            : 'Twitch chat post failed'));
         }
       }
     } catch (error) {
