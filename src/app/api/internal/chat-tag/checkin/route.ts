@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
     const pointCost = Math.max(0, Number(config.spaceMountainCheckin?.pointCost || 0));
     result = await runBulkCheckin('space-mountain', username, pointCost, tenantId, {
       source,
+      awardId: key,
+      channel,
       // Chat Tag sends the returned result through the bot in the source channel.
       deliver: async () => {},
     });
