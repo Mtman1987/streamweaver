@@ -445,7 +445,7 @@ export default function IntegrationsPage() {
                 connected={twitchStatus.spaceMountainBotConnected}
                 label="Stella — SpaceMountainLive Bot"
                 username={twitchStatus.spaceMountainBotUsername}
-                description="Dedicated Twitch identity for Stella on the permanent SpaceMountainLive system channel. Does not OAuth the broadcaster account."
+                description="Stella's chat connection and native Twitch shoutouts in the SpaceMountainLive Lounge. Re-authorize as stellabot87 to enable check-in shoutouts."
               >
                 <Button
                   size="sm"

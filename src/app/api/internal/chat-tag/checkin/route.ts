@@ -10,6 +10,7 @@ import { getTenantIdFromChannel } from '@/services/twitch-client';
 import { spaceMountainSourceFromChatters } from '@/services/checkin-sources';
 import { getConfigSection } from '@/lib/local-config/service';
 import { runBulkCheckin } from '@/services/checkin-flow';
+import { sendStellaCheckinShoutout, formatCheckinShoutoutReply } from '@/services/checkin-shoutout';
 
 export const dynamic = 'force-dynamic';
 const login = z.string().regex(/^[a-z0-9_]{1,25}$/);
@@ -44,6 +45,11 @@ export async function POST(req: NextRequest) {
       ? { reply: '@' + username + ', that check-in is already processing.', duplicate: true }
       : { ...saved, duplicate: true });
   }
+  // Only the winner of the durable message claim may send the native shoutout.
+  // This runs independently of check-in eligibility, points, or AI delivery.
+  const shoutoutPromise = sendStellaCheckinShoutout(channel).catch(() => ({
+    status: 'unavailable', channel, destination: 'spacemountainlive', sender: 'stellabot87',
+  }));
   let result;
   try {
     const source = await spaceMountainSourceFromChatters(chatters, tenantId);
@@ -58,6 +64,10 @@ export async function POST(req: NextRequest) {
     console.error('[ChatTag Checkin] Failed for #' + channel, error);
     result = { reply: '@' + username + ', Space Mountain check-in could not finish. Please try again.' };
   }
+  const shoutout = await shoutoutPromise;
+  console.info('[CheckinShoutout]', { channel, destination: shoutout.destination, sender: shoutout.sender, status: shoutout.status });
+  const notice = formatCheckinShoutoutReply(shoutout);
+  result = { ...result, shoutout, reply: [result.reply, notice].filter(Boolean).join(' ') };
   await fs.writeFile(receipt, JSON.stringify(result));
   return apiOk(result);
 }
