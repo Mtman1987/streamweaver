@@ -47,8 +47,9 @@ test('empty membership produces an explicit result without awarding points', asy
   assert.match(result.reply,/no eligible/);assert.equal(delivered,result.reply);
 });
 
-test('service bridge authenticates and duplicate commands cannot award or shout out twice', async () => {
-  let authorized=false,calls=0,shoutouts=0;
+for (const [nativeStatus, chatStatus] of [['sent', 'sent'], ['cooldown', 'sent'], ['unavailable', 'sent'], ['sent', 'not-sent']])
+test(`service bridge deduplicates both shoutouts and isolates failures: ${nativeStatus}/${chatStatus}`, async () => {
+  let authorized=false,calls=0,shoutouts=0,chatShoutouts=0;
   const receipts=new Map();
   const bridge=load('src/app/api/internal/chat-tag/checkin/route.ts',id=>{
     if(id==='zod')return require('zod');
@@ -66,17 +67,22 @@ test('service bridge authenticates and duplicate commands cannot award or shout 
     if(id.includes('local-config'))return {getConfigSection:async()=>({})};
     if(id.includes('checkin-sources'))return {spaceMountainSourceFromChatters:async candidates=>({entries:candidates})};
     if(id.includes('checkin-shoutout'))return {
-      sendStellaCheckinShoutout:async channel=>{shoutouts++;assert.equal(channel,'player_channel');return {status:'sent',channel,destination:'spacemountainlive',sender:'stellabot87'};},
+      sendStellaCheckinShoutout:async channel=>{shoutouts++;assert.equal(channel,'player_channel');return {status:nativeStatus,channel,destination:'spacemountainlive',sender:'stellabot87'};},
+      sendStellaCheckinChatShoutout:async channel=>{chatShoutouts++;assert.equal(channel,'player_channel');return {status:chatStatus,channel,destination:'spacemountainlive',sender:'stellabot87',messageId:chatStatus === 'sent' ? 'confirmed-message' : undefined};},
       formatCheckinShoutoutReply:()=> 'Stella sent the shoutout.',
+      formatCheckinChatShoutoutReply:()=> chatStatus === 'sent' ? '' : 'Chat !so failed.',
     };
     if(id.includes('checkin-flow'))return {runBulkCheckin:async(kind,actor,cost,tenant,options)=>{calls++;assert.equal(tenant,'player_channel');assert.equal(options.source.entries[0].login,'alice');return {reply:'Alice in front!',payload:{frontSeat:'alice'}};}};
     return {};
   });
   const req={json:async()=>({channel:'player_channel',username:'alice',requestId:'message-one',chatters:[{login:'alice',name:'Alice',userId:'1'}]})};
-  assert.equal((await bridge.POST(req)).status,401);assert.equal(calls,0);assert.equal(shoutouts,0);
+  assert.equal((await bridge.POST(req)).status,401);assert.equal(calls,0);assert.equal(shoutouts,0);assert.equal(chatShoutouts,0);
   authorized=true;
   const results=await Promise.all([bridge.POST(req),bridge.POST(req)]);
-  assert.equal(results[0].body.reply,'Alice in front! Stella sent the shoutout.');assert.equal(calls,1);
-  assert.equal(results[1].body.duplicate,true);assert.equal(shoutouts,1);
-  assert.equal((await bridge.POST(req)).body.duplicate,true);assert.equal(calls,1);assert.equal(shoutouts,1);
+  assert.equal(results[0].body.reply,'Alice in front! Stella sent the shoutout.' + (chatStatus === 'sent' ? '' : ' Chat !so failed.'));assert.equal(calls,1);
+  assert.equal(results[0].body.shoutout.status,nativeStatus);assert.equal(results[0].body.chatShoutout.status,chatStatus);
+  assert.equal(results[1].body.duplicate,true);assert.equal(shoutouts,1);assert.equal(chatShoutouts,1);
+  const duplicate=await bridge.POST(req);
+  assert.equal(duplicate.body.duplicate,true);assert.equal(calls,1);assert.equal(shoutouts,1);assert.equal(chatShoutouts,1);
+  assert.equal(duplicate.body.chatShoutout.status,chatStatus);
 });

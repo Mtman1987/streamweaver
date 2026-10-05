@@ -11,6 +11,7 @@ type Credential = { token: string; clientId: string };
 type ShoutoutResult = {
   status: string; channel: string; destination: string; sender: string;
   retryAfterSeconds?: number;
+  messageId?: string;
 };
 
 // All tenants share Stella's grant, but the destination is always the Lounge.
@@ -38,7 +39,7 @@ export function createStellaCheckinShoutout({
   const targets = new Map<string, number>();
   let tail: Promise<void> = Promise.resolve();
 
-  async function deliver(sourceChannel: string): Promise<ShoutoutResult> {
+  async function deliver(sourceChannel: string, kind: 'native' | 'chat' = 'native'): Promise<ShoutoutResult> {
     const channel = String(sourceChannel || '').trim().replace(/^#/, '').toLowerCase();
     const result = (status: string, retryAfterSeconds?: number): ShoutoutResult => ({
       status, channel, destination: LOUNGE, sender: STELLA,
@@ -49,7 +50,7 @@ export function createStellaCheckinShoutout({
     const timestamp = now();
     for (const [target, sentAt] of targets) if (timestamp - sentAt >= TARGET_COOLDOWN_MS) targets.delete(target);
     const nextAllowed = Math.max(lastSentAt + GLOBAL_COOLDOWN_MS, (targets.get(channel) ?? -Infinity) + TARGET_COOLDOWN_MS);
-    if (nextAllowed > timestamp) return result('cooldown', Math.ceil((nextAllowed - timestamp) / 1000));
+    if (kind === 'native' && nextAllowed > timestamp) return result('cooldown', Math.ceil((nextAllowed - timestamp) / 1000));
 
     try {
       const { token, clientId } = await getCredential();
@@ -59,7 +60,10 @@ export function createStellaCheckinShoutout({
       const identity = validation.ok ? await validation.json() : null;
       if (!identity) return result('authorization-required');
       if (identity.login !== STELLA || !identity.user_id || identity.client_id !== clientId) return result('wrong-stella-account');
-      if (!Array.isArray(identity.scopes) || !identity.scopes.includes(REQUIRED_SCOPE)) return result('missing-shoutout-permission');
+      const requiredScope = kind === 'chat' ? 'user:write:chat' : REQUIRED_SCOPE;
+      if (!Array.isArray(identity.scopes) || !identity.scopes.includes(requiredScope)) {
+        return result(kind === 'chat' ? 'missing-chat-permission' : 'missing-shoutout-permission');
+      }
 
       const headers = { 'Client-ID': clientId, Authorization: `Bearer ${token}` };
       const users = await fetchImpl(`https://api.twitch.tv/helix/users?login=${LOUNGE}&login=${channel}`, {
@@ -71,6 +75,27 @@ export function createStellaCheckinShoutout({
       const broadcaster = accounts.find(user => user.login === LOUNGE);
       const target = accounts.find(user => user.login === channel);
       if (!broadcaster?.id || !target?.id) return result('channel-not-found');
+
+      if (kind === 'chat') {
+        const response = await fetchImpl('https://api.twitch.tv/helix/chat/messages', {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            broadcaster_id: broadcaster.id,
+            sender_id: String(identity.user_id),
+            message: `!so ${channel}`,
+          }),
+          signal: AbortSignal.timeout(8_000),
+        });
+        const payload = await response.json().catch(() => null);
+        const receipt = payload?.data?.[0];
+        if (response.ok && receipt?.is_sent === true && typeof receipt.message_id === 'string' && receipt.message_id) {
+          return { ...result('sent'), messageId: receipt.message_id };
+        }
+        if (response.status === 401 || response.status === 403) return result('authorization-required');
+        if (response.status === 429) return result('rate-limited');
+        return result(response.ok ? 'not-sent' : 'unavailable');
+      }
 
       const query = new URLSearchParams({
         from_broadcaster_id: broadcaster.id,
@@ -96,6 +121,9 @@ export function createStellaCheckinShoutout({
   }
 
   return {
+    // A chat command has its own Twitch limits; native shoutout cooldowns do
+    // not prevent it. The check-in route's durable claim prevents duplicates.
+    sendChatCommand: (channel: string) => deliver(channel, 'chat'),
     send(channel: string) {
       const pending = tail.then(() => deliver(channel));
       tail = pending.then(() => {}, () => {});
@@ -106,6 +134,12 @@ export function createStellaCheckinShoutout({
 
 const stella = createStellaCheckinShoutout();
 export const sendStellaCheckinShoutout = (channel: string) => stella.send(channel);
+export const sendStellaCheckinChatShoutout = (channel: string) => stella.sendChatCommand(channel);
+
+export function formatCheckinChatShoutoutReply(result: ShoutoutResult): string {
+  if (result.status === 'sent' || result.status === 'self-shoutout') return '';
+  return `Stella could not post !so for #${result.channel} in the Lounge.`;
+}
 
 export function formatCheckinShoutoutReply(result: ShoutoutResult): string {
   const target = `#${result.channel}`;

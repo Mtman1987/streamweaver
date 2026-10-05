@@ -10,7 +10,7 @@ import { getTenantIdFromChannel } from '@/services/twitch-client';
 import { spaceMountainSourceFromChatters } from '@/services/checkin-sources';
 import { getConfigSection } from '@/lib/local-config/service';
 import { runBulkCheckin } from '@/services/checkin-flow';
-import { sendStellaCheckinShoutout, formatCheckinShoutoutReply } from '@/services/checkin-shoutout';
+import { sendStellaCheckinShoutout, sendStellaCheckinChatShoutout, formatCheckinShoutoutReply, formatCheckinChatShoutoutReply } from '@/services/checkin-shoutout';
 
 export const dynamic = 'force-dynamic';
 const login = z.string().regex(/^[a-z0-9_]{1,25}$/);
@@ -50,6 +50,11 @@ export async function POST(req: NextRequest) {
   const shoutoutPromise = sendStellaCheckinShoutout(channel).catch(() => ({
     status: 'unavailable', channel, destination: 'spacemountainlive', sender: 'stellabot87',
   }));
+  // Run after the native attempt settles so credential refreshes are not
+  // duplicated. Every outcome still gets the ordinary !so chat command.
+  const chatShoutoutPromise = shoutoutPromise.then(() => sendStellaCheckinChatShoutout(channel)).catch(() => ({
+    status: 'unavailable', channel, destination: 'spacemountainlive', sender: 'stellabot87', messageId: undefined,
+  }));
   let result;
   try {
     const source = await spaceMountainSourceFromChatters(chatters, tenantId);
@@ -64,10 +69,11 @@ export async function POST(req: NextRequest) {
     console.error('[ChatTag Checkin] Failed for #' + channel, error);
     result = { reply: '@' + username + ', Space Mountain check-in could not finish. Please try again.' };
   }
-  const shoutout = await shoutoutPromise;
-  console.info('[CheckinShoutout]', { channel, destination: shoutout.destination, sender: shoutout.sender, status: shoutout.status });
+  const [shoutout, chatShoutout] = await Promise.all([shoutoutPromise, chatShoutoutPromise]);
+  console.info('[CheckinShoutout]', JSON.stringify({ channel, destination: shoutout.destination, sender: shoutout.sender, status: shoutout.status, chatStatus: chatShoutout.status, chatMessageId: chatShoutout.messageId }));
   const notice = formatCheckinShoutoutReply(shoutout);
-  result = { ...result, shoutout, reply: [result.reply, notice].filter(Boolean).join(' ') };
+  const chatNotice = formatCheckinChatShoutoutReply(chatShoutout);
+  result = { ...result, shoutout, chatShoutout, reply: [result.reply, notice, chatNotice].filter(Boolean).join(' ') };
   await fs.writeFile(receipt, JSON.stringify(result));
   return apiOk(result);
 }
