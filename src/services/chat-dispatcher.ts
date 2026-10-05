@@ -30,6 +30,7 @@ import {
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { replaceDiscordUserMentions } from './discord-mentions';
 import { getTenantIdFromChannel } from './twitch-client';
+import { isConfirmedLoungeStellaShoutout } from './lounge-stella-shoutout-command';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
 import { ATHENA_WHITELIST_TENANT_ID } from './athena-whitelist';
@@ -2934,6 +2935,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     } catch {}
     
     const isTheCountAccountMessage = isTheCountTwitchLogin(actualUsername);
+    const isStellaShoutoutCommand = isConfirmedLoungeStellaShoutout({
+        tenantId, channel: replyChannel, tags, message,
+    });
     const isBot = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
     const isBotMessage = actualUsername.toLowerCase() === (botUsername || '').toLowerCase() || isTheCountAccountMessage;
     // SpaceMountainLive doubles as infrastructure elsewhere (including ChatTag),
@@ -2975,7 +2979,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Skip self messages (broadcaster client echoes its own sends).
     // The dedicated Count client is send-only, so its echo arrives through the
     // tenant listener as another bot message and must be stopped explicitly.
-    if ((self && !isSpaceMountainBroadcasterCommand) || isTheCountAccountMessage) return;
+    if ((self && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;
 
     const volumeCommand = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
         && replyChannel.toLowerCase() === 'spacemountainlive'
@@ -3555,7 +3559,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (VERBOSE_LOGS) console.log(`[Dispatcher] Skipping Discord bridge for message starting with [`);
     }
 
-    if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand)) {
+    if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand || isStellaShoutoutCommand)) {
         console.log(`[Dispatcher] Processing command: ${actualMessage} from ${actualUsername}`);
         const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
 

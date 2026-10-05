@@ -11,6 +11,40 @@ function load(file, req = () => ({}), env = {}) {
   return m.exports;
 }
 const { createStellaCheckinShoutout, formatCheckinShoutoutReply, formatCheckinChatShoutoutReply } = load('src/services/checkin-shoutout.ts');
+const { isConfirmedLoungeStellaShoutout } = load('src/services/lounge-stella-shoutout-command.ts');
+
+test('only confirmed Stella !so receipts in the Lounge may pass the bot-loop guards', () => {
+  const receipt = { tenantId: 'spacemountainlive', channel: '#spacemountainlive', tags: { username: 'stellabot87', id: 'twitch-message-id' }, message: '!so player_channel' };
+  assert.equal(isConfirmedLoungeStellaShoutout(receipt), true);
+  for (const change of [
+    { tenantId: 'another-tenant' }, { channel: '#another-channel' },
+    { tags: { username: 'another_bot', id: 'twitch-message-id' } },
+    { tags: { username: 'stellabot87' } },
+    { message: '!addpoints player_channel 100' }, { message: 'Hello!' },
+    { message: '!so player_channel extra' }, { message: '!so' },
+  ]) assert.equal(isConfirmedLoungeStellaShoutout({ ...receipt, ...change }), false);
+});
+
+test('a confirmed self !so traverses both production bot guards, while synthetic echoes stay blocked', () => {
+  // Execute the actual guard expressions from both production entry points.
+  const client = fs.readFileSync(path.join(__dirname, '../src/services/twitch-client.ts'), 'utf8');
+  const dispatcher = fs.readFileSync(path.join(__dirname, '../src/services/chat-dispatcher.ts'), 'utf8');
+  const clientGuard = client.match(/if \((self && msgTenantId[\s\S]*?)\) return;/)[1];
+  const selfGuard = dispatcher.match(/if \(((?:\(self &&)[^\n]+)\) return;/)[1];
+  const commandGuard = dispatcher.match(/if \((isCommand && \(!isBot[^\n]+)\) \{/)[1];
+  for (const [id, allowed] of [['receipt-id', true], ['', false]]) {
+    const tags = { username: 'stellabot87', id };
+    const message = '!so player_channel';
+    const permitted = isConfirmedLoungeStellaShoutout({ tenantId: 'spacemountainlive', channel: 'spacemountainlive', tags, message });
+    const context = { self: true, msgTenantId: 'spacemountainlive', channelName: 'spacemountainlive', tags, message,
+      SPACEMOUNTAIN_SYSTEM_TENANT_ID: 'spacemountainlive', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL: 'spacemountainlive',
+      isConfirmedLoungeStellaShoutout, isSpaceMountainBroadcasterCommand: false, isStellaShoutoutCommand: permitted,
+      isTheCountAccountMessage: false, isCommand: true, isBot: true };
+    assert.equal(vm.runInNewContext(clientGuard, context), !allowed);
+    assert.equal(vm.runInNewContext(selfGuard, context), !allowed);
+    assert.equal(vm.runInNewContext(commandGuard, context), allowed);
+  }
+});
 function fixture({ identity, status = 204, getCredential, chatStatus = 200, chatReceipt = { is_sent: true, message_id: 'chat-receipt' } } = {}) {
   let timestamp = 1_000_000;
   const calls = [];
