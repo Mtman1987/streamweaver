@@ -8,6 +8,7 @@ import {
   SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
 } from '../lib/tenant';
 import { handleTwitchMessage } from './chat-dispatcher';
+import { isConfirmedLoungeStellaShoutout } from './lounge-stella-shoutout-command';
 import { recordSharedChatEvent } from './shared-chat-ingestion';
 import { normalizeTwitchSharedChatEvent } from './shared-chat-normalizers';
 import { prepareTtsOverlay, queuePreparedTtsOverlay, queueTtsOverlay } from './tts-overlay-queue';
@@ -257,7 +258,8 @@ async function dispatchIncomingTwitchMessage(
   // tmi.js emits a local "self" message before Twitch accepts the write.
   // Do not treat that echo as a received chat message in this lounge.
   if (self && msgTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
-    && channelName === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL) return;
+    && channelName === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
+    && !isConfirmedLoungeStellaShoutout({ tenantId: msgTenantId, channel: channelName, tags, message })) return;
 
   const { isMirroredSharedMessage, resolveRoomIdToLogin, shouldIgnoreMirrored } = await import('./shared-chat');
   if (shouldIgnoreMirrored(tags, msgTenantId)) return;
