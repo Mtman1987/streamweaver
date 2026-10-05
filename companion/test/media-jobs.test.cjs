@@ -51,10 +51,30 @@ test('LRU pruning removes only tagged download-cache files', () => {
   assert.equal(fs.existsSync(path.join(libraryPath, 'imported.mp4')), true);
 });
 
-test('relay exposes bounded media actions and forces approval for download/prune', () => {
+test('relay exposes bounded actions and requires local approval before execution', async () => {
   const relaySource = fs.readFileSync(path.join(__dirname, '..', 'lib', 'relay-client.cjs'), 'utf8');
   assert.match(relaySource, /'media\.download': 'media\.write'/);
   assert.match(relaySource, /'media\.cache\.status': 'media\.read'/);
   assert.match(relaySource, /'media\.cache\.prune': 'media\.write'/);
-  assert.match(relaySource, /LOCAL_CONFIRMATION_ACTIONS = new Set\(\['media\.download', 'media\.cache\.prune'\]\)/);
+  const { RelayClient, ACTION_CAPABILITIES } = require('../lib/relay-client.cjs');
+  for (const action of ['media.download', 'media.cache.prune', 'restream.host.open']) {
+    let executions = 0;
+    let confirmation;
+    const relay = new RelayClient({
+      getConfig: () => ({ relay: { deviceId: 'test-device' } }),
+      getToken: () => 'test-token',
+      handlers: { [action]: async () => { executions += 1; } },
+      onConfirmationRequired: command => { confirmation = command; },
+    });
+    await relay.handle(JSON.stringify({
+      schemaVersion: 1, id: action, deviceId: 'test-device', action,
+      capability: ACTION_CAPABILITIES[action],
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+      requiresConfirmation: false, payload: {},
+    }));
+    assert.equal(executions, 0, action + ' must wait for local approval');
+    assert.equal(confirmation?.requiresConfirmation, true);
+    await relay.resolveConfirmation(action, true);
+    assert.equal(executions, 1, action + ' executes after local approval');
+  }
 });
