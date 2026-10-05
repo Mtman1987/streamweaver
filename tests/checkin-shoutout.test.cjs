@@ -45,6 +45,28 @@ test('a confirmed self !so traverses both production bot guards, while synthetic
     assert.equal(vm.runInNewContext(commandGuard, context), allowed);
   }
 });
+test('the production Count build patch preserves Stella and Count guards across repeated builds', () => {
+  const patch = fs.readFileSync(path.join(__dirname, '../scripts/patch-the-count-easter-egg.mjs'), 'utf8');
+  let dispatcher = fs.readFileSync(path.join(__dirname, '../src/services/chat-dispatcher.ts'), 'utf8');
+  const apply = () => {
+    let applied = false;
+    vm.runInNewContext(patch.slice(patch.indexOf('\npatchFile(')), {
+      patchFile(file, transform) {
+        if (file !== 'src/services/chat-dispatcher.ts') return;
+        dispatcher = transform(dispatcher);
+        applied = true;
+      },
+    });
+    assert.equal(applied, true);
+  };
+  apply();
+  const first = dispatcher;
+  apply();
+  assert.equal(dispatcher, first);
+  assert.ok(dispatcher.includes('if ((self && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;'));
+  assert.ok(dispatcher.includes('if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand || isStellaShoutoutCommand)) {'));
+});
+
 function fixture({ identity, status = 204, getCredential, chatStatus = 200, chatReceipt = { is_sent: true, message_id: 'chat-receipt' } } = {}) {
   let timestamp = 1_000_000;
   const calls = [];
