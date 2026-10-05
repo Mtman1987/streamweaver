@@ -1062,8 +1062,8 @@ app.on('open-url', (event, url) => {
   else pendingBootstrapUrl = url;
 });
 app.on('before-quit', () => {
-  void restreamHost?.stop(false);
   quitting = true;
+  void restreamHost?.stop(false);
   globalShortcut.unregisterAll();
   clearTimeout(serverRestartTimer);
   relay?.stop();
