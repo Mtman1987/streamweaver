@@ -64,7 +64,7 @@ class RelayClient {
     this.socket = socket;
     socket.on('open', () => {
       this.onStatus({ state: 'connected' });
-      socket.send(JSON.stringify({ type: 'companion.ready', schemaVersion: 1, deviceId: config.relay.deviceId }));
+      socket.send(JSON.stringify({ type: 'companion.ready', schemaVersion: 1, deviceId: config.relay.deviceId, actions: Object.keys(this.handlers) }));
     });
     socket.on('message', (raw) => void this.handle(raw));
     socket.on('error', (error) => this.onStatus({ state: 'error', message: error.message }));
