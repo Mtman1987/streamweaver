@@ -47,8 +47,8 @@ test('empty membership produces an explicit result without awarding points', asy
   assert.match(result.reply,/no eligible/);assert.equal(delivered,result.reply);
 });
 
-test('service bridge authenticates, supports a Chat Tag-only channel, and retries do not award twice', async () => {
-  let authorized=false,calls=0;
+test('service bridge authenticates and duplicate commands cannot award or shout out twice', async () => {
+  let authorized=false,calls=0,shoutouts=0;
   const receipts=new Map();
   const bridge=load('src/app/api/internal/chat-tag/checkin/route.ts',id=>{
     if(id==='zod')return require('zod');
@@ -65,12 +65,18 @@ test('service bridge authenticates, supports a Chat Tag-only channel, and retrie
     if(id.includes('twitch-client'))return {getTenantIdFromChannel:()=>undefined};
     if(id.includes('local-config'))return {getConfigSection:async()=>({})};
     if(id.includes('checkin-sources'))return {spaceMountainSourceFromChatters:async candidates=>({entries:candidates})};
+    if(id.includes('checkin-shoutout'))return {
+      sendStellaCheckinShoutout:async channel=>{shoutouts++;assert.equal(channel,'player_channel');return {status:'sent',channel,destination:'spacemountainlive',sender:'stellabot87'};},
+      formatCheckinShoutoutReply:()=> 'Stella sent the shoutout.',
+    };
     if(id.includes('checkin-flow'))return {runBulkCheckin:async(kind,actor,cost,tenant,options)=>{calls++;assert.equal(tenant,'player_channel');assert.equal(options.source.entries[0].login,'alice');return {reply:'Alice in front!',payload:{frontSeat:'alice'}};}};
     return {};
   });
   const req={json:async()=>({channel:'player_channel',username:'alice',requestId:'message-one',chatters:[{login:'alice',name:'Alice',userId:'1'}]})};
-  assert.equal((await bridge.POST(req)).status,401);assert.equal(calls,0);
+  assert.equal((await bridge.POST(req)).status,401);assert.equal(calls,0);assert.equal(shoutouts,0);
   authorized=true;
-  assert.equal((await bridge.POST(req)).body.reply,'Alice in front!');assert.equal(calls,1);
-  assert.equal((await bridge.POST(req)).body.duplicate,true);assert.equal(calls,1);
+  const results=await Promise.all([bridge.POST(req),bridge.POST(req)]);
+  assert.equal(results[0].body.reply,'Alice in front! Stella sent the shoutout.');assert.equal(calls,1);
+  assert.equal(results[1].body.duplicate,true);assert.equal(shoutouts,1);
+  assert.equal((await bridge.POST(req)).body.duplicate,true);assert.equal(calls,1);assert.equal(shoutouts,1);
 });

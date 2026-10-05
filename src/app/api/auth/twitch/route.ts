@@ -72,7 +72,9 @@ export async function GET(request: NextRequest) {
     'channel:bot',
   ];
   const scope = (
-    requestedRole === 'the-count' || requestedRole === 'space-mountain-bot'
+    requestedRole === 'space-mountain-bot'
+      ? [...countScopes, 'moderator:manage:shoutouts']
+      : requestedRole === 'the-count'
       ? countScopes
       : standardScopes
   ).join(' ');
