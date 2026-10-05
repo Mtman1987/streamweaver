@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 
 const ACTION_CAPABILITIES = {
+  'restream.host.open': 'restream.host',
   'overlay.show': 'overlay.control',
   'overlay.hide': 'overlay.control',
   'popout.show': 'overlay.control',
@@ -19,7 +20,7 @@ const ACTION_CAPABILITIES = {
   'diagnostics.snapshot.write': 'diagnostics.write'
 };
 
-const LOCAL_CONFIRMATION_ACTIONS = new Set(['media.download', 'media.cache.prune']);
+const LOCAL_CONFIRMATION_ACTIONS = new Set(['media.download', 'media.cache.prune', 'restream.host.open']);
 
 class RelayClient {
   constructor({ getConfig, getToken, handlers, onStatus = () => {}, onConfirmationRequired = () => {} }) {
