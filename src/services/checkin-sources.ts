@@ -17,6 +17,7 @@ export interface CheckinEntry {
   inviteLink?: string;
   discordUserId?: string;
   twitchUserId?: string;
+  twitchLogin?: string;
 }
 
 export interface CheckinSourceResult {
@@ -369,6 +370,7 @@ export async function spaceMountainSourceFromChatters(chatters: SpaceMountainCha
     name: c.name,
     imageUrl: '',
     twitchUserId: c.userId,
+    twitchLogin: c.login,
   })));
 
   return {

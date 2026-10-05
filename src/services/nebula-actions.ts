@@ -11,6 +11,24 @@ export async function executeNebulaCommand(input:{channel:string;username:string
 export async function readNebulaChannelState(channel:string){
  return call('/api/game-hub/channel?channel='+encodeURIComponent(channel));
 }
+
+export async function awardNebulaCheckinBonus(input: { awardId: string; channel: string; username: string; userId?: string; displayName?: string }) {
+  // A retry uses the same durable award ID, so a lost response cannot pay twice.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const body = await call('/api/game-hub/checkin-bonus', { method: 'POST', body: JSON.stringify(input) });
+      const award = body?.award;
+      if (body?.ok !== true || award?.awardId !== input.awardId || award?.username !== input.username
+        || award?.currency !== 'nebula' || award?.amount !== 100 || !Number.isFinite(award?.balance)) {
+        throw new Error('Nebula did not confirm the check-in award.');
+      }
+      return award as { amount: number; balance: number; currency: 'nebula'; duplicate: boolean };
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
+  throw new Error('Nebula did not confirm the check-in award.');
+}
 export async function manageNebulaOverlay(input:{operation:'list'|'create'|'update';channel:string;id?:string;name?:string;gameIds?:string[];layout?:string;transparent?:boolean}){
  if(input.operation==='list') return call('/api/game-hub/bot-overlays?channel='+encodeURIComponent(input.channel));
  const method=input.operation==='create'?'POST':'PATCH'; return call('/api/game-hub/bot-overlays',{method,body:JSON.stringify(input)});

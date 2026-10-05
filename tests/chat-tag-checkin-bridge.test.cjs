@@ -1,10 +1,10 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript');
-function load(file, req) {
+function load(file, req, globals = {}) {
   const m = {exports:{}};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,'..',file),'utf8'), {
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}
-  }).outputText, {module:m,exports:m.exports,require:req,console,process,Date,Set,Map,Math,global:{},fetch:()=>{throw Error('Unexpected OAuth call');}});
+  }).outputText, {module:m,exports:m.exports,require:req,console,process,Date,Set,Map,Math,global:{},fetch:()=>{throw Error('Unexpected OAuth call');},...globals});
   return m.exports;
 }
 test('Chat Tag candidates use the existing Discord intersection without broadcaster OAuth', async () => {
@@ -19,15 +19,24 @@ test('Chat Tag candidates use the existing Discord intersection without broadcas
     {login:'alice',name:'Alice',userId:'1'},{login:'outsider',name:'Outsider',userId:'2'},{login:'robot',name:'Robot',userId:'3'},
   ], 'player_channel');
   assert.deepEqual(Array.from(result.entries,x=>x.name),['Alice']);assert.equal(result.selectionMode,'bulk');
+  assert.equal(result.entries[0].twitchLogin,'alice');
 });
-test('shared check-in records riders and awards the existing front-seat bonus, returning result to Chat Tag instead of Twitch client', async () => {
+for (const confirmed of [true, false])
+test(`shared check-in credits the Nebula wallet and only announces confirmed credit: ${confirmed}`, async () => {
   let delivered='', recorded=0, bonus=0;
   const flow=load('src/services/checkin-flow.ts',id=>{
+    if(id==='node:crypto')return require(id);
+    if(id==='./nebula-actions')return {awardNebulaCheckinBonus:async input=>{
+      assert.equal(input.awardId,'stable-checkin');assert.equal(input.channel,'player_channel');
+      assert.equal(input.username,'alice');assert.equal(input.userId,'1');
+      if(!confirmed)throw Error('Nebula unavailable');
+      bonus+=100;return {amount:100,balance:420,currency:'nebula'};
+    }};
     if(id==='./twitch')return {sendChatMessage:()=>{throw Error('Chat Tag owns delivery');}};
     if(id==='./checkin-stats')return {recordDetailedCheckin:()=>{recorded++;return {entryTotal:1}}};
     if(id==='./checkin-sources')return {getCheckinSource:()=>{throw Error('Must use observed chat candidates');}};
     if(id.includes('token-utils'))return {getStoredTokens:async()=>null};
-    if(id==='./points')return {addPoints:async(name,value)=>{bonus+=value}};
+    if(id==='./points')throw Error('The front-seat bonus must never write StreamWeaver points');
     if(id==='./ai-provider')return {generateAIResponse:async()=> 'Alice, take the front seat!'};
     if(id.includes('bot-settings'))return {getBotName:()=> 'Stella',getBotPersonality:()=> ''};
     if(id.includes('checkin-overlay-state'))return {createCheckinOverlayEvent:(type,payload)=>({type,payload}),rememberCheckinOverlayEvent:()=>{}};
@@ -36,9 +45,13 @@ test('shared check-in records riders and awards the existing front-seat bonus, r
   });
   const result=await flow.runBulkCheckin('space-mountain','alice',0,'player_channel',{
     source:{entries:[{id:1,key:'space-mountain:1',name:'Alice',imageUrl:'',twitchUserId:'1'}],sourceLabel:'Space Mountain Riders'},
+    awardId:'stable-checkin',channel:'player_channel',
     deliver:async text=>{delivered=text},
   });
-  assert.equal(recorded,1);assert.equal(bonus,100);assert.equal(result.payload.frontSeat,'Alice');assert.equal(result.reply,delivered);assert.match(delivered,/Riders: 1/);
+  assert.equal(recorded,1);assert.equal(bonus,confirmed?100:0);assert.equal(result.payload.frontSeat,'Alice');assert.equal(result.reply,delivered);assert.match(delivered,/Riders: 1/);
+  assert.equal(result.payload.frontSeatBonusPoints,confirmed?100:0);
+  if(confirmed){assert.match(delivered,/100 Nebula points/);assert.match(delivered,/Nebula balance: 420/);}
+  else{assert.match(delivered,/could not be confirmed/);assert.doesNotMatch(delivered,/100/);}
 });
 test('empty membership produces an explicit result without awarding points', async () => {
   const flow=load('src/services/checkin-flow.ts',()=>({}));
@@ -72,7 +85,7 @@ test(`service bridge deduplicates both shoutouts and isolates failures: ${native
       formatCheckinShoutoutReply:()=> 'Stella sent the shoutout.',
       formatCheckinChatShoutoutReply:()=> chatStatus === 'sent' ? '' : 'Chat !so failed.',
     };
-    if(id.includes('checkin-flow'))return {runBulkCheckin:async(kind,actor,cost,tenant,options)=>{calls++;assert.equal(tenant,'player_channel');assert.equal(options.source.entries[0].login,'alice');return {reply:'Alice in front!',payload:{frontSeat:'alice'}};}};
+    if(id.includes('checkin-flow'))return {runBulkCheckin:async(kind,actor,cost,tenant,options)=>{calls++;assert.equal(tenant,'player_channel');assert.equal(options.source.entries[0].login,'alice');assert.equal(options.channel,'player_channel');assert.equal(options.awardId,require('node:crypto').createHash('sha256').update('player_channel:message-one').digest('hex'));return {reply:'Alice in front!',payload:{frontSeat:'alice'}};}};
     return {};
   });
   const req={json:async()=>({channel:'player_channel',username:'alice',requestId:'message-one',chatters:[{login:'alice',name:'Alice',userId:'1'}]})};
@@ -85,4 +98,26 @@ test(`service bridge deduplicates both shoutouts and isolates failures: ${native
   const duplicate=await bridge.POST(req);
   assert.equal(duplicate.body.duplicate,true);assert.equal(calls,1);assert.equal(shoutouts,1);assert.equal(chatShoutouts,1);
   assert.equal(duplicate.body.chatShoutout.status,chatStatus);
+});
+
+test('Nebula service retries a lost response with the same award identity and requires a wallet receipt', async () => {
+  const input={awardId:'stable-award',channel:'host',username:'alice',userId:'1'};
+  const calls=[];
+  const service=load('src/services/nebula-actions.ts',()=>({}),{
+    process:{env:{CHAT_TAG_SECRET:'test-only-service-secret'}},AbortSignal,
+    fetch:async(url,init)=>{
+      calls.push({url,body:JSON.parse(init.body)});
+      if(calls.length===1)throw Error('Response lost after commit');
+      return {ok:true,json:async()=>({ok:true,award:{...input,amount:100,balance:500,currency:'nebula',duplicate:true}})};
+    },
+  });
+  const award=await service.awardNebulaCheckinBonus(input);
+  assert.equal(award.balance,500);assert.equal(calls.length,2);
+  assert.deepEqual(calls[0].body,calls[1].body);
+  assert.match(calls[0].url,/\/api\/game-hub\/checkin-bonus$/);
+  const bad=load('src/services/nebula-actions.ts',()=>({}),{
+    process:{env:{CHAT_TAG_SECRET:'test-only-service-secret'}},AbortSignal,
+    fetch:async()=>({ok:true,json:async()=>({ok:true})}),
+  });
+  await assert.rejects(bad.awardNebulaCheckinBonus(input),/did not confirm/);
 });
