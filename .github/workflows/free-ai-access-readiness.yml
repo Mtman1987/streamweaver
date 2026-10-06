@@ -1,17 +1,63 @@
-name: Gemini access diagnosis
+name: Stage encrypted Gemini credential
 on:
   push:
     branches: [fix/free-ai-readiness-20261006]
 permissions:
   contents: read
+  issues: write
 jobs:
-  diagnose:
+  stage:
+    if: github.actor == 'Mtman1987'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Check key access without generating text
+      - name: Receive one owner-sealed key and stage Fly secret
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          flyctl ssh console --app streamweaver-new --quiet --command 'node -e "eval(Buffer.from(\"KGFzeW5jKCk9Pntjb25zdCBmcz1yZXF1aXJlKCJub2RlOmZzIik7Y29uc3QgcmVhZD1wPT57dHJ5e3JldHVybiBKU09OLnBhcnNlKGZzLnJlYWRGaWxlU3luYyhwLCJ1dGY4IikpfWNhdGNoe3JldHVybiB7fX19O2NvbnN0IHJvb3Q9cHJvY2Vzcy5lbnYuUEVSU0lTVF9ST09UfHwiL2RhdGEvcnVudGltZSI7Y29uc3QgY2ZnPVtyZWFkKCIvYXBwL2NvbmZpZy91c2VyLWNvbmZpZy5qc29uIikscmVhZChyb290KyIvdGVuYW50cy85NDM3MTM3OC90b2tlbnMvdXNlci1jb25maWcuanNvbiIpLHJlYWQocm9vdCsiL3RlbmFudHMvc3BhY2Vtb3VudGFpbmxpdmUvdG9rZW5zL3VzZXItY29uZmlnLmpzb24iKV07Y29uc3Qga2V5PVN0cmluZyhwcm9jZXNzLmVudi5HRU1JTklfQVBJX0tFWXx8Y2ZnLmZpbmQoYz0+dHlwZW9mIGMuR0VNSU5JX0FQSV9LRVk9PT0ic3RyaW5nIiYmYy5HRU1JTklfQVBJX0tFWS50cmltKCkpPy5HRU1JTklfQVBJX0tFWXx8IiIpLnRyaW0oKTtjb25zdCBhbGxvd2VkPW5ldyBTZXQoWyJBUElfS0VZX0lOVkFMSUQiLCJBUElfS0VZX0VYUElSRUQiLCJBUElfS0VZX1NFUlZJQ0VfQkxPQ0tFRCIsIkFQSV9LRVlfSFRUUF9SRUZFUlJFUl9CTE9DS0VEIiwiQVBJX0tFWV9JUF9BRERSRVNTX0JMT0NLRUQiLCJTRVJWSUNFX0RJU0FCTEVEIiwiQklMTElOR19ESVNBQkxFRCIsIkNPTlNVTUVSX1NVU1BFTkRFRCIsIkFDQ0VTU19UT0tFTl9FWFBJUkVEIiwiQUNDRVNTX1RPS0VOX1NDT1BFX0lOU1VGRklDSUVOVCIsIlBFUk1JU1NJT05fREVOSUVEIl0pO3RyeXtjb25zdCByPWF3YWl0IGZldGNoKCJodHRwczovL2dlbmVyYXRpdmVsYW5ndWFnZS5nb29nbGVhcGlzLmNvbS92MWJldGEvbW9kZWxzIix7aGVhZGVyczp7IngtZ29vZy1hcGkta2V5IjprZXl9LHNpZ25hbDpBYm9ydFNpZ25hbC50aW1lb3V0KDE1MDAwKSxyZWRpcmVjdDoiZXJyb3IifSk7Y29uc3QgZD1hd2FpdCByLmpzb24oKS5jYXRjaCgoKT0+KHt9KSk7Y29uc3QgcmVhc29ucz0oZC5lcnJvcj8uZGV0YWlsc3x8W10pLm1hcCh4PT54LnJlYXNvbikuZmlsdGVyKHg9PmFsbG93ZWQuaGFzKHgpKTtjb25zdCBtZXNzYWdlPVN0cmluZyhkLmVycm9yPy5tZXNzYWdlfHwiIik7bGV0IGNhdGVnb3J5PXIub2s/ImFjY2Vzc19vayI6L2xlYWtlZC9pLnRlc3QobWVzc2FnZSk/ImNyZWRlbnRpYWxfcmV2b2tlZF9sZWFrZWQiOi9leHBpcmVkL2kudGVzdChtZXNzYWdlKT8iY3JlZGVudGlhbF9leHBpcmVkIjovYXBpIGtleSBub3QgdmFsaWR8aW52YWxpZCBhcGkga2V5L2kudGVzdChtZXNzYWdlKT8iY3JlZGVudGlhbF9pbnZhbGlkIjovYmxvY2tlZHxyZXN0cmljdGlvbnxyZWZlcmVyfHJlZmVycmVyL2kudGVzdChtZXNzYWdlKT8iY3JlZGVudGlhbF9yZXN0cmljdGVkIjovbm90IGJlZW4gdXNlZHxkaXNhYmxlZC9pLnRlc3QobWVzc2FnZSk/InNlcnZpY2VfZGlzYWJsZWQiOnIuc3RhdHVzPT09NDAzPyJwZXJtaXNzaW9uX2RlbmllZCI6InVwc3RyZWFtIjtjb25zb2xlLmxvZyhKU09OLnN0cmluZ2lmeSh7dGVzdDoiZ2VtaW5pX2FjY2Vzc19kaWFnbm9zdGljIixtb2RlbENhbGxzOjAsaHR0cFN0YXR1czpyLnN0YXR1cyxlcnJvckNhdGVnb3J5OmNhdGVnb3J5LGVycm9yUmVhc29uczpyZWFzb25zLGtleUZvcm1hdFZhbGlkOi9eQUl6YVtBLVphLXowLTlfLV17MzV9JC8udGVzdChrZXkpLG1vZGVsQ291bnQ6QXJyYXkuaXNBcnJheShkLm1vZGVscyk/ZC5tb2RlbHMubGVuZ3RoOjAsYmlsbGluZ1RpZXJWZXJpZmllZDpmYWxzZX0pKX1jYXRjaHtjb25zb2xlLmxvZyhKU09OLnN0cmluZ2lmeSh7bW9kZWxDYWxsczowLGVycm9yQ2F0ZWdvcnk6Im5ldHdvcmtfb3JfdGltZW91dCJ9KSl9fSkoKTs=\",\"base64\").toString(\"utf8\"))"'
+          set +x
+          umask 077
+          python - <<'PY'
+          import os,json,base64,tempfile,subprocess,time,urllib.request,datetime
+          run=os.environ['GITHUB_RUN_ID']
+          repo=os.environ['GITHUB_REPOSITORY']
+          url='https://api.github.com/repos/'+repo+'/issues/329/comments'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          def api(method,url,data=None):
+              request=urllib.request.Request(url,data=json.dumps(data).encode() if data is not None else None,headers=headers,method=method)
+              with urllib.request.urlopen(request,timeout=20) as response:return json.load(response)
+          try:
+              with tempfile.TemporaryDirectory(prefix='gemini-transfer-') as directory:
+                  private=directory+'/recipient.pem'
+                  public=directory+'/public.pem'
+                  subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:4096','-out',private],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                  subprocess.run(['openssl','pkey','-in',private,'-pubout','-out',public],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                  pub=base64.b64encode(open(public,'rb').read()).decode()
+                  api('POST',url,{'body':'SPMT_GEMINI_RECIPIENT:'+run+':'+pub+'\nPublic one-time RSA-OAEP recipient. Private key is temporary and never exported. Owner ciphertext only; stage Gemini secret without changing live policy.'})
+                  print('recipient_published=1',flush=True)
+                  prefix='SPMT_GEMINI_SEALED:'+run+':'
+                  envelope=None
+                  for attempt in range(72):
+                      comments=api('GET',url+'?per_page=100')
+                      candidates=[c for c in comments if c.get('user',{}).get('login')=='Mtman1987' and c.get('body','').startswith(prefix)]
+                      if candidates:
+                          envelope=base64.b64decode(candidates[-1]['body'][len(prefix):].strip(),validate=True)
+                          break
+                      time.sleep(5)
+                  if envelope is None:raise RuntimeError('delivery_timeout')
+                  if len(envelope)!=512:raise RuntimeError('invalid_envelope')
+                  result=subprocess.run(['openssl','pkeyutl','-decrypt','-inkey',private,'-pkeyopt','rsa_padding_mode:oaep','-pkeyopt','rsa_oaep_md:sha256','-pkeyopt','rsa_mgf1_md:sha256'],input=envelope,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=True)
+                  payload=json.loads(result.stdout)
+                  key=payload.get('key','')
+                  if payload.get('run')!=run or not isinstance(key,str) or not 30<=len(key)<=200 or not all(c.isascii() and (c.isalnum() or c in '_-') for c in key):raise RuntimeError('invalid_payload')
+                  secret_input=('GEMINI_API_KEY='+key+'\n').encode()
+                  installed=subprocess.run(['flyctl','secrets','import','--stage','--app','streamweaver-new'],input=secret_input,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                  if installed.returncode:raise RuntimeError('secret_stage_failed')
+                  print('secret_staged=1',flush=True)
+                  key='';secret_input=b'';payload.clear()
+          except Exception:
+              print('error_category=secure_transfer_failed',flush=True)
+              raise SystemExit(1)
+          PY
