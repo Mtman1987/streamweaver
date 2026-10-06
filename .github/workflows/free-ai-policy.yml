@@ -5,6 +5,9 @@ on:
       - 'src/services/**'
       - 'src/lib/tts-voices.ts'
       - 'workers/free-tts/**'
+      - 'docker-entrypoint.js'
+      - 'Dockerfile'
+      - 'tests/free-voice-entrypoint.test.mjs'
       - 'tests/free-ai-policy.test.ts'
       - '.github/workflows/free-ai-policy.yml'
       - '.github/workflows/fly-deploy.yml'
@@ -19,4 +22,5 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: node --import tsx --test tests/free-ai-policy.test.ts
+      - run: node --test tests/free-voice-entrypoint.test.mjs
       - run: npm run typecheck

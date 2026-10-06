@@ -30,7 +30,7 @@ jobs:
            if(!config.voice.startsWith("kokoro:")) throw new Error("Expected free trial voice");
            const originalFetch=globalThis.fetch;
            globalThis.fetch=async(...args)=>{
-            if(new URL(String(args[0])).hostname!=="spmt-free-tts.internal") throw new Error("Non-trial AI route blocked by readiness check");
+            if(new URL(String(args[0])).hostname!=="127.0.0.1") throw new Error("Non-trial AI route blocked by readiness check");
             return originalFetch(...args);
            };
            const audio=await generateTTS("This is a free voice check.",undefined,"94371378");

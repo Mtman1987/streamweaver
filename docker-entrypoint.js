@@ -10,6 +10,8 @@ const PERSISTED_DIRS = ['logs', 'tmp', 'config', 'tokens', 'actions', 'commands'
 
 ;(async() => {
   ensurePersistentDirs()
+  migrateFreeVoicePolicy()
+  startFreeVoiceWorker()
   seedRuntimeSnapshot()
   seedTenantDiscordConfig()
 
@@ -131,4 +133,42 @@ function seedPersistentDir(sourceDir, persistentDir) {
 
     fs.copyFileSync(sourcePath, targetPath)
   }
+}
+
+
+function migrateFreeVoicePolicy() {
+  const file = path.join(process.cwd(), 'config', 'ai-cost-policy.json')
+  try {
+    const policy = JSON.parse(fs.readFileSync(file, 'utf8'))
+    if (policy.speechWorkerUrl !== 'http://spmt-free-tts.internal:8080') return
+    policy.speechWorkerUrl = 'http://127.0.0.1:8080'
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(policy, null, 2) + '\n')
+    fs.renameSync(`${file}.tmp`, file)
+    console.log('[entrypoint] Free speech now shares the existing two shared CPU host')
+  } catch {
+    console.info('[entrypoint] Free voice policy uses safe defaults until public config is available')
+  }
+}
+
+function startFreeVoiceWorker() {
+  const python = '/opt/kokoro-venv/bin/python'
+  const worker = path.join(process.cwd(), 'workers', 'free-tts', 'server.py')
+  if (!fs.existsSync(python) || !fs.existsSync(worker)) return
+  const voiceEnv = {
+    PATH: env.PATH,
+    MODEL_PATH: '/opt/kokoro-models/kokoro.onnx',
+    VOICES_PATH: '/opt/kokoro-models/voices.bin',
+    OMP_NUM_THREADS: '2', OPENBLAS_NUM_THREADS: '2', MKL_NUM_THREADS: '2',
+    PYTHONUNBUFFERED: '1',
+  }
+  // Lower priority keeps the dashboard and game commands responsive.
+  const child = spawn('/usr/bin/nice', ['-n', '10', python, worker], { stdio: 'inherit', env: voiceEnv })
+  child.once('error', () => console.info('[entrypoint] Free voice worker is unavailable'))
+  const stopChild = () => child.kill()
+  child.once('close', () => {
+    process.removeListener('exit', stopChild)
+    console.info('[entrypoint] Free voice worker stopped; retrying startup in 60 seconds')
+    setTimeout(startFreeVoiceWorker, 60_000).unref()
+  })
+  process.once('exit', stopChild)
 }
