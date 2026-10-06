@@ -4,8 +4,9 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { generateAIResponse } from '../src/services/ai-provider';
+import { transcribeAudio } from '../src/services/speech';
 import { translateToLanguage } from '../src/services/translation';
-import { generateFreeGeminiResponse, isFreeGeminiConfigured } from '../src/services/free-gemini-chat';
+import { generateFreeGeminiResponse, isFreeGeminiConfigured, transcribeFreeGeminiAudio } from '../src/services/free-gemini-chat';
 import { requestPrivateChatCompletion } from '../src/services/private-chat-ai';
 import { AI_PAUSED_MESSAGE } from '../src/services/ai-cost-policy';
 
@@ -24,6 +25,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   let calls = 0;
   let status = 200;
   let temperature = 0.7;
+  let audioMime = '';
   let payload: any = { candidates: [{ content: { parts: [{ text: 'private reasoning', thought: true }, { text: 'Hello from the free provider.' }] } }] };
   let blocked: Promise<void> | undefined;
   t.mock.method(globalThis, 'fetch', async (url: any, init?: RequestInit) => {
@@ -34,14 +36,16 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     assert.equal(init?.redirect, 'error');
     const body = JSON.parse(String(init?.body));
     temperature = body.generationConfig.temperature;
+    audioMime = body.contents[0].parts[0]?.inlineData?.mimeType || '';
     assert.ok(body.generationConfig.maxOutputTokens <= 1200);
-    assert.ok(body.contents[0].parts[0].text.length <= 24_000);
+    assert.ok(body.contents[0].parts.at(-1).text.length <= 24_000);
     if (blocked) await blocked;
     return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
   });
   writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: false }));
   assert.equal(await generateAIResponse('Hello'), AI_PAUSED_MESSAGE);
   assert.equal((await translateToLanguage('Hello', 'es')).error, AI_PAUSED_MESSAGE);
+  assert.equal((await transcribeAudio('invalid')).provider, 'paused');
   assert.equal(calls, 0, 'having a key is not verification that its project is free');
   writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: false, geminiFreeTierVerified: 'true' }));
   assert.equal(await generateAIResponse('Hello'), AI_PAUSED_MESSAGE);
@@ -63,6 +67,17 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   assert.equal(await generateFreeGeminiResponse('Short social reply', '', undefined, { maxCharacters: 45 }), 'This is a complete first sentence.');
   payload = { candidates: [{ content: { parts: [{ text: 'Hello from the free provider.' }] } }] };
   assert.equal(await generateFreeGeminiResponse('Another tenant still works'), 'Hello from the free provider.');
+  const callsBeforeInvalidAudio = calls;
+  await assert.rejects(transcribeFreeGeminiAudio('not-audio'), { category: 'invalid_audio' });
+  await assert.rejects(transcribeFreeGeminiAudio('A'.repeat(700_001)), { category: 'invalid_audio' });
+  assert.equal(calls, callsBeforeInvalidAudio);
+  const wav = Buffer.alloc(44); wav.write('RIFF'); wav.write('WAVE', 8);
+  assert.equal((await transcribeAudio(wav.toString('base64'))).provider, 'gemini-free');
+  assert.equal(audioMime, 'audio/wav');
+  const webm = Buffer.alloc(16); webm.set([0x1a, 0x45, 0xdf, 0xa3]);
+  await transcribeFreeGeminiAudio(webm.toString('base64'));
+  assert.equal(audioMime, 'audio/webm');
+  assert.equal(temperature, 0);
   let release!: () => void;
   blocked = new Promise<void>(resolve => { release = resolve; });
   const active = generateFreeGeminiResponse('Long response');

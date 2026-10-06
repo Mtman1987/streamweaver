@@ -1,5 +1,6 @@
 'use server';
 
+import { isFreeGeminiConfigured, transcribeFreeGeminiAudio, FreeChatUnavailableError } from './free-gemini-chat';
 import { readAICostPolicy } from './ai-cost-policy';
 import { SpeechClient } from '@google-cloud/speech';
 import { getBrokerAuthHeaders, getBrokerBaseUrl, joinBrokerUrl } from '@/lib/broker';
@@ -173,7 +174,14 @@ async function transcribeWithEden(base64Audio: string, apiKey: string): Promise<
  * shared with the working Say TTS path. Broker and Google remain fallbacks.
  */
 export async function transcribeAudio(base64Audio: string): Promise<TranscriptionResult> {
-    if (!readAICostPolicy().paidRoutesEnabled) return { transcription: '', error: 'Paid transcription is paused while free access is being set up.', provider: 'paused' };
+    if (!readAICostPolicy().paidRoutesEnabled) {
+        if (!isFreeGeminiConfigured()) return { transcription: '', error: 'Free transcription is not configured. Paid providers remain disabled.', provider: 'paused' };
+        try {
+            return { transcription: await transcribeFreeGeminiAudio(base64Audio), provider: 'gemini-free' };
+        } catch (error) {
+            return { transcription: '', error: error instanceof FreeChatUnavailableError ? error.message : 'Free transcription is unavailable.', provider: 'gemini-free' };
+        }
+    }
     const failures: string[] = [];
     const edenApiKey = resolveEdenApiKey();
 
