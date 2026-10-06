@@ -67,6 +67,8 @@ jobs:
           cache: npm
       - name: Install dependencies for command smoke
         run: npm ci --ignore-scripts
+      - name: Verify free AI cost policy
+        run: node --import tsx --test tests/free-ai-policy.test.ts
       - name: Run live command smoke tests
         run: node --import tsx --test tests/spmt-command-aliases.test.ts tests/stella-lounge-replies.test.ts tests/root-command-runtime-coverage.test.ts tests/bot-action-runtime.test.ts
       - name: Verify Chat Tag check-in bridge
@@ -79,3 +81,39 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           NO_COLOR: "1"
+
+  free-voice-trial:
+    name: Deploy private free voice trial (2 shared CPUs)
+    needs: deploy
+    runs-on: ubuntu-latest
+    concurrency:
+      group: free-voice-trial-deploy
+      cancel-in-progress: false
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      NO_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Create private trial app if absent
+        run: |
+          if ! flyctl status --app spmt-free-tts --json >/dev/null 2>&1; then
+            flyctl apps create spmt-free-tts --org mtman-new
+          fi
+      - name: Deploy one worker capped at 2 shared CPUs
+        working-directory: workers/free-tts
+        run: flyctl deploy --local-only --ha=false --vm-cpu-kind shared --vm-cpus 2 --vm-memory 2048 --wait-timeout 5m
+      - name: Verify CPU and private worker limits
+        run: |
+          flyctl machines list --app spmt-free-tts --json > "$RUNNER_TEMP/free-voice-machines.json"
+          python3 - "$RUNNER_TEMP/free-voice-machines.json" <<'PYCPU'
+          import json, sys
+          machines = json.load(open(sys.argv[1]))
+          assert len(machines) == 1, "Trial must have exactly one machine"
+          config = machines[0]["config"]
+          assert config["guest"]["cpu_kind"] == "shared" and config["guest"]["cpus"] <= 2, "Trial exceeds shared CPU cap"
+          assert not config.get("services"), "Trial must stay private"
+          print("One private worker; at most two shared CPUs verified")
+          PYCPU
+      - name: Verify real speech inside the worker
+        run: flyctl ssh console --app spmt-free-tts --command 'python /app/smoke.py'

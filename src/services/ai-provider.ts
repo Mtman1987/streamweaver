@@ -1,3 +1,4 @@
+import { readAICostPolicy, AI_PAUSED_MESSAGE, assertPaidAIAllowed } from './ai-cost-policy';
 import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
 import { BOT_NO_SELF_PROMOTION_POLICY } from '@/lib/bot-conduct-policy';
@@ -131,6 +132,7 @@ export async function generateAIResponse(
   tenantId?: string,
   options?: AIResponseOptions,
 ): Promise<string> {
+  if (!readAICostPolicy().paidRoutesEnabled) return AI_PAUSED_MESSAGE;
   let edenFailure = '';
 
   try {
@@ -199,6 +201,7 @@ export async function generateEdenAIFallbackResponse(
   tenantId?: string,
   options?: AIResponseOptions,
 ): Promise<string> {
+  assertPaidAIAllowed();
   if (process.env.EDENAI_CALLS_ENABLED === 'false') {
     throw new Error('EdenAI calls are paused while credits are depleted.');
   }

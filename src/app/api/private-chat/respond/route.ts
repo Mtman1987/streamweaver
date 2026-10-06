@@ -1,3 +1,4 @@
+import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import {
   appendPrivateChatMessages,
@@ -60,7 +61,7 @@ type RequestBody = {
 
 type PrivateCompletionResult = {
   text: string;
-  provider: 'edenai-or-openai' | 'self-hosted-qwen-adult';
+  provider: 'edenai-or-openai' | 'self-hosted-qwen-adult' | 'paused';
   error?: string;
 };
 
@@ -129,6 +130,7 @@ async function completePrivateTurn(input: {
   adultMode: boolean;
   tenantId: string;
 }): Promise<PrivateCompletionResult> {
+  if (!readAICostPolicy().paidRoutesEnabled) return { text: AI_PAUSED_MESSAGE, provider: 'paused' };
   if (input.adultMode && isSpmtLocalLlmEnabled()) {
     const qwen = await requestQwenPrivateChatCompletion({
       baseUrl: input.baseUrl,

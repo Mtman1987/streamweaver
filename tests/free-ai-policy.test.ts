@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { readAICostPolicy, AI_PAUSED_MESSAGE } from '../src/services/ai-cost-policy';
+import { generateAIResponse } from '../src/services/ai-provider';
+import { requestPrivateChatCompletion } from '../src/services/private-chat-ai';
+import { requestOpenAiFallback, isOpenAiFallbackConfigured } from '../src/services/openai-fallback';
+import { generateTTS, generateDeepgramTTS, generateOpenAITTS } from '../src/services/tts-provider';
+import { getTtsVoiceOption } from '../src/lib/tts-voices';
+import { generateFreeTTS } from '../src/services/free-tts';
+
+test('free-only policy prevents paid calls even with credentials and recovers speech without fallback', async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'free-ai-policy-'));
+  const file = path.join(dir, 'policy.json');
+  const oldPath = process.env.AI_COST_POLICY_PATH;
+  process.env.AI_COST_POLICY_PATH = file;
+  t.after(() => {
+    if (oldPath === undefined) delete process.env.AI_COST_POLICY_PATH;
+    else process.env.AI_COST_POLICY_PATH = oldPath;
+    rmSync(dir, { recursive: true, force: true });
+  });
+  assert.equal(readAICostPolicy().paidRoutesEnabled, false);
+  writeFileSync(file, '{bad JSON');
+  assert.equal(readAICostPolicy().paidRoutesEnabled, false);
+  writeFileSync(file, JSON.stringify({ paidRoutesEnabled: 'true' }));
+  assert.equal(readAICostPolicy().paidRoutesEnabled, false);
+  writeFileSync(file, JSON.stringify({ paidRoutesEnabled: false }));
+  let calls = 0;
+  let fail = false;
+  const wav = Buffer.alloc(64); wav.write('RIFF'); wav.write('WAVE', 8);
+  t.mock.method(globalThis, 'fetch', async (url: any, init?: RequestInit) => {
+    calls++;
+    assert.equal(String(url), 'http://spmt-free-tts.internal:8080/v1/audio/speech');
+    const body = JSON.parse(String(init?.body));
+    assert.ok(['af_heart', 'af_bella', 'am_michael'].includes(body.voice));
+    assert.equal(new Headers(init?.headers).has('authorization'), false);
+    return fail ? new Response(null, { status: 503 }) : new Response(wav, { headers: { 'content-type': 'audio/wav' } });
+  });
+  assert.equal(await generateAIResponse('Hello'), AI_PAUSED_MESSAGE);
+  assert.equal(isOpenAiFallbackConfigured('existing-key'), false);
+  await assert.rejects(requestOpenAiFallback({ messages: [{ role: 'user', content: 'Hello' }], options: { apiKey: 'existing-key' } }), { code: 'AI_PROVIDER_PAUSED' });
+  await assert.rejects(generateDeepgramTTS('Hello', 'existing-key'), { code: 'AI_PROVIDER_PAUSED' });
+  await assert.rejects(generateOpenAITTS('Hello', getTtsVoiceOption('edenai:openai:nova'), 'existing-key'), { code: 'AI_PROVIDER_PAUSED' });
+  const privateReply = await requestPrivateChatCompletion({ apiKey: 'existing-key', systemPrompt: '', prompt: 'Hello' });
+  assert.equal(privateReply.text, '');
+  assert.match(privateReply.upstreamError || '', /paused/);
+  assert.equal(calls, 0);
+  assert.match(await generateTTS('Hello.', 'deepgram:aura-2-athena-en', 'trial-test'), /^data:audio\/wav;base64,/);
+  assert.match(await generateTTS('Hello.', 'kokoro:am_michael', 'trial-test'), /^data:audio\/wav;base64,/);
+  assert.equal(calls, 2);
+  fail = true;
+  assert.deepEqual(await Promise.all(Array.from({ length: 20 }, () => generateFreeTTS('Hello.', 'af_heart'))), Array(20).fill(''));
+  assert.equal(calls, 3, 'one failed worker attempt, no paid fallback or retry storm');
+  assert.equal(await generateTTS('Another.', undefined, 'trial-test'), '');
+  assert.equal(calls, 3);
+});

@@ -1,0 +1,25 @@
+app = 'spmt-free-tts'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  OMP_NUM_THREADS = '2'
+  OPENBLAS_NUM_THREADS = '2'
+  MKL_NUM_THREADS = '2'
+
+# Private 6PN only: no public services or IP allocation.
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 2
+  memory_mb = 2048
+
+[checks.voice]
+  type = 'http'
+  port = 8080
+  method = 'GET'
+  path = '/health'
+  interval = '30s'
+  timeout = '5s'
+  grace_period = '90s'

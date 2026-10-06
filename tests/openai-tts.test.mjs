@@ -14,6 +14,7 @@ test('OpenAI speech uses the pinned voice and accepts nonempty audio', async () 
   let request;
   const context = {
     Buffer,
+    assertPaidAIAllowed: () => {},
     fetchWithRetry: async (url, init, options) => {
       request = { url, init, options };
       return { ok: true, headers: { get: () => 'audio/mpeg' },
@@ -32,6 +33,7 @@ test('OpenAI speech uses the pinned voice and accepts nonempty audio', async () 
 test('OpenAI speech rejects empty or non-audio output', async () => {
   const context = {
     Buffer,
+    assertPaidAIAllowed: () => {},
     fetchWithRetry: async () => ({
       ok: true, headers: { get: () => 'application/json' },
       arrayBuffer: async () => new ArrayBuffer(0),

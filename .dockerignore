@@ -73,6 +73,9 @@ firebase-service-account.json
 /data/
 /MasterStats/
 /config/
+!/config/
+/config/*
+!/config/ai-cost-policy.json
 
 spcmtn-pokemon_assets-prod-main/
 carddb-uploader/

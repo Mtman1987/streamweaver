@@ -80,6 +80,7 @@ export async function prepareTtsOverlay(text: string, tenantId?: string): Promis
     });
     if (!ttsRes.ok) return { result: { ok: false, generated: false, queued: false, error: `TTS generation failed: HTTP ${ttsRes.status}` } };
     const ttsData = await ttsRes.json().catch(() => null);
+    if (ttsData?.available === false) return { result: { ok: true, generated: false, queued: false, error: 'Free speech is temporarily unavailable.' } };
     const audioUrl = typeof ttsData?.audioDataUri === 'string' ? ttsData.audioDataUri : '';
     if (!audioUrl) return { result: { ok: false, generated: true, queued: false, error: 'TTS generation returned no audioDataUri' } };
     return { result: { ok: true, generated: true, queued: false }, audioUrl };

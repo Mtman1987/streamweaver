@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     const audioDataUri = await generateTTS(text, undefined, tenantId);
+    if (!audioDataUri) return new NextResponse(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
     const match = audioDataUri.match(/^data:audio\/(mpeg|mp3|wav);base64,(.+)$/i);
     if (!match) {
       return NextResponse.json({ error: 'Invalid TTS audio format' }, { status: 500 });

@@ -1,0 +1,8 @@
+{
+  "paidRoutesEnabled": false,
+  "speechWorkerUrl": "http://spmt-free-tts.internal:8080",
+  "femaleTrialVoice": "af_heart",
+  "maleTrialVoice": "am_michael",
+  "azureTrial": "awaiting-free-F0-account",
+  "deepgramTrial": "awaiting-verified-credit-and-credential"
+}

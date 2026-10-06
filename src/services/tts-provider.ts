@@ -1,3 +1,5 @@
+import { assertPaidAIAllowed, readAICostPolicy } from './ai-cost-policy';
+import { generateFreeTTS } from './free-tts';
 import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
 import { normalizeTextForTTS } from '@/lib/tts-text';
@@ -30,6 +32,7 @@ export type GenerateTTSOptions = {
 };
 
 export const TTS_VOICES: Record<TTSProvider, string[]> = {
+  kokoro: ['kokoro:af_heart', 'kokoro:af_bella', 'kokoro:am_michael'],
   edenai: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'edenai').map((voice) => voice.id),
   deepgram: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'deepgram').map((voice) => voice.id),
 };
@@ -41,7 +44,11 @@ function resolveTTSApiKey(tenantId?: string): string {
 
 export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
-  const voice = tenantId === ATHENA_TENANT_ID
+  const policy = readAICostPolicy();
+  const savedVoice = getTtsVoiceOption(config.TTS_VOICE);
+  const voice = !policy.paidRoutesEnabled
+    ? savedVoice.provider === 'kokoro' ? savedVoice.id : `kokoro:${savedVoice.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice}`
+    : tenantId === ATHENA_TENANT_ID
     ? ATHENA_CANONICAL_TTS_VOICE
     : normalizeTtsVoice(config.TTS_VOICE);
   return {
@@ -133,6 +140,15 @@ export async function generateTTS(
     return '';
   }
 
+  const policy = readAICostPolicy();
+  if (!policy.paidRoutesEnabled || voiceOverride?.startsWith('kokoro:')) {
+    const selected = getTtsVoiceOption(voiceOverride || getTTSConfig(tenantId).voice);
+    const trialVoice = selected.id.startsWith('kokoro:')
+      ? selected.id.slice(7)
+      : selected.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice;
+    return generateFreeTTS(normalizedText, trialVoice);
+  }
+
   const now = Date.now();
   if (now - lastTTSCall < TTS_RATE_LIMIT_MS) {
     await new Promise((resolve) => setTimeout(resolve, TTS_RATE_LIMIT_MS - (now - lastTTSCall)));
@@ -143,6 +159,7 @@ export async function generateTTS(
   const selectedVoice = tenantId === ATHENA_TENANT_ID
     ? ATHENA_CANONICAL_TTS_VOICE
     : normalizeTtsVoice(voiceOverride || config.voice);
+  if (selectedVoice.startsWith('kokoro:')) return generateFreeTTS(normalizedText, selectedVoice.slice(7));
   const attempts = [selectedVoice, ...getLifelikeFallbackVoices(selectedVoice)];
   const errors: string[] = [];
 
@@ -214,6 +231,7 @@ async function generatePortableDeepgramTTS(text: string, voice: TTSVoiceOption, 
 }
 
 export async function generateDeepgramTTS(text: string, apiKey: string, model = ATHENA_DEEPGRAM_TTS_MODEL): Promise<string> {
+  assertPaidAIAllowed();
   const response = await fetchWithRetry(
     `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(model || ATHENA_DEEPGRAM_TTS_MODEL)}`,
     {
@@ -240,6 +258,7 @@ export async function generateDeepgramTTS(text: string, apiKey: string, model = 
 }
 
 async function generateEdenAIDeepgramTTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
+  assertPaidAIAllowed();
   if (!voice.deepgramModel?.startsWith('aura-2-')) {
     throw new Error(`Unsupported Eden AI Deepgram voice: ${voice.id}`);
   }
@@ -271,6 +290,7 @@ async function generateEdenAIDeepgramTTS(text: string, voice: TTSVoiceOption, ap
 }
 
 export async function generateOpenAITTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
+  assertPaidAIAllowed();
   if (voice.edenaiProvider !== 'openai' || !['nova', 'shimmer', 'echo', 'fable', 'onyx'].includes(voice.edenaiVoiceModel)) {
     throw new Error('Unsupported OpenAI speech voice');
   }
@@ -304,6 +324,7 @@ export async function generateOpenAITTS(text: string, voice: TTSVoiceOption, api
 }
 
 async function generateEdenAITTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
+  assertPaidAIAllowed();
   const response = await fetchWithRetry('https://api.edenai.run/v2/audio/text_to_speech', {
     method: 'POST',
     headers: {
