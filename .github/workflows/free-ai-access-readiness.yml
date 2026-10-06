@@ -1,70 +1,37 @@
-name: Stage encrypted Gemini credential
+name: Apply staged Gemini credential and verify host
 on:
   push:
     branches: [fix/free-ai-readiness-20261006]
 permissions:
   contents: read
-  issues: write
 jobs:
-  stage:
+  verify:
     if: github.actor == 'Mtman1987'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Receive one owner-sealed key and stage Fly secret
+      - name: Apply staged credential without changing machine resources
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          GH_TOKEN: ${{ github.token }}
+        run: flyctl secrets deploy --app streamweaver-new
+      - name: Verify shared CPU resources and health
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          set +x
-          umask 077
-          python - <<'PY'
-          import os,json,base64,tempfile,subprocess,time,urllib.request,datetime
-          run=os.environ['GITHUB_RUN_ID']
-          repo=os.environ['GITHUB_REPOSITORY']
-          url='https://api.github.com/repos/'+repo+'/issues/330/comments'
-          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
-          def api(method,url,data=None):
-              request=urllib.request.Request(url,data=json.dumps(data).encode() if data is not None else None,headers=headers,method=method)
-              with urllib.request.urlopen(request,timeout=20) as response:return json.load(response)
-          stage='recipient_generation'
-          try:
-              with tempfile.TemporaryDirectory(prefix='gemini-transfer-') as directory:
-                  private=directory+'/recipient.pem'
-                  public=directory+'/public.pem'
-                  subprocess.run(['openssl','genpkey','-algorithm','RSA','-pkeyopt','rsa_keygen_bits:4096','-out',private],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                  subprocess.run(['openssl','pkey','-in',private,'-pubout','-out',public],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                  pub=base64.b64encode(open(public,'rb').read()).decode()
-                  stage='recipient_publication'
-                  api('POST',url,{'body':'SPMT_GEMINI_RECIPIENT:'+run+':'+pub+'\nPublic one-time RSA-OAEP recipient. Private key is temporary and never exported. Owner ciphertext only; stage Gemini secret without changing live policy.'})
-                  print('recipient_published=1',flush=True)
-                  stage='encrypted_delivery'
-                  prefix='SPMT_GEMINI_SEALED:'+run+':'
-                  envelope=None
-                  for attempt in range(72):
-                      comments=api('GET',url+'?per_page=100')
-                      candidates=[c for c in comments if c.get('user',{}).get('login')=='Mtman1987' and c.get('body','').startswith(prefix)]
-                      if candidates:
-                          envelope=base64.b64decode(candidates[-1]['body'][len(prefix):].strip(),validate=True)
-                          break
-                      time.sleep(5)
-                  if envelope is None:raise RuntimeError('delivery_timeout')
-                  if len(envelope)!=512:raise RuntimeError('invalid_envelope')
-                  stage='envelope_decryption'
-                  result=subprocess.run(['openssl','pkeyutl','-decrypt','-inkey',private,'-pkeyopt','rsa_padding_mode:oaep','-pkeyopt','rsa_oaep_md:sha256','-pkeyopt','rsa_mgf1_md:sha256'],input=envelope,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=True)
-                  payload=json.loads(result.stdout)
-                  key=payload.get('key','')
-                  if payload.get('run')!=run or not isinstance(key,str) or not 30<=len(key)<=200 or not all(33<=ord(c)<=126 for c in key):raise RuntimeError('invalid_payload')
-                  secret_input=('GEMINI_API_KEY='+key+'\n').encode()
-                  stage='fly_secret_staging'
-                  installed=subprocess.run(['flyctl','secrets','import','--stage','--app','streamweaver-new'],input=secret_input,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                  if installed.returncode:raise RuntimeError('secret_stage_failed')
-                  print('secret_staged=1',flush=True)
-                  key='';secret_input=b'';payload.clear()
-          except Exception as error:
-              print('error_category='+stage+'_failed',flush=True)
-              print('http_status='+str(getattr(error,'code',0)),flush=True)
-              print('subprocess_status='+str(getattr(error,'returncode',0)),flush=True)
-              raise SystemExit(1)
+          flyctl machines list --app streamweaver-new --json > "$RUNNER_TEMP/machines.json"
+          python3 - "$RUNNER_TEMP/machines.json" <<'PY'
+          import json,sys
+          machines=json.load(open(sys.argv[1]))
+          assert len(machines)==1
+          for m in machines:
+              g=m['config']['guest']
+              assert g['cpu_kind']=='shared' and g['cpus']==2 and g['memory_mb']==2048
+              checks=m.get('checks',[])
+              print(json.dumps({'machine_count':len(machines),'shared_cpu':1,'cpus':g['cpus'],'ram_mb':g['memory_mb'],'started':int(m['state']=='started'),'passing_checks':sum(c.get('status')=='passing' for c in checks),'failing_checks':sum(c.get('status') in ['critical','warning'] for c in checks)}))
           PY
+      - name: Verify runtime credential presence and free policy without displaying secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl ssh console --app streamweaver-new --command '/opt/kokoro-venv/bin/python -c "import os,json,pathlib; p=pathlib.Path('/app/config/ai-cost-policy.json'); policy=json.loads(p.read_text()) if p.exists() else {}; mem={k:int(v.split()[0]) for k,v in (l.split(':',1) for l in pathlib.Path('/proc/meminfo').read_text().splitlines())}; print(json.dumps({'gemini_key_present':int(bool(os.environ.get('GEMINI_API_KEY'))),'gemini_free_tier_verified':int(policy.get('geminiFreeTierVerified') is True),'paid_routes_enabled':int(policy.get('paidRoutesEnabled') is True),'ram_total_kib':mem['MemTotal'],'ram_available_kib':mem['MemAvailable']}))"'
