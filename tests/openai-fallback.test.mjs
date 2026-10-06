@@ -5,12 +5,15 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../src/services/openai-fallback.ts', import.meta.url), 'utf8')
+  .replace(/^import .*;\n/, '')
   .replace(/\bexport /g, '') + '\nglobalThis.requestForTest = requestOpenAiFallback;';
 const executable = stripTypeScriptTypes(source, { mode: 'strip' });
 
 async function run(replies, model) {
   const requests = [];
   const context = {
+    assertPaidAIAllowed: () => {},
+    readAICostPolicy: () => ({ paidRoutesEnabled: true }),
     process: { env: {} },
     console: { warn() {} },
     AbortSignal,
@@ -48,6 +51,8 @@ test('empty reasoning output retries with the known nonreasoning model', async (
 
 test('a refusal is not retried as an empty response', async () => {
   const context = {
+    assertPaidAIAllowed: () => {},
+    readAICostPolicy: () => ({ paidRoutesEnabled: true }),
     process: { env: {} }, console: { warn() {} }, AbortSignal,
     fetch: async () => ({ ok: true, json: async () => ({ output: [{ content: [{ type: 'refusal', refusal: 'No' }] }] }) }),
   };

@@ -332,6 +332,11 @@ export async function POST(request: NextRequest) {
       tenantId,
     });
 
+    if (completion.provider === 'paused') {
+      return apiOk({ response: completion.text, provider: 'paused', available: false,
+        adultMode: privateSettings.adultMode, ttsEnabled: false, gifEnabled: false });
+    }
+
     if (!completion.text) {
       const responseText = [
         privateSettings.adultMode

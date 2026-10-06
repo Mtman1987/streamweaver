@@ -71,6 +71,9 @@ export function detectOpenBotCommand(message: string): OpenBotCommand | null {
   const explicitSpmtCommand = detectExplicitSpmtCommand(normalized);
   if (explicitSpmtCommand) return explicitSpmtCommand;
 
+  // Explicit Chat Tag live counts must not be answered from the DSH community feed.
+  if (/\bchat[\s-]?tag\b/.test(normalized) && /\b(?:live|streaming|broadcasting)\b/.test(normalized)) return null;
+
   if (
     /\b(who(?:'?s| is) live|who is streaming|anyone streaming|anyone live|live (?:members|streamers|crew))\b/.test(normalized) ||
     /\bhow many\b.*\b(?:users?|members?|people|creators?|streamers?)\b.*\b(?:live|streaming|broadcasting)\b/.test(normalized) ||
