@@ -1,3 +1,4 @@
+import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { addLTMEntry } from '@/lib/ltm-store';
 import { getChannelMessages } from '@/services/discord';
@@ -21,6 +22,8 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('channelId required', { status: 400, code: 'INVALID_BODY' });
     }
+    if (!readAICostPolicy().paidRoutesEnabled) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
+
     const { channelId, startIndex, batchSize } = parsed.data;
     
     const aiConfig = getAIConfig(tenantId);

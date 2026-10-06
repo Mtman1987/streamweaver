@@ -364,6 +364,7 @@ export async function generateImageWithEdenAI(options: ImageGenerationOptions): 
 }
 
 export async function generateImageWithSeaArt(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  assertPaidAIAllowed();
   const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
   if (!token) throw new Error('SEAART_TOKEN not configured');
 

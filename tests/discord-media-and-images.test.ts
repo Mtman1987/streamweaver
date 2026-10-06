@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
+import { allowPaidAdaptersForTest } from './helpers/paid-ai-policy';
+beforeEach(allowPaidAdaptersForTest);
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';

@@ -1,3 +1,4 @@
+import { assertPaidAIAllowed } from './ai-cost-policy';
 import sharp from 'sharp';
 import type { ImageGenerationOptions, ImageGenerationResult } from './image-provider';
 
@@ -155,6 +156,7 @@ async function callCloudflare(
 }
 
 export async function generateImageWithCloudflare(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  assertPaidAIAllowed();
   const accountId = credential('CLOUDFLARE_ACCOUNT_ID');
   const token = credential('CLOUDFLARE_API_TOKEN');
   if (!accountId || !token) {

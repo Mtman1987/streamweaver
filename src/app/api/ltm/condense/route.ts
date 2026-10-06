@@ -1,3 +1,4 @@
+import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { getChannelMessages } from '@/services/discord';
 import { addLTMEntry } from '@/lib/ltm-store';
@@ -83,6 +84,8 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return apiError('Missing channelId', { status: 400, code: 'INVALID_BODY' });
     }
+    if (!readAICostPolicy().paidRoutesEnabled) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
+
     const { channelId } = parsed.data;
     
     const ltmEntry = await condenseChatHistory(channelId, tenantId);

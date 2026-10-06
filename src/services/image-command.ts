@@ -1,3 +1,4 @@
+import { readAICostPolicy } from './ai-cost-policy';
 import { generateAIResponse } from '@/services/ai-provider';
 import { readGenerationSettings, type GenerationSettings } from '@/lib/gen-settings-store';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
@@ -100,6 +101,7 @@ export async function optimizeImagePrompt(
   settings: GenerationSettings,
   tenantId?: string,
 ): Promise<string> {
+  if (!readAICostPolicy().paidRoutesEnabled) return prompt;
   const optimized = await generateAIResponse(
     `User idea:\n${prompt}`,
     settings.imagePromptTemplate,

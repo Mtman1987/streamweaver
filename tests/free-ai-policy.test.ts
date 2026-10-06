@@ -9,6 +9,15 @@ import { requestPrivateChatCompletion } from '../src/services/private-chat-ai';
 import { requestOpenAiFallback, isOpenAiFallbackConfigured } from '../src/services/openai-fallback';
 import { generateTTS, generateDeepgramTTS, generateOpenAITTS } from '../src/services/tts-provider';
 import { getTtsVoiceOption } from '../src/lib/tts-voices';
+import { generateImageWithOpenAI, generateImageWithEdenAI, generateImageWithSeaArt } from '../src/services/image-provider';
+import { generateImageWithCloudflare } from '../src/services/cloudflare-image';
+import { moderateImagePrompt } from '../src/services/image-content-moderation';
+import { optimizeImagePrompt } from '../src/services/image-command';
+import { translateToLanguage } from '../src/services/translation';
+import { NextRequest } from 'next/server';
+import { serializeSessionCookie } from '../src/lib/session-cookie';
+import { POST as condensePrivateMemory } from '../src/app/api/private-ltm/condense/route';
+import { POST as optimizePersonality } from '../src/app/api/ai/optimize-personality/route';
 import { generateFreeTTS } from '../src/services/free-tts';
 
 test('free-only policy prevents paid calls even with credentials and recovers speech without fallback', async (t) => {
@@ -46,6 +55,21 @@ test('free-only policy prevents paid calls even with credentials and recovers sp
   const privateReply = await requestPrivateChatCompletion({ apiKey: 'existing-key', systemPrompt: '', prompt: 'Hello' });
   assert.equal(privateReply.text, '');
   assert.match(privateReply.upstreamError || '', /paused/);
+  for (const adapter of [generateImageWithOpenAI, generateImageWithEdenAI, generateImageWithSeaArt, generateImageWithCloudflare]) {
+    await assert.rejects(adapter({ prompt: 'A mountain', tenantId: 'trial-test' }), { code: 'AI_PROVIDER_PAUSED' });
+  }
+  await assert.rejects(moderateImagePrompt('A mountain', 'trial-test'), { code: 'AI_PROVIDER_PAUSED' });
+  assert.equal(await optimizeImagePrompt('A mountain', {} as any), 'A mountain');
+  assert.equal((await translateToLanguage('Hello Carl', 'es')).translatedText, 'Hello Carl');
+  const cookie = serializeSessionCookie({ id: 'trial-test', username: 'trial' });
+  const memoryResponse = await condensePrivateMemory(new NextRequest('http://localhost/api/private-ltm/condense', { method: 'POST', headers: { cookie: `streamweaver-session=${cookie}`, 'content-type': 'application/json' }, body: '{}' }));
+  const memoryResult = await memoryResponse.json();
+  assert.equal(memoryResult.success, false);
+  assert.equal(memoryResult.available, false, 'a pause notice must never become a memory');
+  const personalityResponse = await optimizePersonality(new NextRequest('http://localhost/api/ai/optimize-personality', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ personality: 'Kind and curious' }) }));
+  const personalityResult = await personalityResponse.json();
+  assert.equal(personalityResult.optimized, 'Kind and curious');
+  assert.equal(personalityResult.available, false);
   assert.equal(calls, 0);
   assert.match(await generateTTS('Hello.', 'deepgram:aura-2-athena-en', 'trial-test'), /^data:audio\/wav;base64,/);
   assert.match(await generateTTS('Hello.', 'kokoro:am_michael', 'trial-test'), /^data:audio\/wav;base64,/);

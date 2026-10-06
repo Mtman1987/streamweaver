@@ -1,3 +1,4 @@
+import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { personality, botName } = parsed.data;
+    if (!readAICostPolicy().paidRoutesEnabled) return apiOk({ optimized: personality, available: false, reason: AI_PAUSED_MESSAGE, templateVersion: PERSONALITY_RUNTIME_VERSION });
     const name = botName || 'AI Bot';
     const tenantId = getTenantFromRequest(req)?.tenantId;
     const userPrompt = `Bot name: ${name}\n\nUser's personality input:\n${personality}\n\nReformat this into the required structure:`;
