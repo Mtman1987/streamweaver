@@ -131,6 +131,8 @@ async function completePrivateTurn(input: {
   adultMode: boolean;
   tenantId: string;
 }): Promise<PrivateCompletionResult> {
+  // Adult Mode promises the local route; never send its private turn to a cloud fallback.
+  if (input.adultMode && !readAICostPolicy().paidRoutesEnabled) return { text: 'Adult Mode local model is offline while local AI is disabled.', provider: 'paused' };
   if (!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured(input.tenantId)) return { text: AI_PAUSED_MESSAGE, provider: 'paused' };
   if (readAICostPolicy().paidRoutesEnabled && input.adultMode && isSpmtLocalLlmEnabled()) {
     const qwen = await requestQwenPrivateChatCompletion({

@@ -4,7 +4,8 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { generateAIResponse } from '../src/services/ai-provider';
-import { generateFreeGeminiResponse } from '../src/services/free-gemini-chat';
+import { translateToLanguage } from '../src/services/translation';
+import { generateFreeGeminiResponse, isFreeGeminiConfigured } from '../src/services/free-gemini-chat';
 import { requestPrivateChatCompletion } from '../src/services/private-chat-ai';
 import { AI_PAUSED_MESSAGE } from '../src/services/ai-cost-policy';
 
@@ -22,6 +23,8 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   });
   let calls = 0;
   let status = 200;
+  let temperature = 0.7;
+  let payload: any = { candidates: [{ content: { parts: [{ text: 'private reasoning', thought: true }, { text: 'Hello from the free provider.' }] } }] };
   let blocked: Promise<void> | undefined;
   t.mock.method(globalThis, 'fetch', async (url: any, init?: RequestInit) => {
     calls++;
@@ -30,15 +33,15 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     assert.equal(new Headers(init?.headers).has('authorization'), false);
     assert.equal(init?.redirect, 'error');
     const body = JSON.parse(String(init?.body));
+    temperature = body.generationConfig.temperature;
     assert.ok(body.generationConfig.maxOutputTokens <= 1200);
     assert.ok(body.contents[0].parts[0].text.length <= 24_000);
     if (blocked) await blocked;
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [
-      { text: 'private reasoning', thought: true }, { text: 'Hello from the free provider.' },
-    ] } }] }), { status, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
   });
   writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: false }));
   assert.equal(await generateAIResponse('Hello'), AI_PAUSED_MESSAGE);
+  assert.equal((await translateToLanguage('Hello', 'es')).error, AI_PAUSED_MESSAGE);
   assert.equal(calls, 0, 'having a key is not verification that its project is free');
   writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: false, geminiFreeTierVerified: 'true' }));
   assert.equal(await generateAIResponse('Hello'), AI_PAUSED_MESSAGE);
@@ -47,6 +50,19 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   assert.equal(await generateAIResponse('Hello'), 'Hello from the free provider.');
   assert.equal((await requestPrivateChatCompletion({ apiKey: 'unused-paid-key', prompt: 'Hello', systemPrompt: 'Be kind.' })).text, 'Hello from the free provider.');
   assert.equal(calls, 2, 'neither public nor private chat called a paid fallback');
+  const configuredKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  assert.equal(isFreeGeminiConfigured('another-tenant'), false, 'tenant JSON credentials cannot inherit the verified global policy');
+  process.env.GEMINI_API_KEY = configuredKey;
+  assert.equal((await translateToLanguage('Hello', 'es')).translatedText, 'Hello from the free provider.');
+  await generateFreeGeminiResponse('Deterministic selection', '', undefined, { temperature: 0 });
+  assert.equal(temperature, 0);
+  payload = { promptFeedback: { blockReason: 'SAFETY' } };
+  await assert.rejects(generateFreeGeminiResponse('Blocked turn'), { category: 'blocked' });
+  payload = { candidates: [{ content: { parts: [{ text: 'This is a complete first sentence. This second sentence is much longer and should not be cut in half.' }] } }] };
+  assert.equal(await generateFreeGeminiResponse('Short social reply', '', undefined, { maxCharacters: 45 }), 'This is a complete first sentence.');
+  payload = { candidates: [{ content: { parts: [{ text: 'Hello from the free provider.' }] } }] };
+  assert.equal(await generateFreeGeminiResponse('Another tenant still works'), 'Hello from the free provider.');
   let release!: () => void;
   blocked = new Promise<void>(resolve => { release = resolve; });
   const active = generateFreeGeminiResponse('Long response');

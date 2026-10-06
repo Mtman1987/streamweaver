@@ -101,6 +101,8 @@ test('private tenant chat supports verified free Gemini and retains paid/local p
   assert.ok(completionSource.includes('if (readAICostPolicy().paidRoutesEnabled && input.adultMode && isSpmtLocalLlmEnabled())'));
   assert.ok(completionSource.includes('!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured(input.tenantId)'));
   assert.ok(completionSource.includes("'gemini-free'"));
+  const adultPaused = completionSource.indexOf('input.adultMode && !readAICostPolicy().paidRoutesEnabled');
+  assert.ok(adultPaused >= 0 && adultPaused < completionSource.indexOf('await generateAIResponse('), 'disabled local Adult Mode cannot leak into free cloud chat');
   assert.ok(completionSource.includes('await requestQwenPrivateChatCompletion('));
   assert.ok(completionSource.includes('await generateAIResponse('));
   assert.ok(completionSource.includes("provider: 'edenai-or-openai'"));
