@@ -1,18 +1,17 @@
-name: Free AI access readiness
+name: Single live Gemini test
 on:
   push:
     branches: [fix/free-ai-readiness-20261006]
-  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  readiness:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Read only credential presence and public policy flags
+      - name: Make one owner-requested bounded test call
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl ssh console --app streamweaver-new --quiet --command 'node -e "const fs=require(\"node:fs\");const has=x=>typeof x===\"string\"&&x.trim().length>0;const read=p=>{try{return JSON.parse(fs.readFileSync(p,\"utf8\"))}catch{return {}}};const root=process.env.PERSIST_ROOT||\"/data/runtime\";const cfg=[read(\"/app/config/user-config.json\"),read(root+\"/tenants/94371378/tokens/user-config.json\"),read(root+\"/tenants/spacemountainlive/tokens/user-config.json\")];const present=k=>has(process.env[k])||cfg.some(c=>has(c[k]));const policy=read(process.env.AI_COST_POLICY_PATH||\"/app/config/ai-cost-policy.json\");console.log(JSON.stringify({paidRoutesEnabled:policy.paidRoutesEnabled===true,geminiCredentialPresent:present(\"GEMINI_API_KEY\"),groqCredentialPresent:present(\"GROQ_API_KEY\"),huggingFaceCredentialPresent:present(\"HF_TOKEN\"),localLlmEnabled:process.env.SPMT_LOCAL_LLM_ENABLED===\"true\",localEndpointExplicit:has(process.env.SPMT_LLM_BASE_URL),freeBillingTierVerified:false,modelCalls:0}))"'
+          flyctl ssh console --app streamweaver-new --quiet --command 'node -e "eval(Buffer.from(\"KGFzeW5jKCk9Pntjb25zdCBmcz1yZXF1aXJlKCJub2RlOmZzIik7Y29uc3QgcmVhZD1wPT57dHJ5e3JldHVybiBKU09OLnBhcnNlKGZzLnJlYWRGaWxlU3luYyhwLCJ1dGY4IikpfWNhdGNoe3JldHVybiB7fX19O2NvbnN0IHJvb3Q9cHJvY2Vzcy5lbnYuUEVSU0lTVF9ST09UfHwiL2RhdGEvcnVudGltZSI7Y29uc3QgY2ZnPVtyZWFkKCIvYXBwL2NvbmZpZy91c2VyLWNvbmZpZy5qc29uIikscmVhZChyb290KyIvdGVuYW50cy85NDM3MTM3OC90b2tlbnMvdXNlci1jb25maWcuanNvbiIpLHJlYWQocm9vdCsiL3RlbmFudHMvc3BhY2Vtb3VudGFpbmxpdmUvdG9rZW5zL3VzZXItY29uZmlnLmpzb24iKV07Y29uc3Qga2V5PVN0cmluZyhwcm9jZXNzLmVudi5HRU1JTklfQVBJX0tFWXx8Y2ZnLmZpbmQoYz0+dHlwZW9mIGMuR0VNSU5JX0FQSV9LRVk9PT0ic3RyaW5nIiYmYy5HRU1JTklfQVBJX0tFWS50cmltKCkpPy5HRU1JTklfQVBJX0tFWXx8IiIpLnRyaW0oKTtpZigha2V5KXtjb25zb2xlLmxvZyhKU09OLnN0cmluZ2lmeSh7YXR0ZW1wdHM6MCxlcnJvckNhdGVnb3J5OiJjcmVkZW50aWFsX21pc3NpbmcifSkpO3JldHVybn1jb25zdCBtb2RlbD0iZ2VtaW5pLTMuNS1mbGFzaC1saXRlIjt0cnl7Y29uc3Qgcj1hd2FpdCBmZXRjaCgiaHR0cHM6Ly9nZW5lcmF0aXZlbGFuZ3VhZ2UuZ29vZ2xlYXBpcy5jb20vdjFiZXRhL21vZGVscy8iK21vZGVsKyI6Z2VuZXJhdGVDb250ZW50Iix7bWV0aG9kOiJQT1NUIixoZWFkZXJzOnsiQ29udGVudC1UeXBlIjoiYXBwbGljYXRpb24vanNvbiIsIngtZ29vZy1hcGkta2V5IjprZXl9LGJvZHk6SlNPTi5zdHJpbmdpZnkoe2NvbnRlbnRzOlt7cm9sZToidXNlciIscGFydHM6W3t0ZXh0OiJSZXBseSB0byBDYXB0YWluIE0uVC4gaW4gb25lIHNob3J0IHNlbnRlbmNlIGNvbmZpcm1pbmcgdGhhdCB0aGlzIGxpdmUgR2VtaW5pIHRlc3Qgd29ya3MsIHdpdGggYW4gb3JpZ2luYWwgY2hlZXJmdWwgc3BhY2UgZ3JlZXRpbmcuIERvIG5vdCBjbGFpbSBhbnl0aGluZyBhYm91dCBiaWxsaW5nLiJ9XX1dLGdlbmVyYXRpb25Db25maWc6e21heE91dHB1dFRva2Vuczo5Nix0ZW1wZXJhdHVyZTowLjd9fSksc2lnbmFsOkFib3J0U2lnbmFsLnRpbWVvdXQoMjAwMDApLHJlZGlyZWN0OiJlcnJvciJ9KTtjb25zdCBkPWF3YWl0IHIuanNvbigpLmNhdGNoKCgpPT4oe30pKTtjb25zdCBwPWQ/LmNhbmRpZGF0ZXM/LlswXT8uY29udGVudD8ucGFydHM7Y29uc3QgcmVwbHk9QXJyYXkuaXNBcnJheShwKT9wLmZpbHRlcih4PT54Py50aG91Z2h0IT09dHJ1ZSYmdHlwZW9mIHg/LnRleHQ9PT0ic3RyaW5nIikubWFwKHg9PngudGV4dCkuam9pbigiIikudHJpbSgpLnNsaWNlKDAsODAwKToiIjtjb25zb2xlLmxvZyhKU09OLnN0cmluZ2lmeSh7dGVzdDoic2luZ2xlX2xpdmVfZ2VtaW5pX2NhbGwiLGF0dGVtcHRzOjEsaHR0cFN0YXR1czpyLnN0YXR1cyxtb2RlbCxnZW5lcmF0ZWRSZXBseTpyZXBseSxpbnB1dFRva2VuczpOdW1iZXIoZD8udXNhZ2VNZXRhZGF0YT8ucHJvbXB0VG9rZW5Db3VudCl8fDAsb3V0cHV0VG9rZW5zOk51bWJlcihkPy51c2FnZU1ldGFkYXRhPy5jYW5kaWRhdGVzVG9rZW5Db3VudCl8fDAsYmlsbGluZ1RpZXJWZXJpZmllZDpmYWxzZSxlcnJvckNhdGVnb3J5OnIub2s/KHJlcGx5P251bGw6ImVtcHR5X3Jlc3BvbnNlIik6ci5zdGF0dXM9PT00Mjk/InF1b3RhIjpyLnN0YXR1cz09PTQwMXx8ci5zdGF0dXM9PT00MDM/ImF1dGhlbnRpY2F0aW9uIjpyLnN0YXR1cz09PTQwND8ibW9kZWxfdW5hdmFpbGFibGUiOiJ1cHN0cmVhbSJ9KSl9Y2F0Y2h7Y29uc29sZS5sb2coSlNPTi5zdHJpbmdpZnkoe2F0dGVtcHRzOjEsZXJyb3JDYXRlZ29yeToibmV0d29ya19vcl90aW1lb3V0IixiaWxsaW5nVGllclZlcmlmaWVkOmZhbHNlfSkpfX0pKCkuY2F0Y2goKCk9Pntjb25zb2xlLmxvZyhKU09OLnN0cmluZ2lmeSh7ZXJyb3JDYXRlZ29yeToidGVzdF9mYWlsZWQifSkpO3Byb2Nlc3MuZXhpdCgxKX0pOw==\",\"base64\").toString(\"utf8\"))"'
