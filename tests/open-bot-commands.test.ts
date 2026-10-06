@@ -12,6 +12,8 @@ test('detects safe natural-language commands after any tenant bot wake name', ()
   assert.equal(detectOpenBotCommand("NovaBot, who's live?"), 'live-members');
   assert.equal(detectOpenBotCommand('athena whos live right now?'), 'live-members');
   assert.equal(detectOpenBotCommand('how many users are reporting live in Chat-Tag?'), null);
+  assert.equal(detectOpenBotCommand('who is streaming in ChatTag?'), null);
+  assert.equal(detectOpenBotCommand('show Chat Tag live members'), null);
   assert.equal(detectOpenBotCommand('how many people are live right now?'), 'live-members');
   assert.equal(detectOpenBotCommand('MayaBot who has the tag?'), 'chat-tag-current');
   assert.equal(detectOpenBotCommand('MayaBot, show me the ChatTag leaderboard'), 'chat-tag-leaderboard');

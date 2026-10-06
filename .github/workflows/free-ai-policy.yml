@@ -1,0 +1,22 @@
+name: Free AI policy
+on:
+  pull_request:
+    paths:
+      - 'src/services/**'
+      - 'src/lib/tts-voices.ts'
+      - 'workers/free-tts/**'
+      - 'tests/free-ai-policy.test.ts'
+      - '.github/workflows/free-ai-policy.yml'
+      - '.github/workflows/fly-deploy.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --import tsx --test tests/free-ai-policy.test.ts
+      - run: npm run typecheck

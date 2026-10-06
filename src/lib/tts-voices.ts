@@ -1,4 +1,4 @@
-export type TTSProvider = 'edenai' | 'deepgram';
+export type TTSProvider = 'edenai' | 'deepgram' | 'kokoro';
 export type EdenAITTSProvider = 'google' | 'microsoft' | 'amazon' | 'openai';
 export type TTSVoiceGender = 'MALE' | 'FEMALE';
 
@@ -214,7 +214,14 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   },
 ];
 
-export const TTS_VOICE_OPTIONS = [...DEEPGRAM_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS];
+export const KOKORO_VOICE_OPTIONS: TTSVoiceOption[] = [
+  ['af_heart', 'Heart', 'Female'], ['af_bella', 'Bella', 'Female'], ['am_michael', 'Michael', 'Male'],
+].map(([name, label, gender]) => ({
+  id: `kokoro:${name}`, label, gender: gender as 'Male' | 'Female', provider: 'kokoro',
+  providerLabel: 'Kokoro free voice trial', description: 'Local neural voice; no per-character provider charge',
+  edenaiProvider: 'openai', edenaiOption: gender === 'Male' ? 'MALE' : 'FEMALE', edenaiVoiceModel: name,
+}));
+export const TTS_VOICE_OPTIONS = [...KOKORO_VOICE_OPTIONS, ...DEEPGRAM_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS];
 export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
 export const DEFAULT_TTS_VOICE = 'edenai:openai:nova';
 
@@ -247,7 +254,8 @@ const LEGACY_VOICE_MAP: Record<string, string> = {
 };
 
 export function normalizeTtsProvider(provider: unknown): TTSProvider {
-  return String(provider || '').trim().toLowerCase() === 'deepgram' ? 'deepgram' : DEFAULT_TTS_PROVIDER;
+  const value = String(provider || '').trim().toLowerCase();
+  return value === 'deepgram' || value === 'kokoro' ? value : DEFAULT_TTS_PROVIDER;
 }
 
 export function normalizeTtsVoice(voice: string | undefined | null, _provider: TTSProvider = DEFAULT_TTS_PROVIDER): string {

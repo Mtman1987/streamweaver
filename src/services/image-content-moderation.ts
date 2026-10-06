@@ -1,3 +1,4 @@
+import { assertPaidAIAllowed } from './ai-cost-policy';
 import { readUserConfigSync } from '@/lib/user-config';
 
 export type ImagePromptModerationResult = {
@@ -27,6 +28,7 @@ export function isImagePromptModerationError(error: unknown): error is ImageProm
 }
 
 export async function moderateImagePrompt(prompt: string, tenantId: string): Promise<ImagePromptModerationResult> {
+  assertPaidAIAllowed();
   const apiKey = getEdenAIKey(tenantId);
   if (!apiKey) {
     throw new Error('Content moderation is enabled but no EdenAI API key is configured');

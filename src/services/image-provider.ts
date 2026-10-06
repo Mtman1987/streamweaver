@@ -1,3 +1,4 @@
+import { assertPaidAIAllowed } from './ai-cost-policy';
 import { readUserConfigSync } from '@/lib/user-config';
 import { generateImageWithSeaArtCli, SeaArtCliUnavailableError } from './seaart-cli';
 
@@ -232,6 +233,7 @@ export function buildOpenAIImagePayload(options: ImageGenerationOptions) {
 }
 
 export async function generateImageWithOpenAI(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  assertPaidAIAllowed();
   const apiKey = getOpenAIKey(options.tenantId);
   if (!apiKey) throw new Error('No OpenAI API key configured for image generation');
 
@@ -312,6 +314,7 @@ export function buildEdenAIImagePayload(options: ImageGenerationOptions, default
 }
 
 export async function generateImageWithEdenAI(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  assertPaidAIAllowed();
   const apiKey = getEdenAIKey(options.tenantId);
   if (!apiKey) {
     throw new Error('No EdenAI API key configured for image generation');
@@ -361,6 +364,7 @@ export async function generateImageWithEdenAI(options: ImageGenerationOptions): 
 }
 
 export async function generateImageWithSeaArt(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+  assertPaidAIAllowed();
   const token = readUserConfigSync(options.tenantId).SEAART_TOKEN || process.env.SEAART_TOKEN || '';
   if (!token) throw new Error('SEAART_TOKEN not configured');
 

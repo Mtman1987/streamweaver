@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-const helper = `export type OpenAiFallbackMessage = { role: 'user' | 'assistant'; content: string };
+const helper = `import { readAICostPolicy, assertPaidAIAllowed } from './ai-cost-policy';\n\nexport type OpenAiFallbackMessage = { role: 'user' | 'assistant'; content: string };
 export type OpenAiFallbackOptions = { maxTokens?: number; temperature?: number; model?: string; apiKey?: string };
 
 function extractOutputText(payload: any): string {
@@ -19,7 +19,7 @@ function hasRefusal(payload: any): boolean {
 }
 
 export function isOpenAiFallbackConfigured(apiKey?: string): boolean {
-  return Boolean(String(apiKey || process.env.OPENAI_API_KEY || '').trim());
+  return readAICostPolicy().paidRoutesEnabled && Boolean(String(apiKey || process.env.OPENAI_API_KEY || '').trim());
 }
 
 export async function requestOpenAiFallback(input: {
@@ -27,6 +27,7 @@ export async function requestOpenAiFallback(input: {
   messages: OpenAiFallbackMessage[];
   options?: OpenAiFallbackOptions;
 }): Promise<{ text: string; model: string }> {
+  assertPaidAIAllowed();
   const apiKey = String(input.options?.apiKey || process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) throw new Error('OpenAI API key is not configured.');
   const selectedModel = String(input.options?.model || process.env.OPENAI_CHAT_MODEL || 'gpt-4.1-mini').trim();

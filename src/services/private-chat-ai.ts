@@ -1,3 +1,4 @@
+import { readAICostPolicy } from './ai-cost-policy';
 const PRIVATE_CHAT_MODEL = 'google/gemini-2.5-flash';
 const PRIVATE_CHAT_MAX_TOKENS = 2400;
 const PRIVATE_CHAT_ATTEMPTS = 2;
@@ -34,6 +35,7 @@ export async function requestPrivateChatCompletion(input: {
   prompt: string;
   fetchImpl?: FetchLike;
 }): Promise<PrivateChatCompletionResult> {
+  if (!readAICostPolicy().paidRoutesEnabled) return { text: '', upstreamError: 'Paid AI providers are paused by the owner.' };
   const fetchImpl = input.fetchImpl || fetch;
 
   for (let attempt = 1; attempt <= PRIVATE_CHAT_ATTEMPTS; attempt++) {

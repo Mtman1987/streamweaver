@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     console.log('[TTS API] Request:', { textLength: text.length, textPreview: text.slice(0, 80), voice: voice ?? '(default)', tenantId: tenantId ?? 'global' });
 
     const audioDataUri = await generateTTS(text, voice, tenantId);
+    if (!audioDataUri) return apiOk({ audioDataUri: '', available: false, reason: 'Free speech is temporarily unavailable.' });
     console.log('[TTS API] Success, audioDataUri length:', audioDataUri.length);
     return apiOk({ audioDataUri });
   } catch (error: any) {

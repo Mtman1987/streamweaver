@@ -1,3 +1,4 @@
+import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
@@ -27,6 +28,8 @@ export async function POST(request: NextRequest) {
     if (session?.tenantId && parsedBody.data?.tenantId && parsedBody.data.tenantId !== session.tenantId) {
       return apiError('Forbidden', { status: 403, code: 'TENANT_MISMATCH' });
     }
+
+    if (!readAICostPolicy().paidRoutesEnabled) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
 
     const messages = await readPrivateChatMessages(50, tenantId);
     if (messages.length < 10) {

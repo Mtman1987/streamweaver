@@ -1,3 +1,4 @@
+import { allowPaidAdaptersForTest } from './helpers/paid-ai-policy';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateTTS } from '../src/services/tts-provider';
@@ -7,6 +8,7 @@ const audioUrl = 'https://audio.example.test/athena.mp3';
 const audioBytes = Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]);
 
 function configure(t: any, deepgramKey = '') {
+  allowPaidAdaptersForTest(t);
   const eden = process.env.EDENAI_API_KEY;
   const deepgram = process.env.DEEPGRAM_API_KEY;
   process.env.EDENAI_API_KEY = 'test-eden-key';

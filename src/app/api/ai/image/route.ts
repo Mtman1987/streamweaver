@@ -1,3 +1,4 @@
+import { AIProviderPausedError } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { promises as fs } from 'fs';
 import { tenantPath } from '@/lib/tenant';
@@ -238,6 +239,7 @@ export async function POST(request: NextRequest) {
       scope,
     });
   } catch (error: any) {
+    if (error instanceof AIProviderPausedError) return apiError(error.message, { status: 503, code: error.code });
     console.error('[AI Image] Error:', error);
     return apiError(error?.message || 'Image generation failed', {
       status: 500,

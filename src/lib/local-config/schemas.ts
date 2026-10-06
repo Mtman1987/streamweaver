@@ -71,7 +71,7 @@ export const automationConfigSchema = z.object({
   geminiApiKey: z.string().default(''),
   edenaiApiKey: z.string().default(''),
   openaiApiKey: z.string().default(''),
-  ttsProvider: z.enum(['piper', 'edenai', 'deepgram', 'openai', 'gemini']).default('gemini'),
+  ttsProvider: z.enum(['piper', 'edenai', 'deepgram', 'openai', 'gemini', 'kokoro']).default('gemini'),
   ttsVoice: z.string().default(DEFAULT_TTS_VOICE),
 });
 
