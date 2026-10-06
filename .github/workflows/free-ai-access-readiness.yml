@@ -23,7 +23,7 @@ jobs:
           import os,json,base64,tempfile,subprocess,time,urllib.request,datetime
           run=os.environ['GITHUB_RUN_ID']
           repo=os.environ['GITHUB_REPOSITORY']
-          url='https://api.github.com/repos/'+repo+'/issues/329/comments'
+          url='https://api.github.com/repos/'+repo+'/issues/330/comments'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
           def api(method,url,data=None):
               request=urllib.request.Request(url,data=json.dumps(data).encode() if data is not None else None,headers=headers,method=method)
