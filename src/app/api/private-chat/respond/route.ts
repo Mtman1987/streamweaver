@@ -1,3 +1,4 @@
+import { isFreeGeminiConfigured } from '@/services/free-gemini-chat';
 import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import {
@@ -61,7 +62,7 @@ type RequestBody = {
 
 type PrivateCompletionResult = {
   text: string;
-  provider: 'edenai-or-openai' | 'self-hosted-qwen-adult' | 'paused';
+  provider: 'edenai-or-openai' | 'self-hosted-qwen-adult' | 'gemini-free' | 'paused';
   error?: string;
 };
 
@@ -130,8 +131,8 @@ async function completePrivateTurn(input: {
   adultMode: boolean;
   tenantId: string;
 }): Promise<PrivateCompletionResult> {
-  if (!readAICostPolicy().paidRoutesEnabled) return { text: AI_PAUSED_MESSAGE, provider: 'paused' };
-  if (input.adultMode && isSpmtLocalLlmEnabled()) {
+  if (!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured(input.tenantId)) return { text: AI_PAUSED_MESSAGE, provider: 'paused' };
+  if (readAICostPolicy().paidRoutesEnabled && input.adultMode && isSpmtLocalLlmEnabled()) {
     const qwen = await requestQwenPrivateChatCompletion({
       baseUrl: input.baseUrl,
       model: input.model,
@@ -186,7 +187,7 @@ async function completePrivateTurn(input: {
       latestUserMessage: input.message,
     }).trim();
     if (!text) throw new Error('AI returned an empty private reply.');
-    return { text, provider: 'edenai-or-openai' };
+    return { text, provider: readAICostPolicy().paidRoutesEnabled ? 'edenai-or-openai' : 'gemini-free' };
   } catch (error) {
     const aiError = safeModelError(error instanceof Error ? error.message : String(error));
     console.warn('[Private Chat API] EdenAI and OpenAI private chat unavailable:', aiError);
@@ -341,7 +342,7 @@ export async function POST(request: NextRequest) {
       const responseText = [
         privateSettings.adultMode
           ? `The owner-hosted SPMT Adult Mode model is unavailable for ${botName} right now.`
-          : `EdenAI is unavailable for ${botName} private chat right now.`,
+          : `AI chat is unavailable for ${botName} right now.`,
         safeModelError(completion.error),
       ].join(' ');
       await savePrivateReply(tenantId, botName, responseText);
