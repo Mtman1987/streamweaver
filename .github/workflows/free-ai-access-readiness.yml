@@ -1,0 +1,18 @@
+name: Free AI access readiness
+on:
+  push:
+    branches: [fix/free-ai-readiness-20261006]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Read only credential presence and public policy flags
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl ssh console --app streamweaver-new --quiet --command 'node -e "const fs=require(\"node:fs\");const has=x=>typeof x===\"string\"&&x.trim().length>0;const read=p=>{try{return JSON.parse(fs.readFileSync(p,\"utf8\"))}catch{return {}}};const root=process.env.PERSIST_ROOT||\"/data/runtime\";const cfg=[read(\"/app/config/user-config.json\"),read(root+\"/tenants/94371378/tokens/user-config.json\"),read(root+\"/tenants/spacemountainlive/tokens/user-config.json\")];const present=k=>has(process.env[k])||cfg.some(c=>has(c[k]));const policy=read(process.env.AI_COST_POLICY_PATH||\"/app/config/ai-cost-policy.json\");console.log(JSON.stringify({paidRoutesEnabled:policy.paidRoutesEnabled===true,geminiCredentialPresent:present(\"GEMINI_API_KEY\"),groqCredentialPresent:present(\"GROQ_API_KEY\"),huggingFaceCredentialPresent:present(\"HF_TOKEN\"),localLlmEnabled:process.env.SPMT_LOCAL_LLM_ENABLED===\"true\",localEndpointExplicit:has(process.env.SPMT_LLM_BASE_URL),freeBillingTierVerified:false,modelCalls:0}))"'
