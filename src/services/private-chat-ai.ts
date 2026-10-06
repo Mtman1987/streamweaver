@@ -1,3 +1,4 @@
+import { isFreeGeminiConfigured, generateFreeGeminiResponse } from './free-gemini-chat';
 import { readAICostPolicy } from './ai-cost-policy';
 const PRIVATE_CHAT_MODEL = 'google/gemini-2.5-flash';
 const PRIVATE_CHAT_MAX_TOKENS = 2400;
@@ -34,8 +35,13 @@ export async function requestPrivateChatCompletion(input: {
   systemPrompt: string;
   prompt: string;
   fetchImpl?: FetchLike;
+  tenantId?: string;
 }): Promise<PrivateChatCompletionResult> {
-  if (!readAICostPolicy().paidRoutesEnabled) return { text: '', upstreamError: 'Paid AI providers are paused by the owner.' };
+  if (!readAICostPolicy().paidRoutesEnabled) {
+    if (!isFreeGeminiConfigured(input.tenantId)) return { text: '', upstreamError: 'Paid AI providers are paused by the owner.' };
+    try { return { text: await generateFreeGeminiResponse(input.prompt, input.systemPrompt, input.tenantId, { maxTokens: 900 }, input.fetchImpl || fetch) }; }
+    catch { return { text: '', upstreamError: 'Free AI chat is unavailable; paid providers remain paused.' }; }
+  }
   const fetchImpl = input.fetchImpl || fetch;
 
   for (let attempt = 1; attempt <= PRIVATE_CHAT_ATTEMPTS; attempt++) {

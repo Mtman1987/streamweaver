@@ -1,3 +1,4 @@
+import { isFreeGeminiConfigured, generateFreeGeminiResponse } from './free-gemini-chat';
 import { readAICostPolicy, AI_PAUSED_MESSAGE, assertPaidAIAllowed } from './ai-cost-policy';
 import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
@@ -132,7 +133,10 @@ export async function generateAIResponse(
   tenantId?: string,
   options?: AIResponseOptions,
 ): Promise<string> {
-  if (!readAICostPolicy().paidRoutesEnabled) return AI_PAUSED_MESSAGE;
+  if (!readAICostPolicy().paidRoutesEnabled) {
+    if (!isFreeGeminiConfigured(tenantId)) return AI_PAUSED_MESSAGE;
+    return generateFreeGeminiResponse(prompt, governedPrompt(systemPrompt), tenantId, options);
+  }
   let edenFailure = '';
 
   try {

@@ -3,6 +3,7 @@ import path from 'node:path';
 
 export type AICostPolicy = {
   paidRoutesEnabled: boolean;
+  geminiFreeTierVerified: boolean;
   speechWorkerUrl: string;
   femaleTrialVoice: string;
   maleTrialVoice: string;
@@ -10,6 +11,7 @@ export type AICostPolicy = {
 
 const defaults: AICostPolicy = {
   paidRoutesEnabled: false,
+  geminiFreeTierVerified: false,
   speechWorkerUrl: 'http://127.0.0.1:8080',
   femaleTrialVoice: 'af_heart',
   maleTrialVoice: 'am_michael',
@@ -24,6 +26,8 @@ export function readAICostPolicy(): AICostPolicy {
     return {
       ...defaults,
       paidRoutesEnabled: p.paidRoutesEnabled === true,
+      // Explicitly confirm the key project has no billing; model names alone do not enforce free usage.
+      geminiFreeTierVerified: p.geminiFreeTierVerified === true,
       speechWorkerUrl: typeof p.speechWorkerUrl === 'string' ? p.speechWorkerUrl : defaults.speechWorkerUrl,
       femaleTrialVoice: ['af_heart', 'af_bella'].includes(p.femaleTrialVoice) ? p.femaleTrialVoice : defaults.femaleTrialVoice,
       maleTrialVoice: p.maleTrialVoice === 'am_michael' ? p.maleTrialVoice : defaults.maleTrialVoice,
