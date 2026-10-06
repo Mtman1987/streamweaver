@@ -55,7 +55,7 @@ jobs:
                   result=subprocess.run(['openssl','pkeyutl','-decrypt','-inkey',private,'-pkeyopt','rsa_padding_mode:oaep','-pkeyopt','rsa_oaep_md:sha256','-pkeyopt','rsa_mgf1_md:sha256'],input=envelope,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=True)
                   payload=json.loads(result.stdout)
                   key=payload.get('key','')
-                  if payload.get('run')!=run or not isinstance(key,str) or not 30<=len(key)<=200 or not all(c.isascii() and (c.isalnum() or c in '_-') for c in key):raise RuntimeError('invalid_payload')
+                  if payload.get('run')!=run or not isinstance(key,str) or not 30<=len(key)<=200 or not all(33<=ord(c)<=126 for c in key):raise RuntimeError('invalid_payload')
                   secret_input=('GEMINI_API_KEY='+key+'\n').encode()
                   stage='fly_secret_staging'
                   installed=subprocess.run(['flyctl','secrets','import','--stage','--app','streamweaver-new'],input=secret_input,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
