@@ -89,7 +89,7 @@ test('public AI uses EdenAI, configured OpenAI, then local Qwen', () => {
   assert.match(providerSource, /OpenAI fallback failed/);
 });
 
-test('private tenant chat routes to EdenAI or OpenAI when Qwen is offline', () => {
+test('private tenant chat supports verified free Gemini and retains paid/local provider gates', () => {
   const source = readFileSync(
     new URL('../src/app/api/private-chat/respond/route.ts', import.meta.url),
     'utf8',
@@ -98,7 +98,9 @@ test('private tenant chat routes to EdenAI or OpenAI when Qwen is offline', () =
   const end = source.indexOf('async function checkAndCondensePrivateMemory');
   const completionSource = source.slice(start, end);
 
-  assert.ok(completionSource.includes('if (input.adultMode && isSpmtLocalLlmEnabled())'));
+  assert.ok(completionSource.includes('if (readAICostPolicy().paidRoutesEnabled && input.adultMode && isSpmtLocalLlmEnabled())'));
+  assert.ok(completionSource.includes('!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured(input.tenantId)'));
+  assert.ok(completionSource.includes("'gemini-free'"));
   assert.ok(completionSource.includes('await requestQwenPrivateChatCompletion('));
   assert.ok(completionSource.includes('await generateAIResponse('));
   assert.ok(completionSource.includes("provider: 'edenai-or-openai'"));
