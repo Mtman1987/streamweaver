@@ -57,6 +57,15 @@ RUN apt-get update -qq && \
     rm -rf /tmp/seaart.tar.gz /tmp/seaart /tmp/seaart-mcp /tmp/skills && \
     rm -rf /var/lib/apt/lists/*
 
+COPY workers/free-tts/requirements.txt /tmp/kokoro-requirements.txt
+RUN python3 -m venv /opt/kokoro-venv && /opt/kokoro-venv/bin/pip install --no-cache-dir -r /tmp/kokoro-requirements.txt && \
+    mkdir /opt/kokoro-models && \
+    curl -fL --retry 3 https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx -o /opt/kokoro-models/kokoro.onnx && \
+    curl -fL --retry 3 https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin -o /opt/kokoro-models/voices.bin && \
+    echo "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb  /opt/kokoro-models/kokoro.onnx" | sha256sum -c - && \
+    echo "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  /opt/kokoro-models/voices.bin" | sha256sum -c -
+COPY workers/free-tts /app/workers/free-tts
+
 ENV PATH="/opt/piper/bin:${PATH}"
 
 COPY --from=deps /app/node_modules ./node_modules

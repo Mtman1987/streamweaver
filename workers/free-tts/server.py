@@ -70,11 +70,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class Server(ThreadingHTTPServer):
-    address_family = socket.AF_INET6
+    address_family = socket.AF_INET
     daemon_threads = True
 
     def server_bind(self):
-        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        if self.address_family == socket.AF_INET6:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
         super().server_bind()
 
     def get_request(self):
@@ -84,5 +85,5 @@ class Server(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
-    print("Kokoro ready; two CPU threads; private port 8080", flush=True)
-    Server(("::", 8080), Handler).serve_forever()
+    print("Kokoro ready; two CPU threads; loopback port 8080", flush=True)
+    Server(("127.0.0.1", 8080), Handler).serve_forever()

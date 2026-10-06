@@ -14,7 +14,7 @@ export async function generateFreeTTS(text: string, voice: string): Promise<stri
     if (Date.now() < unavailableUntil || Date.now() - enqueuedAt > 45_000) return '';
     try {
       const base = new URL(readAICostPolicy().speechWorkerUrl);
-      if (base.protocol !== 'http:' || base.hostname !== 'spmt-free-tts.internal' || base.port !== '8080' || base.username || base.password) return '';
+      if (base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || base.port !== '8080' || base.username || base.password) return '';
       const response = await fetch(new URL('/v1/audio/speech', base), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ input: text.slice(0, 2000), voice }),

@@ -41,7 +41,7 @@ test('free-only policy prevents paid calls even with credentials and recovers sp
   const wav = Buffer.alloc(64); wav.write('RIFF'); wav.write('WAVE', 8);
   t.mock.method(globalThis, 'fetch', async (url: any, init?: RequestInit) => {
     calls++;
-    assert.equal(String(url), 'http://spmt-free-tts.internal:8080/v1/audio/speech');
+    assert.equal(String(url), 'http://127.0.0.1:8080/v1/audio/speech');
     const body = JSON.parse(String(init?.body));
     assert.ok(['af_heart', 'af_bella', 'am_michael'].includes(body.voice));
     assert.equal(new Headers(init?.headers).has('authorization'), false);

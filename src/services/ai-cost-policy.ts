@@ -10,7 +10,7 @@ export type AICostPolicy = {
 
 const defaults: AICostPolicy = {
   paidRoutesEnabled: false,
-  speechWorkerUrl: 'http://spmt-free-tts.internal:8080',
+  speechWorkerUrl: 'http://127.0.0.1:8080',
   femaleTrialVoice: 'af_heart',
   maleTrialVoice: 'am_michael',
 };
