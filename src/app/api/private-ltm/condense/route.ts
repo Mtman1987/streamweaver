@@ -1,3 +1,4 @@
+import { isFreeGeminiConfigured } from '@/services/free-gemini-chat';
 import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
       return apiError('Forbidden', { status: 403, code: 'TENANT_MISMATCH' });
     }
 
-    if (!readAICostPolicy().paidRoutesEnabled) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
+    if (!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured()) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
 
     const messages = await readPrivateChatMessages(50, tenantId);
     if (messages.length < 10) {
@@ -57,6 +58,8 @@ export async function POST(request: NextRequest) {
       console.error('[Private LTM] Shared AI condensation failed:', error);
       return apiError('AI condensation failed', { status: 502, code: 'AI_ERROR' });
     }
+
+    if (!raw || raw === AI_PAUSED_MESSAGE) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
 
     let memoryEntry: { title: string; content: string };
     try {
