@@ -1,0 +1,20 @@
+name: Validate lounge status deadline
+on:
+  pull_request:
+    paths:
+      - src/app/api/lounge/status-strip/route.ts
+      - tests/lounge-status-deadline.test.cjs
+      - .github/workflows/lounge-status-validation.yml
+  push:
+    branches: [fix/lounge-status-deadline-20261007]
+permissions:
+  contents: read
+jobs:
+  status-read:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/lounge-status-deadline.test.cjs
