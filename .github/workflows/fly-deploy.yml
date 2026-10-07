@@ -67,6 +67,8 @@ jobs:
           cache: npm
       - name: Install dependencies for command smoke
         run: npm ci --ignore-scripts
+      - name: Verify replay corruption recovery and concurrent ingestion
+        run: node --import tsx --test tests/shared-chat-recovery.test.ts tests/shared-chat-ingestion.test.ts
       - name: Verify free AI cost policy
         run: node --import tsx --test tests/free-ai-policy.test.ts && node --test tests/free-voice-entrypoint.test.mjs
       - name: Run live command smoke tests
