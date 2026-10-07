@@ -1,6 +1,6 @@
 {
   "name": "@spmt/companion",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "SpaceMountain tray companion for overlays, OBS, audio, media, and local execution",
   "author": "Mtman1987",
@@ -10,7 +10,7 @@
     "prestart": "node ../scripts/patch-companion-presence-always-on-top.mjs && cd .. && node scripts/patch-companion-local-athena-wake.mjs",
     "start": "electron .",
     "precheck": "node ../scripts/patch-companion-presence-always-on-top.mjs && cd .. && node scripts/patch-companion-local-athena-wake.mjs",
-    "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/diagnostics-store.cjs && node --check lib/local-athena-wake.cjs && node --check lib/media-jobs.cjs && node --check lib/relay-client.cjs && node --check lib/spmt-surfaces.cjs && node --check lib/tenant-bootstrap.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check overlay-preload.cjs && node --check lib/config-store.cjs && node --check lib/diagnostics-store.cjs && node --check lib/local-athena-wake.cjs && node --check lib/media-jobs.cjs && node --check lib/restream-host.cjs && node --check lib/relay-client.cjs && node --check lib/spmt-surfaces.cjs && node --check lib/tenant-bootstrap.cjs && node --check lib/update-manager.cjs && node --check lib/workflow-jobs.cjs && node --check ui/renderer.js && node --test test/*.test.cjs",
     "predist:win": "node ../scripts/patch-companion-presence-always-on-top.mjs && cd .. && node scripts/patch-companion-local-athena-wake.mjs",
     "dist:win": "electron-builder --config electron-builder.config.cjs --win nsis --x64 --publish never"
   },
@@ -18,7 +18,7 @@
     "appId": "live.spmt.companion",
     "productName": "SpaceMountain Companion",
     "artifactName": "SpaceMountain-Companion-Setup.${ext}",
-    "copyright": "Copyright © 2026 Mtman1987",
+    "copyright": "Copyright \u00a9 2026 Mtman1987",
     "asar": true,
     "compression": "normal",
     "npmRebuild": false,
@@ -37,26 +37,46 @@
       {
         "from": "../dist/companion-runtime",
         "to": "runtime",
-        "filter": ["**/*", "!node_modules/**/*", "!smoke.*.log"]
+        "filter": [
+          "**/*",
+          "!node_modules/**/*",
+          "!smoke.*.log"
+        ]
       },
       {
         "from": "../dist/companion-runtime/node_modules",
         "to": "runtime/node_modules",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../public/app-icon.png",
         "to": "assets/app-icon.png"
       }
     ],
-    "win": { "icon": "../public/favicon.ico", "target": ["nsis"] },
+    "win": {
+      "icon": "../public/favicon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
     "protocols": [
       {
         "name": "SPMT Companion",
-        "schemes": ["spmt-companion"]
+        "schemes": [
+          "spmt-companion"
+        ]
       }
     ],
-    "publish": [{ "provider": "github", "owner": "Mtman1987", "repo": "streamweaver", "releaseType": "release" }],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Mtman1987",
+        "repo": "streamweaver",
+        "releaseType": "release"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

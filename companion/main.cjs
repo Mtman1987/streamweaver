@@ -5,6 +5,7 @@ const {
   app,
   BrowserWindow,
   dialog,
+  desktopCapturer,
   globalShortcut,
   ipcMain,
   Menu,
@@ -20,6 +21,7 @@ const { ConfigStore } = require('./lib/config-store.cjs');
 const { DiagnosticsStore, redactText } = require('./lib/diagnostics-store.cjs');
 const { MediaJobs } = require('./lib/media-jobs.cjs');
 const { RelayClient } = require('./lib/relay-client.cjs');
+const { RestreamHost } = require('./lib/restream-host.cjs');
 const { createUpdateManager } = require('./lib/update-manager.cjs');
 const { WorkflowJobs } = require('./lib/workflow-jobs.cjs');
 const { DEFAULT_ORIGIN: SPMT_ORIGIN, resolveSurfaceUrl, resolvePersonalOverlayUrl } = require('./lib/spmt-surfaces.cjs');
@@ -51,6 +53,7 @@ let serverStatus = { state: 'stopped' };
 let relayStatus = { state: 'disabled' };
 let obsStatus = { state: 'disabled' };
 let relay;
+let restreamHost;
 let mediaJobs;
 let workflowJobs;
 let updateManager;
@@ -699,6 +702,9 @@ function showSettings() {
 function rebuildTrayMenu() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open Companion Settings', click: showSettings },
+    { label: 'Set up streaming', click: () => void shell.openExternal('https://spmt.live/stream-setup.html') },
+    { label: 'Open local Restream host', click: () => void restreamHost.open().catch(error => dialog.showMessageBox({ type: 'error', message: error.message })) },
+    { label: 'Stop local Restream host', click: () => void restreamHost.stop() },
     { type: 'separator' },
     { label: config.windows.overlay.visible ? 'Hide Overlay' : 'Show Overlay', click: () => config.windows.overlay.visible ? hideOverlay() : showOverlay() },
     { label: overlayInteractionActive ? 'Finish Overlay Interaction' : `Interact With Overlay (${config.windows.overlay.interactionHotkey})`, click: toggleOverlayInteraction },
@@ -890,7 +896,9 @@ function createRelay() {
       showSettings();
     },
     handlers: {
+      'restream.host.open': () => restreamHost.open(),
       'companion.status': async () => ({
+        restreamHost: restreamHost.status(),
         server: serverStatus,
         relay: relayStatus,
         obs: obsStatus,
@@ -993,6 +1001,7 @@ async function handleTenantBootstrap(value) {
   if (!parsed || bootstrapInFlight) return false;
   bootstrapInFlight = true;
   try {
+    if (restreamHost?.status().running) throw new Error('Stop the local Restream host before linking another SPMT account.');
     const payload = await exchangeTenantBootstrap(fetch, parsed.code);
     await seedTenantSessions(payload.sessionToken, payload.expiresIn);
 
@@ -1054,6 +1063,7 @@ app.on('open-url', (event, url) => {
 });
 app.on('before-quit', () => {
   quitting = true;
+  void restreamHost?.stop(false);
   globalShortcut.unregisterAll();
   clearTimeout(serverRestartTimer);
   relay?.stop();
@@ -1070,6 +1080,7 @@ app.whenReady().then(async () => {
   app.setAsDefaultProtocolClient(COMPANION_PROTOCOL);
   configStore = new ConfigStore(app.getPath('userData'));
   config = configStore.read();
+  restreamHost = new RestreamHost({ electron: { BrowserWindow, session: electronSession, dialog, desktopCapturer }, getConfig: () => config, getToken: () => configStore.readSecrets().relayToken || '' });
   config.windows.overlay.alwaysOnTop = true;
   ensureCompanionPresenceConfig();
   saveConfig();

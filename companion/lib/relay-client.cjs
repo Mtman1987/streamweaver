@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 
 const ACTION_CAPABILITIES = {
+  'restream.host.open': 'restream.host',
   'overlay.show': 'overlay.control',
   'overlay.hide': 'overlay.control',
   'popout.show': 'overlay.control',
@@ -19,7 +20,7 @@ const ACTION_CAPABILITIES = {
   'diagnostics.snapshot.write': 'diagnostics.write'
 };
 
-const LOCAL_CONFIRMATION_ACTIONS = new Set(['media.download', 'media.cache.prune']);
+const LOCAL_CONFIRMATION_ACTIONS = new Set(['media.download', 'media.cache.prune', 'restream.host.open']);
 
 class RelayClient {
   constructor({ getConfig, getToken, handlers, onStatus = () => {}, onConfirmationRequired = () => {} }) {
@@ -63,7 +64,7 @@ class RelayClient {
     this.socket = socket;
     socket.on('open', () => {
       this.onStatus({ state: 'connected' });
-      socket.send(JSON.stringify({ type: 'companion.ready', schemaVersion: 1, deviceId: config.relay.deviceId }));
+      socket.send(JSON.stringify({ type: 'companion.ready', schemaVersion: 1, deviceId: config.relay.deviceId, actions: Object.keys(this.handlers) }));
     });
     socket.on('message', (raw) => void this.handle(raw));
     socket.on('error', (error) => this.onStatus({ state: 'error', message: error.message }));
