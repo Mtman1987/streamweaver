@@ -38,7 +38,7 @@ test('shared chat sends use Helix source-only even when no user token is availab
     }
 
     if (url === 'https://api.twitch.tv/helix/chat/messages') {
-      return new Response(JSON.stringify({ data: [{ is_sent: true }] }), { status: 200 });
+      return new Response(JSON.stringify({ data: [{ is_sent: true, message_id: 'test-receipt' }] }), { status: 200 });
     }
 
     throw new Error(`Unexpected fetch call: ${url}`);
@@ -146,7 +146,7 @@ test('shared chat source-only retries with a stored user token when app authoriz
         return new Response('The sender must have authorized the app with the user:bot scope.', { status: 401 });
       }
       if (auth === 'Bearer community-token') {
-        return new Response(JSON.stringify({ data: [{ is_sent: true }] }), { status: 200 });
+        return new Response(JSON.stringify({ data: [{ is_sent: true, message_id: 'test-receipt' }] }), { status: 200 });
       }
     }
 
@@ -244,7 +244,7 @@ test('shared chat detection prefers tenant broadcaster token before app-token fa
     }
 
     if (url === 'https://api.twitch.tv/helix/chat/messages') {
-      return new Response(JSON.stringify({ data: [{ is_sent: true }] }), { status: 200 });
+      return new Response(JSON.stringify({ data: [{ is_sent: true, message_id: 'test-receipt' }] }), { status: 200 });
     }
 
     throw new Error(`Unexpected fetch call: ${url}`);
@@ -281,4 +281,23 @@ test('shared chat detection prefers tenant broadcaster token before app-token fa
     if (originalClientSecret === undefined) delete process.env.TWITCH_CLIENT_SECRET;
     else process.env.TWITCH_CLIENT_SECRET = originalClientSecret;
   }
+});
+
+test('HTTP 200 with a dropped Twitch message never falls back to mirrored IRC or reports delivered', async () => {
+  const original = global.fetch;
+  let ircSent = false;
+  global.fetch = (async (input: any) => {
+    const url = String(input);
+    if (url.includes('/helix/users?login=testchannel')) return new Response(JSON.stringify({ data: [{ id: 'broadcaster-1' }] }), { status: 200 });
+    if (url.includes('/helix/users?login=streamweaver87')) return new Response(JSON.stringify({ data: [{ id: 'sender-1' }] }), { status: 200 });
+    if (url.includes('/helix/chat/messages')) return new Response(JSON.stringify({ data: [{ is_sent: false, drop_reason: { code: 'automod_held' } }] }), { status: 200 });
+    if (url.includes('/oauth2/token')) return new Response(JSON.stringify({ access_token: 'app-token', expires_in: 3600 }), { status: 200 });
+    throw new Error('Unexpected fixture request ' + url);
+  }) as typeof fetch;
+  const client = { getUsername: () => 'streamweaver87', getChannels: () => ['#testchannel'],
+    readyState: () => 'OPEN', say: async () => { ircSent = true; } };
+  try {
+    await assert.rejects(sendWithSharedChatAwareness({ client, channel: 'testchannel', message: 'test', as: 'bot' }), /not-sent/);
+    assert.equal(ircSent, false);
+  } finally { global.fetch = original; }
 });

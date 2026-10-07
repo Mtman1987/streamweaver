@@ -443,13 +443,13 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             throw new Error('No Twitch channel could be resolved for outbound message');
                         }
 
-                        // The shared community listener is present for points and
-                        // activity, never as a speaking bot in another channel.
-                        if (twitchClientModule.isSharedCommunityBotClient(client)
-                            && !twitchClientModule.isCommunityBotOwnChannel(client, finalChannel)) {
-                            console.warn(`[HTTP /api/twitch/send-message] Read-only community bot suppressed an outbound message in #${finalChannel}`);
-                            res.writeHead(200, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ success: true, skipped: true, reason: 'community-bot-read-only' }));
+                        // Registered captains opt into shared-bot speech with spmt wake on.
+                        if (!await twitchClientModule.canSharedCommunityBotSpeak(client, finalChannel, tid)) {
+                            console.warn(`[HTTP /api/twitch/send-message] Shared bot is asleep or unauthorized in #${finalChannel}`);
+                            res.writeHead(409, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: false, skipped: true,
+                                reason: 'shared-bot-asleep-or-channel-not-authorized',
+                                error: 'Shared bot is asleep or this channel is not authorized. Broadcaster/mod: spmt wake on.' }));
                             return;
                         }
 

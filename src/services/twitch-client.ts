@@ -1,4 +1,5 @@
 import * as tmi from 'tmi.js';
+import { isSharedBotAwake, sharedBotChannelAllowed } from './shared-bot-wake';
 import { getStoredTokens, ensureValidToken, isTwitchAuthFailure, ProactiveTwitchRefreshGate, isTwitchCredentialQuarantined } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
 import {
@@ -324,6 +325,46 @@ export function isCommunityBotOwnChannel(client: tmi.Client | null, channel: str
   return isSharedCommunityBotClient(client)
     && Boolean(communityBotUsername)
     && channel.replace(/^#/, '').trim().toLowerCase() === communityBotUsername;
+}
+
+
+/** Shared transport can speak only in its own channel or an opted-in tenant's exact channel. */
+export async function canSharedCommunityBotSpeak(client: tmi.Client | null, channel: string, tenantId?: string): Promise<boolean> {
+  if (!isSharedCommunityBotClient(client)) return true;
+  const normalized = channel.replace(/^#/, '').trim().toLowerCase();
+  const allowed = sharedBotChannelAllowed({
+    channel: normalized, communityBotLogin: communityBotUsername, tenantId,
+    registeredChannel: tenantId ? tenantClients.get(tenantId)?.broadcasterUsername : undefined,
+    mappedTenantId: channelToTenant.get(normalized), awake: isSharedBotAwake(tenantId),
+  });
+  return allowed && await botJoinAllowed(normalized).catch(() => false);
+}
+
+/** Bounded owner/mod control receipt; permitted even when wake is off.
+ * Only the verified Twitch dispatcher calls this, never an HTTP payload.
+ */
+export async function acknowledgeBotWakeCommand(tenantId: string): Promise<void> {
+  let tenant = tenantClients.get(tenantId);
+  if (!tenant?.broadcasterUsername) throw new Error('Registered channel not connected');
+  if (!isClientUsable(tenant.botClient)) {
+    await setupTwitchClient(tenantId);
+    tenant = tenantClients.get(tenantId);
+  }
+  const client = tenant?.botClient;
+  const channel = tenant?.broadcasterUsername.replace(/^#/, '').toLowerCase() || '';
+  if (!client || !isClientUsable(client) || channelToTenant.get(channel) !== tenantId
+    || !await botJoinAllowed(channel)) throw new Error('Bot transport unavailable or channel excluded');
+  const shared = isSharedCommunityBotClient(client);
+  const mode = isSharedBotAwake(tenantId) ? 'ON' : 'OFF';
+  const identity = String(client.getUsername?.() || tenant?.botUsername || 'bot');
+  const message = shared
+    ? 'StreamWeaver wake ' + mode + ' for #' + channel + '. ' + (mode === 'ON'
+      ? 'The shared bot uses this channel’s saved persona; mention @' + identity + ' to talk.'
+      : 'Shared bot replies are asleep. Broadcaster/mod: spmt wake on.')
+    : 'StreamWeaver wake ' + mode + ' for #' + channel + '. Personal bot @' + identity
+      + ' stays in charge; wake controls only the shared fallback.';
+  const { sendWithSharedChatAwareness } = await import('./shared-chat');
+  await sendWithSharedChatAwareness({ client, channel, message, as: 'bot', tenantId });
 }
 
 function isClientUsable(client: tmi.Client | null | undefined): client is tmi.Client {
@@ -699,7 +740,7 @@ export async function syncSignalCarrierChannels(channels: string[]): Promise<{ a
 }
 
 async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: string, username?: string): Promise<void> {
-  if (isSharedCommunityBotClient(client) && !isCommunityBotOwnChannel(client, channel)) return;
+  if (!await canSharedCommunityBotSpeak(client, channel, tenantId)) return;
   const key = `${tenantId}:${String(username || 'chat').toLowerCase()}`;
   const now = Date.now();
   if (now - (lastReauthNotice.get(key) || 0) < REAUTH_NOTICE_INTERVAL_MS) return;
@@ -710,7 +751,7 @@ async function sendReauthNotice(client: tmi.Client, channel: string, tenantId: s
 }
 
 async function sendMessageWithClient(client: tmi.Client, channel: string, message: string): Promise<boolean> {
-  if (isSharedCommunityBotClient(client) && !isCommunityBotOwnChannel(client, channel)) return false;
+  if (!await canSharedCommunityBotSpeak(client, channel, channelToTenant.get(channel.replace(/^#/, '').toLowerCase()))) return false;
   try {
     const channelLogin = channel.replace(/^#/, '').toLowerCase();
     try {

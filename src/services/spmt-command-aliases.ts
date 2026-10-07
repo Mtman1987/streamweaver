@@ -1,5 +1,6 @@
 const DIRECT_ALIASES: Record<string, string> = {
   commands: 'commands',
+  wake: 'wake',
   points: 'points',
   watchtime: 'watchtime',
   followers: 'followers',

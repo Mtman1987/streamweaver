@@ -30,6 +30,7 @@ import {
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { replaceDiscordUserMentions } from './discord-mentions';
 import { getTenantIdFromChannel } from './twitch-client';
+import { handleBotWakeCommand, isSharedBotAwake, setSharedBotAwake } from './shared-bot-wake';
 import { isConfirmedLoungeStellaShoutout } from './lounge-stella-shoutout-command';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
@@ -2656,6 +2657,26 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         } catch {}
     }
     
+    // Wake controls are deterministic and run before AI/imported commands.
+    // A broadcaster's own IRC echo may carry self=true; ownership is checked
+    // against the direct source channel, not against AI or a supplied tenant.
+    if (await handleBotWakeCommand({
+        message, tenantId, channel: replyChannel, username,
+        moderator: tags.mod === true || tags.mod === '1',
+        mirrored: Boolean(tags['source-room-id'] && tags['source-room-id'] !== tags['room-id']),
+        botAuthored: Boolean(tags.badges?.bot) || String(tags.id || '').startsWith('app-chat-'),
+    }, {
+        read: isSharedBotAwake,
+        write: setSharedBotAwake,
+        acknowledge: async (tid) => {
+            const { acknowledgeBotWakeCommand } = await import('./twitch-client');
+            await acknowledgeBotWakeCommand(tid);
+        },
+    }).catch((error) => {
+        console.error('[BotWake] Command failed:', error instanceof Error ? error.message : String(error));
+        return true;
+    })) return;
+
     // Build storage context for tenant-scoped services
     const tenantCtx: StorageContext | undefined = tenantId ? { tenantId, username: replyChannel } : undefined;
     
@@ -5122,7 +5143,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             if (tags.mod || tags.badges?.broadcaster) {
                 const adminSummary = outputContext?.platform === 'discord'
                     ? buildDiscordAdminCommandsSummary({ isMod: true })
-                    : '🔧 Admin: !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>, !addflow <prompt>, !approveflow <!command>, !disableflow <!command>, !deleteflow <!command>';
+                    : '🔧 Admin: spmt wake on/off/status, !so <user>, !setgame <game>, !settitle <title>, !raidmessage <msg>, !greetingmode, !welcomemode, !clipmode, !chatmode, !botshare, !athenaeverywhere, !brb, !back, !ignore <user>, !addflow <prompt>, !approveflow <!command>, !disableflow <!command>, !deleteflow <!command>';
                 await reply(adminSummary, 'broadcaster').catch(() => {});
             } else {
                 const deniedSummary = outputContext?.platform === 'discord'
@@ -5581,7 +5602,11 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const userIsKnownBot = await isKnownBot(actualUsername, tenantId);
         const { getBotShareMode: checkBotShareMode } = require('../lib/bot-interactions-store');
         const botShareEnabled = userIsKnownBot && (await checkBotShareMode(tenantId)) === 'on';
-        if (!isBot && !self && (!userIsKnownBot || botShareEnabled)) {
+        const { getTwitchClient: wakeClient, canSharedCommunityBotSpeak: wakeMaySpeak } = await import('./twitch-client');
+        const responseTransport = tenantId ? wakeClient('bot', tenantId) : null;
+        const sharedReplyAllowed = responseTransport
+            ? await wakeMaySpeak(responseTransport, replyChannel, tenantId) : false;
+        if (sharedReplyAllowed && !isBot && !self && (!userIsKnownBot || botShareEnabled)) {
             const lowerMessage = actualMessage.toLowerCase();
             console.log(`[Dispatcher] Non-command message from ${actualUsername}, checking mentions. lowerMessage: "${lowerMessage.slice(0, 80)}"`);
 

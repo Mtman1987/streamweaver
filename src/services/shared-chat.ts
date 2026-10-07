@@ -373,6 +373,12 @@ async function sendViaHelixAPI(
       });
 
       if (res.ok) {
+        const receipt = await res.json().catch(() => null);
+        const sent = receipt?.data?.[0];
+        if (sent?.is_sent !== true || !sent.message_id) {
+          console.warn('[SharedChat] Twitch did not confirm source-only delivery:', sent?.drop_reason?.code || 'missing-receipt');
+          return { success: false, reason: 'not-sent' };
+        }
         console.log(`[SharedChat] Source-only Helix send succeeded using ${candidate.kind} token for #${targetChannel}`);
         return { success: true };
       }

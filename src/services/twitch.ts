@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { assertTwitchDeliveryReceipt } from './twitch-delivery-receipt';
 import { getChatOutputContext } from './chat-output-context';
 import { internalServiceHeaders } from '../lib/internal-service-auth';
 
@@ -110,6 +111,7 @@ export async function sendChatMessage(
       throw new Error(payload?.error || `Failed to send message: ${response.statusText}`);
     }
     
+    assertTwitchDeliveryReceipt(await response.json().catch(() => null));
     console.log(`[Twitch] Message sent via API: ${message}`);
   } catch (error: any) {
     console.error('[Twitch] Failed to send message:', error);

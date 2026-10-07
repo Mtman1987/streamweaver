@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { publishSpmtEvent } from '@/lib/spmt-client';
+import { assertTwitchDeliveryReceipt } from '@/services/twitch-delivery-receipt';
 
 const twitchSendSchema = z.object({
   message: z.string().trim().min(1, 'Message is required').max(500, 'Message too long'),
@@ -34,6 +35,8 @@ export async function POST(request: NextRequest) {
       const body = await response.json().catch(() => ({}));
       return apiError(body?.error || 'Failed to send Twitch message', { status: response.status, code: 'SEND_FAILED' });
     }
+
+    assertTwitchDeliveryReceipt(await response.json().catch(() => null));
 
     const tenantId = parsed.data.tenantId || session?.tenantId;
     void publishSpmtEvent({
