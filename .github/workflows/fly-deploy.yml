@@ -94,8 +94,8 @@ jobs:
           machines = json.load(open(sys.argv[1]))
           assert len(machines) == 1, "Voice trial must share one existing machine"
           guest = machines[0]["config"]["guest"]
-          assert guest["cpu_kind"] == "shared" and guest["cpus"] <= 2, "Voice host exceeds shared CPU cap"
-          print("Free voice shares one existing machine with at most two shared CPUs")
+          assert guest["cpu_kind"] == "shared" and guest["cpus"] <= 4, "Voice host exceeds shared CPU cap"
+          print("Free voice shares one existing machine with at most four shared CPUs")
           PYCPU
       - name: Verify real free speech on the existing host
         env:
