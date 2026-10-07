@@ -13,7 +13,7 @@ function load(file: string, mocks: Record<string, any>, globals: Record<string, 
   const source = process.env.TEST_BASELINE ? execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8' }) : readFileSync(file, 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} as any };
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : nativeRequire(id), process, Buffer, URLSearchParams, AbortSignal, console: { log() {}, warn() {}, error() {} }, setTimeout: () => ({ unref() {} }), clearTimeout() {}, global: {}, ...globals }, { filename: file });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : nativeRequire(id), process, Buffer, URLSearchParams, AbortSignal, console: { log() {}, info() {}, warn() {}, error() {} }, setTimeout: () => ({ unref() {} }), clearTimeout() {}, global: {}, ...globals }, { filename: file });
   return module.exports;
 }
 async function fixture(t: any, fetch: typeof globalThis.fetch) {
@@ -190,7 +190,7 @@ test('expired shared community bot quarantine removes only its integration crede
   assert.equal(saved.unrelatedSetting, 'preserved');
 });
 
-async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster') {
+async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster', quarantined = false) {
   const tokenApi = await fixture(t, async () => Response.json({}));
   let stored: any = { ...tokens, botToken: 'personal-token', botRefreshToken: 'personal-refresh' };
   let failing = true;
@@ -207,8 +207,10 @@ async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster') {
   }
   const runtime = load('src/services/twitch-client.ts', {
     'tmi.js': { Client },
-    '../lib/token-utils.server': { ...tokenApi, getStoredTokens: async () => stored, ensureValidToken: async (_a: any, _b: any, role: string) => { calls.push(role); if (failing && role === failRole) throw new Error('Invalid refresh token'); return `${role}-valid`; } },
+    '../lib/token-utils.server': { ...tokenApi, isTwitchCredentialQuarantined: () => quarantined, getStoredTokens: async () => stored, ensureValidToken: async (_a: any, _b: any, role: string) => { calls.push(role); if (failing && role === failRole) throw new Error('Invalid refresh token'); return `${role}-valid`; } },
     '../lib/tenant': { listTenants: async () => ['123'], communityBotTokensPath: () => '/test-community', getAdminTwitchId: () => '999' },
+    './lounge-stella-shoutout-command': { isConfirmedLoungeStellaShoutout: () => false },
+    '../lib/spmt-service-token': { clearSpmtServiceTokenCache() {}, getSpmtServiceToken: async () => '' },
     './chat-dispatcher': { handleTwitchMessage: async (_channel: string, _tags: any, message: string) => { dispatched.push(message); } },
     './shared-chat-ingestion': { recordSharedChatEvent: async () => {} }, './shared-chat-normalizers': { normalizeTwitchSharedChatEvent: () => ({}) },
     './shared-chat': { shouldIgnoreMirrored: () => false, isMirroredSharedMessage: () => false },
@@ -341,4 +343,16 @@ test('manual login exchange persists the grant and refuses unrelated or unavaila
     assert.equal(writes.length, identity === '123' ? 1 : 0);
     if (writes.length) assert.equal(writes[0][0].broadcasterRefreshToken, 'test-refresh-manual');
   }
+});
+
+test('durably quarantined broadcaster skips OAuth while its shared bot still handles commands', async t => {
+  const { runtime, calls, dispatched } = await runtimeFixture(t, 'broadcaster', true);
+  await runtime.setupTwitchClient('123');
+  assert.equal(calls.filter(role => role === 'broadcaster').length, 0);
+  const bot = runtime.getTwitchClient('bot', '123');
+  assert.ok(bot);
+  for (const listener of bot.listeners('message')) await listener('#registered', { username: 'viewer' }, '!points', false);
+  assert.deepEqual(dispatched, ['!points']);
+  await runtime.reconnectDisconnectedTenants();
+  assert.equal(calls.filter(role => role === 'broadcaster').length, 0);
 });

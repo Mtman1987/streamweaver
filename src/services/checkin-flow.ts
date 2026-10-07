@@ -76,7 +76,7 @@ function broadcastCheckin(type: 'pending' | 'reveal', payload: Record<string, un
   const event = createCheckinOverlayEvent(type === 'pending' ? 'checkin-pending' : 'checkin-reveal', payload);
   if (broadcastTenantId) rememberCheckinOverlayEvent(broadcastTenantId, event);
   if (typeof (global as any).broadcast !== 'function') {
-    console.warn('[CheckinOverlay] WebSocket unavailable; HTTPS replay saved the event');
+    console.info('[CheckinOverlay] HTTPS replay saved the event; this worker has no local WebSocket broadcaster');
     return;
   }
   const broadcast = (global as any).broadcast;

@@ -1,5 +1,5 @@
 import * as tmi from 'tmi.js';
-import { getStoredTokens, ensureValidToken, isTwitchAuthFailure, ProactiveTwitchRefreshGate } from '../lib/token-utils.server';
+import { getStoredTokens, ensureValidToken, isTwitchAuthFailure, ProactiveTwitchRefreshGate, isTwitchCredentialQuarantined } from '../lib/token-utils.server';
 import type { StoredTokens } from '../lib/token-utils.server';
 import {
   listTenants,
@@ -906,8 +906,8 @@ export async function setupTwitchClient(tenantId: string) {
         broadcasterUsername: tokens.broadcasterUsername, botUsername: tokens.botUsername || '', retryCount: 0,
       });
     }
-    if (!tokens?.broadcasterToken && !tokens?.broadcasterRefreshToken) {
-      console.error(`[Twitch:${tenantId}] No tokens available.`);
+    if ((!tokens?.broadcasterToken && !tokens?.broadcasterRefreshToken) || isTwitchCredentialQuarantined(tokens, 'broadcaster')) {
+      console.info(`[Twitch:${tenantId}] Broadcaster integration awaiting authorization; bot chat uses its own credential.`);
       if (tokens?.broadcasterUsername) {
         channelToTenant.set(tokens.broadcasterUsername.toLowerCase(), tenantId);
         void ensureTheCountForChannel(tokens.broadcasterUsername, clientId, clientSecret);

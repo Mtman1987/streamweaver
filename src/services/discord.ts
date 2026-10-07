@@ -4,6 +4,11 @@ import * as local from './discord-local';
 import { sendWebhookMessage } from './discord-webhooks';
 
 export async function sendDiscordMessage(channelId: string, message: string, username?: string, avatarUrl?: string): Promise<void> {
+    // Normal bot replies, including DMs, do not need a guild-only webhook.
+    if (!username && !avatarUrl) {
+        await local.sendDiscordMessage(channelId, message);
+        return;
+    }
     try {
         await sendWebhookMessage(channelId, message, username, avatarUrl);
     } catch (error) {

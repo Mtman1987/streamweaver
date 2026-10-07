@@ -1,6 +1,6 @@
 import { TIMEOUTS } from '../constants';
 import { WebSocket } from 'ws';
-import { getStoredTokens, ensureValidToken } from '../lib/token-utils.server';
+import { getStoredTokens, ensureValidToken, isTwitchCredentialQuarantined } from '../lib/token-utils.server';
 import { sendChatMessage } from './twitch';
 import { getCheckinSource, type CheckinKind } from './checkin-sources';
 import { formatCheckinList, createPendingPayload, runCheckin, runBulkCheckin } from './checkin-flow';
@@ -68,6 +68,13 @@ async function getBroadcasterAuth(tenantId?: string): Promise<{ clientId: string
     const tokens = await getStoredTokens(tenantId);
     if (!tokens) {
         console.warn(`[EventSub:${tenantId || 'global'}] No OAuth tokens found - please authenticate via dashboard`);
+        return null;
+    }
+
+    // Keep unavailable broadcaster integrations paused without throwing at boot.
+    if ((!tokens.broadcasterToken && !tokens.broadcasterRefreshToken)
+        || isTwitchCredentialQuarantined(tokens, 'broadcaster')) {
+        console.info('[EventSub] Broadcaster authorization required; integration paused:', tenantId || 'global');
         return null;
     }
 
