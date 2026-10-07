@@ -9,23 +9,35 @@ const EVENTS_URL = String(process.env.DSH_COMMUNITY_EVENTS_URL || 'https://disco
 const LOUNGE_WORKER_URL = String(process.env.HMO_LOUNGE_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4444').replace(/\/+$/, '');
 
 async function json(url: string): Promise<any> {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(2_000) : undefined,
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Bound both headers and body parsing independently of fetch's abort support.
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('Status source deadline exceeded'));
+      controller.abort();
+    }, 2_000);
   });
-  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
-  return response.json();
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, {
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Status source returned ${response.status}`);
+        return response.json();
+      })(),
+      deadline,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 async function loungeState() {
-  const response = await fetch(`${LOUNGE_WORKER_URL}/lounge/media/program`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(2_000) : undefined,
-  });
-  if (!response.ok) throw new Error(`Lounge worker returned ${response.status}`);
-  return response.json();
+  return json(`${LOUNGE_WORKER_URL}/lounge/media/program`);
 }
 
 async function buildStatusStrip() {
@@ -101,3 +113,4 @@ export async function GET() {
     headers: { 'cache-control': 'no-store, no-cache, must-revalidate' },
   });
 }
+
