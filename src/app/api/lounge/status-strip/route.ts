@@ -12,7 +12,7 @@ async function json(url: string): Promise<any> {
   const response = await fetch(url, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
-    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
+    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(2_000) : undefined,
   });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
   return response.json();
@@ -22,7 +22,7 @@ async function loungeState() {
   const response = await fetch(`${LOUNGE_WORKER_URL}/lounge/media/program`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
-    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(8_000) : undefined,
+    signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(2_000) : undefined,
   });
   if (!response.ok) throw new Error(`Lounge worker returned ${response.status}`);
   return response.json();
@@ -79,7 +79,8 @@ async function buildStatusStrip() {
 
 // Several mounted lounge widgets request this strip together. Share the same
 // four upstream lookups for a short window instead of multiplying them on
-// every poll and competing with chat and Fly health checks.
+// every poll and competing with chat and Fly health checks. Upstream deadlines
+// must leave room inside the diagnostic caller's eight-second request budget.
 let cached: { at: number; value: Awaited<ReturnType<typeof buildStatusStrip>> } | null = null;
 let pending: Promise<Awaited<ReturnType<typeof buildStatusStrip>>> | null = null;
 
@@ -91,7 +92,10 @@ export async function GET() {
         return value;
       }).finally(() => { pending = null; });
     }
-    await pending;
+    // Serve recent display data while a slow optional source refreshes. The
+    // cache contains public display metadata, never permissions or credentials.
+    if (!cached || Date.now() - cached.at >= 30_000) await pending;
+    else void pending.catch(() => {});
   }
   return NextResponse.json(cached!.value, {
     headers: { 'cache-control': 'no-store, no-cache, must-revalidate' },
