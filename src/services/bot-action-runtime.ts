@@ -52,6 +52,8 @@ export type BotActionContext = {
   tenantId: string;
   sourceTenantId?: string;
   sourceActorRole?: BotActorRole;
+  /** Set by the authenticated Lounge dispatcher, never from viewer input. */
+  executorAuthority?: 'stella-lounge-moderator';
   botName: string;
   source: BotActionSource;
   message: string;
@@ -717,6 +719,19 @@ export async function detectBotAction(
   }
 }
 
+export function botActionRole(action: BotActionId, context: BotActionContext): BotActorRole {
+  const loungeControl = action.startsWith('sw.lounge.') || action.startsWith('nebula.')
+    || action.startsWith('hmo.media.') || action.startsWith('stella.');
+  const stellaExecutor = context.executorAuthority === 'stella-lounge-moderator'
+    && context.tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+    && context.sourceTenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
+    && context.source === 'twitch' && context.botName === 'Stella';
+  // The requester keeps their own identity and role; Stella supplies only her
+  // stream moderator authority, never owner/admin authority for other apps.
+  return loungeControl && stellaExecutor && !hasRole(context.actor.role, 'moderator')
+    ? 'moderator' : context.actor.role;
+}
+
 function hasRole(actual: BotActorRole, minimum: BotActorRole): boolean {
   return ROLE_LEVEL[actual] >= ROLE_LEVEL[minimum];
 }
@@ -827,7 +842,8 @@ export async function executeBotAction(
   if (!context.tenantId) {
     return { handled: true, action: request.action, status: 'failed', response: 'I could not resolve which tenant bot should perform that action.' };
   }
-  if (!hasRole(context.actor.role, descriptor.minimumRole)) {
+  const executorRole = botActionRole(request.action, context);
+  if (!hasRole(executorRole, descriptor.minimumRole)) {
     return {
       handled: true,
       action: request.action,
@@ -842,7 +858,7 @@ export async function executeBotAction(
     if (!/^(on|off|status)$/.test(request.args.control || '')) {
       return { handled: true, action: request.action, status: 'needs_input', response: 'Tell me to turn Lounge radio on or off, or ask for its status.' };
     }
-    if (request.args.control !== 'status' && !hasRole(context.actor.role, 'moderator')) {
+    if (request.args.control !== 'status' && !hasRole(executorRole, 'moderator')) {
       return { handled: true, action: request.action, status: 'forbidden', response: 'Only the broadcaster or a moderator can change Lounge radio.' };
     }
   }

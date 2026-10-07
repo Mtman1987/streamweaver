@@ -5596,6 +5596,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                         tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
                         sourceTenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
                         sourceActorRole: actorRole,
+                        executorAuthority: 'stella-lounge-moderator',
                         botName: 'Stella', source: 'twitch', visibility: 'public',
                         message: actualMessage,
                         requestId: tags.id ? `twitch:${tags.id}` : undefined,

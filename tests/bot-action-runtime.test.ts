@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   BOT_ACTION_CATALOG,
+  botActionRole,
   detectBotAction,
   executeBotAction,
   routeBotAction,
@@ -82,8 +83,9 @@ test('Stella starts, adds, removes, and stops a Lounge game with saved-state rea
   let acceptStart=true;
   let saveOverlay=true;
   const context:BotActionContext={
-    tenantId:'spacemountainlive',source:'twitch',botName:'Stella',
-    message:'Stella start Mosaic',actor:{username:'mtman1987',role:'moderator'},
+    tenantId:'spacemountainlive',sourceTenantId:'spacemountainlive',source:'twitch',botName:'Stella',
+    executorAuthority:'stella-lounge-moderator',
+    message:'Stella start Mosaic',actor:{username:'viewer',role:'member'},
   };
   globalThis.fetch=(async(input:RequestInfo|URL,init?:RequestInit)=>{
     const url=String(input);
@@ -649,4 +651,51 @@ test('Stella hide/remove deactivates the game instead of only hiding its overlay
   require('node:assert/strict').match(source, /const shouldStop=operation==='stop-hide'\|\|operation==='hide'/);
   require('node:assert/strict').match(source, /if\(shouldStop\) \{ await run\(gameId,'stop'\); invalidateStellaLoungeSnapshot\(\); \}/);
   require('node:assert/strict').match(source, /is stopped and removed from the/);
+});
+
+test('Stella supplies Lounge moderator authority without promoting the requester', async () => {
+  const context: BotActionContext = {
+    tenantId: 'spacemountainlive', sourceTenantId: 'spacemountainlive',
+    source: 'twitch', botName: 'Stella', executorAuthority: 'stella-lounge-moderator',
+    message: 'Stella turn on autoradio',
+    actor: { userId: 'viewer-id', username: 'viewer', role: 'member' },
+  };
+  for (const entry of BOT_ACTION_CATALOG) {
+    const lounge = /^(sw\.lounge\.|nebula\.|hmo\.media\.|stella\.)/.test(entry.id);
+    assert.equal(botActionRole(entry.id, context), lounge ? 'moderator' : 'member', entry.id);
+  }
+  let payload: any;
+  const dependencies: BotActionRuntimeDependencies = {
+    readDiscordConfig: async () => ({}) as any,
+    getDiscordStreamHubDefaultGuildId: async () => 'unused',
+    executeDiscordStreamHubBotAction: async () => { throw new Error('wrong adapter'); },
+    executeHearMeOutBotAction: async (value) => {
+      payload = value;
+      return { radio: { enabled: true } } as any;
+    },
+  };
+  const outcome = await executeBotAction((await detectBotAction(context.message))!, context, dependencies);
+  assert.equal(outcome.status, 'completed');
+  assert.equal(payload.control, 'on');
+  assert.equal(payload.actorUserId, 'viewer-id');
+  assert.equal(payload.actorName, 'viewer');
+  assert.equal(context.actor.role, 'member');
+  const forbidden = await executeBotAction({
+    action: 'dsh.applications.decide', args: { application: '123', decision: 'approve' }, detection: 'explicit',
+  }, context, dependencies);
+  assert.equal(forbidden.status, 'forbidden');
+});
+
+test('Stella moderator delegation is restricted to the authenticated Lounge dispatcher', () => {
+  const context: BotActionContext = {
+    tenantId: 'spacemountainlive', sourceTenantId: 'spacemountainlive',
+    source: 'twitch', botName: 'Stella', executorAuthority: 'stella-lounge-moderator',
+    message: 'Stella pause the movie', actor: { username: 'viewer', role: 'member' },
+  };
+  for (const change of [
+    { executorAuthority: undefined }, { tenantId: 'other' }, { sourceTenantId: 'other' },
+    { sourceTenantId: undefined }, { botName: 'OtherBot' }, { source: 'discord' as const },
+  ]) assert.equal(botActionRole('hmo.media.control', { ...context, ...change }), 'member');
+  const source = readFileSync(fileURLToPath(new URL('../src/services/chat-dispatcher.ts', import.meta.url)), 'utf8');
+  assert.match(source, /sourceActorRole: actorRole,\s+executorAuthority: 'stella-lounge-moderator'/);
 });

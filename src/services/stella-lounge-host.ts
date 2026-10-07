@@ -454,6 +454,7 @@ export function formatStellaLoungeContext(snapshot: StellaLoungeSnapshot): strin
     '- Use the diagnostic journal for why/how questions. State only causes the journal actually proves; if it records symptoms but not a cause, say the cause is not yet proven.',
     `- Installed tenant command directory: ${LOUNGE_COMMAND_CATEGORIES.flatMap((category) => category.commands.map((command) => command.command + ' = ' + command.description)).join(' | ')}.`,
     '- Treat these as StreamWeaver tenant capabilities, not Stella-only powers. Explain the installed command when useful, and use a shared bot action when that capability is exposed there.',
+    '- Stella is the lead moderator for spacemountainlive. When a Passenger asks for a supported Lounge stream, game, layout, mixer, BRB, Spotlight, or media action, perform it through the action runtime using Stella\'s moderator authority. The Passenger does not need to be a moderator. Do not tell them only a moderator can do it or redirect them to Commander for that reason. Keep owner/admin actions in other apps separate. If an action is unsupported, needs details, or fails, state the real limitation; never invent success.',
     '- The universal Nebula Arcade join command is: spmt join.',
     '- The human support handoff begins with: !mtfixit.',
   ].join('\n');
