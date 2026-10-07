@@ -63,7 +63,7 @@ test('the production Count build patch preserves Stella and Count guards across 
   const first = dispatcher;
   apply();
   assert.equal(dispatcher, first);
-  assert.ok(dispatcher.includes('if ((self && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;'));
+  assert.ok(dispatcher.includes('if ((self && !(tags.badges?.broadcaster && /^!(?:sr|wr)(?:\\s|$)/i.test(actualMessage)) && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;'));
   assert.ok(dispatcher.includes('if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand || isStellaShoutoutCommand)) {'));
 });
 
