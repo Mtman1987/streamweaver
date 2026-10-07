@@ -419,6 +419,8 @@ async function sendViaHelixAPI(
 // ---------------------------------------------------------------------------
 
 export interface SendOptions {
+  /** Pin human microphone sends through initial delivery and reconnect retries. */
+  expectedSenderLogin?: string;
   /** The tmi.js client to fall back to */
   client: any;
   /** Channel to send to (no # prefix) */
@@ -477,7 +479,13 @@ async function ensureJoinedAndSay(client: any, normalizedChannel: string, messag
  * Falls back to normal client.say() if API fails or channel is not shared.
  */
 export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<void> {
-  const { client, channel, message, as, tenantId } = opts;
+  const { client, channel, message, as, tenantId, expectedSenderLogin } = opts;
+  const verifySender = (candidate: any) => {
+    if (expectedSenderLogin && String(candidate?.getUsername?.() || '').toLowerCase() !== expectedSenderLogin.toLowerCase()) {
+      throw new Error('Signed-in Twitch sender is unavailable; speech was not posted.');
+    }
+  };
+  verifySender(client);
   const normalized = channel.toLowerCase().replace(/^#/, '');
 
   const inShared = await isChannelInSharedChat(normalized, tenantId);
@@ -539,8 +547,9 @@ export async function sendWithSharedChatAwareness(opts: SendOptions): Promise<vo
         const retryClient = as === 'count'
           ? await twitchClientModule.reconnectTheCountTwitchClient()
           : twitchClientModule.getTwitchClient(as === 'broadcaster' ? 'broadcaster' : 'bot', String(tenantId))
-            || twitchClientModule.getTwitchClient('bot', String(tenantId));
+            || (!expectedSenderLogin ? twitchClientModule.getTwitchClient('bot', String(tenantId)) : null);
         if (retryClient) {
+          verifySender(retryClient);
           await ensureJoinedAndSay(retryClient, normalized, message);
           return;
         }

@@ -1,4 +1,5 @@
 import * as http from 'http';
+import { sendSignedInTwitchMessage } from '../services/signed-in-twitch-send';
 import * as url from 'url';
 import { resolve } from 'path';
 import { promises as fs } from 'fs';
@@ -251,6 +252,7 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                             bridgeToDiscord,
                             suppressSayTts,
                             forceSayTts,
+                            signedInSenderLogin,
                         } = JSON.parse(body);
                         if (typeof message !== 'string' || !message.trim()) {
                             throw new Error('message is required');
@@ -279,6 +281,41 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         const { sendWithSharedChatAwareness } = require('../services/shared-chat');
                         const requestedIdentity: 'bot' | 'broadcaster' | 'count' =
                             as === 'count' ? 'count' : as === 'broadcaster' ? 'broadcaster' : 'bot';
+                        // Only the authenticated Next route may pin a human sender.
+                        // Never derive microphone credentials from the destination channel.
+                        if (signedInSenderLogin !== undefined) {
+                            if (!isInternalServiceAuthorized(req.headers)) {
+                                res.writeHead(401, { 'Content-Type': 'application/json' });
+                                res.end(JSON.stringify({ success: false, error: 'Unauthorized signed-in sender' }));
+                                return;
+                            }
+                            if (requestedIdentity !== 'broadcaster') throw new Error('Microphone requires a signed-in broadcaster identity');
+                            const identity = await sendSignedInTwitchMessage({
+                                tenantId: String(requestedTenantId || ''),
+                                login: String(signedInSenderLogin || ''),
+                                channel: targetChannel,
+                                message,
+                            }, {
+                                getClient: (tenantId) => getTc('broadcaster', tenantId),
+                                reconnect: (tenantId) => twitchClientModule.setupTwitchClient(tenantId),
+                                send: async (client, destination, login) => {
+                                    if (forceSayTts === true) forceNextSayEcho(destination, login, message);
+                                    try {
+                                        await sendWithSharedChatAwareness({
+                                            client, channel: destination, message, as: 'broadcaster',
+                                            tenantId: String(requestedTenantId), expectedSenderLogin: login,
+                                        });
+                                    } catch (error) {
+                                        if (forceSayTts === true) cancelForcedSayEcho(destination, login, message);
+                                        throw error;
+                                    }
+                                },
+                            });
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true, identity }));
+                            return;
+                        }
+
                         let channel = String(targetChannel || '').replace(/^#/, '').trim().toLowerCase();
                         let tid: string | undefined = requestedTenantId ? String(requestedTenantId) : undefined;
 

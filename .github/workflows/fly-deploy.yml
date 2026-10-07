@@ -24,8 +24,8 @@ jobs:
           cache: npm
       - name: Install dependencies for command smoke
         run: npm ci --ignore-scripts
-      - name: Verify shared bot wake and delivery receipts
-        run: node --import tsx --test tests/shared-bot-wake.test.ts tests/twitch-delivery-receipt.test.ts tests/bot-fallback-identity.test.ts
+      - name: Verify wake, microphone identity and delivery receipts
+        run: node --import tsx --test tests/shared-bot-wake.test.ts tests/twitch-delivery-receipt.test.ts tests/signed-in-twitch-send.test.ts tests/say-chat.test.ts tests/bot-fallback-identity.test.ts
       - name: Verify tenant song request isolation
         run: node --import tsx --test tests/twitch-media-scope.test.ts tests/hearmeout-action-auth.test.ts
       - name: Verify replay corruption recovery and concurrent ingestion
