@@ -4,9 +4,11 @@ const HEARMEOUT_URL = String(
 ).replace(/\/+$/, '');
 const LOUNGE_WORKER_URL = String(process.env.HMO_LOUNGE_WORKER_URL || 'https://hmo-dj-worker.fly.dev:4444').replace(/\/+$/, '');
 
+import { twitchMusicSessionId } from '@/lib/twitch-media-scope';
 import type { ActionBotPersona } from '@/services/bot-persona-catalog';
 
 export type HearMeOutBotAction =
+  | 'hmo.media.source'
   | 'hmo.media.state.read'
   | 'hmo.media.request'
   | 'hmo.media.search'
@@ -20,6 +22,7 @@ export type HearMeOutBotAction =
 
 export type HearMeOutBotActionPayload = {
   action: HearMeOutBotAction;
+  streamMode?: 'twitch';
   tenantId: string;
   roomId?: string;
   room?: string;
@@ -79,7 +82,10 @@ function liveHearMeOutPayload(payload: HearMeOutBotActionPayload): HearMeOutBotA
 }
 
 export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPayload): Promise<Record<string, unknown>> {
-  const effectivePayload = liveHearMeOutPayload(payload);
+  if (payload.streamMode === 'twitch' && (payload.lane === 'movie' || payload.sessionId === 'discord-watch-room')) throw new Error('Movie requests are disabled for this Twitch stream');
+  const effectivePayload = payload.streamMode === 'twitch'
+    ? { ...payload, roomId: undefined, room: undefined, sessionId: twitchMusicSessionId(payload.tenantId), lane: 'music' as const }
+    : liveHearMeOutPayload(payload);
   if (isSpaceMountainLoungeMedia(effectivePayload)) {
     const secret = String(process.env.HMO_WORKER_SHARED_SECRET || '').trim();
     if (!secret) throw new Error('Lounge worker service credential is not configured');
@@ -100,7 +106,9 @@ export async function executeHearMeOutBotAction(payload: HearMeOutBotActionPaylo
   // StreamWeaver<->HearMeOut service credential block queue or playback work.
   // Twitch-facing permissions are enforced by the chat dispatcher.
   const bypassServiceAuthForLoungeMedia = isSpaceMountainLoungeMedia(effectivePayload);
-  const secrets = bypassServiceAuthForLoungeMedia ? [] : getHearMeOutServiceSecrets();
+  const secrets = bypassServiceAuthForLoungeMedia ? [] : effectivePayload.streamMode === 'twitch' && process.env.HMO_WORKER_SHARED_SECRET
+    ? [String(process.env.HMO_WORKER_SHARED_SECRET).trim(), ...getHearMeOutServiceSecrets()]
+    : getHearMeOutServiceSecrets();
   if (!bypassServiceAuthForLoungeMedia && !secrets.length) {
     throw new Error('HearMeOut shared service credential is not configured');
   }

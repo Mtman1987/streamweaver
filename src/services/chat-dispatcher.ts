@@ -83,6 +83,7 @@ import { handleDiscordPokemonCommand } from './discord-pokemon-commands';
 import { generateSocialCommandReply, isSocialCommandName, SOCIAL_COMMAND_NAMES } from './social-command-replies';
 import { isSocialOverlayCommand, publishSocialOverlayEvent } from './social-overlay-events';
 import { executeHearMeOutBotAction } from './hearmeout-actions';
+import { twitchMusicSessionId } from '@/lib/twitch-media-scope';
 import { getLoungeMediaLayout, overrideLoungeMediaLayout, voteLoungeMediaLayout } from './lounge-media-layout';
 import { getLoungeAudioMix, pulseLoungePlaybackUnmute, selectLoungeMixOutput, setLoungeMixVolume, type LoungeMixOutput } from './lounge-audio-mix';
 import { hasDiscordModAccess } from './discord-permissions';
@@ -2979,7 +2980,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // Skip self messages (broadcaster client echoes its own sends).
     // The dedicated Count client is send-only, so its echo arrives through the
     // tenant listener as another bot message and must be stopped explicitly.
-    if ((self && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;
+    if ((self && !(tags.badges?.broadcaster && /^!(?:sr|wr)(?:\s|$)/i.test(actualMessage)) && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;
 
     const volumeCommand = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
         && replyChannel.toLowerCase() === 'spacemountainlive'
@@ -3028,6 +3029,39 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // SML media requests are production-critical Lounge commands. Handle them
     // before imported JSON actions and general bot/command filters so stale
     // Streamer.bot actions cannot swallow !sr or !wr.
+    // Tenant Twitch music is handled before imported actions or shared Lounge commands.
+    const tenantMusicCommand = tenantId && tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        ? actualMessage.trim().match(/^!(sr|wr)(?:\s+(.*))?$/i) : null;
+    if (tenantMusicCommand) {
+        const command = tenantMusicCommand[1].toLowerCase();
+        const query = String(tenantMusicCommand[2] || '').trim();
+        if (command === 'wr') {
+            await reply(`@${actualUsername}, !wr is disabled for this stream. Use !sr <song or YouTube URL>.`, 'bot').catch(() => {});
+            return;
+        }
+        if (!query) {
+            await reply(`@${actualUsername}, use !sr <song or YouTube URL>. Broadcasters can use !sr source for the OBS browser source.`, 'bot').catch(() => {});
+            return;
+        }
+        const source = /^(?:source|overlay|obs)$/i.test(query);
+        if (source && !tags.badges?.broadcaster) {
+            await reply(`@${actualUsername}, the broadcaster can get their OBS source with !sr source.`, 'bot').catch(() => {});
+            return;
+        }
+        try {
+            const result: any = await executeHearMeOutBotAction({
+                action: source ? 'hmo.media.source' : 'hmo.media.request',
+                tenantId: tenantId!, streamMode: 'twitch', sessionId: twitchMusicSessionId(tenantId!), lane: 'music',
+                actorUserId: String(tags['user-id'] || tags.username || actualUsername), actorName: actualUsername, query,
+            });
+            await reply(source ? `OBS browser source (1920×1080): ${result.sourceUrl}`
+                : `@${actualUsername}, "${result.request?.item?.title || query}" is queued for this stream.`, 'bot').catch(() => {});
+        } catch (error) {
+            console.error('[Dispatcher] tenant song request failed:', error);
+            await reply(`@${actualUsername}, ${source ? 'The OBS source could not be created.' : 'That song could not be queued. Try the artist and title, or a YouTube link.'}`, 'bot').catch(() => {});
+        }
+        return;
+    }
     const watchChoiceKey = `${replyChannel}:${String(tags['user-id'] || tags.username || actualUsername).toLowerCase()}`;
     // A viewer can answer the three-choice movie prompt with just 1, 2, or 3.
     // Only consume a bare digit when this same viewer has a pending !wr search;
@@ -4251,6 +4285,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             const actorUserId = String(tags.username || tags['user-id'] || actualUsername);
             const actionBase = {
                 tenantId: tenantId || 'spacemountainlive',
+                ...(tenantId && tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID ? { streamMode: 'twitch' as const } : {}),
                 actorUserId,
                 actorName: actualUsername,
                 actorRole: isHearMeOutOwner ? 'owner' : tags.mod ? 'moderator' : 'member',

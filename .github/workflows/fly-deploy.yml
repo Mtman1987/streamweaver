@@ -24,6 +24,8 @@ jobs:
           cache: npm
       - name: Install dependencies for command smoke
         run: npm ci --ignore-scripts
+      - name: Verify tenant song request isolation
+        run: node --import tsx --test tests/twitch-media-scope.test.ts tests/hearmeout-action-auth.test.ts
       - name: Verify replay corruption recovery and concurrent ingestion
         run: node --import tsx --test tests/shared-chat-recovery.test.ts tests/shared-chat-ingestion.test.ts
       - name: Verify free AI cost policy
