@@ -294,7 +294,13 @@ export function createWebSocketServer(httpServer: http.Server, broadcast: (messa
                         return;
                     }
                     
-                    await freshTwitchClient.say(channels[0], text);
+                    const { canSharedCommunityBotSpeak } = require('../services/twitch-client');
+                    if (!await canSharedCommunityBotSpeak(freshTwitchClient, channels[0], tenantId)) {
+                        ws.send(JSON.stringify({ type: 'error', payload: { message: 'Shared bot is asleep. Broadcaster/mod: spmt wake on.' } }));
+                        return;
+                    }
+                    const { sendWithSharedChatAwareness } = require('../services/shared-chat');
+                    await sendWithSharedChatAwareness({ client: freshTwitchClient, channel: channels[0], message: text, as: sendAs, tenantId });
                     await dispatchAppSentTwitchMessage({
                         channel: channels[0],
                         client: freshTwitchClient,
