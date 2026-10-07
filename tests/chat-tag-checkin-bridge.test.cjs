@@ -26,6 +26,7 @@ test(`shared check-in credits the Nebula wallet and only announces confirmed cre
   let delivered='', recorded=0, bonus=0;
   const flow=load('src/services/checkin-flow.ts',id=>{
     if(id==='node:crypto')return require(id);
+    if(id==='./checkin-bonus-recovery')return {rememberPendingCheckinBonus:async()=> 'pending-award',completePendingCheckinBonus:async()=>{}};
     if(id==='./nebula-actions')return {awardNebulaCheckinBonus:async input=>{
       assert.equal(input.awardId,'stable-checkin');assert.equal(input.channel,'player_channel');
       assert.equal(input.username,'alice');assert.equal(input.userId,'1');
@@ -50,8 +51,8 @@ test(`shared check-in credits the Nebula wallet and only announces confirmed cre
   });
   assert.equal(recorded,1);assert.equal(bonus,confirmed?100:0);assert.equal(result.payload.frontSeat,'Alice');assert.equal(result.reply,delivered);assert.match(delivered,/Riders: 1/);
   assert.equal(result.payload.frontSeatBonusPoints,confirmed?100:0);
-  if(confirmed){assert.match(delivered,/100 Nebula points/);assert.match(delivered,/Nebula balance: 420/);}
-  else{assert.match(delivered,/could not be confirmed/);assert.doesNotMatch(delivered,/100/);}
+  if(confirmed){assert.match(delivered,/100 Nebula points/);assert.doesNotMatch(delivered,/Nebula balance/);assert.equal(result.payload.frontSeatNebulaBalance,420);}
+  else{assert.doesNotMatch(delivered,/unconfirmed|could not be confirmed|unavailable|Bonus:/);assert.doesNotMatch(delivered,/100/);}
 });
 test('empty membership produces an explicit result without awarding points', async () => {
   const flow=load('src/services/checkin-flow.ts',()=>({}));
@@ -92,7 +93,7 @@ test(`service bridge deduplicates both shoutouts and isolates failures: ${native
   assert.equal((await bridge.POST(req)).status,401);assert.equal(calls,0);assert.equal(shoutouts,0);assert.equal(chatShoutouts,0);
   authorized=true;
   const results=await Promise.all([bridge.POST(req),bridge.POST(req)]);
-  assert.equal(results[0].body.reply,'Alice in front! Stella sent the shoutout.' + (chatStatus === 'sent' ? '' : ' Chat !so failed.'));assert.equal(calls,1);
+  assert.equal(results[0].body.reply,'Alice in front!');assert.equal(calls,1);
   assert.equal(results[0].body.shoutout.status,nativeStatus);assert.equal(results[0].body.chatShoutout.status,chatStatus);
   assert.equal(results[1].body.duplicate,true);assert.equal(shoutouts,1);assert.equal(chatShoutouts,1);
   const duplicate=await bridge.POST(req);
@@ -120,4 +121,14 @@ test('Nebula service retries a lost response with the same award identity and re
     fetch:async()=>({ok:true,json:async()=>({ok:true})}),
   });
   await assert.rejects(bad.awardNebulaCheckinBonus(input),/did not confirm/);
+});
+
+test('check-in names both riders and bounds large rosters without losing the total', () => {
+  const flow=load('src/services/checkin-flow.ts',()=>({}));
+  assert.equal(flow.formatCheckinRiders(['Alice','Bob']), 'Riders: 2 — Alice, Bob');
+  const names=Array.from({length:100},(_,i)=>'Rider'+i);
+  const summary=flow.formatCheckinRiders(names);
+  assert.match(summary,/^Riders: 100 — Rider0, Rider1/);
+  assert.match(summary,/\+\d+ more$/);
+  assert.ok(summary.length<220);
 });

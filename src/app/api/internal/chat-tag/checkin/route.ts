@@ -10,7 +10,7 @@ import { getTenantIdFromChannel } from '@/services/twitch-client';
 import { spaceMountainSourceFromChatters } from '@/services/checkin-sources';
 import { getConfigSection } from '@/lib/local-config/service';
 import { runBulkCheckin } from '@/services/checkin-flow';
-import { sendStellaCheckinShoutout, sendStellaCheckinChatShoutout, formatCheckinShoutoutReply, formatCheckinChatShoutoutReply } from '@/services/checkin-shoutout';
+import { sendStellaCheckinShoutout, sendStellaCheckinChatShoutout } from '@/services/checkin-shoutout';
 
 export const dynamic = 'force-dynamic';
 const login = z.string().regex(/^[a-z0-9_]{1,25}$/);
@@ -73,9 +73,9 @@ export async function POST(req: NextRequest) {
   }
   const [shoutout, chatShoutout] = await Promise.all([shoutoutPromise, chatShoutoutPromise]);
   console.info('[CheckinShoutout]', JSON.stringify({ channel, destination: shoutout.destination, sender: shoutout.sender, status: shoutout.status, chatStatus: chatShoutout.status, chatMessageId: chatShoutout.messageId }));
-  const notice = formatCheckinShoutoutReply(shoutout);
-  const chatNotice = formatCheckinChatShoutoutReply(chatShoutout);
-  result = { ...result, shoutout, chatShoutout, reply: [result.reply, notice, chatNotice].filter(Boolean).join(' ') };
+  // Keep delivery diagnostics in the structured receipt and server journal.
+  // Public chat stays focused on riders, the front seat, and confirmed points.
+  result = { ...result, shoutout, chatShoutout };
   await fs.writeFile(receipt, JSON.stringify(result));
   return apiOk(result);
 }

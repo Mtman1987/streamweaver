@@ -432,6 +432,13 @@ async function startServer() {
         }
 
         try {
+            const { startCheckinBonusRecovery } = require('./src/services/checkin-bonus-recovery');
+            startCheckinBonusRecovery();
+        } catch (error) {
+            console.error('[CheckinBonusRecovery] Startup failed:', error);
+        }
+
+        try {
             const { startWalkOnRecoveryScheduler } = require('./src/services/walk-on-recovery');
             startWalkOnRecoveryScheduler();
             console.log('[STEP 4] ✅ Walk-on recovery scheduler started');

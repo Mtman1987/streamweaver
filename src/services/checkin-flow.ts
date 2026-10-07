@@ -1,6 +1,7 @@
 import { sendChatMessage } from './twitch';
 import { randomUUID } from 'node:crypto';
 import { awardNebulaCheckinBonus } from './nebula-actions';
+import { rememberPendingCheckinBonus, completePendingCheckinBonus } from './checkin-bonus-recovery';
 import { recordDetailedCheckin } from './checkin-stats';
 import { getCheckinSource, type CheckinEntry, type CheckinKind, type CheckinSourceResult } from './checkin-sources';
 import { getStoredTokens } from '../lib/token-utils.server';
@@ -335,6 +336,17 @@ export async function runCheckin(kind: CheckinKind, username: string, selectionN
 
 }
 
+export function formatCheckinRiders(names: string[], maxNamesLength = 180): string {
+  const shown: string[] = [];
+  for (const name of names) {
+    const next = [...shown, name].join(', ');
+    if (shown.length && next.length > maxNamesLength) break;
+    shown.push(name);
+  }
+  const remaining = names.length - shown.length;
+  return `Riders: ${names.length} — ${shown.join(', ')}${remaining ? ` +${remaining} more` : ''}`;
+}
+
 export interface BulkCheckinResult {
   reply: string;
   payload?: Record<string, unknown>;
@@ -379,13 +391,17 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
   if (kind === 'space-mountain') {
     try {
       const channel = options.channel || (await resolvePointsCtx(tenantId))?.username || normalizeTenantId(tenantId) || SPACEMOUNTAIN_SYSTEM_TENANT_ID;
-      const award = await awardNebulaCheckinBonus({
+      const awardInput = {
         awardId: options.awardId || randomUUID(), channel: channel.toLowerCase().replace(/^#/, ''),
         username: (frontSeatRider.twitchLogin || frontSeatRider.name).toLowerCase(),
         userId: frontSeatRider.twitchUserId, displayName: frontSeatRider.name,
-      });
+      };
+      const pendingBonus = await rememberPendingCheckinBonus(awardInput, normalizeTenantId(tenantId));
+      const award = await awardNebulaCheckinBonus(awardInput);
       bonusPoints = award.amount;
       bonusBalance = award.balance;
+      await completePendingCheckinBonus(pendingBonus, award, false).catch(error =>
+        console.warn('[Checkin] Wallet credited; saved receipt cleanup will retry:', error));
     } catch (error) {
       console.error('[Checkin] Nebula front-seat credit could not be confirmed:', error);
     }
@@ -412,10 +428,8 @@ export async function runBulkCheckin(kind: CheckinKind, username: string, pointC
   broadcastCheckin('reveal', payload, tenantId);
 
   const greeting = await generateBulkGreeting(username, frontSeatRider.name, kind, tenantId);
-  const statsParts = [`Riders: ${checkedIn.length}`, `Front seat: ${frontSeatRider.name}`];
-  if (kind === 'space-mountain') statsParts.push(bonusPoints
-    ? `Bonus: ${bonusPoints} Nebula points | Nebula balance: ${bonusBalance}`
-    : 'Nebula bonus could not be confirmed');
+  const statsParts = [formatCheckinRiders(checkedIn.map(entry => entry.name)), `Front seat: ${frontSeatRider.name}`];
+  if (kind === 'space-mountain' && bonusPoints) statsParts.push(`Bonus: +${bonusPoints} Nebula points`);
   if (pointCost > 0) {
     const balance = await getBalance(username, tenantId);
     if (typeof balance === 'number') statsParts.push(`Balance: ${balance} pts`);
