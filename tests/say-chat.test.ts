@@ -52,7 +52,7 @@ test('speech-to-chat posts once and lets the Twitch echo become the only TTS sou
   assert.doesNotMatch(route, /generateTTS\(/);
   assert.doesNotMatch(route, /addSayQueueItem\(/);
   assert.match(route, /delivered: 'chat-echo'/);
-  assert.match(route, /tenantId: targetChannel \? undefined : session\.tenantId/);
+  assert.match(route, /tenantId: session\.tenantId, signedInSenderLogin: session\.username/);
   assert.match(serverRoutes, /forceNextSayEcho\(channel, suppressEchoSpeaker, message\)/);
   assert.match(serverRoutes, /cancelForcedSayEcho\(channel, suppressEchoSpeaker, message\)/);
   assert.match(dispatcher, /consumeForcedSayEcho\(replyChannel, actualUsername, actualMessage\)/);
@@ -72,6 +72,7 @@ function sayChatRouteFixture(reply: { status?: number; body?: unknown; invalidJs
   }).outputText;
   const imports: Record<string, unknown> = {
     'node:crypto': { createHash },
+    '@/lib/internal-service-auth': { internalServiceHeaders: (headers: any) => ({ ...headers, Authorization: 'Bearer test-internal' }) },
     zod: { z },
     '@/services/say-chat-request': { runSayChatRequest: createSayChatRequestCache() },
     '@/lib/api-response': {
@@ -128,6 +129,7 @@ test('Lounge microphone posts to SpaceMountainLive even when another account is 
     url: 'http://127.0.0.1:8090/api/twitch/send-message',
     body: {
       message: 'Hello from the microphone', as: 'broadcaster',
+      tenantId: '94371378', signedInSenderLogin: 'mtman1987',
       targetChannel: 'spacemountainlive', forceSayTts: true,
     },
   });
@@ -139,7 +141,8 @@ test('tenant Twitch microphone keeps its selected channel', async () => {
   const response = await f.post(resolveSayStreamKey(undefined, 'twitch', 'otherchannel'));
   assert.equal(response.status, 200);
   assert.equal(f.twitchRequests[0].body.targetChannel, 'otherchannel');
-  assert.equal(f.twitchRequests[0].body.tenantId, undefined);
+  assert.equal(f.twitchRequests[0].body.tenantId, '94371378');
+  assert.equal(f.twitchRequests[0].body.signedInSenderLogin, 'mtman1987');
 });
 
 test('Discord microphone keeps its room and signed-in identity', async () => {
