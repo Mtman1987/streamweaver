@@ -20,7 +20,7 @@ import { normalizeTwitchUserIdentifier } from '../src/services/twitch';
 import { ProactiveTwitchRefreshGate } from '../src/lib/token-utils.server';
 
 test('TTS catalog contains named Eden voices and the portable Deepgram Athena identity', () => {
-  assert.equal(normalizeTtsProvider('gemini'), 'edenai');
+  assert.equal(normalizeTtsProvider('gemini'), 'gemini');
   assert.equal(normalizeTtsProvider('openai'), 'edenai');
   assert.ok(TTS_VOICE_OPTIONS.length >= 14);
   for (const voice of TTS_VOICE_OPTIONS) {

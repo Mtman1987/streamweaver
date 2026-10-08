@@ -1,5 +1,6 @@
 import { assertPaidAIAllowed, readAICostPolicy } from './ai-cost-policy';
 import { generateFreeTTS } from './free-tts';
+import { generateScottishTTS } from './gemini-scottish-tts';
 import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
 import { normalizeTextForTTS } from '@/lib/tts-text';
@@ -32,6 +33,7 @@ export type GenerateTTSOptions = {
 };
 
 export const TTS_VOICES: Record<TTSProvider, string[]> = {
+  gemini: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'gemini').map((voice) => voice.id),
   kokoro: ['kokoro:af_heart', 'kokoro:af_bella', 'kokoro:am_michael'],
   edenai: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'edenai').map((voice) => voice.id),
   deepgram: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'deepgram').map((voice) => voice.id),
@@ -46,7 +48,9 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
   const policy = readAICostPolicy();
   const savedVoice = getTtsVoiceOption(config.TTS_VOICE);
-  const voice = !policy.paidRoutesEnabled
+  const voice = savedVoice.provider === 'gemini'
+    ? savedVoice.id
+    : !policy.paidRoutesEnabled
     ? savedVoice.provider === 'kokoro' ? savedVoice.id : `kokoro:${savedVoice.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice}`
     : tenantId === ATHENA_TENANT_ID
     ? ATHENA_CANONICAL_TTS_VOICE
@@ -82,7 +86,7 @@ export function getTTSProviderCooldownMs(error: unknown): number {
 
 export function getLifelikeFallbackVoices(selectedVoice: string): string[] {
   const selected = getTtsVoiceOption(selectedVoice);
-  if (selected.id === ATHENA_CANONICAL_TTS_VOICE || selected.provider === 'deepgram') return [];
+  if (selected.id === ATHENA_CANONICAL_TTS_VOICE || selected.provider === 'deepgram' || selected.provider === 'gemini') return [];
   const preferredProviders = selected.gender === 'Male'
     ? ['openai', 'microsoft', 'amazon', 'google']
     : ['openai', 'google', 'microsoft', 'amazon'];
@@ -141,6 +145,8 @@ export async function generateTTS(
   }
 
   const policy = readAICostPolicy();
+  const requestedVoice = getTtsVoiceOption(voiceOverride || getTTSConfig(tenantId).voice);
+  if (requestedVoice.provider === 'gemini') return generateScottishTTS(normalizedText);
   if (!policy.paidRoutesEnabled || voiceOverride?.startsWith('kokoro:')) {
     const selected = getTtsVoiceOption(voiceOverride || getTTSConfig(tenantId).voice);
     const trialVoice = selected.id.startsWith('kokoro:')
