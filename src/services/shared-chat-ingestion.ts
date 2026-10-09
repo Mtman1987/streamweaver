@@ -45,6 +45,18 @@ async function readJsonArray<T>(filePath: string): Promise<T[]> {
     return Array.isArray(parsed) ? parsed : [];
   } catch (error: any) {
     if (error?.code === 'ENOENT') return [];
+    if (error instanceof SyntaxError) {
+      const corruptPath = `${filePath}.corrupt-${Date.now()}`;
+      try {
+        await rename(filePath, corruptPath);
+        console.warn('[SharedChat] Quarantined malformed JSON store so the live route can recover.');
+      } catch (renameError: any) {
+        if (renameError?.code !== 'ENOENT') {
+          console.warn('[SharedChat] Malformed JSON store could not be quarantined:', renameError?.message || String(renameError));
+        }
+      }
+      return [];
+    }
     throw error;
   }
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -36,6 +36,40 @@ test('shared chat ingestion stores bounded replay history and dedupes events', a
 
     const raw = JSON.parse(await readFile(path.join(persistRoot, 'tenants', 'tenant-a', 'data', 'shared-chat', 'replay.json'), 'utf-8'));
     assert.equal(raw.length, 2);
+  } finally {
+    if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
+    await rm(persistRoot, { recursive: true, force: true });
+  }
+});
+
+test('shared chat ingestion quarantines malformed replay JSON and recovers', async () => {
+  const persistRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-shared-chat-corrupt-'));
+  const priorRoot = process.env.PERSIST_ROOT;
+  process.env.PERSIST_ROOT = persistRoot;
+
+  try {
+    const { recordSharedChatEvent, readSharedChatReplay } = await import('../src/services/shared-chat-ingestion');
+    const replayDir = path.join(persistRoot, 'tenants', 'tenant-a', 'data', 'shared-chat');
+    const replayFile = path.join(replayDir, 'replay.json');
+    await mkdir(replayDir, { recursive: true });
+    await writeFile(replayFile, '[{"bad":true}]\n[{"also":"bad"}]', 'utf-8');
+
+    const recovered = await readSharedChatReplay('tenant-a');
+    assert.deepEqual(recovered, []);
+
+    const event = normalizeTwitchSharedChatEvent({
+      tenantId: 'tenant-a',
+      channel: '#space_mountain',
+      message: 'after recovery',
+      tags: { id: 'msg-recovered', username: 'viewer', 'display-name': 'Viewer' },
+    });
+    await recordSharedChatEvent(event);
+
+    const replay = await readSharedChatReplay('tenant-a');
+    assert.equal(replay.length, 1);
+    assert.equal(replay[0]?.upstreamId, 'msg-recovered');
+    const raw = JSON.parse(await readFile(replayFile, 'utf-8'));
+    assert.equal(raw.length, 1);
   } finally {
     if (priorRoot == null) delete process.env.PERSIST_ROOT; else process.env.PERSIST_ROOT = priorRoot;
     await rm(persistRoot, { recursive: true, force: true });
