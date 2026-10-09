@@ -71,12 +71,15 @@ export async function GET(request: NextRequest) {
     'user:bot',
     'channel:bot',
   ];
+  const broadcasterScopes = requestedRole === 'broadcaster' || requestedRole === 'space-mountain-broadcaster'
+    ? [...standardScopes, 'moderator:read:followers']
+    : standardScopes;
   const scope = (
     requestedRole === 'space-mountain-bot'
       ? [...countScopes, 'moderator:manage:shoutouts']
       : requestedRole === 'the-count'
       ? countScopes
-      : standardScopes
+      : broadcasterScopes
   ).join(' ');
 
   let state: string = requestedRole;

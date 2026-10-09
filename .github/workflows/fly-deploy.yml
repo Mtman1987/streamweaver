@@ -35,7 +35,7 @@ jobs:
       - name: Run live command smoke tests
         run: node --import tsx --test tests/spmt-command-aliases.test.ts tests/stella-lounge-replies.test.ts tests/root-command-runtime-coverage.test.ts tests/bot-action-runtime.test.ts
       - name: Verify Chat Tag check-in bridge
-        run: node --import tsx --test tests/chat-tag-checkin-bridge.test.cjs tests/checkin-shoutout.test.cjs tests/operational-error-recovery.test.cjs tests/checkin-bonus-recovery.test.cjs tests/twitch-token-recovery.test.ts
+        run: node --import tsx --test tests/chat-tag-checkin-bridge.test.cjs tests/checkin-shoutout.test.cjs tests/operational-error-recovery.test.cjs tests/checkin-bonus-recovery.test.cjs tests/twitch-token-recovery.test.ts tests/twitch-broadcaster-scopes.test.cjs
       - name: Check Spotlight commercial overlay
         run: node --test tests/spotlight-commercial-break.test.cjs
       - uses: superfly/flyctl-actions/setup-flyctl@master
