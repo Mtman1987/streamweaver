@@ -6,6 +6,33 @@ const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/' + MO
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
 let active = 0;
+const SLOT_WAIT_MS = 3_000;
+const MAX_WAITERS = 2;
+const waiters: Array<{ resume: () => void; timer: ReturnType<typeof setTimeout> }> = [];
+
+async function acquireSlot(): Promise<void> {
+  if (active < 1) { active++; return; }
+  if (waiters.length >= MAX_WAITERS) throw new FreeChatUnavailableError('busy');
+  await new Promise<void>((resolve, reject) => {
+    const waiter = {
+      resume: resolve,
+      timer: setTimeout(() => {
+        const index = waiters.indexOf(waiter);
+        if (index >= 0) waiters.splice(index, 1);
+        reject(new FreeChatUnavailableError('busy'));
+      }, SLOT_WAIT_MS),
+    };
+    waiters.push(waiter);
+  });
+}
+
+function releaseSlot(): void {
+  const next = waiters.shift();
+  if (next) {
+    clearTimeout(next.timer);
+    next.resume(); // Transfer the occupied slot; another caller cannot steal it.
+  } else active--;
+}
 
 // Only the operator-verified Fly credential may use the global free-tier policy.
 function key(): string {
@@ -36,9 +63,14 @@ export async function generateFreeGeminiResponse(
   const cooldown = cooldowns.get(fingerprint);
   if (cooldown && cooldown.until > Date.now()) throw new FreeChatUnavailableError(cooldown.category);
   cooldowns.delete(fingerprint);
-  if (active >= 1) throw new FreeChatUnavailableError('busy');
-  active++;
+  await acquireSlot();
   try {
+    // A preceding request may have entered cooldown while this one waited.
+    if (!isFreeGeminiConfigured(tenantId)) throw new FreeChatUnavailableError('not_configured');
+    const queuedCooldown = cooldowns.get(fingerprint);
+    if (queuedCooldown && queuedCooldown.until > Date.now()) {
+      throw new FreeChatUnavailableError(queuedCooldown.category);
+    }
     let response: Response;
     try {
       response = await fetchImpl(ENDPOINT, {
@@ -80,7 +112,7 @@ export async function generateFreeGeminiResponse(
     }
     const limit = Math.max(1, Math.min(12_000, Math.floor(Number(options.maxCharacters) || 12_000)));
     return capAtCompleteSentence(text, limit);
-  } finally { active--; }
+  } finally { releaseSlot(); }
 }
 
 function capAtCompleteSentence(text: string, limit: number): string {
