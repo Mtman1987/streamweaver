@@ -4456,13 +4456,19 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     console.log(`[Dispatcher] SML !${command} advanced ${result.lane || 'unknown'}; now playing: ${playing}`);
                     return;
                 }
+                const tenantMusicSession = tenantId && tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID
+                    ? twitchMusicSessionId(tenantId) : null;
+                if (tenantMusicSession && targetLane === 'movie') {
+                    await reply(`@${actualUsername}, movie playback is disabled for this Twitch stream.`, 'bot').catch(() => {});
+                    return;
+                }
                 const [music, movie]: any[] = await Promise.all([
-                    readSession('discord-music-room'),
-                    readSession('discord-watch-room'),
+                    readSession(tenantMusicSession || 'discord-music-room'),
+                    ...(tenantMusicSession ? [] : [readSession('discord-watch-room')]),
                 ]);
                 const sessions = [
-                    { lane: 'music', sessionId: 'discord-music-room', state: music?.session },
-                    { lane: 'movie', sessionId: 'discord-watch-room', state: movie?.session },
+                    { lane: 'music', sessionId: tenantMusicSession || 'discord-music-room', state: music?.session },
+                    ...(tenantMusicSession ? [] : [{ lane: 'movie', sessionId: 'discord-watch-room', state: movie?.session }]),
                 ];
                 const ordered = [...sessions].sort((left, right) => {
                     const leftPlaying = left.state?.playback?.status === 'playing' ? 1 : 0;
