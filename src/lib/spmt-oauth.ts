@@ -82,7 +82,6 @@ export function applyRefreshedSpmtCookies(response: NextResponse, refreshed: Ref
     maxAge: refreshed.refreshExpiresIn,
   });
   if (refreshed.user?.id) applySpmtLocalSession(response, spmtLocalSession(refreshed.user));
-  for (const name of ['streamweaver-spmt-token', 'streamweaver-spmt-refresh', ...(refreshed.user?.id ? ['streamweaver-session'] : [])]) {
-    response.headers.append('set-cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None`);
-  }
+  // Never append a same-name deletion after issuing credentials: cookie
+  // processors that ignore partitioning can erase the newly issued session.
 }

@@ -95,9 +95,6 @@ export async function POST(request: NextRequest) {
       Number(payload.refresh_expires_in || 30 * 24 * 60 * 60),
     );
   }
-  // Remove pre-partitioning copies that can shadow freshly issued credentials.
-  for (const name of ['streamweaver-session', 'streamweaver-spmt-token', 'streamweaver-spmt-refresh']) {
-    response.headers.append('set-cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None`);
-  }
+  // Logout owns cookie deletion; never erase names just issued above.
   return response;
 }

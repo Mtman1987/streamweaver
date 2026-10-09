@@ -3,7 +3,7 @@ import test from 'node:test';
 import { NextRequest, NextResponse } from 'next/server';
 import { middleware } from '../src/middleware';
 import { parseSessionCookie } from '../src/lib/session-cookie';
-import { clearSpmtSessionCookies } from '../src/lib/spmt-oauth';
+import { applyRefreshedSpmtCookies, clearSpmtSessionCookies } from '../src/lib/spmt-oauth';
 process.env.STREAMWEAVER_CLIENT_SECRET = 'test-client';
 process.env.STREAMWEAVER_SESSION_SECRET = 'test-session';
 const user = { id: 'canonical-user', username: 'spmt-name', twitchId: '12345', twitchUsername: 'linked_twitch', discordId: '987654321000', discordUsername: 'linked_discord' };
@@ -32,7 +32,7 @@ test('expired browser credentials renew access, refresh and local image session 
     const cookies = response.headers.getSetCookie();
     assert.ok(cookies.some(c => c.startsWith('streamweaver-session=') && c.includes('Partitioned') && !c.includes('Max-Age=0')));
     assert.ok(cookies.some(c => c.startsWith('streamweaver-spmt-refresh=new-refresh') && c.includes('Partitioned')));
-    assert.ok(cookies.some(c => c.startsWith('streamweaver-spmt-refresh=;') && !c.includes('Partitioned')));
+    assert.ok(cookies.every(c => !c.includes('Max-Age=0')));
     assert.equal(calls.length, 2);
   }
 });
@@ -59,4 +59,20 @@ test('a still-valid SPMT access token restores an expired local session without 
   assert.equal(parseSessionCookie(req.cookies.get('streamweaver-session')?.value)?.id, '12345');
   assert.ok(res.cookies.get('streamweaver-session')?.value);
   assert.ok(res.headers.getSetCookie().some(c => c.startsWith('streamweaver-session=;') && !c.includes('Partitioned')));
+});
+
+test('successful renewal survives cookie processors that key only by name', () => {
+  const response = NextResponse.json({ ok: true });
+  applyRefreshedSpmtCookies(response, { user, accessToken: 'fresh-access', refreshToken: 'fresh-refresh', expiresIn: 3600, refreshExpiresIn: 86400 });
+  const jar = new Map<string, string>();
+  for (const header of response.headers.getSetCookie()) {
+    const pair = header.split(';')[0];
+    const at = pair.indexOf('=');
+    const name = pair.slice(0, at), value = pair.slice(at + 1);
+    if (/Max-Age=0(?:;|$)/i.test(header)) jar.delete(name);
+    else jar.set(name, decodeURIComponent(value));
+  }
+  assert.equal(jar.get('streamweaver-spmt-token'), 'fresh-access');
+  assert.equal(jar.get('streamweaver-spmt-refresh'), 'fresh-refresh');
+  assert.equal(parseSessionCookie(jar.get('streamweaver-session'))?.spmtUserId, user.id);
 });
