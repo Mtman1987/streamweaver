@@ -4,6 +4,7 @@ import { listTenants, tenantPath } from '../lib/tenant';
 import { readDiscordConfig } from '../lib/discord-config';
 import { readUserConfigSync } from '../lib/user-config';
 import { sendChatMessage } from './twitch';
+import { isNonRestartableTwitchDeliveryFailure } from './twitch-delivery-receipt';
 import { uploadFileToDiscord } from './discord';
 import { markUserWelcomed } from './welcome-wagon';
 import { recordShoutout } from './welcome-wagon-tracker';
@@ -52,9 +53,6 @@ function stringifyError(error: unknown): string {
   }
 }
 
-function isNonRestartableDeliveryFailure(error: unknown): boolean {
-  return /Shared chat source-only send (?:failed|skipped).+\((?:permission|broadcaster-not-found|sender-not-found|sender-unavailable)\)/i.test(stringifyError(error));
-}
 
 async function loadQueue(tenantId?: string): Promise<WalkOnRecoveryJob[]> {
   try {
@@ -144,7 +142,7 @@ export async function queueWalkOnRetry(input: {
   }
 
   await saveQueue(input.tenantId, jobs);
-  if (isNonRestartableDeliveryFailure(input.error)) {
+  if (isNonRestartableTwitchDeliveryFailure(input.error)) {
     console.warn(`[WalkOnRecovery] Queued non-restartable shared-chat delivery failure for ${input.displayName}; waiting for token or channel repair.`);
   } else {
     await requestProcessRestart(input.tenantId, `walk-on shoutout failed for ${input.displayName}`);
@@ -276,7 +274,7 @@ async function processQueueForTenant(tenantId?: string): Promise<void> {
       }
       throw new Error('Retry was skipped by cooldown/exclusion rules');
     } catch (retryError) {
-      const fallbackAttempted = !isNonRestartableDeliveryFailure(retryError);
+      const fallbackAttempted = !isNonRestartableTwitchDeliveryFailure(retryError);
       console.error(`[WalkOnRecovery] Retry failed for ${job.displayName}; ${fallbackAttempted ? 'sending simple fallback' : 'authorization repair required'}`, retryError);
       if (fallbackAttempted) {
         try {
@@ -288,7 +286,7 @@ async function processQueueForTenant(tenantId?: string): Promise<void> {
         console.warn(`[WalkOnRecovery] Skipping identical chat fallback for ${job.displayName}; authorization repair is required.`);
       }
       await reportFailure(job, retryError, fallbackAttempted);
-      await disableRestartCircuit(job.tenantId, `Walk-on retry failed for ${job.displayName}; report sent and simple fallback attempted.`);
+      await disableRestartCircuit(job.tenantId, `Walk-on retry failed for ${job.displayName}; report sent; ${fallbackAttempted ? 'simple fallback attempted' : 'authorization repair required'}.`);
     }
   }
 

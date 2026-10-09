@@ -115,11 +115,10 @@ export async function sendChatMessage(
     console.log(`[Twitch] Message sent via API: ${message}`);
   } catch (error: any) {
     console.error('[Twitch] Failed to send message:', error);
-    const message = String(error?.message || error || '');
-    if (/Shared chat source-only send (?:failed|skipped)/i.test(message)) {
-      throw new Error(message);
-    }
-    throw new Error('Twitch client not available for sending messages');
+    // Keep authorization/wake failures intact so recovery can distinguish them
+    // from transient transport failures. A restart cannot repair permissions.
+    if (error instanceof Error) throw error;
+    throw new Error(String(error || 'Twitch client not available for sending messages'));
   }
 }
 
