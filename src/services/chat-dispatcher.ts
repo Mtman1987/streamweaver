@@ -4299,9 +4299,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
 
-        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|volume|radio|autoradio)(?:\s+(.*))?$/i);
+        const hearMeOutCommand = actualMessage.trim().match(/^!(sr|wr|music|songs|movie|movies|play|pause|stop|skip|next|clear|np|nowplaying|mute|unmute|vol|volume|radio|autoradio)(?:\s+(.*))?$/i);
         if (hearMeOutCommand) {
-            const command = hearMeOutCommand[1].toLowerCase();
+            const command = hearMeOutCommand[1].toLowerCase() === 'vol' ? 'volume' : hearMeOutCommand[1].toLowerCase();
             const argument = String(hearMeOutCommand[2] || '').trim();
             const actorUserId = String(tags.username || tags['user-id'] || actualUsername);
             const actionBase = {
