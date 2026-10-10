@@ -76,7 +76,7 @@ export default function BRBPlayer() {
       setGifUrl('');
       // Twitch's interactive player can switch to the source VOD without
       // replacing the iframe that owns the broadcaster's click.
-      if (/^\d+$/.test(String(vod?.videoId || '')) && Number.isFinite(Number(vod?.vodOffset)) && Number(vod?.vodOffset) >= 0) {
+      if (new URLSearchParams(window.location.search).get('playback') !== 'clips' && /^\d+$/.test(String(vod?.videoId || '')) && Number.isFinite(Number(vod?.vodOffset)) && Number(vod?.vodOffset) >= 0) {
         videoRef.current?.pause();
         setClipUser(vod?.user || fallback?.user || '');
         setSpotlight(true);
