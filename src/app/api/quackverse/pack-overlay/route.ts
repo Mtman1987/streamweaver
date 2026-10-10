@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { hasInternalServiceAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
 import { normalizeCardPackEvent } from '@/lib/card-pack-event';
+import { resolveOverlayTenantId } from '@/lib/overlay-tenant.server';
 
 function hasAccess(request: NextRequest) {
   return hasInternalServiceAccess(request);
@@ -13,7 +14,9 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null);
-  const tenantId = String(body?.tenantId || '').trim() || undefined;
+  const tenantAlias = String(body?.tenantId || '').trim();
+  // Use the same alias resolver as the receiving overlay socket.
+  const tenantId = tenantAlias ? await resolveOverlayTenantId(tenantAlias) : undefined;
   const payload = {
     eventId: String(body?.eventId || body?.packId || '').trim() || `quackverse-${Date.now()}`,
     pack: Array.isArray(body?.pack) ? body.pack : [],
