@@ -720,6 +720,9 @@ export default function TTSPlayer() {
     return null;
   };
 
+  // Keep the audio effects mounted without drawing captions or avatars.
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('audioOnly') === '1') return null;
+
   return (
     <div
       onClick={() => {
