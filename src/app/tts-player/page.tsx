@@ -721,7 +721,7 @@ export default function TTSPlayer() {
   };
 
   // Keep the audio effects mounted without drawing captions or avatars.
-  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('audioOnly') === '1') return null;
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('audioOnly') === '1') return <audio ref={audioRef} playsInline onPlay={() => { setPlaying(true); setStatus('Playing...'); }} style={{ display: 'none' }} />;
 
   return (
     <div
