@@ -4303,6 +4303,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         if (hearMeOutCommand) {
             const command = hearMeOutCommand[1].toLowerCase() === 'vol' ? 'volume' : hearMeOutCommand[1].toLowerCase();
             const argument = String(hearMeOutCommand[2] || '').trim();
+            const volumeArgument = command === 'volume' ? argument.replace(/^(?:media|music|all)\s+/i, '') : argument;
             const actorUserId = String(tags.username || tags['user-id'] || actualUsername);
             const actionBase = {
                 tenantId: tenantId || 'spacemountainlive',
@@ -4427,8 +4428,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 : command === 'stop' ? 'pause'
                     : command === 'skip' || command === 'next' ? 'next'
                         : command;
-            const value = command === 'volume' ? Number(argument) : undefined;
-            if (command === 'volume' && (!argument || !Number.isFinite(value) || value! < 0 || value! > 100)) {
+            const value = command === 'volume' ? Number(volumeArgument) : undefined;
+            if (command === 'volume' && (!volumeArgument || !Number.isFinite(value) || value! < 0 || value! > 100)) {
                 await reply(`@${actualUsername}, usage: !volume 0-100`, 'bot').catch(() => {});
                 return;
             }
