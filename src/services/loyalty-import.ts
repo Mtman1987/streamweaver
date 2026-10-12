@@ -1,11 +1,11 @@
 import { withTenantPointMutation } from './points-mutation-lock';
 import { randomUUID } from 'node:crypto';
 import { readJsonFile, writeJsonFile, type StorageContext } from './storage';
-import { parseLoyaltyImport, type WatchUnit } from './loyalty-import-parser';
+import { parseLoyaltyImport, type WatchUnit, type LoyaltyImportMode } from './loyalty-import-parser';
 import { snapshotWatchtime, importWatchtimeMinutes } from './user-stats';
 import { importLoyaltyPointBalances } from './points';
-export async function previewLoyaltyImport(text: string, unit: WatchUnit, ctx: StorageContext) {
-  const parsed = parseLoyaltyImport(text,unit);
+export async function previewLoyaltyImport(text: string, unit: WatchUnit, ctx: StorageContext, mode: LoyaltyImportMode = 'all') {
+  const parsed = parseLoyaltyImport(text,unit,mode);
   const [points,stats] = await Promise.all([readJsonFile<Record<string,any>>('points.json',{},ctx), snapshotWatchtime(ctx)]);
   const receipts = await readJsonFile<Record<string,any>>('loyalty-import-receipts.json',{},ctx);
   const changes = parsed.rows.map(row => {
@@ -17,8 +17,8 @@ export async function previewLoyaltyImport(text: string, unit: WatchUnit, ctx: S
   });
   return { alreadyImported:!!receipts[parsed.digest], digest: parsed.digest, viewers: parsed.rows.length, changed: changes.filter(r=>r.changed).length, sample: changes.slice(0,50), channel:ctx.username };
 }
-async function applyLoyaltyImportUnlocked(text: string, unit: WatchUnit, digest: string, ctx: StorageContext) {
-  const parsed = parseLoyaltyImport(text,unit);
+async function applyLoyaltyImportUnlocked(text: string, unit: WatchUnit, digest: string, ctx: StorageContext, mode: LoyaltyImportMode = 'all') {
+  const parsed = parseLoyaltyImport(text,unit,mode);
   if (parsed.digest !== digest) throw new Error('The file changed. Preview it again before importing.');
   const receipts = await readJsonFile<Record<string,any>>('loyalty-import-receipts.json',{},ctx);
   if (receipts[parsed.digest]) return { imported:0, alreadyImported:true, backupId:receipts[parsed.digest].backupId, channel:ctx.username };
@@ -34,4 +34,4 @@ async function applyLoyaltyImportUnlocked(text: string, unit: WatchUnit, digest:
   return { imported:parsed.rows.length, backupId, channel:ctx.username };
 }
 
-export async function applyLoyaltyImport(...args: Parameters<typeof applyLoyaltyImportUnlocked>) { return withTenantPointMutation(args[3],()=>applyLoyaltyImportUnlocked(...args)); }
+export async function applyLoyaltyImport(text: string, unit: WatchUnit, digest: string, ctx: StorageContext, mode: LoyaltyImportMode = 'all') { return withTenantPointMutation(ctx,()=>applyLoyaltyImportUnlocked(text,unit,digest,ctx,mode)); }

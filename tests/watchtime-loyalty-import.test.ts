@@ -16,8 +16,12 @@ test('CSV and JSON normalize users, exact balances, explicit units and duplicate
   for (const value of ['username,points\nv,-1','username,watchtime\nv,nope','username,points\nv,1\nbad name,2','username,points\nv,"1'])
     assert.throws(()=>parseLoyaltyImport(value,'minutes'));
   assert.throws(()=>parseLoyaltyImport('[{"username":"v","points":9007199254740992}]','minutes'));
-  assert.deepEqual(parseLoyaltyImport('username,points\\nv,1200.0\\nw,"1,200"','minutes').rows,
+  assert.deepEqual(parseLoyaltyImport('username,points\nv,1200.0\nw,"1,200"','minutes').rows,
     [{username:'v',points:'1200'},{username:'w',points:'1200'}]);
+  const badPoints='username,points,watchtime\nviewer,not-a-number,120\nsecond,also-bad,90';
+  assert.deepEqual(parseLoyaltyImport(badPoints,'minutes','watchtime').rows,[{username:'viewer',watchMinutes:120},{username:'second',watchMinutes:90}]);
+  assert.deepEqual(parseLoyaltyImport('username,points,watchtime\nviewer,1,invalid','minutes','points').rows,[{username:'viewer',points:'1'}]);
+  assert.throws(()=>parseLoyaltyImport(badPoints,'minutes','all'),/invalid points/);
 });
 
 test('tracker authenticates each tenant, deduplicates users, and isolates a failed channel',async()=>{
