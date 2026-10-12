@@ -46,15 +46,18 @@ jobs:
         run: node --test tests/spotlight-commercial-break.test.cjs
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Sync StreamElements secrets
-        if: ${{ secrets.STREAMELEMENTS_JWT_TOKEN != '' && secrets.STREAMELEMENTS_ACCOUNT_ID != '' }}
         run: |
-          flyctl secrets set \
-            STREAMELEMENTS_ACCOUNT_ID="$STREAMELEMENTS_ACCOUNT_ID" \
-            STREAMELEMENTS_JWT_TOKEN="$STREAMELEMENTS_JWT_TOKEN" \
-            STREAMELEMENTS_CLIENT_ID="$STREAMELEMENTS_CLIENT_ID" \
-            STREAMELEMENTS_CLIENT_SECRET="$STREAMELEMENTS_CLIENT_SECRET" \
-            STREAMELEMENTS_REDIRECT_URI="$STREAMELEMENTS_REDIRECT_URI" \
-            --app streamweaver-new
+          if [ -n "$STREAMELEMENTS_JWT_TOKEN" ] && [ -n "$STREAMELEMENTS_ACCOUNT_ID" ]; then
+            flyctl secrets set \
+              STREAMELEMENTS_ACCOUNT_ID="$STREAMELEMENTS_ACCOUNT_ID" \
+              STREAMELEMENTS_JWT_TOKEN="$STREAMELEMENTS_JWT_TOKEN" \
+              STREAMELEMENTS_CLIENT_ID="$STREAMELEMENTS_CLIENT_ID" \
+              STREAMELEMENTS_CLIENT_SECRET="$STREAMELEMENTS_CLIENT_SECRET" \
+              STREAMELEMENTS_REDIRECT_URI="$STREAMELEMENTS_REDIRECT_URI" \
+              --app streamweaver-new
+          else
+            echo "StreamElements secrets not configured; skipping secret sync."
+          fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           STREAMELEMENTS_CLIENT_ID: ${{ secrets.STREAMELEMENTS_CLIENT_ID }}
