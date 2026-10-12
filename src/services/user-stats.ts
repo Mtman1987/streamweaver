@@ -1,4 +1,6 @@
 import fs from 'fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import path from 'path';
 import { getPoints as getPointsData } from './points';
 import { tenantPath } from '@/lib/tenant';
@@ -32,6 +34,7 @@ export interface UserStats {
 }
 
 const statsCaches = new Map<string, Record<string, UserStats>>();
+const statsVersions = new Map<string, string>();
 const saveLocks = new Map<string, Promise<void>>();
 
 function contextKey(ctx?: StorageContext): string {
@@ -72,26 +75,30 @@ function readLegacyTenantStats(ctx?: StorageContext): Record<string, UserStats> 
 function loadStats(ctx?: StorageContext): Record<string, UserStats> {
   const key = contextKey(ctx);
   const cached = statsCaches.get(key);
-  if (cached) return cached;
+  let version = '';
+  try { const stat = fs.statSync(statsFile(ctx)); version = stat.mtimeMs + ':' + stat.size + ':' + stat.ino; } catch {}
+  if (cached && statsVersions.get(key) === version) return cached;
 
   const filePath = statsFile(ctx);
   if (!fs.existsSync(filePath)) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const migrated = readLegacyTenantStats(ctx);
+    const migrated = Object.assign(Object.create(null),readLegacyTenantStats(ctx));
     fs.writeFileSync(filePath, JSON.stringify(migrated, null, 2));
     statsCaches.set(key, migrated);
+    const created = fs.statSync(filePath); statsVersions.set(key, created.mtimeMs + ':' + created.size + ':' + created.ino);
     if (Object.keys(migrated).length > 0) {
       console.log('[UserStats] Migrated ' + Object.keys(migrated).length + ' users into tenant ' + key);
     }
     return migrated;
   }
-  const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const raw = Object.assign(Object.create(null),JSON.parse(fs.readFileSync(filePath, 'utf-8')));
   for (const key of Object.keys(raw)) {
     if (!raw[key].watchtimeByChannel) {
       raw[key].watchtimeByChannel = raw[key].watchtime ? { unknown: raw[key].watchtime } : {};
     }
   }
   statsCaches.set(key, raw);
+  statsVersions.set(key, version);
   return raw;
 }
 
@@ -105,6 +112,7 @@ async function saveStats(ctx?: StorageContext): Promise<void> {
     const tempPath = filePath + '.tmp.' + process.pid + '.' + Date.now();
     fs.writeFileSync(tempPath, JSON.stringify(stats, null, 2));
     fs.renameSync(tempPath, filePath);
+    const written = fs.statSync(filePath); statsVersions.set(key, written.mtimeMs + ':' + written.size + ':' + written.ino);
   });
   saveLocks.set(key, next);
   try {
@@ -118,7 +126,8 @@ function totalWatchtime(user: UserStats): number {
   return Object.values(user.watchtimeByChannel || {}).reduce((a, b) => a + b, 0);
 }
 
-export async function getUser(username: string, ctx?: StorageContext): Promise<UserStats> {
+async function getUserUnlocked(username: string, ctx?: StorageContext): Promise<UserStats> {
+  username = username.trim().replace(/^@/,'').toLowerCase();
   const statsCache = loadStats(ctx);
   
   if (!statsCache[username]) {
@@ -164,7 +173,7 @@ export async function getUser(username: string, ctx?: StorageContext): Promise<U
   return statsCache[username];
 }
 
-export async function updateUser(username: string, updates: Partial<UserStats>, ctx?: StorageContext) {
+async function updateUserUnlocked(username: string, updates: Partial<UserStats>, ctx?: StorageContext) {
   const statsCache = loadStats(ctx);
   const user = statsCache[username];
   if (!user) {
@@ -179,7 +188,7 @@ export async function updateUser(username: string, updates: Partial<UserStats>, 
   await saveStats(ctx);
 }
 
-export async function addCards(username: string, cards: any[], ctx?: StorageContext) {
+async function addCardsUnlocked(username: string, cards: any[], ctx?: StorageContext) {
   const statsCache = loadStats(ctx);
   
   if (!statsCache[username]) {
@@ -283,6 +292,7 @@ export async function getUserBadges(username: string, ctx?: StorageContext): Pro
 
 export async function incrementWatchtime(usernames: string[], channel?: string, ctx?: StorageContext): Promise<void> {
   if (usernames.length === 0) return;
+  await withWatchtimeLock(ctx, async () => {
   const statsCache = loadStats(ctx);
 
   const channelKey = (channel || 'unknown').toLowerCase();
@@ -303,6 +313,7 @@ export async function incrementWatchtime(usernames: string[], channel?: string, 
     statsCache[key].lastSeen = now;
   }
   await saveStats(ctx);
+  });
 }
 
 export function formatWatchtime(user: UserStats): string {
@@ -327,5 +338,52 @@ export function formatWatchtime(user: UserStats): string {
 
 export function clearUserStatsCacheForTests(): void {
   statsCaches.clear();
+  statsVersions.clear();
   saveLocks.clear();
 }
+
+const heldWatchLocks = new AsyncLocalStorage<Set<string>>();
+async function withWatchtimeLock<T>(ctx: StorageContext | undefined, task: () => Promise<T>): Promise<T> {
+  const lockPath = statsFile(ctx) + '.watch.lock';
+  if (heldWatchLocks.getStore()?.has(lockPath)) return task();
+  const token = randomUUID();
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  const deadline = Date.now() + 20_000;
+  let fd: number;
+  while (true) {
+    try { fd = fs.openSync(lockPath, 'wx'); fs.writeSync(fd, token); break; }
+    catch (error: any) {
+      if (error.code !== 'EEXIST') throw error;
+      try { if (Date.now() - fs.statSync(lockPath).mtimeMs > 120_000) fs.unlinkSync(lockPath); } catch {}
+      if (Date.now() > deadline) throw new Error('Watchtime is busy. Try the import again shortly.');
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+  try { return await heldWatchLocks.run(new Set([...(heldWatchLocks.getStore() || []),lockPath]),task); }
+  finally { fs.closeSync(fd!); try { if (fs.readFileSync(lockPath,'utf8') === token) fs.unlinkSync(lockPath); } catch {} }
+}
+
+export async function snapshotWatchtime(ctx: StorageContext): Promise<Record<string, UserStats>> {
+  if (!ctx.tenantId || !ctx.username) throw new Error('Tenant context is required.');
+  return structuredClone(loadStats(ctx));
+}
+
+export async function importWatchtimeMinutes(rows: Array<{ username: string; watchMinutes?: number }>, channel: string, ctx: StorageContext): Promise<void> {
+  if (!ctx.tenantId || !ctx.username) throw new Error('Tenant context is required.');
+  await withWatchtimeLock(ctx, async () => {
+    const stats = loadStats(ctx), now = new Date().toISOString(), channelKey = channel.toLowerCase();
+    for (const row of rows) {
+      if (row.watchMinutes === undefined) continue;
+      const user = stats[row.username] ||= { user:row.username, points:0, watchtime:0, watchtimeByChannel:{}, deaths:0, joinDate:now, visits:0, lastSeen:now, totalCards:0, rareCards:0, badges:[], cardCollection:[] };
+      user.watchtimeByChannel ||= {};
+      const delta = Math.max(0,row.watchMinutes - totalWatchtime(user));
+      if (delta) user.watchtimeByChannel[channelKey] = (user.watchtimeByChannel[channelKey] || 0) + delta;
+      user.watchtime = totalWatchtime(user);
+    }
+    await saveStats(ctx);
+  });
+}
+
+export async function getUser(...args: Parameters<typeof getUserUnlocked>) { return withWatchtimeLock(args[1],()=>getUserUnlocked(...args)); }
+export async function updateUser(...args: Parameters<typeof updateUserUnlocked>) { return withWatchtimeLock(args[2],()=>updateUserUnlocked(...args)); }
+export async function addCards(...args: Parameters<typeof addCardsUnlocked>) { return withWatchtimeLock(args[2],()=>addCardsUnlocked(...args)); }

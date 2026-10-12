@@ -1,3 +1,4 @@
+import { withTenantPointMutation } from './points-mutation-lock';
 import { randomUUID } from 'node:crypto';
 import { readJsonFile, writeJsonFile, StorageContext } from './storage';
 import { getChatOutputContext } from './chat-output-context';
@@ -157,7 +158,7 @@ function calculateLevel(points: bigint): number {
 }
 
 async function loadPoints(ctx?: StorageContext): Promise<PointsRecord> {
-  return readJsonFile<PointsRecord>(POINTS_FILE, {}, ctx);
+  return Object.assign(Object.create(null),await readJsonFile<PointsRecord>(POINTS_FILE, {}, ctx));
 }
 
 async function savePoints(data: PointsRecord, ctx?: StorageContext): Promise<void> {
@@ -246,7 +247,7 @@ export async function getAllUsers(ctx?: StorageContext): Promise<PointsRecord> {
   return loadPoints(ctx);
 }
 
-export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
+async function addPointsToAllUnlocked(amount: PointAmount, ctx?: StorageContext): Promise<number> {
   const discordContext = getDiscordOutputContext();
   if (discordContext && !ctx) {
     const delta = parsePointAmount(amount);
@@ -286,7 +287,7 @@ export async function addPointsToAll(amount: PointAmount, ctx?: StorageContext):
   return count;
 }
 
-export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext): Promise<number> {
+async function setPointsToAllUnlocked(amount: PointAmount, ctx?: StorageContext): Promise<number> {
   const discordContext = getDiscordOutputContext();
   if (discordContext && !ctx) {
     const points = normalizePoints(amount);
@@ -321,7 +322,7 @@ export async function setPointsToAll(amount: PointAmount, ctx?: StorageContext):
   return count;
 }
 
-export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
+async function resetAllPointsUnlocked(ctx?: StorageContext): Promise<number> {
   const discordContext = getDiscordOutputContext();
   if (discordContext && !ctx) {
     const result = await setDiscordStreamHubPointsToAll({
@@ -353,7 +354,7 @@ export async function resetAllPoints(ctx?: StorageContext): Promise<number> {
   return count;
 }
 
-export async function addPoints(
+async function addPointsUnlocked(
   userId: string,
   amount: PointAmount,
   reason?: string,
@@ -414,7 +415,7 @@ export async function addPoints(
   };
 }
 
-export async function setPoints(
+async function setPointsUnlocked(
   userId: string,
   value: PointAmount,
   ctx?: StorageContext
@@ -678,7 +679,7 @@ export async function getUserPoints(userId: string, ctx?: StorageContext): Promi
   return data.points;
 }
 
-export async function updateUserPoints(userId: string, value: PointAmount, ctx?: StorageContext): Promise<void> {
+async function updateUserPointsUnlocked(userId: string, value: PointAmount, ctx?: StorageContext): Promise<void> {
   await setPoints(userId, value, ctx);
 }
 
@@ -700,4 +701,47 @@ export async function syncPointsData(ctx?: StorageContext): Promise<void> {
   } catch (error) {
     console.error('[Points] Sync error:', error);
   }
+}
+
+async function importLoyaltyPointBalancesUnlocked(rows: Array<{ username: string; points?: string }>, ctx: StorageContext): Promise<void> {
+  if (!ctx.tenantId || !ctx.username) throw new Error('Tenant context is required.');
+  const store = await loadPoints(ctx), now = new Date().toISOString();
+  for (const row of rows) {
+    if (row.points === undefined) continue;
+    const before = store[row.username];
+    const oldPoints = normalizeStoredPointAmount(before?.points ?? 0);
+    const imported = normalizeStoredPointAmount(row.points);
+    const points = imported > oldPoints ? imported : oldPoints;
+    const oldEarned = normalizeStoredPointAmount(before?.totalEarned ?? 0);
+    store[row.username] = { ...before, points:points.toString(), level:calculateLevel(points), updatedAt:now, lastActivity:before?.lastActivity || now, totalEarned:(oldEarned > points ? oldEarned : points).toString() };
+  }
+  await savePoints(store,ctx);
+}
+
+export async function addPointsToAll(...args: Parameters<typeof addPointsToAllUnlocked>) {
+  return withTenantPointMutation(args[1],()=>addPointsToAllUnlocked(...args));
+}
+
+export async function setPointsToAll(...args: Parameters<typeof setPointsToAllUnlocked>) {
+  return withTenantPointMutation(args[1],()=>setPointsToAllUnlocked(...args));
+}
+
+export async function resetAllPoints(...args: Parameters<typeof resetAllPointsUnlocked>) {
+  return withTenantPointMutation(args[0],()=>resetAllPointsUnlocked(...args));
+}
+
+export async function addPoints(...args: Parameters<typeof addPointsUnlocked>) {
+  return withTenantPointMutation(args[3],()=>addPointsUnlocked(...args));
+}
+
+export async function setPoints(...args: Parameters<typeof setPointsUnlocked>) {
+  return withTenantPointMutation(args[2],()=>setPointsUnlocked(...args));
+}
+
+export async function importLoyaltyPointBalances(...args: Parameters<typeof importLoyaltyPointBalancesUnlocked>) {
+  return withTenantPointMutation(args[1],()=>importLoyaltyPointBalancesUnlocked(...args));
+}
+
+export async function updateUserPoints(...args: Parameters<typeof updateUserPointsUnlocked>) {
+  return withTenantPointMutation(args[2],()=>updateUserPointsUnlocked(...args));
 }

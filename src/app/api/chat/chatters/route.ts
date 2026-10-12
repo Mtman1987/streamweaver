@@ -45,30 +45,33 @@ export async function GET(request: NextRequest) {
       return apiError('No user ID in token', { status: 500, code: 'TOKEN_USER_ID_MISSING' });
     }
 
-    const url = `https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${userId}&moderator_id=${userId}`;
-
-    // Chatters API logging removed for noise reduction — only log errors
-
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${broadcasterToken}`,
-        'Client-ID': clientId,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.warn('[Chatters API] Twitch API error:', response.status, errorText);
-
-      return apiError('Twitch API request failed', {
-        status: 502,
-        code: 'TWITCH_API_FAILED',
-        details: { status: response.status, details: errorText },
-      });
+    const headers = { Authorization: 'Bearer ' + broadcasterToken, 'Client-ID': clientId };
+    const tracking = request.nextUrl.searchParams.get('tracking') === '1';
+    if (tracking) {
+      const live = await fetch('https://api.twitch.tv/helix/streams?user_id=' + encodeURIComponent(userId), { headers, signal: AbortSignal.timeout(8_000) });
+      if (!live.ok) return apiError('Could not check live status.', { status:502 });
+      const liveData = await live.json();
+      if (!Array.isArray(liveData.data) || !liveData.data.length) return apiOk({ chatters:[], live:false });
     }
+    const chatters: any[] = [];
+    const cursors = new Set<string>();
+    let cursor = '';
+    do {
+      if (cursors.size >= 100) return apiError('Chatters pagination exceeded the safe limit. No partial watchtime was recorded.',{status:502});
+      const url = new URL('https://api.twitch.tv/helix/chat/chatters');
+      url.searchParams.set('broadcaster_id',userId); url.searchParams.set('moderator_id',userId); url.searchParams.set('first','1000');
+      if (cursor) url.searchParams.set('after',cursor);
+      const response = await fetch(url,{ headers, signal:AbortSignal.timeout(8_000) });
+      if (!response.ok) return apiError(response.status === 401 || response.status === 403 ? 'Reconnect Twitch to allow watchtime tracking (chatters permission required).' : 'Twitch chatters request failed.',{ status:502, code:'TWITCH_API_FAILED' });
+      const data = await response.json();
+      chatters.push(...(Array.isArray(data.data) ? data.data : []));
+      cursor = String(data.pagination?.cursor || '');
+      if (cursor && cursors.has(cursor)) return apiError('Twitch repeated a chatters page. No partial watchtime was recorded.',{status:502});
+      if (cursor) cursors.add(cursor);
+      if (!tracking) break;
+    } while (cursor);
+    if (tracking) return apiOk({ chatters, live:true });
 
-    const data = await response.json();
-    const chatters = Array.isArray(data.data) ? data.data : [];
     const userIds = chatters.map((chatter: any) => String(chatter.user_id || '').trim()).filter(Boolean);
 
     const avatarsById = new Map<string, string>();

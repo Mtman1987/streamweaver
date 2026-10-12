@@ -4945,12 +4945,13 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !watchtime command
-        if (actualMessage.toLowerCase() === '!watchtime') {
+        // Handle tenant watchtime, including an optional Twitch username.
+        const watchtimeMatch = actualMessage.match(/^!(?:watchtime|watch time)(?:\s+@?([a-z0-9_]{1,25}))?\s*$/i);
+        if (watchtimeMatch) {
             try {
                 const { getUser, formatWatchtime } = require('./user-stats');
                 if (!tenantCtx) throw new Error('Missing tenant context for watchtime');
-                const user = await getUser(actualUsername, tenantCtx);
+                const user = await getUser(watchtimeMatch[1] || actualUsername, tenantCtx);
                 const msg = formatWatchtime(user);
                 await reply(msg, 'bot').catch(() => {});
             } catch (error) {

@@ -73,6 +73,7 @@ const workspaceGroups = [
     label: "Data + Rewards",
     items: [
       { href: "/currency", icon: Coins, label: "Currency" },
+      { href: "/import/loyalty", icon: FileText, label: "Import Loyalty" },
       { href: "/redeems", icon: Gift, label: "Redeems" },
       { href: "/debug/data-files", icon: FileText, label: "Live Files" },
     ],
