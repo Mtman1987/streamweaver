@@ -28,9 +28,23 @@ async function refresh(token: StreamElementsToken, c: StorageContext): Promise<S
   await saveToken(next, c); return next;
 }
 async function api(path: string, token: StreamElementsToken, c: StorageContext): Promise<any> {
-  const current = await refresh(token, c);
-  const scheme = current.scope === 'legacy-jwt' ? 'Bearer' : 'OAuth';
-  const response = await fetch(`${API}${path}`, { headers: { accept: 'application/json', Authorization: `${scheme} ${current.accessToken}` }, cache: 'no-store' });
+  const request = async (candidate: StreamElementsToken) => {
+    const current = await refresh(candidate, c);
+    const scheme = current.scope === 'legacy-jwt' ? 'Bearer' : 'OAuth';
+    const response = await fetch(`${API}${path}`, { headers: { accept: 'application/json', Authorization: `${scheme} ${current.accessToken}` }, cache: 'no-store' });
+    return { response, current };
+  };
+
+  let { response } = await request(token);
+  // A server-level JWT secret takes precedence, but older deployments may still
+  // have a valid tenant OAuth session with a refresh token. Try that session
+  // before telling the user to reconnect.
+  if (response.status === 401 && token.scope === 'legacy-jwt') {
+    const saved = await readJsonFile<StreamElementsToken | null>(tokenFile, null, c);
+    if (saved?.accessToken && saved.accessToken !== token.accessToken) {
+      ({ response } = await request(saved));
+    }
+  }
   if (response.status === 401) throw new Error('StreamElements authorization expired. Reconnect StreamElements.');
   if (!response.ok) return null;
   return response.json().catch(() => null);
