@@ -39,9 +39,14 @@ export function parseLoyaltyImport(text: string, unit: WatchUnit): { rows: Loyal
     const watch = explicitMinutes ?? own(row,['watchtime','timewatched','time','hours','seconds']);
     const next: LoyaltyImportRow = { username };
     if (points !== undefined) {
+      // Exports sometimes serialize whole-number balances as "1,234" or "1234.0".
+      // Accept those representations without converting large string balances through Number.
       const raw = String(points).trim().replace(/,/g,'');
-      if (!/^\d{1,30}$/.test(raw) || (typeof points === 'number' && !Number.isSafeInteger(points))) throw new Error('Row ' + (i+1) + ' has invalid points.');
-      next.points = BigInt(raw).toString();
+      const wholeNumber = /^(\d{1,30})(?:\.0+)?$/.exec(raw);
+      if (!wholeNumber || (typeof points === 'number' && (!Number.isSafeInteger(points) || points < 0))) {
+        throw new Error('Row ' + (i+1) + ' has invalid points. Use a non-negative whole number (for example 1200 or "1,200"); fractional points are not supported.');
+      }
+      next.points = BigInt(wholeNumber[1]).toString();
     }
     if (watch !== undefined) {
       const raw = String(watch).trim().replace(/,/g,'');
