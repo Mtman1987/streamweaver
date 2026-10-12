@@ -10,7 +10,12 @@ const tokenFile = 'streamelements-oauth.json';
 const rawFile = 'streamelements-latest-import.json';
 
 function ctx(tenantId: string, username: string): StorageContext { return { tenantId, username: username.toLowerCase() }; }
-async function getToken(c: StorageContext): Promise<StreamElementsToken | null> { return readJsonFile<StreamElementsToken | null>(tokenFile, null, c); }
+async function getToken(c: StorageContext): Promise<StreamElementsToken | null> {
+  const stored = await readJsonFile<StreamElementsToken | null>(tokenFile, null, c);
+  if (stored) return stored;
+  const jwt = process.env.STREAMELEMENTS_JWT_TOKEN;
+  return jwt ? { accessToken: jwt, expiresAt: Number.MAX_SAFE_INTEGER, scope: 'legacy-jwt' } : null;
+}
 async function saveToken(token: StreamElementsToken, c: StorageContext) { await writeJsonFile(tokenFile, token, c); }
 async function refresh(token: StreamElementsToken, c: StorageContext): Promise<StreamElementsToken> {
   if (token.expiresAt > Date.now() + 60_000) return token;
@@ -25,7 +30,8 @@ async function refresh(token: StreamElementsToken, c: StorageContext): Promise<S
 }
 async function api(path: string, token: StreamElementsToken, c: StorageContext): Promise<any> {
   const current = await refresh(token, c);
-  const response = await fetch(`${API}${path}`, { headers: { accept: 'application/json', Authorization: `OAuth ${current.accessToken}` }, cache: 'no-store' });
+  const scheme = current.scope === 'legacy-jwt' ? 'Bearer' : 'OAuth';
+  const response = await fetch(`${API}${path}`, { headers: { accept: 'application/json', Authorization: `${scheme} ${current.accessToken}` }, cache: 'no-store' });
   if (response.status === 401) throw new Error('StreamElements authorization expired. Reconnect StreamElements.');
   if (!response.ok) return null;
   return response.json().catch(() => null);
@@ -39,8 +45,9 @@ export async function getStreamElementsStatus(c: StorageContext) { const token =
 export async function saveStreamElementsToken(token: StreamElementsToken, c: StorageContext) { await saveToken(token, c); }
 export async function importStreamElements(c: StorageContext) {
   const token = await getToken(c); if (!token) throw new Error('Connect StreamElements first.');
-  const profile = await api('/channels/me', token, c);
-  const channel = String(profile?.username || profile?.alias || c.username).toLowerCase();
+  const accountId = process.env.STREAMELEMENTS_ACCOUNT_ID;
+  const profile = await api(accountId ? `/channels/${encodeURIComponent(accountId)}` : '/channels/me', token, c);
+  const channel = String(accountId || profile?._id || profile?.username || profile?.alias || c.username).toLowerCase();
   const [commands, defaults, timers, points, watchtime, stats, variables] = await Promise.all([
     api(`/bot/commands/${encodeURIComponent(channel)}`, token, c),
     api(`/bot/commands/${encodeURIComponent(channel)}/default`, token, c),

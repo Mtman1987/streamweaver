@@ -45,10 +45,12 @@ jobs:
       - name: Check Spotlight commercial overlay
         run: node --test tests/spotlight-commercial-break.test.cjs
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Sync StreamElements OAuth application secrets
-        if: ${{ secrets.STREAMELEMENTS_CLIENT_ID != '' && secrets.STREAMELEMENTS_CLIENT_SECRET != '' }}
+      - name: Sync StreamElements secrets
+        if: ${{ secrets.STREAMELEMENTS_JWT_TOKEN != '' && secrets.STREAMELEMENTS_ACCOUNT_ID != '' }}
         run: |
           flyctl secrets set \
+            STREAMELEMENTS_ACCOUNT_ID="$STREAMELEMENTS_ACCOUNT_ID" \
+            STREAMELEMENTS_JWT_TOKEN="$STREAMELEMENTS_JWT_TOKEN" \
             STREAMELEMENTS_CLIENT_ID="$STREAMELEMENTS_CLIENT_ID" \
             STREAMELEMENTS_CLIENT_SECRET="$STREAMELEMENTS_CLIENT_SECRET" \
             STREAMELEMENTS_REDIRECT_URI="$STREAMELEMENTS_REDIRECT_URI" \
@@ -58,6 +60,8 @@ jobs:
           STREAMELEMENTS_CLIENT_ID: ${{ secrets.STREAMELEMENTS_CLIENT_ID }}
           STREAMELEMENTS_CLIENT_SECRET: ${{ secrets.STREAMELEMENTS_CLIENT_SECRET }}
           STREAMELEMENTS_REDIRECT_URI: ${{ secrets.STREAMELEMENTS_REDIRECT_URI }}
+          STREAMELEMENTS_ACCOUNT_ID: ${{ secrets.STREAMELEMENTS_ACCOUNT_ID }}
+          STREAMELEMENTS_JWT_TOKEN: ${{ secrets.STREAMELEMENTS_JWT_TOKEN }}
       - name: Deploy app from GitHub runner
         run: flyctl deploy --local-only --no-cache --lease-timeout 2m --deploy-retries 3 --build-arg BUILD_SHA=${{ github.sha }} --build-arg GITHUB_SHA=${{ github.sha }} --build-arg GH_SHA=${{ github.sha }}
         env:
