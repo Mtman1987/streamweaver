@@ -116,6 +116,7 @@ export default function IntegrationsPage() {
   });
 
   const [kickTesting, setKickTesting] = useState(false);
+  const [streamElements, setStreamElements] = useState({ connected: false, loading: true, importing: false });
 
   const [obsSettings, setObsSettings] = useState({
     ip: process.env.NEXT_PUBLIC_OBS_IP || "127.0.0.1",
@@ -144,6 +145,15 @@ export default function IntegrationsPage() {
       .then((data) => { if (data?.scenes) setObsScenes((s) => ({ ...s, ...data.scenes })); })
       .catch(() => {});
   }, []);
+
+  const refreshStreamElements = async () => {
+    try {
+      const res = await fetch("/api/streamelements/import");
+      const data = await res.json();
+      setStreamElements((s) => ({ ...s, loading: false, connected: !!data?.connected }));
+    } catch { setStreamElements((s) => ({ ...s, loading: false })); }
+  };
+  useEffect(() => { void refreshStreamElements(); }, []);
 
   const refreshTwitchStatus = async () => {
     try {
@@ -227,6 +237,18 @@ export default function IntegrationsPage() {
     } catch (error: any) {
       toast({ variant: "destructive", title: "Disconnect failed", description: String(error?.message || error) });
     }
+  };
+
+  const connectStreamElements = () => { window.location.href = "/api/auth/streamelements"; };
+  const importStreamElements = async () => {
+    setStreamElements((s) => ({ ...s, importing: true }));
+    try {
+      const res = await fetch("/api/streamelements/import", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Import failed");
+      toast({ title: "StreamElements import complete", description: `${data.importedCommands} commands, ${data.importedWatchers} loyalty rows, ${data.timers} timers backed up.` });
+    } catch (error: any) { toast({ variant: "destructive", title: "StreamElements import failed", description: String(error?.message || error) }); }
+    finally { setStreamElements((s) => ({ ...s, importing: false })); }
   };
 
   const testKickConnection = async () => {
@@ -566,6 +588,25 @@ export default function IntegrationsPage() {
         </CardContent>
       </Card>
 
+      {/* StreamElements */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">StreamElements</CardTitle>
+              <p className="text-sm text-muted-foreground">Fetch commands, timers, loyalty points, watchtime, and channel stats</p>
+            </div>
+            <Badge variant={streamElements.connected ? "default" : "secondary"}>{streamElements.connected ? "Connected" : "Not connected"}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">The authorization is read-only and scoped to this signed-in channel. StreamWeaver stores the refresh token only inside this tenant.</p>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={connectStreamElements}>{streamElements.connected ? "Re-authorize" : "Connect StreamElements"}</Button>
+            <Button size="sm" variant="outline" onClick={importStreamElements} disabled={!streamElements.connected || streamElements.importing}>{streamElements.importing ? "Importing..." : "Import now"}</Button>
+          </div>
+        </CardContent>
+      </Card>
       {/* YouTube */}
       <Card>
         <CardHeader className="pb-4">
