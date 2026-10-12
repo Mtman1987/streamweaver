@@ -97,9 +97,7 @@ export async function GET(request: NextRequest) {
   }
   response.cookies.delete('streamweaver-spmt-state');
   response.cookies.delete('streamweaver-spmt-next');
-  for (const name of ['streamweaver-session', 'streamweaver-spmt-token', 'streamweaver-spmt-refresh']) {
-    response.headers.append('set-cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None`);
-  }
+  // Keep issued credentials; same-name cleanup tombstones can erase them.
   console.info('[SPMT OAuth] Login session issued', { tenantId, spmtUserId: String(user.id) });
   return response;
 }

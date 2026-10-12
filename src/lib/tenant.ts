@@ -1,3 +1,4 @@
+import { isAccountRevoked } from './account-revocation';
 import * as path from 'path';
 import * as fs from 'fs';
 import { promises as fsp } from 'fs';
@@ -81,6 +82,7 @@ Keep public Twitch replies concise enough for spoken TTS, usually one to three c
  * Copies default templates if they exist.
  */
 export async function bootstrapTenant(twitchId: string, username: string): Promise<void> {
+  if (isAccountRevoked({ id: twitchId, username })) throw new Error('Tenant access revoked');
   const root = tenantRoot(twitchId);
   const tenantCommandsDir = path.join(root, 'commands');
   const tenantActionsDir = path.join(root, 'actions');
@@ -260,7 +262,7 @@ export async function bootstrapTenant(twitchId: string, username: string): Promi
 export async function listTenants(): Promise<string[]> {
   const tenantsDir = path.join(PERSIST_ROOT, 'tenants');
   try {
-    return await fsp.readdir(tenantsDir);
+    return (await fsp.readdir(tenantsDir)).filter(id => !isAccountRevoked({ id }));
   } catch {
     return [];
   }

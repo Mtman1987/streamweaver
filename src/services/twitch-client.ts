@@ -1,3 +1,4 @@
+import { isAccountRevoked } from '../lib/account-revocation';
 import * as tmi from 'tmi.js';
 import { isSharedBotAwake, sharedBotChannelAllowed } from './shared-bot-wake';
 import { getStoredTokens, ensureValidToken, isTwitchAuthFailure, ProactiveTwitchRefreshGate, isTwitchCredentialQuarantined } from '../lib/token-utils.server';
@@ -98,7 +99,7 @@ async function getCanonicalBotBlacklist(): Promise<Set<string>> {
 
 async function botJoinAllowed(channel: string): Promise<boolean> {
   const normalized = String(channel || '').replace(/^#/, '').trim().toLowerCase();
-  if (!normalized) return false;
+  if (!normalized || isAccountRevoked({ username: normalized })) return false;
   const blacklist = await getCanonicalBotBlacklist();
   return !blacklist.has(normalized);
 }
@@ -826,6 +827,7 @@ function scheduleRetry(tenantId: string) {
 }
 
 export async function setupTwitchClient(tenantId: string) {
+  if (isAccountRevoked({ id: tenantId })) { await disconnectTenant(tenantId); return; }
   if (setupInProgress.has(tenantId)) {
     console.log(`[Twitch:${tenantId}] Setup already in progress, skipping.`);
     return;

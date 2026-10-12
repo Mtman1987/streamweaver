@@ -1,3 +1,4 @@
+import { isAccountRevoked } from './account-revocation';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export type StreamWeaverSession = {
@@ -28,6 +29,7 @@ function signature(payload: string): Buffer {
 
 export function serializeSessionCookie(session: StreamWeaverSession): string {
   if (!session.id || !session.username) throw new Error('Session requires immutable ID and username');
+  if (isAccountRevoked(session)) throw new Error('Account access revoked');
   const payload = Buffer.from(JSON.stringify({
     ...session,
     expiresAt: session.expiresAt || Date.now() + SESSION_MAX_AGE_SECONDS * 1000,
@@ -45,7 +47,7 @@ export function parseSessionCookie(value: string | undefined): StreamWeaverSessi
     if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) return null;
     const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as StreamWeaverSession;
     if (!session.id || !session.username || !session.expiresAt || session.expiresAt <= Date.now()) return null;
-    return session;
+    return isAccountRevoked(session) ? null : session;
   } catch {
     return null;
   }
