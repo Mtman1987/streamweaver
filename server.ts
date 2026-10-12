@@ -736,26 +736,10 @@ async function startServer() {
             } catch (e) { /* silent */ }
         }, 30000);
         pollingService.addTask('watchtime-tracker', async () => {
-            try {
-                const { listTenants } = require('./src/lib/tenant');
-                const { getStoredTokens } = require('./src/lib/token-utils.server');
-                const tenantIds = await listTenants();
-                for (const tid of tenantIds) {
-                    const tokens = await getStoredTokens(tid);
-                    const broadcasterUsername = tokens?.broadcasterUsername;
-                    if (!broadcasterUsername) continue;
-                    const resp = await fetch(`http://127.0.0.1:${uiPort}/api/chat/chatters?tenant=${tid}`);
-                    if (resp.ok) {
-                        const data = await resp.json() as any;
-                        const names = (data.chatters || []).map((c: any) => c.user_login || c.user_name).filter(Boolean);
-                        if (names.length > 0) {
-                            const { incrementWatchtime } = require('./src/services/user-stats');
-                            await incrementWatchtime(names, broadcasterUsername);
-                        }
-                    }
-                }
-            } catch (e) { /* silent */ }
-        }, 60000); // Every 60 seconds = 1 minute of watchtime
+            const { runWatchtimeTracker } = require('./src/services/watchtime-tracker');
+            await runWatchtimeTracker(uiPort);
+        }, 60000); // one minute per live chat presence sample
+
 
         pollingService.start();
         console.log('[STEP 5] ✅ Polling services ready');

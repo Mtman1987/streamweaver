@@ -28,6 +28,8 @@ jobs:
         run: node --import tsx --test tests/raid-message.test.ts tests/open-raid-dispatch.test.cjs tests/follow-alert.test.ts tests/follow-eventsub.test.cjs tests/eventsub-lifecycle.test.cjs tests/follow-player-integration.test.cjs tests/ai-generated-command-runtime.test.cjs
       - name: Verify wake, microphone identity and delivery receipts
         run: node --import tsx --test tests/shared-bot-wake.test.ts tests/twitch-delivery-receipt.test.ts tests/signed-in-twitch-send.test.ts tests/say-chat.test.ts tests/bot-fallback-identity.test.ts
+      - name: Verify tenant watchtime and loyalty imports
+        run: node --import tsx --test tests/watchtime-loyalty-import.test.ts tests/tenant-owned-state.test.ts
       - name: Verify tenant song request isolation
         run: node --import tsx --test tests/twitch-media-scope.test.ts tests/hearmeout-action-auth.test.ts tests/tenant-music-command.test.ts
       - name: Verify replay corruption recovery and concurrent ingestion
