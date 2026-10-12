@@ -20,6 +20,8 @@ const PUBLIC_PATHS = [
 
 const MACHINE_PATHS = [
   '/api/discord/chat', '/api/integrations/social-stream', '/api/ai/shoutout',
+  // The handler validates the existing StreamElements JWT before accepting a direct tenant import.
+  '/api/streamelements/import',
   // Each handler validates its existing service credential before any action.
   '/api/discord/pokemon-interaction', '/api/internal/lost-signal/transmission',
   '/api/internal/twitch-extension-response',
