@@ -1,3 +1,5 @@
+import { discordSayCapture } from '@/services/discord-say-capture';
+import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { apiOk } from '@/lib/api-response';
@@ -1203,6 +1205,35 @@ export async function POST(request: NextRequest) {
 
     // Handle !say - standalone TTS toggle
     const sayMatch = !isPrivateDiscordLane ? rawMessage.trim().match(/^!say(?:\s+(.+))?$/i) : null;
+    if (sayMatch && !String(sayMatch[1] || '').trim() && String(data.voiceChannelId || '').trim() && userId && channelId) {
+      let captureId: string | undefined;
+      try {
+        const capture = await discordSayCapture(userId, 'start');
+        captureId = capture.id;
+        if (!captureId) throw new Error('You are no longer in Discord voice. Use Speak to Chat for your device microphone.');
+        await sendDiscordRouteReplyOrCollect(channelId, '@' + userName + ', listening to your next phrase in Discord VC (up to 15 seconds). Speak now.');
+        const deadline = Date.now() + 55_000;
+        let transcript = '';
+        while (Date.now() < deadline) {
+          const result = await discordSayCapture(userId, 'result', captureId);
+          if (result.status === 'complete') { transcript = result.transcript; break; }
+          if (result.status === 'error' || result.status === 'cancelled') throw new Error(result.error || 'Discord capture stopped.');
+          await new Promise(resolve => setTimeout(resolve, 600));
+        }
+        if (!transcript) throw new Error('Discord transcription timed out.');
+        await sendWebhookMessage(channelId, transcript, userName, userAvatar);
+        const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
+        await fetch(getInternalAppUrl() + '/api/say/queue', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenantId: sayChannelKey, text: formatSaySpeechText(sayChannelKey, userName, transcript), speakerUserId: userId, speakerName: userName }),
+          signal: AbortSignal.timeout(10_000),
+        }).catch(error => console.warn('[DiscordSay] TTS queue unavailable:', error.message));
+        return apiOk({ success: true, botResponded: true, context: 'say-discord-voice' });
+      } catch (error) {
+        await sendDiscordRouteReplyOrCollect(channelId, '@' + userName + ', ' + (error instanceof Error ? error.message : 'Discord voice capture failed.'));
+        return apiOk({ success: false, botResponded: true, context: 'say-discord-voice' });
+      } finally { if (captureId) void discordSayCapture(userId, 'cancel', captureId).catch(() => {}); }
+    }
     if (sayMatch) {
       const args = String(sayMatch[1] || '').trim().split(/\s+/).filter(Boolean);
       const firstState = parseSayState(args[0]);
