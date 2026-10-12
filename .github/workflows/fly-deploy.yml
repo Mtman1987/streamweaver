@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies for command smoke
         run: npm ci --ignore-scripts
       - name: Verify open raid aliases and existing-player follow alerts
-        run: node --import tsx --test tests/raid-message.test.ts tests/open-raid-dispatch.test.cjs tests/follow-alert.test.ts tests/follow-eventsub.test.cjs tests/follow-player-integration.test.cjs tests/ai-generated-command-runtime.test.cjs
+        run: node --import tsx --test tests/raid-message.test.ts tests/open-raid-dispatch.test.cjs tests/follow-alert.test.ts tests/follow-eventsub.test.cjs tests/eventsub-lifecycle.test.cjs tests/follow-player-integration.test.cjs tests/ai-generated-command-runtime.test.cjs
       - name: Verify wake, microphone identity and delivery receipts
         run: node --import tsx --test tests/shared-bot-wake.test.ts tests/twitch-delivery-receipt.test.ts tests/signed-in-twitch-send.test.ts tests/say-chat.test.ts tests/bot-fallback-identity.test.ts
       - name: Verify tenant song request isolation

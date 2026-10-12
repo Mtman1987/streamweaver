@@ -13,6 +13,9 @@ import { recordRaffleRedemption, syncRaffleRedemptionsFromTwitch } from './raffl
 import { SPACEMOUNTAIN_SYSTEM_TENANT_ID } from '../lib/tenant';
 
 const eventSubSockets = new Map<string, WebSocket>();
+const eventSubStarts = new Map<string, Promise<boolean>>();
+const retiredEventSubSockets = new WeakSet<WebSocket>();
+const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const CHAT_TAG_API_BASE = String(process.env.CHAT_TAG_API_BASE || 'https://chat-tag-new.fly.dev').replace(/\/$/, '');
 const DANCE_PARTY_REWARD_TITLE = 'dance party';
 const VERBOSE_LOGS = process.env.STREAMWEAVER_VERBOSE_LOGS === 'true';
@@ -306,12 +309,28 @@ export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void
     }
 }
 
-export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss.twitch.tv/ws'): Promise<boolean> {
+export async function startEventSub(tenantId?: string, url = EVENTSUB_URL): Promise<boolean> {
+    const key = tenantKey(tenantId);
+    const pending = eventSubStarts.get(key);
+    if (pending) return pending;
+    const operation = connectEventSub(tenantId, url);
+    eventSubStarts.set(key, operation);
+    try { return await operation; }
+    finally { if (eventSubStarts.get(key) === operation) eventSubStarts.delete(key); }
+}
+
+async function connectEventSub(tenantId: string | undefined, url: string): Promise<boolean> {
     const tKey = tenantKey(tenantId);
+    const pendingTimer = eventSubReconnectTimeouts.get(tKey);
+    if (pendingTimer) clearTimeout(pendingTimer);
+    eventSubReconnectTimeouts.delete(tKey);
     const existingSocket = eventSubSockets.get(tKey);
-    if (existingSocket) {
-        try { existingSocket.close(); } catch { /* ignore */ }
+    const transferring = url !== EVENTSUB_URL && existingSocket?.readyState === WebSocket.OPEN;
+    if (existingSocket && !transferring) {
+        // Retire before closing: its close callback must not replace the new socket.
+        retiredEventSubSockets.add(existingSocket);
         eventSubSockets.delete(tKey);
+        try { existingSocket.close(); } catch { /* ignore */ }
     }
 
     const auth = await getBroadcasterAuth(tenantId);
@@ -345,10 +364,12 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
     socket.on('close', (code, reason) => {
         console.warn(`[EventSub:${tKey}] Socket closed:`, code, reason?.toString?.() || '');
         const current = eventSubSockets.get(tKey);
-        if (current === socket) {
-            eventSubSockets.delete(tKey);
+        if (current !== socket || retiredEventSubSockets.has(socket)) return;
+        eventSubSockets.delete(tKey);
+        if (transferring && existingSocket?.readyState === WebSocket.OPEN && !retiredEventSubSockets.has(existingSocket)) {
+            eventSubSockets.set(tKey, existingSocket);
         }
-        scheduleEventSubReconnect('wss://eventsub.wss.twitch.tv/ws', 3000, tenantId);
+        scheduleEventSubReconnect(EVENTSUB_URL, 3000, tenantId);
     });
 
     socket.on('error', (err) => {
@@ -356,6 +377,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
     });
 
     socket.on('message', async (raw) => {
+        if (retiredEventSubSockets.has(socket)) return;
         try {
             const msg = JSON.parse(raw.toString());
             const messageType = msg?.metadata?.message_type;
@@ -364,7 +386,15 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 const sessionId = msg?.payload?.session?.id;
                 if (!sessionId) return;
                 console.log(`[EventSub:${tKey}] Session established:`, sessionId);
-                
+                if (transferring) {
+                    // Twitch transfers the existing subscriptions. Keep receiving on
+                    // the old connection until this welcome, then retire it.
+                    if (existingSocket) {
+                        retiredEventSubSockets.add(existingSocket);
+                        try { existingSocket.close(); } catch { /* ignore */ }
+                    }
+                    return;
+                }
                 if (hasFollowsScope) await createFollowSubscription(auth, sessionId);
                 if (hasRedemptionsScope) {
                     const createdIds: string[] = [];
@@ -394,7 +424,10 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 const reconnectUrl = msg?.payload?.session?.reconnect_url;
                 if (typeof reconnectUrl === 'string' && reconnectUrl.startsWith('wss://')) {
                     console.log(`[EventSub:${tKey}] Reconnect requested`);
-                    scheduleEventSubReconnect(reconnectUrl, 500, tenantId);
+                    void startEventSub(tenantId, reconnectUrl).catch(error => {
+                        console.warn('[EventSub] Session transfer failed:', error);
+                        scheduleEventSubReconnect(EVENTSUB_URL, 3000, tenantId);
+                    });
                 }
                 return;
             }
@@ -405,8 +438,9 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                     const event = msg?.payload?.event;
                     if (tenantId && event && String(event.broadcaster_user_id) === tenantId) {
                         const { publishFollowAlert } = await import('./follow-alert');
-                        await publishFollowAlert({ tenantId, follower: event.user_name || event.user_login,
+                        const queued = await publishFollowAlert({ tenantId, follower: event.user_name || event.user_login,
                             messageId: String(msg?.metadata?.message_id || '') });
+                        console.log(`[EventSub:${tKey}] Follow alert ${queued ? 'queued' : 'already seen or disabled'}`);
                     }
                     return;
                 }
