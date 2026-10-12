@@ -2808,7 +2808,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     const now = Date.now();
     const recentMessages = (global as any).recentMessages || new Map();
     
-    if (recentMessages.has(contentKey)) {
+    if (recentMessages.has(contentKey) && !/^!(?:raid|raidmessage)(?:\s|$)/i.test(message.trim())) {
         const lastTime = recentMessages.get(contentKey);
         if (now - lastTime < 5000) { // 5 second window
             console.log(`[Dispatcher] Skipping recent duplicate content from ${username}`);
@@ -2999,10 +2999,33 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         console.log(`[Dispatcher] Handling Twitch message: "${message}" from ${displayName} (self: ${self}, isBot: ${isBot}, isBotMessage: ${isBotMessage}, isKnownAutomationBotMessage: ${isKnownAutomationBotMessage})`);
     }
     
+    // A broadcaster can type these utilities through the broadcaster IRC client.
+    // Only direct channel ownership qualifies; bot replies do not start with these commands.
+    const isBroadcasterUtilityCommand = Boolean(tags.badges?.broadcaster)
+        && actualUsername.toLowerCase() === replyChannel.toLowerCase()
+        && !Boolean(tags['source-room-id'] && tags['source-room-id'] !== tags['room-id'])
+        && /^!(?:raid|raidmessage|followtest)(?:\s|$)/i.test(actualMessage.trim());
+
     // Skip self messages (broadcaster client echoes its own sends).
     // The dedicated Count client is send-only, so its echo arrives through the
     // tenant listener as another bot message and must be stopped explicitly.
-    if ((self && !(tags.badges?.broadcaster && /^!(?:sr|wr)(?:\s|$)/i.test(actualMessage)) && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;
+    if ((self && !(tags.badges?.broadcaster && /^!(?:sr|wr)(?:\s|$)/i.test(actualMessage)) && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand && !isBroadcasterUtilityCommand) || isTheCountAccountMessage) return;
+
+        // Both names save with text and replay without text; blank input never clears the message.
+        {
+            const cmdName = actualMessage.trim().slice(1).split(/\s+/)[0].toLowerCase();
+            if (cmdName === 'raid' || cmdName === 'raidmessage') {
+                const { handleRaidMessageCommand } = await import('./raid-message');
+                try {
+                    const output = await handleRaidMessageCommand({ message: actualMessage, tenantId });
+                    if (output) await reply(output, 'bot');
+                } catch (error) {
+                    console.error('[Dispatcher] Raid message failed:', error instanceof Error ? error.message : String(error));
+                    await reply('Could not save or load the raid message. Please try again.', 'bot').catch(() => {});
+                }
+                return;
+            }
+        }
 
     const volumeCommand = tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
         && replyChannel.toLowerCase() === 'spacemountainlive'
@@ -3300,7 +3323,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         incrementMetric('totalCommands', 1, tenantId).catch(() => {});
         
         const commands = await getAllCommands(tenantId);
-        const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
+        const cmdName = actualMessage.trim().substring(1).split(/\s+/)[0].toLowerCase();
         const configuredCommand = commands.find((c: any) => String(c.command || '').toLowerCase().replace(/^!/, '') === cmdName);
         if (configuredCommand && configuredCommand.enabled === false) {
             if (!CORE_POKEMON_CONFIRMATION_COMMANDS.has(cmdName)) {
@@ -3593,7 +3616,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
     if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand || isStellaShoutoutCommand)) {
         console.log(`[Dispatcher] Processing command: ${actualMessage} from ${actualUsername}`);
-        const cmdName = actualMessage.substring(1).split(' ')[0].toLowerCase();
+        const cmdName = actualMessage.trim().substring(1).split(/\s+/)[0].toLowerCase();
 
         // Public Twitch image generation belongs to the broadcaster whose chat
         // received the command. The chatter is attribution only; they do not
@@ -4996,29 +5019,22 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
             return;
         }
         
-        // Handle !raidmessage command (mod/broadcaster only)
-        if (actualMessage.toLowerCase().startsWith('!raidmessage ')) {
-            if (tags.mod || tags.badges?.broadcaster) {
-                const message = actualMessage.substring(13).trim();
-                // Store raid message
-                try {
-                    const fsSync = require('fs');
-                    const pathMod = require('path');
-                    const configPath = tenantId
-                        ? require('../lib/tenant').tenantPath(tenantId, 'tokens/raid-message.json')
-                        : pathMod.join(process.cwd(), 'tokens', 'raid-message.json');
-                    fsSync.mkdirSync(pathMod.dirname(configPath), { recursive: true });
-                    fsSync.writeFileSync(configPath, JSON.stringify({ message }, null, 2));
-                    await reply(`✅ Raid message set!`, 'broadcaster').catch(() => {});
-                } catch (error) {
-                    console.error('[Dispatcher] Raid message save failed:', error);
-                }
-            } else {
-                await reply(`@${actualUsername}, only mods can set the raid message!`, 'broadcaster').catch(() => {});
+        if (cmdName === 'followtest') {
+            const mirrored = Boolean(tags['source-room-id'] && tags['source-room-id'] !== tags['room-id']);
+            const allowed = !mirrored && (tags.mod === true || tags.mod === '1'
+                || Boolean(tags.badges?.broadcaster)
+                || actualUsername.toLowerCase() === replyChannel.replace(/^#/, '').toLowerCase());
+            if (!allowed) { await reply('Only the broadcaster or a moderator can run !followtest.', 'bot'); return; }
+            try {
+                const { testFollowAlert } = await import('./follow-alert');
+                await reply(await testFollowAlert(tenantId, actualUsername), 'bot');
+            } catch (error) {
+                console.error('[FollowAlert] Test failed:', error);
+                await reply('Follow alert could not run. Please try again.', 'bot').catch(() => {});
             }
             return;
         }
-        
+
         const outputContext = getChatOutputContext();
 
         // Handle !commands

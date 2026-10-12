@@ -39,7 +39,7 @@ const OVERLAYS: OverlayInfo[] = [
   {
     name: 'Shoutout Player',
     path: '/shoutout-player',
-    description: 'Displays walk-on shoutouts with Twitch clips and AI greetings. Controlled automatically by the bot.',
+    description: 'Displays walk-on shoutouts and new-follower video alerts with audio. Broadcaster or mod: !followtest plays the same follow alert. Automatic follows need broadcaster Twitch reconnect.',
     recommended: '1920x1080',
   },
   {

@@ -83,3 +83,10 @@ test('roll route accepts missing amount and still delegates to the native wageri
  for(const msg of ['!roll','!ROLL','!roll 100','!roll\t100']) assert(/^!roll(?:\s|$)/i.test(msg));
  assert(!/^!roll(?:\s|$)/i.test('!roller'));
 });
+
+test('direct condition children normalize into executable IF_BLOCK and mixed branches fail clearly',()=>{
+ const steps=builder.normalizeGeneratedSubActions([{type:120,input:'%rawInput%',operation:7,subActions:[{type:'send-chat',message:'saved'}]}]);
+ assert.equal(steps[0].subActions[0].type,99901);
+ assert.equal(steps[0].subActions[0].subActions[0].text,'saved');
+ assert.throws(()=>builder.normalizeGeneratedSubActions([{type:120,input:'%rawInput%',subActions:[{type:'if-block',subActions:[]},{type:'send-chat',message:'bad'}]}]),/Do not mix/);
+});

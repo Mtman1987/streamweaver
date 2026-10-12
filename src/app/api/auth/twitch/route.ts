@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     'user:bot',
     'channel:bot',
   ];
-  const broadcasterScopes = requestedRole === 'broadcaster' || requestedRole === 'space-mountain-broadcaster'
+  const broadcasterScopes = requestedRole === 'login' || requestedRole === 'broadcaster' || requestedRole === 'space-mountain-broadcaster'
     ? [...standardScopes, 'moderator:read:followers']
     : standardScopes;
   const scope = (

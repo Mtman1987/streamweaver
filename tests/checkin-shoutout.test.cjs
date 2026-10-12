@@ -39,7 +39,7 @@ test('a confirmed self !so traverses both production bot guards, while synthetic
     const context = { self: true, msgTenantId: 'spacemountainlive', channelName: 'spacemountainlive', tags, message,
       SPACEMOUNTAIN_SYSTEM_TENANT_ID: 'spacemountainlive', SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL: 'spacemountainlive',
       isConfirmedLoungeStellaShoutout, isSpaceMountainBroadcasterCommand: false, isStellaShoutoutCommand: permitted,
-      isTheCountAccountMessage: false, isCommand: true, isBot: true };
+      isTheCountAccountMessage: false, isBroadcasterUtilityCommand: false, isCommand: true, isBot: true };
     assert.equal(vm.runInNewContext(clientGuard, context), !allowed);
     assert.equal(vm.runInNewContext(selfGuard, context), !allowed);
     assert.equal(vm.runInNewContext(commandGuard, context), allowed);
@@ -63,7 +63,7 @@ test('the production Count build patch preserves Stella and Count guards across 
   const first = dispatcher;
   apply();
   assert.equal(dispatcher, first);
-  assert.ok(dispatcher.includes('if ((self && !(tags.badges?.broadcaster && /^!(?:sr|wr)(?:\\s|$)/i.test(actualMessage)) && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand) || isTheCountAccountMessage) return;'));
+  assert.ok(dispatcher.includes('if ((self && !(tags.badges?.broadcaster && /^!(?:sr|wr)(?:\\s|$)/i.test(actualMessage)) && !isSpaceMountainBroadcasterCommand && !isStellaShoutoutCommand && !isBroadcasterUtilityCommand) || isTheCountAccountMessage) return;'));
   assert.ok(dispatcher.includes('if (isCommand && (!isBot || isSpaceMountainBroadcasterCommand || isStellaShoutoutCommand)) {'));
 });
 

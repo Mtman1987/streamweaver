@@ -144,6 +144,12 @@ export function normalizeGeneratedSubActions(value: unknown): any[] {
           { type: SubActionType.ELSE_BLOCK, subActions: asWorkflowArray(raw.falseActions) },
         ];
       }
+      const children = asWorkflowArray(step.subActions);
+      if (children.length) {
+        const branches = children.filter((child: any) => [SubActionType.IF_BLOCK, SubActionType.ELSE_BLOCK].includes(normalizeSubActionType(child.type)));
+        if (branches.length && branches.length !== children.length) throw new Error('Do not mix condition blocks with direct steps');
+        if (!branches.length) step.subActions = [{ type: SubActionType.IF_BLOCK, subActions: children }];
+      }
       delete step.condition;
       delete step.trueActions;
       delete step.falseActions;

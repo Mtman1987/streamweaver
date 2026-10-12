@@ -619,6 +619,10 @@ export function createHttpHandler(broadcast: (message: object, tenantId?: string
                         const { setupTwitchClient } = twitchClientModule;
                         await setupTwitchClient(tenantId);
                         console.log(`[HTTP] Twitch IRC reconnected for tenant ${tenantId}`);
+                        // Reload EventSub after OAuth too; new follower scopes must take effect without a deploy.
+                        const { startEventSub } = require('../services/eventsub');
+                        await startEventSub(tenantId).catch((error: unknown) => console.warn('[HTTP] EventSub reconnect failed:', error));
+
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: true }));
                     } catch (e: any) {

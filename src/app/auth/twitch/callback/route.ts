@@ -251,6 +251,7 @@ export async function GET(request: NextRequest) {
           lastUpdated: new Date().toISOString(),
         };
         await updateStoredTokens(tokenStorage, twitchId);
+        await reconnectTwitchTenant(twitchId);
 
         const sessionData = {
           id: twitchId,

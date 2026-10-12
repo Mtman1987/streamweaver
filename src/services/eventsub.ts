@@ -266,6 +266,31 @@ async function createAdBreakSubscription(auth: { clientId: string; accessToken: 
     console.log('[EventSub] Ad-break subscription created:', createdId || '(unknown id)');
     return typeof createdId === 'string' ? createdId : null;
 }
+export async function createFollowSubscription(auth: { clientId: string; accessToken: string; broadcasterId: string }, sessionId: string) {
+    const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+        method: 'POST',
+        headers: { 'Client-ID': auth.clientId, Authorization: 'Bearer ' + auth.accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'channel.follow', version: '2',
+            condition: { broadcaster_user_id: auth.broadcasterId, moderator_user_id: auth.broadcasterId },
+            transport: { method: 'websocket', session_id: sessionId } }),
+    });
+    if (!response.ok) { console.warn('[EventSub] Follow subscription rejected:', response.status, await response.text()); return; }
+    const result = await response.json() as any;
+    const id = result?.data?.[0]?.id;
+    console.log('[EventSub] Follow subscription enabled for', auth.broadcasterId);
+    // Retire only this broadcaster's previous follow subscriptions after the replacement succeeds.
+    const listed = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions?first=100', {
+        headers: { 'Client-ID': auth.clientId, Authorization: 'Bearer ' + auth.accessToken },
+    });
+    if (!listed.ok) return;
+    const subscriptions = await listed.json() as any;
+    for (const sub of subscriptions.data || []) {
+        if (sub.type !== 'channel.follow' || sub.condition?.broadcaster_user_id !== auth.broadcasterId || sub.id === id) continue;
+        await fetch('https://api.twitch.tv/helix/eventsub/subscriptions?id=' + encodeURIComponent(sub.id), {
+            method: 'DELETE', headers: { 'Client-ID': auth.clientId, Authorization: 'Bearer ' + auth.accessToken },
+        });
+    }
+}
 export async function logBroadcasterTokenScopes(tenantId?: string): Promise<void> {
     try {
         const auth = await getBroadcasterAuth(tenantId);
@@ -300,11 +325,13 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
     
     const hasRedemptionsScope = scopes.includes('channel:read:redemptions') || scopes.includes('channel:manage:redemptions');
     const hasAdsScope = scopes.includes('channel:read:ads');
-    if (!hasRedemptionsScope && !hasAdsScope) {
-        console.warn('[EventSub] Missing both channel point and ad-break scopes');
+    const hasFollowsScope = scopes.includes('moderator:read:followers');
+    if (!hasRedemptionsScope && !hasAdsScope && !hasFollowsScope) {
+        console.warn('[EventSub] Missing channel point, ad-break and follow scopes');
         return false;
     }
     if (!hasRedemptionsScope) console.warn('[EventSub] Missing channel point scope; redemption EventSub disabled');
+    if (!hasFollowsScope) console.warn('[EventSub] Missing moderator:read:followers; automatic follow alerts need broadcaster reauthorization');
     if (!hasAdsScope) console.warn('[EventSub] Missing channel:read:ads; commercial EventSub disabled');
 
     console.log(`[EventSub:${tKey}] Connecting:`, url);
@@ -338,6 +365,7 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
                 if (!sessionId) return;
                 console.log(`[EventSub:${tKey}] Session established:`, sessionId);
                 
+                if (hasFollowsScope) await createFollowSubscription(auth, sessionId);
                 if (hasRedemptionsScope) {
                     const createdIds: string[] = [];
                     const addId = await createChannelPointSubscription(auth, sessionId, 'add', tenantId);
@@ -373,6 +401,15 @@ export async function startEventSub(tenantId?: string, url = 'wss://eventsub.wss
 
             if (messageType === 'notification') {
                 const subType = msg?.payload?.subscription?.type;
+                if (subType === 'channel.follow') {
+                    const event = msg?.payload?.event;
+                    if (tenantId && event && String(event.broadcaster_user_id) === tenantId) {
+                        const { publishFollowAlert } = await import('./follow-alert');
+                        await publishFollowAlert({ tenantId, follower: event.user_name || event.user_login,
+                            messageId: String(msg?.metadata?.message_id || '') });
+                    }
+                    return;
+                }
                 if (subType === 'channel.ad_break.begin') {
                     const event = msg?.payload?.event;
                     const messageId = String(msg?.metadata?.message_id || '').trim();

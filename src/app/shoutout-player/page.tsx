@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import FollowAlertPlayer from '@/components/FollowAlertPlayer';
 import { getBrowserWebSocketUrl } from '@/lib/ws-config';
 import { getOverlayTenantId } from '@/lib/client-tenant';
 import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
@@ -209,6 +210,7 @@ export default function ShoutoutPlayer() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
+      <FollowAlertPlayer />
       <video
         ref={videoRef}
         style={{

@@ -32,7 +32,7 @@ test('broadcaster reconnect requests follower permission; bot and Count scopes s
     assert.equal(response.status, 307);
     const url = new URL(response.headers.get('location'));
     const scopes = new Set(url.searchParams.get('scope').split(' '));
-    assert.equal(scopes.has('moderator:read:followers'), role === 'broadcaster' || role === 'space-mountain-broadcaster');
+    assert.equal(scopes.has('moderator:read:followers'), role === 'login' || role === 'broadcaster' || role === 'space-mountain-broadcaster');
     assert.equal(url.searchParams.get('force_verify'), 'true');
     assert.equal(url.searchParams.get('redirect_uri'), 'https://fixture/auth/twitch/callback');
     assert.equal(scopes.has('chat:read'), true);
