@@ -7,6 +7,7 @@ import path from 'node:path';
 let testRoot:string; test.before(async()=>{testRoot=await mkdtemp(path.join(os.tmpdir(),'sw-loyalty-suite-'));process.env.PERSIST_ROOT=testRoot;}); test.after(async()=>rm(testRoot,{recursive:true,force:true}));
 import { parseLoyaltyImport } from '../src/services/loyalty-import-parser';
 
+// Keep expected rows in the parser's normalized username order.
 test('CSV and JSON normalize users, exact balances, explicit units and duplicate maxima',()=>{
   assert.deepEqual(parseLoyaltyImport('User,Points,Watchtime\r\n"@Viewer","1,200",120\r\nviewer,900,180','seconds').rows,
     [{username:'viewer',points:'1200',watchMinutes:3}]);
