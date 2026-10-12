@@ -3015,9 +3015,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         {
             const cmdName = actualMessage.trim().slice(1).split(/\s+/)[0].toLowerCase();
             if (cmdName === 'raid' || cmdName === 'raidmessage') {
-                const { handleRaidMessageCommand } = await import('./raid-message');
+                const { handleRaidMessageCommand, isRaidMessageOwner } = await import('./raid-message');
                 try {
-                    const output = await handleRaidMessageCommand({ message: actualMessage, tenantId });
+                    const canSet = isRaidMessageOwner({
+                        tenantId, senderId: tags['user-id'], senderName: tags.username,
+                        channel: replyChannel, broadcasterBadge: Boolean(tags.badges?.broadcaster),
+                        mirrored: Boolean(tags['source-room-id'] && tags['source-room-id'] !== tags['room-id']),
+                    });
+                    const output = await handleRaidMessageCommand({ message: actualMessage, tenantId, canSet });
                     if (output) await reply(output, 'bot');
                 } catch (error) {
                     console.error('[Dispatcher] Raid message failed:', error instanceof Error ? error.message : String(error));

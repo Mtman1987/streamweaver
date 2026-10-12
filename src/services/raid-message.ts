@@ -8,6 +8,18 @@ export function parseRaidMessageCommand(message: string): { text: string } | nul
   return match ? { text: String(match[1] || '').replace(/\s+/g, ' ').trim() } : null;
 }
 
+export function isRaidMessageOwner(input: {
+  tenantId?: string; senderId?: string; senderName?: string; channel: string;
+  broadcasterBadge?: boolean; mirrored?: boolean;
+}): boolean {
+  if (!input.tenantId || input.mirrored) return false;
+  // Real IRC receipts carry the immutable Twitch user ID. A moderator badge never qualifies.
+  if (input.senderId) return String(input.senderId) === String(input.tenantId);
+  // tmi.js broadcaster self echoes may omit user-id; require both the owner badge and channel identity.
+  return input.broadcasterBadge === true
+    && String(input.senderName || '').toLowerCase() === input.channel.replace(/^#/, '').toLowerCase();
+}
+
 async function readSavedMessage(tenantId: string): Promise<string> {
   // Preserve messages saved by the previous !raidmessage handler.
   for (const relative of ['data/raid-message.json', 'tokens/raid-message.json']) {
@@ -23,7 +35,7 @@ async function readSavedMessage(tenantId: string): Promise<string> {
 }
 
 export async function handleRaidMessageCommand(input: {
-  message: string; tenantId?: string;
+  message: string; tenantId?: string; canSet?: boolean;
 }): Promise<string | null> {
   const parsed = parseRaidMessageCommand(input.message);
   if (!parsed) return null;
@@ -32,8 +44,9 @@ export async function handleRaidMessageCommand(input: {
   }
   if (!parsed.text) {
     return await readSavedMessage(input.tenantId)
-      || 'No raid message saved yet. Type !raid Your message here. Then !raid posts it.';
+      || 'No raid message saved yet. The broadcaster can save one with !raid Your message here.';
   }
+  if (!input.canSet) return 'Only the broadcaster can change the raid message. Anyone can type !raid or !raidmessage to post it.';
   if (parsed.text.length > 450) return 'That raid message is too long. Use 450 characters or fewer; your saved message has not changed.';
   const file = tenantPath(input.tenantId, 'data/raid-message.json');
   await fs.mkdir(path.dirname(file), { recursive: true });

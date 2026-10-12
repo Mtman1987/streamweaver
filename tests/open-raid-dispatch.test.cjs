@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-test('real Twitch dispatcher lets ordinary viewers save and repeated users replay raid aliases without loading commands', async () => {
+test('real Twitch dispatcher restricts saving to the broadcaster and lets everyone replay raid aliases', async () => {
  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'open-raid-dispatch-'));
  process.env.PERSIST_ROOT = root;
  const raid = await import('../src/services/raid-message.ts');
@@ -43,15 +43,19 @@ test('real Twitch dispatcher lets ordinary viewers save and repeated users repla
  const handle=context.exports.handleTwitchMessage;
  const tags=(id,user)=>({id,username:user,'display-name':user,mod:'0',badges:{},'room-id':'fixture'});
  try {
-  await handle('#fixture',tags('1','viewer'),'!raid Open clan message',false);
+  await handle('#fixture',{...tags('1','fixture'),'user-id':'fixture',badges:{broadcaster:'1'}},'!raid Owner clan message',false);
+  await handle('#fixture',tags('reject-viewer','viewer'),'!raid Viewer overwrite',false);
+  await handle('#fixture',{...tags('reject-mod','moderator'),mod:'1',badges:{moderator:'1'},'user-id':'mod-id'},'!raidmessage Moderator overwrite',false);
   await handle('#fixture',tags('2','viewer'),'!raid',false);
   await handle('#fixture',tags('3','viewer'),'!raid',false);
   await handle('#fixture',tags('4','anotherViewer'),'!raidmessage',false);
   await handle('#fixture',{...tags('5','fixture'),badges:{broadcaster:'1'}},'!raidmessage',true);
-  assert.equal(replies.length,5);
+  assert.equal(replies.length,7);
   assert.match(replies[0].text,/saved/);
-  for(const reply of replies.slice(1)) {
-   assert.equal(reply.text,'Open clan message');
+  assert.match(replies[1].text,/Only the broadcaster/);
+  assert.match(replies[2].text,/Only the broadcaster/);
+  for(const reply of replies.slice(3)) {
+   assert.equal(reply.text,'Owner clan message');
    assert.equal(reply.tenant,'fixture');
    assert.equal(reply.channel,'fixture');
   }
