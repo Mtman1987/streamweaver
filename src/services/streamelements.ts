@@ -42,7 +42,7 @@ function minutesOf(row: any): number | undefined { const value = row?.watchtime 
 
 export async function getStreamElementsStatus(c: StorageContext) { const token = await getToken(c); return { connected: Boolean(token), expiresAt: token?.expiresAt || null, scope: token?.scope || '' }; }
 export async function saveStreamElementsToken(token: StreamElementsToken, c: StorageContext) { await saveToken(token, c); }
-export async function importStreamElements(c: StorageContext, directAccessToken?: string) {
+export async function importStreamElements(c: StorageContext, directAccessToken?: string, directUsername?: string) {
   const token = directAccessToken
     ? { accessToken: directAccessToken, expiresAt: Number.MAX_SAFE_INTEGER, scope: 'legacy-jwt' }
     : await getToken(c);
@@ -54,8 +54,8 @@ export async function importStreamElements(c: StorageContext, directAccessToken?
     api(`/bot/commands/${encodeURIComponent(channel)}`, token, c),
     api(`/bot/commands/${encodeURIComponent(channel)}/default`, token, c),
     api(`/bot/timers/${encodeURIComponent(channel)}`, token, c),
-    api(`/points/${encodeURIComponent(channel)}/top`, token, c),
-    api(`/points/${encodeURIComponent(channel)}/watchtime`, token, c),
+    directUsername ? api(`/points/${encodeURIComponent(channel)}/${encodeURIComponent(directUsername)}`, token, c).then((row) => row ? [row] : []) : api(`/points/${encodeURIComponent(channel)}/top`, token, c),
+    directUsername ? api(`/points/${encodeURIComponent(channel)}/${encodeURIComponent(directUsername)}`, token, c).then((row) => row ? [row] : []) : api(`/points/${encodeURIComponent(channel)}/watchtime`, token, c),
     api(`/stats/${encodeURIComponent(channel)}`, token, c),
     api(`/bot/variables/${encodeURIComponent(channel)}`, token, c),
   ]);

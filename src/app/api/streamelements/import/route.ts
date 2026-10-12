@@ -26,6 +26,6 @@ export async function POST(request: NextRequest) {
     if (typeof body?.tenantId === 'string' && typeof body?.username === 'string') target = { tenantId: body.tenantId, username: body.username };
   }
   if (!target) return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
-  try { return NextResponse.json(await importStreamElements(target, directKey || undefined)); }
+  try { return NextResponse.json(await importStreamElements(target, directKey || undefined, typeof body?.user === 'string' ? body.user : undefined)); }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'StreamElements import failed' }, { status: 400 }); }
 }
