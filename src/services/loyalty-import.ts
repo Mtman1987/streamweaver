@@ -5,7 +5,7 @@ import { parseLoyaltyImport, type WatchUnit } from './loyalty-import-parser';
 import { snapshotWatchtime, importWatchtimeMinutes } from './user-stats';
 import { importLoyaltyPointBalances } from './points';
 export async function previewLoyaltyImport(text: string, unit: WatchUnit, ctx: StorageContext) {
-  const parsed = parseLoyaltyImport(text,unit);
+  const parsed = parseLoyaltyImport(text,unit,mode);
   const [points,stats] = await Promise.all([readJsonFile<Record<string,any>>('points.json',{},ctx), snapshotWatchtime(ctx)]);
   const receipts = await readJsonFile<Record<string,any>>('loyalty-import-receipts.json',{},ctx);
   const changes = parsed.rows.map(row => {
