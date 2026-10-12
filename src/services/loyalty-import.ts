@@ -18,7 +18,7 @@ export async function previewLoyaltyImport(text: string, unit: WatchUnit, ctx: S
   return { alreadyImported:!!receipts[parsed.digest], digest: parsed.digest, viewers: parsed.rows.length, changed: changes.filter(r=>r.changed).length, sample: changes.slice(0,50), channel:ctx.username };
 }
 async function applyLoyaltyImportUnlocked(text: string, unit: WatchUnit, digest: string, ctx: StorageContext, mode: LoyaltyImportMode = 'all') {
-  const parsed = parseLoyaltyImport(text,unit);
+  const parsed = parseLoyaltyImport(text,unit,mode);
   if (parsed.digest !== digest) throw new Error('The file changed. Preview it again before importing.');
   const receipts = await readJsonFile<Record<string,any>>('loyalty-import-receipts.json',{},ctx);
   if (receipts[parsed.digest]) return { imported:0, alreadyImported:true, backupId:receipts[parsed.digest].backupId, channel:ctx.username };
