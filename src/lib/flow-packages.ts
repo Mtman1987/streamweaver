@@ -1048,6 +1048,13 @@ function getActionMatchesForCommand(command: InventoryEntry, actionIndexes: Retu
   }
 
   const allActions = [...actionIndexes.byId.values()];
+  for (const action of allActions) {
+    const triggers = Array.isArray(action.raw?.triggers) ? action.raw.triggers : [];
+    if ((command.raw?.id || command.id) && triggers.some((trigger: any) => Number(trigger.type) === 401 && trigger.commandId && String(trigger.commandId) === String(command.raw?.id || command.id))) {
+      add(action, 'command-trigger-id');
+    }
+  }
+
   const commandSlug = slugify(command.command || command.name || command.id);
   const lowerName = normalizeText(command.name);
   const lowerCommand = normalizeText(command.command);

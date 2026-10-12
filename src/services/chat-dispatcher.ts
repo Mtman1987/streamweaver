@@ -4065,8 +4065,8 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
 
         
         // Handle !roll command
-        if (actualMessage.toLowerCase().startsWith('!roll ')) {
-            const betInput = actualMessage.substring(6).trim();
+        if (/^!roll(?:\s|$)/i.test(actualMessage)) {
+            const betInput = actualMessage.slice(5).trim();
             const userPoints = await getPointBalance(actualUsername, tenantCtx);
             const result = await handleRoll(actualUsername, betInput, userPoints, tenantId);
             if (result) {

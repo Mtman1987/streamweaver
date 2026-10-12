@@ -253,6 +253,7 @@ export class SubActionExecutor {
       // Merge returned variables into context
       if (result && result.variables) {
         context.variables = { ...context.variables, ...result.variables };
+        if (subAction.type === SubActionType.SET_ARGUMENT) context.args = { ...context.args, ...result.variables };
       }
 
       return result ? result.success : false;
@@ -598,6 +599,8 @@ export class SubActionExecutor {
 
     const helpers = {
       context,
+      user: context.user || context.userName || '',
+      userName: context.userName || context.user || '',
       args: context.args || {},
       variables: context.variables || {},
       reply,

@@ -69,7 +69,7 @@ function normalizeTriggerType(value: unknown): number {
 }
 
 function normalizeSubActionType(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'number' && Object.values(SubActionType).includes(value)) return value;
   const text = String(value || '').trim().toLowerCase();
   if (text === 'send-chat' || text === 'send_message' || text === 'chat-message') return SubActionType.SEND_MESSAGE;
   if (text === 'send-discord') return SubActionType.DISCORD_SEND_MESSAGE;
@@ -102,8 +102,59 @@ function normalizeSubActionType(value: unknown): number {
     text === 'program' ||
     text === 'programmable'
   ) return SubActionType.EXECUTE_CODE;
+  if (text === 'if-block') return SubActionType.IF_BLOCK;
+  if (text === 'else-block') return SubActionType.ELSE_BLOCK;
+  if (text === 'random-number') return SubActionType.RANDOM_NUMBER;
   const numeric = Number(text);
-  return Number.isFinite(numeric) ? numeric : SubActionType.SEND_MESSAGE;
+  if (text && Object.values(SubActionType).includes(numeric)) return numeric;
+  throw new Error('Unsupported automation step type: ' + String(value));
+}
+
+
+export function normalizeGeneratedSubActions(value: unknown): any[] {
+  return asWorkflowArray(value).map((raw, index) => {
+    if (!raw || typeof raw !== 'object') throw new Error('Automation step must be an object');
+    const step: any = {
+      ...raw, id: String(raw.id || newId()), type: normalizeSubActionType(raw.type),
+      enabled: raw.enabled ?? true, weight: Number(raw.weight ?? 0), index: Number(raw.index ?? index),
+    };
+    if (step.type === SubActionType.SEND_MESSAGE) {
+      step.text = String(raw.text ?? raw.message ?? '');
+      if (!step.text.trim()) throw new Error('Chat step requires text');
+    }
+    if (step.type === SubActionType.SET_ARGUMENT) {
+      step.variableName = String(raw.variableName || raw.name || '').trim();
+      if (!step.variableName) throw new Error('Set Argument requires variableName');
+    }
+    if (step.type === SubActionType.IF_ELSE) {
+      if (!raw.input && raw.condition) {
+        const match = String(raw.condition).trim().match(/^(.+?)\s*(===|!==|==|!=|>=|<=|>|<)\s*(?:(["'])(.*?)\3|(-?\d+(?:\.\d+)?))$/);
+        if (!match) throw new Error('Unsupported condition; use input, operation and value');
+        step.input = match[1].trim();
+        step.operation = ({ '==': 0, '===': 0, '!=': 1, '!==': 1, '>': 8, '>=': 9, '<': 10, '<=': 11 } as Record<string, number>)[match[2]];
+        step.value = match[4] ?? match[5];
+      }
+      if (!String(step.input || '').trim()) throw new Error('If/Else requires input');
+      if (!Number.isInteger(Number(step.operation ?? 0)) || Number(step.operation ?? 0) < 0 || Number(step.operation ?? 0) > 12) throw new Error('Invalid condition operation');
+      step.operation = Number(step.operation ?? 0);
+      if (Array.isArray(raw.trueActions) || Array.isArray(raw.falseActions)) {
+        if (Array.isArray(raw.subActions) && raw.subActions.length) throw new Error('Use one condition branch format');
+        step.subActions = [
+          { type: SubActionType.IF_BLOCK, subActions: asWorkflowArray(raw.trueActions) },
+          { type: SubActionType.ELSE_BLOCK, subActions: asWorkflowArray(raw.falseActions) },
+        ];
+      }
+      delete step.condition;
+      delete step.trueActions;
+      delete step.falseActions;
+    }
+    if (step.type === SubActionType.EXECUTE_CODE) {
+      if (!String(step.code || '').trim()) throw new Error('Code step requires code');
+      if (!['javascript', 'js'].includes(String(step.language || 'javascript').toLowerCase())) throw new Error('Only JavaScript code steps are supported');
+    }
+    if (Array.isArray(step.subActions)) step.subActions = normalizeGeneratedSubActions(step.subActions);
+    return step;
+  });
 }
 
 function inferCommandLabel(message: string): string | null {
@@ -168,7 +219,7 @@ function extractJsonObject(text: string): any | null {
 }
 
 function containsCodeSubAction(subActions: any[]): boolean {
-  return subActions.some((subAction) => Number(subAction?.type) === SubActionType.EXECUTE_CODE);
+  return subActions.some((subAction) => Number(subAction?.type) === SubActionType.EXECUTE_CODE || containsCodeSubAction(asWorkflowArray(subAction?.subActions)));
 }
 
 function buildCodeFallback(message: string): AssistantAutomationResponse {
@@ -788,6 +839,11 @@ function buildCapabilityPrompt(input: AssistantAutomationInput): string {
     'Supported sub-action types: send-chat, send-discord, wait, if-else, run-action, action-state, set-global-var, get-global-var, set-argument, set-user-var, get-user-var, math-operation, string-operation, http-request, voice-reply-prompt, comment, execute-code.',
     'For execute-code, produce JavaScript only and include fields: type="execute-code", language="javascript", description, code, timeoutMs.',
     'The execute-code helper block can call: reply(text,{as}), runAction(actionId), sleep(ms), http({url,method,headers,body,json}), vars.global.get/set, vars.user.get/set, points.get/add/set, and fetch.',
+    'send-chat fields: text, useBot. set-argument fields: variableName, value.',
+    'if-else fields: input (for example %targetUser%), operation (0 equals, 1 not equals, 6 empty, 7 not empty), value.',
+    'Nested conditions use subActions containing type=99901 (if block) and type=99902 (else block); each block has its own subActions array. Never omit branch steps.',
+    'Every nested step uses the same schema as a top-level step.',
+    'JavaScript identity is context.userName or context.user; command input is variables.rawInput; set arguments are in variables and args. Await reply() before returning.',
     'Prefer built-in primitives first. Use execute-code only when required for missing integrations, unusual state machines, or programmable extensions.',
     'If the user asks for a timer or countdown, use send-chat + wait steps where possible.',
     'If the user asks for a command and does not specify one clearly, infer a reasonable !command and include it in automation.command.',
@@ -878,14 +934,7 @@ export async function generateAutomationAssistantResponse(input: AssistantAutoma
     }
   }
 
-  const nextSubActions = asWorkflowArray(automation?.subActions).map((subAction, index) => ({
-    ...subAction,
-    id: String(subAction?.id || newId()),
-    type: normalizeSubActionType(subAction?.type),
-    enabled: subAction?.enabled ?? true,
-    weight: Number(subAction?.weight ?? 0),
-    index: Number(subAction?.index ?? index),
-  }));
+  const nextSubActions = normalizeGeneratedSubActions(automation?.subActions);
 
   const normalized: AssistantAutomationResponse = {
     assistantMessage: String(parsedResponse.assistantMessage || fallback.assistantMessage),
@@ -951,7 +1000,8 @@ export async function createWorkflowFromPrompt(input: AssistantAutomationInput):
     throw new Error(`Command ${commandText} already exists.`);
   }
 
-  const requiresReview = containsCodeSubAction(automation.subActions || []);
+  const subActions = normalizeGeneratedSubActions(automation.subActions);
+  const requiresReview = containsCodeSubAction(subActions);
   const command = commandText
     ? await createCommand({
         name: commandName,
@@ -992,15 +1042,6 @@ export async function createWorkflowFromPrompt(input: AssistantAutomationInput):
     });
   }
 
-  const subActions = asWorkflowArray(automation.subActions).map((subAction: any, index: number) => ({
-    ...subAction,
-    id: String(subAction?.id || newId()),
-    type: normalizeSubActionType(subAction?.type),
-    enabled: subAction?.enabled ?? true,
-    weight: Number(subAction?.weight ?? 0),
-    index: Number(subAction?.index ?? index),
-  }));
-
   let action: any;
   try {
     action = await createAction({
@@ -1023,6 +1064,17 @@ export async function createWorkflowFromPrompt(input: AssistantAutomationInput):
     // Do not leave an orphan command behind when action persistence fails.
     if (command?.id) await deleteCommand(String(command.id), input.tenantId).catch(() => {});
     throw error;
+  }
+
+  if (command?.id) {
+    try {
+      await updateCommand(String(command.id), { actionId: action.id } as any, input.tenantId);
+      (command as any).actionId = action.id;
+    } catch (error) {
+      await deleteAction(String(action.id), input.tenantId).catch(() => {});
+      await deleteCommand(String(command.id), input.tenantId).catch(() => {});
+      throw error;
+    }
   }
 
   return {
