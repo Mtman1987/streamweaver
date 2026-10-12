@@ -98,28 +98,19 @@ async function playTtsLocally(audioUrl: string) {
 
 export function VoiceCommander({ variant = 'card', className }: VoiceCommanderProps) {
     const { toast } = useToast();
-    const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [userConfig, setUserConfig] = useState<Record<string, string>>({});
     const [messages, setMessages] = useState<TranscribedMessage[]>([]);
     const [destination, setDestination] = useState<Destination>('ai');
     const [sendAsCommander, setSendAsCommander] = useState(true);
-    const [useBrowserSTT, setUseBrowserSTT] = useState(true);
     const [translateLanguage, setTranslateLanguage] = useState<TargetLanguage | 'none'>('none');
     const [autoSend, setAutoSend] = useState(true);
     const [silenceMs, setSilenceMs] = useState(5000);
-    const [bingoListening, setBingoListening] = useState(false);
-    const [bingoSource, setBingoSource] = useState<'stream' | 'microphone'>('stream');
 
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
     const ws = useRef<WebSocket | null>(null);
     const personalityRef = useRef<string>("");
     const audioContextRef = useRef<AudioContext | null>(null);
-    const bingoListeningRef = useRef(false);
-    const bingoStreamRef = useRef<MediaStream | null>(null);
-    const bingoRecorderRef = useRef<MediaRecorder | null>(null);
 
     // Load destination from localStorage after mount
     useEffect(() => {
@@ -168,7 +159,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
         return () => window.removeEventListener('keydown', handleKeyDown);
     });
 
-    console.log('[VoiceCommander] Component initialized with settings:', { variant, className, isRecording, isTranscribing, isProcessing, destination, sendAsCommander, useBrowserSTT });
+
 
 
       useEffect(() => {
@@ -1002,10 +993,10 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
     };
 
     const startRecording: () => Promise<void> = async () => {
-        console.log('[VoiceCommander] startRecording() called, useBrowserSTT:', useBrowserSTT);
         
-        if (useBrowserSTT) {
-            // Use browser speech recognition
+        
+        {
+            // Browser STT on desktop; bounded microphone recording on mobile.
             console.log('[VoiceCommander] Using browser STT');
             try {
                 if (!browserSpeechRecognition) {
@@ -1061,194 +1052,16 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             return;
         }
 
-        // Use Google Cloud STT with recording
-        console.log('[VoiceCommander] Using Google Cloud STT with recording');
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            try {
-                console.log('[VoiceCommander] Requesting microphone access...');
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log('[VoiceCommander] Microphone access granted, creating MediaRecorder');
-                
-                mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-                audioChunksRef.current = [];
-
-                mediaRecorderRef.current.ondataavailable = (event: BlobEvent) => {
-                    console.log('[VoiceCommander] Audio data available, size:', event.data.size);
-                    audioChunksRef.current.push(event.data);
-                };
-
-                mediaRecorderRef.current.onstop = async () => {
-                    console.log('[VoiceCommander] Recording stopped, processing audio...');
-                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                    console.log('[VoiceCommander] Audio blob created, size:', audioBlob.size);
-                    
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = async () => {
-                        setIsTranscribing(true);
-                        try {
-                            console.log('[VoiceCommander] Converting audio to base64...');
-                            const base64DataUri = reader.result as string;
-                            const base64Audio = base64DataUri.split(',')[1];
-                            console.log('[VoiceCommander] Base64 audio length:', base64Audio.length);
-                            
-                            console.log('[VoiceCommander] Calling transcribeAudio...');
-                            const result = await transcribeAudio(base64Audio);
-                            console.log('[VoiceCommander] Transcription result:', result);
-                            
-                            if (result.error) {
-                                console.error('[VoiceCommander] Transcription error:', result.error);
-                                throw new Error(result.error);
-                            }
-                            
-                            console.log('[VoiceCommander] Processing transcription:', result.transcription);
-                            await processTranscription(result.transcription);
-                        } catch (error: any) {
-                            console.error('[VoiceCommander] Transcription failed:', error);
-                            toast({ variant: "destructive", title: "Transcription Failed", description: error.message });
-                        } finally {
-                            console.log('[VoiceCommander] Cleaning up recording resources');
-                            setIsTranscribing(false);
-                            stream.getTracks().forEach(track => track.stop());
-                        }
-                    };
-                };
-
-                console.log('[VoiceCommander] Starting MediaRecorder...');
-                mediaRecorderRef.current.start();
-                setIsRecording(true);
-                console.log('[VoiceCommander] Recording started successfully');
-            } catch (err) {
-                console.error('[VoiceCommander] Microphone access error:', err);
-                toast({ variant: "destructive", title: "Microphone Access Denied" });
-            }
-        } else {
-            console.error('[VoiceCommander] MediaDevices API not available');
-            toast({ variant: "destructive", title: "Media API Not Available", description: "Your browser doesn't support audio recording" });
-        }
     };
 
-    const stopRecording = () => {
-        console.log('[VoiceCommander] stopRecording() called');
-        if (mediaRecorderRef.current?.state === "recording") {
-            console.log('[VoiceCommander] Stopping MediaRecorder...');
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            console.log('[VoiceCommander] MediaRecorder stopped');
-        } else {
-            console.log('[VoiceCommander] MediaRecorder not in recording state:', mediaRecorderRef.current?.state);
-        }
-    };
 
-    const forwardBingoTranscript = async (text: string) => {
-        if (!text.trim()) return;
-        const response = await fetch('/api/nebula/bingo-transcript', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
-        });
-        if (!response.ok) throw new Error(`Nebula Bingo returned ${response.status}`);
-    };
-
-    const recordBingoChunk = (stream: MediaStream) => new Promise<string>((resolve, reject) => {
-        const chunks: Blob[] = [];
-        // Display capture includes a video track because browsers require it for
-        // current-tab sharing. Send only its audio track to transcription.
-        const audioOnlyStream = new MediaStream(stream.getAudioTracks());
-        const recorder = new MediaRecorder(audioOnlyStream);
-        bingoRecorderRef.current = recorder;
-        recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-        recorder.onerror = () => reject(new Error('Bingo audio recording failed.'));
-        recorder.onstop = async () => {
-            if (!chunks.length) { resolve(''); return; }
-            try {
-                const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-                const dataUrl = await new Promise<string>((done, fail) => {
-                    const reader = new FileReader();
-                    reader.onload = () => done(String(reader.result || ''));
-                    reader.onerror = () => fail(reader.error || new Error('Could not read Bingo audio.'));
-                    reader.readAsDataURL(blob);
-                });
-                const result = await transcribeAudio(dataUrl.split(',')[1] || '');
-                if (result.error) throw new Error(result.error);
-                resolve(String(result.transcription || '').trim());
-            } catch (error) { reject(error); }
-        };
-        recorder.start();
-        window.setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 8_000);
-    });
-
-    const stopBingoListening = () => {
-        bingoListeningRef.current = false;
-        setBingoListening(false);
-        if (bingoRecorderRef.current?.state === 'recording') bingoRecorderRef.current.stop();
-        bingoStreamRef.current?.getTracks().forEach(track => track.stop());
-        bingoStreamRef.current = null;
-    };
-
-    const listenForBingo = async (stream: MediaStream) => {
-        while (bingoListeningRef.current && stream.active) {
-            try {
-                const transcript = await recordBingoChunk(stream);
-                if (transcript && bingoListeningRef.current) await forwardBingoTranscript(transcript);
-            } catch (error) {
-                if (bingoListeningRef.current) console.warn('[VoiceCommander] Nebula Bingo listening cycle failed:', error);
-            }
-        }
-        if (bingoListeningRef.current) stopBingoListening();
-    };
-
-    const setBingoMic = async (enabled: boolean) => {
-        if (!enabled) {
-            stopBingoListening();
-            return;
-        }
-        try {
-            const stream = bingoSource === 'stream'
-                ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-                : await navigator.mediaDevices.getUserMedia({ audio: true });
-            if (!stream.getAudioTracks().length) {
-                stream.getTracks().forEach(track => track.stop());
-                throw new Error(bingoSource === 'stream' ? 'Share the current tab and enable “Share tab audio”.' : 'No microphone audio track was available.');
-            }
-            bingoStreamRef.current = stream;
-            bingoListeningRef.current = true;
-            setBingoListening(true);
-            stream.getTracks().forEach(track => track.addEventListener('ended', stopBingoListening, { once: true }));
-            void listenForBingo(stream);
-        } catch (error: any) {
-            bingoListeningRef.current = false;
-            setBingoListening(false);
-            toast({ variant: 'destructive', title: 'Stream Bingo listener did not start', description: error?.message || 'Audio capture was not approved.' });
-        }
-    };
-
-    useEffect(() => () => {
-        bingoListeningRef.current = false;
-        if (bingoRecorderRef.current?.state === 'recording') bingoRecorderRef.current.stop();
-        bingoStreamRef.current?.getTracks().forEach(track => track.stop());
-    }, []);
-    
     const handleMicClick = () => {
-        if (useBrowserSTT) {
-            if (isTranscribing) {
-                // Manual stop
-                browserSpeechRecognition.stop();
-            } else {
-                startRecording();
-            }
-        } else {
-            if (isRecording) {
-                stopRecording();
-            } else {
-                startRecording();
-            }
-        }
+        if (isTranscribing) browserSpeechRecognition.stop();
+        else void startRecording();
     };
 
     const getStatusText = () => {
-        return isRecording ? "Recording... Click or press V to stop." : 
-               isTranscribing ? "Listening... Click or press V to send." : 
+        return isTranscribing ? "Listening... Click or press V to send." : 
                isProcessing ? "Processing..." : 
                "Press V or click to talk";
     }
@@ -1261,11 +1074,11 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                 <motion.div whileTap={{ scale: 0.95 }}>
                     <Button
                         onClick={handleMicClick}
-                        disabled={isTranscribing || isProcessing || bingoListening}
+                        disabled={isProcessing}
                         className={cn(
                             "rounded-full transition-colors flex-shrink-0",
                             isEmbedded ? "h-14 w-14" : "w-16 h-16",
-                            isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+                            isTranscribing ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
                         )}
                     >
                         {isTranscribing || isProcessing ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Mic className="h-6 w-6" />}
@@ -1325,12 +1138,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     <div className="flex flex-wrap items-center gap-3">
                         <Switch id="auto-send" checked={autoSend} onCheckedChange={setAutoSend} />
                         <Label htmlFor="auto-send" className="text-xs">Auto-send on silence ({silenceMs / 1000}s)</Label>
-                        <RadioGroup value={bingoSource} onValueChange={(value) => setBingoSource(value as 'stream' | 'microphone')} className="flex gap-2" disabled={bingoListening}>
-                            <div className="flex items-center gap-1"><RadioGroupItem value="stream" id="bingo-stream" className="h-3 w-3" /><Label htmlFor="bingo-stream" className="text-xs">Watched stream/tab</Label></div>
-                            <div className="flex items-center gap-1"><RadioGroupItem value="microphone" id="bingo-mic" className="h-3 w-3" /><Label htmlFor="bingo-mic" className="text-xs">My microphone</Label></div>
-                        </RadioGroup>
-                        <Switch id="bingo-listen" checked={bingoListening} onCheckedChange={(enabled) => void setBingoMic(enabled)} />
-                        <Label htmlFor="bingo-listen" className="text-xs">Stream Bingo {bingoListening ? 'listening' : 'off'}</Label>
+                        <span className="text-xs text-muted-foreground">Bingo transcription is off while low-cost microphone transcription is evaluated.</span>
                     </div>
                 </div>
                 {messages.length > 0 && (

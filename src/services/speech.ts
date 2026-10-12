@@ -110,13 +110,14 @@ async function transcribeWithEden(base64Audio: string, apiKey: string): Promise<
     const bytes = Buffer.from(base64Audio, 'base64');
     if (!bytes.length) throw new Error('Eden AI STT received empty audio');
 
+    const wav = bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WAVE';
     const form = new FormData();
     form.append('providers', EDEN_STT_PROVIDER);
     form.append('language', 'en-US');
     form.append(
         'file',
-        new Blob([new Uint8Array(bytes)], { type: 'audio/webm' }),
-        'hearmeout-utterance.webm',
+        new Blob([new Uint8Array(bytes)], { type: wav ? 'audio/wav' : 'audio/webm' }),
+        wav ? 'microphone-utterance.wav' : 'microphone-utterance.webm',
     );
 
     const submitted = await fetch(EDEN_STT_ENDPOINT, {
@@ -173,8 +174,8 @@ async function transcribeWithEden(base64Audio: string, apiKey: string): Promise<
  * HearMeOut uses Eden AI first because its production credential is already
  * shared with the working Say TTS path. Broker and Google remain fallbacks.
  */
-export async function transcribeAudio(base64Audio: string): Promise<TranscriptionResult> {
-    if (!readAICostPolicy().paidRoutesEnabled) {
+export async function transcribeAudio(base64Audio: string, options: { freeOnly?: boolean } = {}): Promise<TranscriptionResult> {
+    if (options.freeOnly || !readAICostPolicy().paidRoutesEnabled) {
         if (!isFreeGeminiConfigured()) return { transcription: '', error: 'Free transcription is not configured. Paid providers remain disabled.', provider: 'paused' };
         try {
             return { transcription: await transcribeFreeGeminiAudio(base64Audio), provider: 'gemini-free' };
@@ -242,11 +243,13 @@ export async function transcribeAudio(base64Audio: string): Promise<Transcriptio
     }
 
     const client = getSpeechClient();
+    const audioBytes = Buffer.from(base64Audio, 'base64');
+    const wav = audioBytes.subarray(0, 4).toString() === 'RIFF' && audioBytes.subarray(8, 12).toString() === 'WAVE';
     const request = {
         audio: { content: base64Audio },
         config: {
-            encoding: 'WEBM_OPUS' as const,
-            sampleRateHertz: 48000,
+            encoding: wav ? 'LINEAR16' as const : 'WEBM_OPUS' as const,
+            sampleRateHertz: wav && audioBytes.length >= 28 ? audioBytes.readUInt32LE(24) : 48000,
             languageCode: 'en-US',
             model: 'default',
         },

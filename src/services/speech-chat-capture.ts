@@ -7,6 +7,8 @@ type Recognition = {
   onresult: ((event: any) => void) | null;
   onerror: ((event?: any) => void) | null;
   onend: (() => void) | null;
+  onstart?: (() => void) | null;
+  onprocessing?: (() => void) | null;
   stop(): void;
   abort(): void;
 };
@@ -16,7 +18,9 @@ type Recognition = {
 export function captureSpeechChat(recognition: Recognition, callbacks: {
   preview(text: string): void;
   complete(text: string): void;
-  error(): void;
+  error(message?: string): void;
+  ready?(): void;
+  processing?(): void;
 }) {
   let finalTranscript = '';
   let latestTranscript = '';
@@ -25,6 +29,8 @@ export function captureSpeechChat(recognition: Recognition, callbacks: {
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.lang = 'en-US';
+  recognition.onstart = () => callbacks.ready?.();
+  recognition.onprocessing = () => callbacks.processing?.();
   recognition.onresult = (event) => {
     if (ended) return;
     const latestSegments: string[] = [];
@@ -40,12 +46,12 @@ export function captureSpeechChat(recognition: Recognition, callbacks: {
     if (nextFinal) finalTranscript = nextFinal;
     callbacks.preview(finalTranscript || latestTranscript);
   };
-  recognition.onerror = () => {
+  recognition.onerror = (event) => {
     if (ended) return;
     const captured = finalTranscript || latestTranscript;
     ended = true;
     if (captured) callbacks.complete(captured);
-    else callbacks.error();
+    else callbacks.error(event?.message || (event?.error === 'not-allowed' ? 'Microphone permission is blocked. Allow Microphone for this site.' : event?.error === 'network' ? 'Browser speech recognition lost its connection. Try again or use microphone recording on mobile.' : 'No microphone speech was captured. Speak after the microphone is ready.'));
   };
   recognition.onend = () => {
     if (ended) return;

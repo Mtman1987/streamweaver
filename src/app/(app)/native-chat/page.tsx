@@ -1,5 +1,7 @@
 "use client";
 
+import { getSpeechRecognitionConstructor } from '@/services/microphone-recognition';
+
 import * as React from "react";
 import Image from "next/image";
 import { Command, Loader2, MessageSquare, Mic, MicOff, Monitor, MonitorOff, Pause, Play, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react";
@@ -92,7 +94,7 @@ function useSpeechToText() {
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) {
       setError("Speech recognition is not supported in this browser.");
       return;
@@ -109,19 +111,20 @@ function useSpeechToText() {
       setTranscript(mergeSpeechRecognitionSegments(segments));
     };
     recognition.onerror = (event: any) => {
-      setError(String(event?.error || "Speech recognition failed."));
+      setError(String(event?.message || event?.error || "Speech recognition failed."));
       setIsListening(false);
     };
+    recognition.onstart = () => setIsListening(true);
+    recognition.onprocessing = () => setIsListening(false);
     recognition.onend = () => setIsListening(false);
     recognitionRef.current = recognition;
-    return () => recognition.stop();
+    return () => recognition.abort();
   }, []);
 
   const start = React.useCallback(() => {
     setError(null);
     setTranscript("");
-    recognitionRef.current?.start();
-    setIsListening(true);
+    try { recognitionRef.current?.start(); } catch (error: any) { setError(error.message); }
   }, []);
 
   const stop = React.useCallback(() => {

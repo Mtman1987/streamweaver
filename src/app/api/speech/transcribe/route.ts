@@ -4,7 +4,8 @@ import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 
 const transcribeSchema = z.object({
-    base64Audio: z.string().trim().min(1),
+    base64Audio: z.string().trim().min(1).max(700000),
+    freeOnly: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        const result = await transcribeAudio(parsed.data.base64Audio);
+        const result = await transcribeAudio(parsed.data.base64Audio, { freeOnly: parsed.data.freeOnly });
 
         return apiOk(result as Record<string, unknown>);
     } catch (error: any) {

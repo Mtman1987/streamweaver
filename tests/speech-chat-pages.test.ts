@@ -41,6 +41,7 @@ for (const page of ['say-player', 'tts-mixer']) {
           if (name === '@/lib/tts-voices') return voices;
           if (name === '@/lib/lounge-broadcast-volume') return { useLoungeBroadcastVolume: () => null };
           if (name === '@/services/speech-chat-capture') return { captureSpeechChat };
+          if (name === '@/services/microphone-recognition') return { getSpeechRecognitionConstructor: () => class { onend: any; constructor() { recognitions.push(this); } start() {} stop() {} abort() { this.onend?.(); } } };
           throw new Error(`Unexpected import ${name}`);
         },
         crypto: { randomUUID },
@@ -68,9 +69,9 @@ for (const page of ['say-player', 'tts-mixer']) {
       visit(tree);
       const button = page === 'say-player'
         ? buttons.find(props => String(props.children).includes('Speak to Chat'))
-        : buttons.find(props => props.onMouseDown);
+        : buttons.find(props => String(props.children).includes('Tap to talk'));
       assert.ok(button, 'microphone control must be rendered');
-      const start = page === 'say-player' ? button.onClick : button.onMouseDown;
+      const start = page === 'say-player' ? button.onClick : button.onClick;
       start();
       start(); // React state may not have rerendered before a second input event.
       assert.equal(recognitions.length, 1);
