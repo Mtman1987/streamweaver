@@ -1,5 +1,7 @@
 'use client';
 
+import { getSpeechRecognitionConstructor } from '@/services/microphone-recognition';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TTS_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
 import { captureSpeechChat } from '@/services/speech-chat-capture';
@@ -346,7 +348,7 @@ export default function TtsMixerPage() {
 
   const startMic = useCallback(() => {
     if (recognitionRef.current) return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) {
       setStatus('Speech recognition is not supported in this browser.');
       return;
@@ -360,6 +362,8 @@ export default function TtsMixerPage() {
     const captureId = crypto.randomUUID();
     const capture = captureSpeechChat(recognition, {
       preview: setMicTranscript,
+      ready: () => { setMicActive(true); setStatus("Microphone ready. Speak, then tap Finish (maximum 15 seconds on mobile)."); },
+      processing: () => { setMicActive(false); setStatus("Transcribing microphone clip…"); },
       complete: async (transcript) => {
         recognitionRef.current = null;
         setMicActive(false);
@@ -384,10 +388,10 @@ export default function TtsMixerPage() {
           setStatus(error?.message || 'PTT post failed.');
         }
       },
-      error: () => {
+      error: (message) => {
         recognitionRef.current = null;
         setMicActive(false);
-        setStatus('Microphone recognition failed. Check browser microphone permission.');
+        setStatus(message || 'Microphone recognition failed. Check browser microphone permission.');
       },
     });
     recognitionRef.current = capture;
@@ -398,8 +402,7 @@ export default function TtsMixerPage() {
       setStatus('Could not start microphone recognition. Try again.');
       return;
     }
-    setMicActive(true);
-    setStatus(`PTT listening for ${targetTenant}...`);
+    setStatus(`Starting microphone for ${targetTenant}…`);
   }, [preferences.selected, preferences.voice]);
 
   useEffect(() => {
@@ -468,8 +471,8 @@ export default function TtsMixerPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #ffffff12', paddingTop: 12 }}>
-          <button onMouseDown={startMic} onMouseUp={stopMic} onMouseLeave={() => micActive && stopMic()} onTouchStart={startMic} onTouchEnd={stopMic} style={buttonStyle(micActive)}>
-            {micActive ? 'Release PTT' : 'Hold to talk'}
+          <button type="button" onClick={() => recognitionRef.current ? stopMic() : startMic()} style={buttonStyle(micActive)}>
+            {micActive ? 'Finish recording' : 'Tap to talk'}
           </button>
           <label style={labelStyle}>Keyboard PTT
             <select value={preferences.pttKey} onChange={(event) => setPreferences((current) => ({ ...current, pttKey: event.target.value }))} style={selectStyle}>

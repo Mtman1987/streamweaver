@@ -1,5 +1,7 @@
 'use client';
 
+import { getSpeechRecognitionConstructor } from '@/services/microphone-recognition';
+
 import { useEffect, useRef, useState } from 'react';
 import { TTS_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
 
@@ -274,13 +276,16 @@ export default function PrivateDmTtsPlayer() {
     void playNext();
   }
 
+  const microphoneRef = useRef<any>(null);
+  useEffect(() => () => microphoneRef.current?.abort(), []);
+
   function toggleMic() {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) {
       setStatus('Push-to-talk speech recognition is not supported in this browser.');
       return;
     }
-    if (micActive) return;
+    if (microphoneRef.current) { microphoneRef.current.stop(); return; }
 
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
@@ -298,14 +303,16 @@ export default function PrivateDmTtsPlayer() {
         setStatus('Push-to-talk captured your words. Copy the transcript below into Discord.');
       }
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
       setMicActive(false);
-      setStatus('Push-to-talk mic error. Try again.');
+      setStatus(event?.message || 'Microphone permission or recognition failed. Try again.');
     };
-    recognition.onend = () => setMicActive(false);
+    recognition.onend = () => { microphoneRef.current = null; setMicActive(false); };
+    recognition.onstart = () => { setMicActive(true); setStatus("Microphone ready. Speak, then tap Finish."); };
+    recognition.onprocessing = () => setStatus("Transcribing microphone clip…");
+    microphoneRef.current = recognition;
     recognition.start();
-    setMicActive(true);
-    setStatus('Push-to-talk is listening…');
+    setStatus('Starting microphone… speak when it is ready.');
   }
 
   const fields = Array.isArray(preview?.fields)
@@ -352,7 +359,7 @@ export default function PrivateDmTtsPlayer() {
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" onClick={playResume} style={{ border: '1px solid #4f6aa3', background: '#18213a', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>▶ Play / Resume</button>
-              <button type="button" onClick={toggleMic} style={{ border: '1px solid #3c8d63', background: micActive ? '#4a1717' : '#153424', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>{micActive ? '🔴 Listening…' : '🎤 Push to talk'}</button>
+              <button type="button" onClick={toggleMic} style={{ border: '1px solid #3c8d63', background: micActive ? '#4a1717' : '#153424', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : '🎤 Push to talk'}</button>
               <button type="button" onClick={stop} style={{ border: '1px solid #a84f5c', background: '#40161d', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>■ Stop private TTS</button>
             </div>
             <p style={{ margin: 0, color: '#8f98ae', fontSize: 13 }}>Push-to-talk does not impersonate you through the Discord bot. It copies your speech transcript so you can paste it into the private DM.</p>

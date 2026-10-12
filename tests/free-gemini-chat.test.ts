@@ -81,6 +81,10 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   const wav = Buffer.alloc(44); wav.write('RIFF'); wav.write('WAVE', 8);
   assert.equal((await transcribeAudio(wav.toString('base64'))).provider, 'gemini-free');
   assert.equal(audioMime, 'audio/wav');
+  writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: true, geminiFreeTierVerified: true }));
+  assert.equal((await transcribeAudio(wav.toString('base64'), { freeOnly: true })).provider, 'gemini-free');
+  writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: false, geminiFreeTierVerified: true }));
+
   const webm = Buffer.alloc(16); webm.set([0x1a, 0x45, 0xdf, 0xa3]);
   await transcribeFreeGeminiAudio(webm.toString('base64'));
   assert.equal(audioMime, 'audio/webm');

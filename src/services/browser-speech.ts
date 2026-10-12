@@ -1,3 +1,4 @@
+import { getSpeechRecognitionConstructor } from '@/services/microphone-recognition';
 export interface BrowserSpeechOptions {
   continuous?: boolean;
   interimResults?: boolean;
@@ -21,7 +22,7 @@ class BrowserSpeechRecognition {
     if (this.initialized) return;
     this.initialized = true;
     if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognition = getSpeechRecognitionConstructor();
       if (SpeechRecognition) {
         this.recognition = new SpeechRecognition();
       }
@@ -35,7 +36,7 @@ class BrowserSpeechRecognition {
 
   stop(): void {
     this.stopRequested = true;
-    if (this.recognition && this.isRecognizing) {
+    if (this.recognition && (this.isRecognizing || this.recognition.microphoneOnly)) {
       this.recognition.stop();
     }
   }
@@ -60,6 +61,7 @@ class BrowserSpeechRecognition {
 
       const resetSilenceTimer = () => {
         if (silenceTimer) clearTimeout(silenceTimer);
+        if (silenceTimeout <= 0 || this.recognition.microphoneOnly) return;
         silenceTimer = setTimeout(() => {
           if (this.isRecognizing) {
             this.recognition.stop();
@@ -71,6 +73,7 @@ class BrowserSpeechRecognition {
       this.recognition.continuous = true;
       this.recognition.interimResults = options.interimResults ?? true;
       this.recognition.lang = options.language ?? 'en-US';
+      this.recognition.silenceTimeoutMs = silenceTimeout;
 
       this.recognition.onstart = () => {
         this.isRecognizing = true;
@@ -100,7 +103,7 @@ class BrowserSpeechRecognition {
           reject(new Error('No speech detected'));
           return;
         }
-        reject(new Error(`Speech recognition error: ${event.error}`));
+        reject(new Error(event.message || `Speech recognition error: ${event.error}`));
       };
 
       this.recognition.onend = () => {

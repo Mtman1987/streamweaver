@@ -98,20 +98,16 @@ async function playTtsLocally(audioUrl: string) {
 
 export function VoiceCommander({ variant = 'card', className }: VoiceCommanderProps) {
     const { toast } = useToast();
-    const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [userConfig, setUserConfig] = useState<Record<string, string>>({});
     const [messages, setMessages] = useState<TranscribedMessage[]>([]);
     const [destination, setDestination] = useState<Destination>('ai');
     const [sendAsCommander, setSendAsCommander] = useState(true);
-    const [useBrowserSTT, setUseBrowserSTT] = useState(true);
     const [translateLanguage, setTranslateLanguage] = useState<TargetLanguage | 'none'>('none');
     const [autoSend, setAutoSend] = useState(true);
     const [silenceMs, setSilenceMs] = useState(5000);
 
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
     const ws = useRef<WebSocket | null>(null);
     const personalityRef = useRef<string>("");
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -163,7 +159,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
         return () => window.removeEventListener('keydown', handleKeyDown);
     });
 
-    console.log('[VoiceCommander] Component initialized with settings:', { variant, className, isRecording, isTranscribing, isProcessing, destination, sendAsCommander, useBrowserSTT });
+
 
 
       useEffect(() => {
@@ -997,10 +993,10 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
     };
 
     const startRecording: () => Promise<void> = async () => {
-        console.log('[VoiceCommander] startRecording() called, useBrowserSTT:', useBrowserSTT);
         
-        if (useBrowserSTT) {
-            // Use browser speech recognition
+        
+        {
+            // Browser STT on desktop; bounded microphone recording on mobile.
             console.log('[VoiceCommander] Using browser STT');
             try {
                 if (!browserSpeechRecognition) {
@@ -1056,105 +1052,16 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
             return;
         }
 
-        // Use Google Cloud STT with recording
-        console.log('[VoiceCommander] Using Google Cloud STT with recording');
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            try {
-                console.log('[VoiceCommander] Requesting microphone access...');
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log('[VoiceCommander] Microphone access granted, creating MediaRecorder');
-                
-                mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-                audioChunksRef.current = [];
-
-                mediaRecorderRef.current.ondataavailable = (event: BlobEvent) => {
-                    console.log('[VoiceCommander] Audio data available, size:', event.data.size);
-                    audioChunksRef.current.push(event.data);
-                };
-
-                mediaRecorderRef.current.onstop = async () => {
-                    console.log('[VoiceCommander] Recording stopped, processing audio...');
-                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                    console.log('[VoiceCommander] Audio blob created, size:', audioBlob.size);
-                    
-                    const reader = new FileReader();
-                    reader.readAsDataURL(audioBlob);
-                    reader.onloadend = async () => {
-                        setIsTranscribing(true);
-                        try {
-                            console.log('[VoiceCommander] Converting audio to base64...');
-                            const base64DataUri = reader.result as string;
-                            const base64Audio = base64DataUri.split(',')[1];
-                            console.log('[VoiceCommander] Base64 audio length:', base64Audio.length);
-                            
-                            console.log('[VoiceCommander] Calling transcribeAudio...');
-                            const result = await transcribeAudio(base64Audio);
-                            console.log('[VoiceCommander] Transcription result:', result);
-                            
-                            if (result.error) {
-                                console.error('[VoiceCommander] Transcription error:', result.error);
-                                throw new Error(result.error);
-                            }
-                            
-                            console.log('[VoiceCommander] Processing transcription:', result.transcription);
-                            await processTranscription(result.transcription);
-                        } catch (error: any) {
-                            console.error('[VoiceCommander] Transcription failed:', error);
-                            toast({ variant: "destructive", title: "Transcription Failed", description: error.message });
-                        } finally {
-                            console.log('[VoiceCommander] Cleaning up recording resources');
-                            setIsTranscribing(false);
-                            stream.getTracks().forEach(track => track.stop());
-                        }
-                    };
-                };
-
-                console.log('[VoiceCommander] Starting MediaRecorder...');
-                mediaRecorderRef.current.start();
-                setIsRecording(true);
-                console.log('[VoiceCommander] Recording started successfully');
-            } catch (err) {
-                console.error('[VoiceCommander] Microphone access error:', err);
-                toast({ variant: "destructive", title: "Microphone Access Denied" });
-            }
-        } else {
-            console.error('[VoiceCommander] MediaDevices API not available');
-            toast({ variant: "destructive", title: "Media API Not Available", description: "Your browser doesn't support audio recording" });
-        }
     };
 
-    const stopRecording = () => {
-        console.log('[VoiceCommander] stopRecording() called');
-        if (mediaRecorderRef.current?.state === "recording") {
-            console.log('[VoiceCommander] Stopping MediaRecorder...');
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            console.log('[VoiceCommander] MediaRecorder stopped');
-        } else {
-            console.log('[VoiceCommander] MediaRecorder not in recording state:', mediaRecorderRef.current?.state);
-        }
-    };
 
     const handleMicClick = () => {
-        if (useBrowserSTT) {
-            if (isTranscribing) {
-                // Manual stop
-                browserSpeechRecognition.stop();
-            } else {
-                startRecording();
-            }
-        } else {
-            if (isRecording) {
-                stopRecording();
-            } else {
-                startRecording();
-            }
-        }
+        if (isTranscribing) browserSpeechRecognition.stop();
+        else void startRecording();
     };
 
     const getStatusText = () => {
-        return isRecording ? "Recording... Click or press V to stop." : 
-               isTranscribing ? "Listening... Click or press V to send." : 
+        return isTranscribing ? "Listening... Click or press V to send." : 
                isProcessing ? "Processing..." : 
                "Press V or click to talk";
     }
@@ -1171,7 +1078,7 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                         className={cn(
                             "rounded-full transition-colors flex-shrink-0",
                             isEmbedded ? "h-14 w-14" : "w-16 h-16",
-                            isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+                            isTranscribing ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
                         )}
                     >
                         {isTranscribing || isProcessing ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Mic className="h-6 w-6" />}

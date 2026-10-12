@@ -1,5 +1,7 @@
 "use client";
 
+import { captureMicrophone, microphoneBlobToBase64 } from '@/services/microphone-capture';
+
 import { useEffect, useRef, useState } from "react";
 import { Mic, Radio, Send, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -121,7 +123,9 @@ export default function VoiceReplyPage() {
   const [current, setCurrent] = useState<RequestState | null>(null);
   const [history, setHistory] = useState<RequestState[]>([]);
   const processingRef = useRef(false);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderRef = useRef<ReturnType<typeof captureMicrophone> | null>(null);
+  const startReplyRef = useRef<(() => void) | null>(null);
+  const [replyMicReady, setReplyMicReady] = useState(false);
 
   const updateCurrent = (patch: Partial<RequestState>) => {
     setCurrent((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -156,30 +160,10 @@ export default function VoiceReplyPage() {
   };
 
   const recordOnce = async (recordMs: number): Promise<string> => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recorderRef.current = recorder;
-    const chunks: Blob[] = [];
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data);
-    };
-
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-      recorder.start();
-      setTimeout(() => {
-        if (recorder.state === "recording") recorder.stop();
-      }, recordMs);
-    });
-    stream.getTracks().forEach((track) => track.stop());
-    recorderRef.current = null;
-
-    const dataUrl = await blobToDataUrl(new Blob(chunks, { type: "audio/webm" }));
-    const base64Audio = dataUrl.split(",")[1] || "";
-    if (!base64Audio) throw new Error("No microphone audio was captured.");
-    return base64Audio;
+    const recording = captureMicrophone({ maxSeconds: Math.min(15, Math.max(1, recordMs / 1000)) });
+    recorderRef.current = recording;
+    try { return await microphoneBlobToBase64(await recording.finished); }
+    finally { recorderRef.current = null; }
   };
 
   const processRequest = async (request: VoiceReplyRequest) => {
@@ -200,14 +184,21 @@ export default function VoiceReplyPage() {
       await wait(Math.max(0, request.waitMs || 5000));
       await playDing();
 
-      updateCurrent({ status: "recording" });
-      const base64Audio = await recordOnce(Math.max(1000, request.recordMs || 10000));
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        startReplyRef.current = () => {
+          startReplyRef.current = null;
+          setReplyMicReady(false);
+          updateCurrent({ status: "recording" });
+          void recordOnce(Math.max(1000, request.recordMs || 10000)).then(resolve, reject);
+        };
+        setReplyMicReady(true);
+      });
 
       updateCurrent({ status: "transcribing" });
       const transcribeRes = await fetch("/api/speech/transcribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base64Audio }),
+        body: JSON.stringify({ base64Audio, freeOnly: true }),
       });
       const transcribeData = await transcribeRes.json().catch(() => ({}));
       if (!transcribeRes.ok || transcribeData?.error) {
@@ -268,8 +259,8 @@ export default function VoiceReplyPage() {
   }, [autoSendDefault]);
 
   const stopRecording = () => {
-    if (recorderRef.current?.state === "recording") {
-      recorderRef.current.stop();
+    if (Boolean(recorderRef.current)) {
+      recorderRef.current?.cancel();
     }
   };
 
@@ -302,6 +293,8 @@ export default function VoiceReplyPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {current?.status === "waiting" && replyMicReady && <Button type="button" onClick={() => startReplyRef.current?.()}>Start microphone reply</Button>}
+
           <div className="grid gap-3 rounded-md border bg-muted/25 p-3 text-sm md:grid-cols-3">
             <div>
               <div className="font-medium">1. Trigger</div>

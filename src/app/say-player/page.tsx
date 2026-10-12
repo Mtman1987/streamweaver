@@ -1,5 +1,7 @@
 'use client';
 
+import { getSpeechRecognitionConstructor } from '@/services/microphone-recognition';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS } from '@/lib/tts-voices';
 import { captureSpeechChat } from '@/services/speech-chat-capture';
@@ -232,7 +234,7 @@ export default function SayPlayer() {
   }, [tenantId]);
 
   function toggleMic() {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) return setStatus('Speech recognition is not supported in this browser.');
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -242,6 +244,8 @@ export default function SayPlayer() {
     const captureId = crypto.randomUUID();
     const capture = captureSpeechChat(recognition, {
       preview: setMicTranscript,
+      ready: () => { setMicActive(true); setStatus("Microphone ready. Speak, then tap Finish (maximum 15 seconds on mobile)."); },
+      processing: () => { setMicActive(false); setStatus("Transcribing microphone clip…"); },
       complete: async (transcript) => {
         recognitionRef.current = null;
         setMicActive(false);
@@ -261,10 +265,10 @@ export default function SayPlayer() {
           setStatus(error instanceof Error ? error.message : String(error));
         }
       },
-      error: () => {
+      error: (message) => {
         recognitionRef.current = null;
         setMicActive(false);
-        setStatus('Microphone recognition failed. Check browser microphone permission.');
+        setStatus(message || 'Microphone recognition failed. Check browser microphone permission.');
       },
     });
     recognitionRef.current = capture;
@@ -275,8 +279,7 @@ export default function SayPlayer() {
       setStatus('Could not start microphone recognition. Try again.');
       return;
     }
-    setMicActive(true);
-    setStatus('Listening to your mic…');
+    setStatus('Starting microphone… speak when it is ready.');
   }
 
   const sourceLabel = tenantId || 'global public TTS';
@@ -294,7 +297,7 @@ export default function SayPlayer() {
         <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>Volume</strong><input type="range" min="0" max="100" value={Math.round(volume * 100)} onChange={(event) => updateVolume(Number(event.target.value) / 100)} style={{ flex: '1 1 260px' }} /><span>{Math.round(volume * 100)}%</span></label>
         <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>My voice</strong><select value={voice} disabled={!identity || voiceSaving} onChange={(event) => void updateVoice(event.target.value)} style={{ flex: '1 1 360px', padding: 9, borderRadius: 8, border: '1px solid #3a4259', background: '#0b0e17', color: '#fff' }}>{VOICE_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
         <p style={{ margin: '-8px 0 0 102px', color: '#8791aa', fontSize: 13 }}>{identity ? `Saved for ${identity.discordUsername || identity.discordUserId}. Everyone hears your selected voice when your public TTS is triggered.` : `No sign-in is needed to listen. Sign-in is only for saving a personal voice; otherwise ${TTS_VOICE_OPTIONS.find((item) => item.id === DEFAULT_TTS_VOICE)?.label || 'the default voice'} is used.`}</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button type="button" onClick={toggleMic} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: micActive ? '#4a1717' : '#153424', color: '#fff', cursor: 'pointer' }}>{micActive ? '🔴 Listening…' : '🎤 Speak to Chat'}</button><button type="button" onClick={resetCursor} disabled={!active} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: active ? 'pointer' : 'default' }}>Reset listener</button></div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button type="button" onClick={toggleMic} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: micActive ? '#4a1717' : '#153424', color: '#fff', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : '🎤 Speak to Chat'}</button><button type="button" onClick={resetCursor} disabled={!active} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: active ? 'pointer' : 'default' }}>Reset listener</button></div>
         {postingAs ? <p style={{ margin: 0, color: '#8ef0b1', fontSize: 13 }}>Posting as verified user: {postingAs}</p> : null}
         {micTranscript ? <p style={{ margin: 0, color: '#aeb7ce', fontSize: 13 }}>Last voice input: “{micTranscript}”</p> : null}
         <p style={{ margin: 0, color: '#8791aa', fontSize: 13 }}>HearMeOut/LiveKit is optional. This public TTS page does not create or join a LiveKit room; an active HearMeOut room may consume TTS separately when explicitly configured.</p>
