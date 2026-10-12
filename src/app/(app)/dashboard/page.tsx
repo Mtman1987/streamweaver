@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ElementType } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Bot, CheckCircle2, Circle, CircleDot, LoaderCircle, Mail, MessageSquareText, RefreshCw, Save, Sparkles, Users, Workflow } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -322,6 +322,22 @@ export default function DashboardPage() {
     };
   }, [selectedPlatform, toast]);
 
+  const refreshDiscordGuilds = useCallback(async () => {
+    try {
+      const response = await fetch("/api/discord/roles", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to refresh Discord servers.");
+      const guilds = Array.isArray(data.guilds) ? data.guilds : [];
+      setDiscordGuilds(guilds.map((guild: any) => ({ id: String(guild.id), name: String(guild.name || guild.id) })));
+    } catch (error: any) { toast({ variant: "destructive", title: "Discord servers unavailable", description: error.message }); }
+  }, [toast]);
+  useEffect(() => {
+    if (selectedPlatform !== "Discord") return;
+    const focused = () => { void refreshDiscordGuilds(); };
+    window.addEventListener("focus", focused);
+    return () => window.removeEventListener("focus", focused);
+  }, [selectedPlatform, refreshDiscordGuilds]);
+
   useEffect(() => {
     if (selectedPlatform !== "Discord" || !discordSettings.guildId) {
       setDiscordChannels([]);
@@ -545,7 +561,11 @@ export default function DashboardPage() {
           <CardContent className="space-y-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label>Discord server</Label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label>Discord server</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={refreshDiscordGuilds}>Refresh servers</Button>
+                  <Button type="button" variant="outline" size="sm" asChild><a href="/api/discord/bot-invite" target="_blank" rel="noopener noreferrer">Add SPMT</a></Button>
+                </div>
                 <Select value={discordSettings.guildId || "_none"} onValueChange={(guildId) => setDiscordSettings((prev) => ({ ...prev, guildId: guildId === "_none" ? "" : guildId }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a Discord server" />

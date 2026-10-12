@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 
+export const dynamic = 'force-dynamic';
+
 const API = 'https://discord.com/api/v10';
 
 export async function GET(req: NextRequest) {
@@ -12,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   // If guildId provided, return roles for that guild
   if (guildId) {
-    const res = await fetch(`${API}/guilds/${guildId}/roles`, { headers });
+    const res = await fetch(`${API}/guilds/${guildId}/roles`, { headers, cache: 'no-store' });
     if (!res.ok) return apiError('Failed to fetch roles', { status: 502, code: 'DISCORD_API_ERROR' });
     const roles = (await res.json() as any[])
       .filter((r: any) => r.name !== '@everyone')
@@ -22,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Otherwise return bot's guilds
-  const res = await fetch(`${API}/users/@me/guilds`, { headers });
+  const res = await fetch(`${API}/users/@me/guilds`, { headers, cache: 'no-store' });
   if (!res.ok) return apiError('Failed to fetch guilds', { status: 502, code: 'DISCORD_API_ERROR' });
   const guilds = (await res.json() as any[]).map((g: any) => ({
     id: g.id,
