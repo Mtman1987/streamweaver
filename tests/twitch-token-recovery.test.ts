@@ -208,6 +208,7 @@ async function runtimeFixture(t: any, failRole: 'bot' | 'broadcaster', quarantin
   }
   const runtime = load('src/services/twitch-client.ts', {
     'tmi.js': { Client },
+    '../lib/account-revocation': { isAccountRevoked: () => false },
     './shared-bot-wake': { isSharedBotAwake: () => false, sharedBotChannelAllowed },
     '../lib/token-utils.server': { ...tokenApi, isTwitchCredentialQuarantined: () => quarantined, getStoredTokens: async () => stored, ensureValidToken: async (_a: any, _b: any, role: string) => { calls.push(role); if (failing && role === failRole) throw new Error('Invalid refresh token'); return `${role}-valid`; } },
     '../lib/tenant': { listTenants: async () => ['123'], communityBotTokensPath: () => '/test-community', getAdminTwitchId: () => '999' },
