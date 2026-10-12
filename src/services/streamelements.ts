@@ -42,8 +42,11 @@ function minutesOf(row: any): number | undefined { const value = row?.watchtime 
 
 export async function getStreamElementsStatus(c: StorageContext) { const token = await getToken(c); return { connected: Boolean(token), expiresAt: token?.expiresAt || null, scope: token?.scope || '' }; }
 export async function saveStreamElementsToken(token: StreamElementsToken, c: StorageContext) { await saveToken(token, c); }
-export async function importStreamElements(c: StorageContext) {
-  const token = await getToken(c); if (!token) throw new Error('Connect StreamElements first.');
+export async function importStreamElements(c: StorageContext, directAccessToken?: string) {
+  const token = directAccessToken
+    ? { accessToken: directAccessToken, expiresAt: Number.MAX_SAFE_INTEGER, scope: 'legacy-jwt' }
+    : await getToken(c);
+  if (!token) throw new Error('Connect StreamElements first.');
   const accountId = process.env.STREAMELEMENTS_ACCOUNT_ID;
   const profile = await api(accountId ? `/channels/${encodeURIComponent(accountId)}` : '/channels/me', token, c);
   const channel = String(accountId || profile?._id || profile?.username || profile?.alias || c.username).toLowerCase();
