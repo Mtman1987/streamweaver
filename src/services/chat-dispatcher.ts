@@ -1,3 +1,4 @@
+import { handleTenantMusicCommand } from './tenant-music-command';
 import { getAllCommands } from '../lib/commands-store';
 import { getActionById, getAllActions } from '../lib/actions-store';
 import { runFlowGraph, defaultFlowServices } from '../lib/flow-runtime';
@@ -3051,38 +3052,14 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
     // before imported JSON actions and general bot/command filters so stale
     // Streamer.bot actions cannot swallow !sr or !wr.
     // Tenant Twitch music is handled before imported actions or shared Lounge commands.
-    const tenantMusicCommand = tenantId && tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID
-        ? actualMessage.trim().match(/^!(sr|wr)(?:\s+(.*))?$/i) : null;
-    if (tenantMusicCommand) {
-        const command = tenantMusicCommand[1].toLowerCase();
-        const query = String(tenantMusicCommand[2] || '').trim();
-        if (command === 'wr') {
-            await reply(`@${actualUsername}, !wr is disabled for this stream. Use !sr <song or YouTube URL>.`, 'bot').catch(() => {});
-            return;
-        }
-        if (!query) {
-            await reply(`@${actualUsername}, use !sr <song or YouTube URL>. Broadcasters can use !sr source for the OBS browser source.`, 'bot').catch(() => {});
-            return;
-        }
-        const source = /^(?:source|overlay|obs)$/i.test(query);
-        if (source && !tags.badges?.broadcaster) {
-            await reply(`@${actualUsername}, the broadcaster can get their OBS source with !sr source.`, 'bot').catch(() => {});
-            return;
-        }
-        try {
-            const result: any = await executeHearMeOutBotAction({
-                action: source ? 'hmo.media.source' : 'hmo.media.request',
-                tenantId: tenantId!, streamMode: 'twitch', sessionId: twitchMusicSessionId(tenantId!), lane: 'music',
-                actorUserId: String(tags['user-id'] || tags.username || actualUsername), actorName: actualUsername, query,
-            });
-            await reply(source ? `OBS browser source (1920×1080): ${result.sourceUrl}`
-                : `@${actualUsername}, "${result.request?.item?.title || query}" is queued for this stream.`, 'bot').catch(() => {});
-        } catch (error) {
-            console.error('[Dispatcher] tenant song request failed:', error);
-            await reply(`@${actualUsername}, ${source ? 'The OBS source could not be created.' : 'That song could not be queued. Try the artist and title, or a YouTube link.'}`, 'bot').catch(() => {});
-        }
-        return;
-    }
+    if (tenantId && tenantId !== SPACEMOUNTAIN_SYSTEM_TENANT_ID
+        && await handleTenantMusicCommand({
+            message: actualMessage, tenantId, username: actualUsername,
+            userId: String(tags['user-id'] || tags.username || actualUsername),
+            canControl: canControlHearMeOut, isBroadcaster: Boolean(tags.badges?.broadcaster),
+            execute: executeHearMeOutBotAction,
+            reply: text => reply(text, 'bot'),
+        })) return;
     const watchChoiceKey = `${replyChannel}:${String(tags['user-id'] || tags.username || actualUsername).toLowerCase()}`;
     // A viewer can answer the three-choice movie prompt with just 1, 2, or 3.
     // Only consume a bare digit when this same viewer has a pending !wr search;

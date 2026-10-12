@@ -27,7 +27,7 @@ jobs:
       - name: Verify wake, microphone identity and delivery receipts
         run: node --import tsx --test tests/shared-bot-wake.test.ts tests/twitch-delivery-receipt.test.ts tests/signed-in-twitch-send.test.ts tests/say-chat.test.ts tests/bot-fallback-identity.test.ts
       - name: Verify tenant song request isolation
-        run: node --import tsx --test tests/twitch-media-scope.test.ts tests/hearmeout-action-auth.test.ts
+        run: node --import tsx --test tests/twitch-media-scope.test.ts tests/hearmeout-action-auth.test.ts tests/tenant-music-command.test.ts
       - name: Verify replay corruption recovery and concurrent ingestion
         run: node --import tsx --test tests/shared-chat-recovery.test.ts tests/shared-chat-ingestion.test.ts
       - name: Verify free AI cost policy
