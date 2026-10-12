@@ -15,7 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-group
-      cancel-in-progress: true
+      # Do not kill an active Fly build when another main push arrives.
+      # Deployments queue and run in order instead of leaving the app mid-build.
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
