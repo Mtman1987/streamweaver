@@ -11,10 +11,9 @@ const rawFile = 'streamelements-latest-import.json';
 
 function ctx(tenantId: string, username: string): StorageContext { return { tenantId, username: username.toLowerCase() }; }
 async function getToken(c: StorageContext): Promise<StreamElementsToken | null> {
-  const stored = await readJsonFile<StreamElementsToken | null>(tokenFile, null, c);
-  if (stored) return stored;
   const jwt = process.env.STREAMELEMENTS_JWT_TOKEN;
-  return jwt ? { accessToken: jwt, expiresAt: Number.MAX_SAFE_INTEGER, scope: 'legacy-jwt' } : null;
+  if (jwt) return { accessToken: jwt, expiresAt: Number.MAX_SAFE_INTEGER, scope: 'legacy-jwt' };
+  return readJsonFile<StreamElementsToken | null>(tokenFile, null, c);
 }
 async function saveToken(token: StreamElementsToken, c: StorageContext) { await writeJsonFile(tokenFile, token, c); }
 async function refresh(token: StreamElementsToken, c: StorageContext): Promise<StreamElementsToken> {
