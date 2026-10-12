@@ -246,7 +246,7 @@ export default function SayPlayer() {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || 'Could not check Discord VC.');
         if (!disposed) { setVoiceRoute(body.data || body); setVoiceRouteError(''); }
-      } catch (error) { if (!disposed) { setVoiceRoute(null); setVoiceRouteError(error instanceof Error ? error.message : String(error)); } }
+      } catch (error) { if (!disposed) { setVoiceRoute({ inVoice: false }); setVoiceRouteError(error instanceof Error ? error.message : String(error)); } }
     };
     void probe();
     const timer = setInterval(() => void probe(), 5000);

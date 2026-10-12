@@ -2,7 +2,7 @@ import { discordSayCapture } from '@/services/discord-say-capture';
 import { sendWebhookMessage } from '@/services/discord-webhooks';
 import { NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { apiOk } from '@/lib/api-response';
+import { apiError, apiOk } from '@/lib/api-response';
 import { getBotAliases, getBotName } from '@/lib/bot-settings-store';
 import { readUserConfigSync } from '@/lib/user-config';
 import { getAdminTwitchId, listTenants } from '@/lib/tenant';
@@ -43,7 +43,7 @@ import {
 import { detectBotRelayRequest, detectBotRelayRequestWithAi } from '@/services/bot-relay';
 import { recordDiscordLastSeen } from '@/services/discord-last-seen';
 import { parseDiscordChatPayload } from '@/lib/discord-chat-payload';
-import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { hasInternalServiceAccess, internalServiceHeaders } from '@/lib/internal-service-auth';
 import { requestSpmtOwnerRecoveryCode } from '@/lib/spmt-client';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
 import { resolvePrivateDiscordTenant } from '@/services/private-discord-tenant';
@@ -283,6 +283,10 @@ export async function POST(request: NextRequest) {
       }
       return sendStructuredDiscordReply(structuredInput);
     };
+
+    if (/^!say$/i.test(rawMessage.trim()) && String(data.voiceChannelId || '').trim() && !hasInternalServiceAccess(request)) {
+      return apiError('Unauthorized Discord voice capture request.', { status: 401, code: 'UNAUTHORIZED_VOICE_CAPTURE' });
+    }
 
     const isFirstSeen = await registerHandledDiscordMessagePersisted({
       messageId: normalized.messageId,
@@ -1211,7 +1215,7 @@ export async function POST(request: NextRequest) {
         const capture = await discordSayCapture(userId, 'start');
         captureId = capture.id;
         if (!captureId) throw new Error('You are no longer in Discord voice. Use Speak to Chat for your device microphone.');
-        await sendDiscordRouteReplyOrCollect(channelId, '@' + userName + ', listening to your next phrase in Discord VC (up to 15 seconds). Speak now.');
+        await sendStructuredDiscordReply({ channelId, message: '@' + userName + ', listening to your next phrase in Discord VC (up to 15 seconds). Speak now.', tenantId, sourceUser: userName, isPrivate: false });
         const deadline = Date.now() + 55_000;
         let transcript = '';
         while (Date.now() < deadline) {
@@ -1223,14 +1227,16 @@ export async function POST(request: NextRequest) {
         if (!transcript) throw new Error('Discord transcription timed out.');
         await sendWebhookMessage(channelId, transcript, userName, userAvatar);
         const sayChannelKey = resolveSayStreamKey(undefined, 'discord', channelId);
-        await fetch(getInternalAppUrl() + '/api/say/queue', {
+        const queued = await fetch(getInternalAppUrl() + '/api/say/queue', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tenantId: sayChannelKey, text: formatSaySpeechText(sayChannelKey, userName, transcript), speakerUserId: userId, speakerName: userName }),
           signal: AbortSignal.timeout(10_000),
-        }).catch(error => console.warn('[DiscordSay] TTS queue unavailable:', error.message));
+        });
+        const queueResult = await queued.json().catch(() => ({}));
+        if (!queued.ok || queueResult.ok === false) throw new Error('Your transcript was posted, but TTS could not be queued: ' + (queueResult.error || 'queue unavailable'));
         return apiOk({ success: true, botResponded: true, context: 'say-discord-voice' });
       } catch (error) {
-        await sendDiscordRouteReplyOrCollect(channelId, '@' + userName + ', ' + (error instanceof Error ? error.message : 'Discord voice capture failed.'));
+        await sendStructuredDiscordReply({ channelId, message: '@' + userName + ', ' + (error instanceof Error ? error.message : 'Discord voice capture failed.'), tenantId, sourceUser: userName, isPrivate: false });
         return apiOk({ success: false, botResponded: true, context: 'say-discord-voice' });
       } finally { if (captureId) void discordSayCapture(userId, 'cancel', captureId).catch(() => {}); }
     }
