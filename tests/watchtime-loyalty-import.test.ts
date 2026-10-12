@@ -19,7 +19,7 @@ test('CSV and JSON normalize users, exact balances, explicit units and duplicate
   assert.deepEqual(parseLoyaltyImport('username,points\nv,1200.0\nw,"1,200"','minutes').rows,
     [{username:'v',points:'1200'},{username:'w',points:'1200'}]);
   const badPoints='username,points,watchtime\nviewer,not-a-number,120\nsecond,also-bad,90';
-  assert.deepEqual(parseLoyaltyImport(badPoints,'minutes','watchtime').rows,[{username:'viewer',watchMinutes:120},{username:'second',watchMinutes:90}]);
+  assert.deepEqual(parseLoyaltyImport(badPoints,'minutes','watchtime').rows,[{username:'second',watchMinutes:90},{username:'viewer',watchMinutes:120}]);
   assert.deepEqual(parseLoyaltyImport('username,points,watchtime\nviewer,1,invalid','minutes','points').rows,[{username:'viewer',points:'1'}]);
   assert.throws(()=>parseLoyaltyImport(badPoints,'minutes','all'),/invalid points/);
 });
