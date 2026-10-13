@@ -651,6 +651,7 @@ export class KickService extends EventEmitter {
   }
 
   isConnected(): boolean { return this.connected; }
+  isReconnectBlocked(): boolean { return this.reconnectBlocked; }
   hasAuth(): boolean { return this.tokens !== null; }
   getChannelName(): string | null { return this.channelName; }
   getTenantId(): string | null { return this.tenantId; }

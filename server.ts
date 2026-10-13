@@ -529,6 +529,9 @@ async function startServer() {
                 const instances = getAllKickInstances();
                 for (const [tenantId, kick] of instances) {
                     if (tenantId === 'global') continue;
+                    // A permanent Pusher configuration rejection is not recoverable by cycling this tenant.
+                    // Respect KickService's block instead of recreating the same rejected connection every 2 minutes.
+                    if (typeof (kick as any).isReconnectBlocked === 'function' && (kick as any).isReconnectBlocked()) continue;
                     const connected = (kick as any).isConnected();
                     if (!connected && (kick as any).getChannelName()) {
                         console.log(`[Kick] ⚠️ Instance for tenant ${tenantId} disconnected, triggering reconnect...`);
