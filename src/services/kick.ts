@@ -48,6 +48,8 @@ export class KickService extends EventEmitter {
   private tenantId: string | null = null;
   private tokens: KickTokens | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  // Permanent Pusher configuration errors should pause retries until configuration changes or the service restarts.
+  private reconnectBlocked: boolean = false;
   private broadcasterUserId: number | null = null;
   private messageCount: number = 0;
 
@@ -220,8 +222,12 @@ export class KickService extends EventEmitter {
    */
   async connect(channelName: string, tenantId?: string): Promise<void> {
     try {
+      const nextTenantId = tenantId || null;
+      if (this.channelName !== channelName || this.tenantId !== nextTenantId) {
+        this.reconnectBlocked = false;
+      }
       this.channelName = channelName;
-      this.tenantId = tenantId || null;
+      this.tenantId = nextTenantId;
 
       // Load tokens if tenant provided
       if (tenantId) {
@@ -259,9 +265,14 @@ export class KickService extends EventEmitter {
       }
 
       // Connect via Pusher (Kick uses Pusher for WebSocket)
-      this.pusher = new PusherClient('32cbd69e4b950bf97679', {
-        cluster: 'us2',
-        wsHost: 'ws-us2.pusher.com',
+      // Kick's public Pusher key can change. Allow deployment configuration to override it
+      // without requiring a source change; keep Kick's documented defaults as fallback.
+      const pusherKey = process.env.KICK_PUSHER_KEY || '32cbd69e4b950bf97679';
+      const pusherCluster = (process.env.KICK_PUSHER_CLUSTER || 'us2').trim();
+      const pusherHost = process.env.KICK_PUSHER_WS_HOST || `ws-${pusherCluster}.pusher.com`;
+      this.pusher = new PusherClient(pusherKey, {
+        cluster: pusherCluster,
+        wsHost: pusherHost,
         wsPort: 443,
         wssPort: 443,
         enabledTransports: ['ws', 'wss'],
@@ -287,6 +298,13 @@ export class KickService extends EventEmitter {
         const message = String(details?.message || err?.data?.message || '');
         if (code === 4200 || /reconnect immediately/i.test(message)) {
           console.log(`[Kick] Pusher requested reconnect for ${channelName}; transport will reconnect.`);
+          return;
+        }
+        if (code === 4001 || /not in this cluster/i.test(message)) {
+          this.reconnectBlocked = true;
+          console.error(`[Kick] Pusher rejected the configured app key/cluster for ${channelName} (code ${code || 'unknown'}). Automatic retries paused to avoid a reconnect loop. Verify KICK_PUSHER_KEY, KICK_PUSHER_CLUSTER, and KICK_PUSHER_WS_HOST against Kick's current live configuration.`);
+          this.pusher?.disconnect();
+          this.emit('error', err);
           return;
         }
         console.error(`[Kick] ❌ Pusher connection error for ${channelName}:`, details);
@@ -590,7 +608,7 @@ export class KickService extends EventEmitter {
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimer) return;
+    if (this.reconnectBlocked || this.reconnectTimer) return;
     const channelName = this.channelName;
     const tenantId = this.tenantId;
     if (!channelName) return;
