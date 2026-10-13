@@ -298,6 +298,11 @@ async function startServer() {
         const { createWebSocketServer } = require('./src/server/websocket');
 
         httpServer = http.createServer(createHttpHandler(broadcast));
+        // Boundaries keep abandoned HTTP requests from occupying the shared
+        // listener while WebSocket clients continue using the same process.
+        httpServer.keepAliveTimeout = 65_000;
+        httpServer.headersTimeout = 66_000;
+        httpServer.requestTimeout = 120_000;
         wss = createWebSocketServer(httpServer, broadcast, [], {}, 'disconnected', twitchClient);
         
         // Store wss globally for tag announcements

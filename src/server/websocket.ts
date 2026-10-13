@@ -97,8 +97,22 @@ function extractTenantIdFromCookie(request: http.IncomingMessage): string {
 
 export function createWebSocketServer(httpServer: http.Server, broadcast: (message: object, tenantId?: string) => void, cachedChatHistory: any[], channelBadges: any, twitchStatus: string, twitchClient: any) {
     const wss = new WebSocketServer({ server: httpServer });
+    const heartbeat = setInterval(() => {
+        wss.clients.forEach((client: WebSocket & { isAlive?: boolean }) => {
+            if (client.isAlive === false) {
+                client.terminate();
+                return;
+            }
+            client.isAlive = false;
+            client.ping();
+        });
+    }, 30_000);
+    wss.on('close', () => clearInterval(heartbeat));
     
     wss.on('connection', async (ws, request) => {
+        const heartbeatClient = ws as WebSocket & { isAlive?: boolean };
+        heartbeatClient.isAlive = true;
+        heartbeatClient.on('pong', () => { heartbeatClient.isAlive = true; });
         const connectionAuthorized = validateLocalApiKeySync(extractApiKeyFromRequest(request));
         (ws as any).__localAuthorized = connectionAuthorized;
         
