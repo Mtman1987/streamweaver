@@ -31,6 +31,7 @@ test('tracker authenticates each tenant, deduplicates users, and isolates a fail
   try { await runWatchtimeTracker(3000,{
     listTenants:async()=>['a','broken','b'],
     getStoredTokens:async(id:string)=>({broadcasterUsername:id.toUpperCase()}) as any,
+    isTwitchCredentialQuarantined:()=>false,
     internalServiceHeaders:()=>({'x-internal-token':'test'}) as any,
     fetch:async(url:any,options:any)=>{
       urls.push(String(url)); assert.equal(options.headers['x-internal-token'],'test');
@@ -40,6 +41,26 @@ test('tracker authenticates each tenant, deduplicates users, and isolates a fail
   } as any); } finally {console.warn=warn;}
   assert.equal(urls.length,3);
   assert.deepEqual(calls,[[['viewer'],'a',{tenantId:'a',username:'a'}],[['viewer'],'b',{tenantId:'b',username:'b'}]]);
+});
+
+
+test('tracker pauses quarantined Twitch credentials and emits only one actionable warning',async()=>{
+  const {runWatchtimeTracker}=await import('../src/services/watchtime-tracker');
+  const warnings:string[]=[]; const warn=console.warn; console.warn=(...args:any[])=>warnings.push(args.join(' '));
+  const deps:any={
+    listTenants:async()=>['reauth-needed'],
+    getStoredTokens:async()=>({broadcasterUsername:'channel',credentialQuarantined:true}),
+    isTwitchCredentialQuarantined:(tokens:any)=>Boolean(tokens?.credentialQuarantined),
+    internalServiceHeaders:()=>({}),
+    fetch:async()=>{throw new Error('quarantined tenant should not be polled');},
+    incrementWatchtime:async()=>{throw new Error('quarantined tenant must not record watchtime');}
+  };
+  try {
+    await runWatchtimeTracker(3000,deps);
+    await runWatchtimeTracker(3000,deps);
+  } finally { console.warn=warn; }
+  assert.equal(warnings.length,1);
+  assert.match(warnings[0],/require re-authorization; watchtime polling paused/i);
 });
 
 test('import is tenant scoped, backed up, preserves higher totals, and does not replay spent points',async()=>{
