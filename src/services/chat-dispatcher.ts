@@ -3076,10 +3076,9 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         return;
     }
 
-    // !play is intentionally disabled globally, including the SpaceMountain system tenant.
-    // Keep this guard before tenant-specific and shared Lounge routing so no later handler can resume playback.
+    // !play may belong to another bot in the same chat. Ignore it silently and
+    // stop our own handlers from competing with that bot's command.
     if (/^!play(?:\s+.*)?$/i.test(actualMessage.trim())) {
-        await reply(`@${actualUsername}, !play is disabled globally.`, 'bot').catch(() => {});
         return;
     }
 
