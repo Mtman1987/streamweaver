@@ -1,0 +1,57 @@
+name: Disable tenant !play command
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_id:
+        description: Twitch tenant ID
+        required: true
+        type: string
+        default: "428161033"
+      confirm_channel:
+        description: Type the exact Twitch channel to guard against targeting the wrong tenant
+        required: true
+        type: string
+        default: "the_lovely_princess_snow"
+
+permissions:
+  contents: read
+
+jobs:
+  disable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Disable built-in !play for the requested tenant
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          TENANT_ID: ${{ inputs.tenant_id }}
+          CONFIRM_CHANNEL: ${{ inputs.confirm_channel }}
+        run: |
+          set -euo pipefail
+          test "$TENANT_ID" = "428161033"
+          test "$CONFIRM_CHANNEL" = "the_lovely_princess_snow"
+          flyctl ssh console --app streamweaver-new --command "sh -s" <<'REMOTE'
+          set -eu
+          tenant_id='428161033'
+          persist_root="${PERSIST_ROOT:-/data/runtime}"
+          dir="$persist_root/tenants/$tenant_id/commands"
+          file="$dir/!play_hearmeout-system.json"
+          mkdir -p "$dir"
+          tmp="$file.tmp.$$"
+          cat > "$tmp" <<'JSON'
+          {
+            "id": "hearmeout-play-system",
+            "name": "!play",
+            "command": "!play",
+            "enabled": false,
+            "description": "Resume the HearMeOut music or movie lane.",
+            "caseSensitive": false,
+            "regex": false,
+            "group": "Music Commands",
+            "sources": 31
+          }
+          JSON
+          mv "$tmp" "$file"
+          printf 'Disabled !play for tenant %s at %s\n' "$tenant_id" "$file"
+          REMOTE

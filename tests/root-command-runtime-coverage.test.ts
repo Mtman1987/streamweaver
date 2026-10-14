@@ -50,6 +50,13 @@ function dispatcherBuiltIns(source: string): Set<string> {
     names.add(match[1].toLowerCase());
   }
 
+  for (const match of source.matchAll(/\^!\(([^)]+)\)/gi)) {
+    for (const name of match[1].split('|')) {
+      const normalized = normalizeCommand(name);
+      if (normalized) names.add(normalized);
+    }
+  }
+
   return names;
 }
 

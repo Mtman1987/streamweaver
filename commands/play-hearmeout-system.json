@@ -1,0 +1,13 @@
+{
+  "id": "hearmeout-play-system",
+  "name": "!play",
+  "command": "!play",
+  "enabled": true,
+  "description": "Resume the HearMeOut music or movie lane.",
+  "caseSensitive": false,
+  "regex": false,
+  "group": "Music Commands",
+  "sources": 31,
+  "createdAt": "2026-10-13T00:00:00.000Z",
+  "updatedAt": "2026-10-13T00:00:00.000Z"
+}
