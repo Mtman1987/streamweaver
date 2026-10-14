@@ -2,7 +2,7 @@
   "id": "hearmeout-play-system",
   "name": "!play",
   "command": "!play",
-  "enabled": true,
+  "enabled": false,
   "description": "Resume the HearMeOut music or movie lane.",
   "caseSensitive": false,
   "regex": false,
