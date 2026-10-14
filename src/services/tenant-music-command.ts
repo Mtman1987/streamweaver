@@ -20,6 +20,7 @@ export async function handleTenantMusicCommand(input: {
     actorName: input.username, actorUserId: input.userId,
     actorRole: input.isBroadcaster ? 'owner' : input.canControl ? 'moderator' : 'member' };
   if (command === 'play') { await reply('!play is disabled globally. Use !sr <song or YouTube URL> to request music.'); return true; }
+  if (command === 'play') { await reply('!play is disabled globally. Use !sr <song or YouTube URL> to request music.'); return true; }
   if (command === 'wr') { await reply('@' + input.username + ', !wr is disabled for this stream. Use !sr <song or YouTube URL>.'); return true; }
   const readOnly = ['np', 'nowplaying', 'status'].includes(command) || ['playlist', 'radio', 'autoradio'].includes(command) && (!argument || argument.toLowerCase() === 'status');
   const source = command === 'sr' && /^(source|overlay|obs)$/i.test(argument);
