@@ -33,18 +33,18 @@ test('tenant commands are consumed before legacy imported actions and lounge con
  assert(source.indexOf('&& await handleTenantMusicCommand(') < source.indexOf('const hearMeOutCommand ='));
 });
 
-test('!play is disabled for every tenant without invoking the media action', async () => {
+test('!play is silently consumed for every tenant without invoking the media action', async () => {
  const sent: any[] = [], replies: string[] = [];
  const handled = await handleTenantMusicCommand({
   message:'!play',tenantId:'the_lovely_princess_snow',username:'viewer',userId:'4',
   canControl:true,isBroadcaster:true,
   execute:async p=>{sent.push(p);return{}},reply:async t=>{replies.push(t)}
  });
- assert.equal(handled,true);assert.equal(sent.length,0);assert.equal(replies.length,1);
- assert.match(replies[0],/disabled globally/i);
+ assert.equal(handled,true);assert.equal(sent.length,0);assert.equal(replies.length,0);
 });
-test('global dispatcher blocks !play before tenant and shared Lounge handlers', () => {
+test('global dispatcher silently ignores !play before tenant and shared Lounge handlers', () => {
  const source=readFileSync(new URL('../src/services/chat-dispatcher.ts',import.meta.url),'utf8');
- assert(source.indexOf('!play is intentionally disabled globally') < source.indexOf('await handleTenantMusicCommand('));
- assert(source.indexOf('!play is intentionally disabled globally') < source.indexOf('const hearMeOutCommand ='));
+ assert(source.indexOf('!play may belong to another bot') < source.indexOf('await handleTenantMusicCommand('));
+ assert(source.indexOf('!play may belong to another bot') < source.indexOf('const hearMeOutCommand ='));
+ assert(!source.includes('!play is disabled globally.'));
 });
