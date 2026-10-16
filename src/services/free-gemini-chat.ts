@@ -89,7 +89,7 @@ export async function generateFreeGeminiResponse(
         redirect: 'error',
       });
     } catch {
-      cooldowns.set(fingerprint, { until: Date.now() + 30_000, category: 'upstream' });
+      cooldowns.set(fingerprint, { until: Date.now() + 5_000, category: 'upstream' });
       throw new FreeChatUnavailableError('upstream');
     }
     if (!response.ok) {
@@ -107,7 +107,7 @@ export async function generateFreeGeminiResponse(
         // A rejected turn must not disable the provider for every tenant.
         throw new FreeChatUnavailableError('blocked');
       }
-      cooldowns.set(fingerprint, { until: Date.now() + 30_000, category: 'empty_response' });
+      cooldowns.set(fingerprint, { until: Date.now() + 5_000, category: 'empty_response' });
       throw new FreeChatUnavailableError('empty_response');
     }
     const limit = Math.max(1, Math.min(12_000, Math.floor(Number(options.maxCharacters) || 12_000)));
