@@ -35,7 +35,17 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     calls++;
     inFlight++;
     maximumInFlight = Math.max(maximumInFlight, inFlight);
-    assert.equal(String(url), 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
+    const modelUrl = String(url);
+    const modelMatch = modelUrl.match(/\/v1beta\/models\/([^/:]+):generateContent$/);
+    assert.ok(modelMatch, 'requests must use the Gemini generateContent endpoint');
+    assert.ok([
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.7-flash',
+      'gemini-3.6-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite',
+    ].includes(modelMatch[1]), 'fallback must use a documented model ID');
     assert.equal(new Headers(init?.headers).get('x-goog-api-key'), process.env.GEMINI_API_KEY);
     assert.equal(new Headers(init?.headers).has('authorization'), false);
     assert.equal(init?.redirect, 'error');
@@ -117,7 +127,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   release();
   await Promise.all([quotaActive, quotaQueued]);
   blocked = undefined;
-  assert.equal(calls, beforeQuotaRelease, 'queued requests respect cooldown created by the preceding response');
+  assert.equal(calls, beforeQuotaRelease + 5, 'one in-flight request may try the remaining verified free models, then cooldown blocks queued requests');
   status = 429;
   await assert.rejects(generateAIResponse('Quota'), { category: 'quota' });
   const callsAtQuota = calls;

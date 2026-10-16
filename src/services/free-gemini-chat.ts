@@ -136,7 +136,7 @@ export async function generateFreeGeminiResponse(
         responseBody: body || lastOverloadBody,
       });
       // Only cool down on the final result; a temporary 503 already tried every configured free model.
-      cooldowns.set(fingerprint, { until: Date.now() + (authentication ? 15 * 60_000 : 30_000), category });
+      cooldowns.set(fingerprint, { until: Date.now() + (authentication ? 6 * 60 * 60_000 : category === 'quota' ? 15 * 60_000 : 30_000), category });
       throw new FreeChatUnavailableError(category);
     }
     const data = await response.json().catch(() => ({}));

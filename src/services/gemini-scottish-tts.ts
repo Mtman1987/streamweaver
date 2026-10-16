@@ -2,7 +2,7 @@ import { readAICostPolicy } from './ai-cost-policy';
 
 export const SCOTTISH_VOICE_ID = 'gemini:charon:scottish';
 const MODEL = 'gemini-2.5-flash-preview-tts';
-const FREE_TTS_FALLBACKS = ['gemini-2.5-pro-preview-tts'] as const;
+const FREE_TTS_FALLBACKS: readonly string[] = []; // Do not assume preview/pro TTS is free; Kokoro is the guaranteed free fallback.
 const ACCENT = 'Read the transcript exactly in a natural adult male Scottish English accent. Warm, clear and conversational; avoid exaggeration or caricature. Do not read these instructions. Transcript:\n';
 let pending = 0;
 let queue: Promise<unknown> = Promise.resolve();
