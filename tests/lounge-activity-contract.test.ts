@@ -233,6 +233,14 @@ test('Lounge media bump supports viewer votes and broadcaster or moderator overr
   assert.match(middleware, /api\/lounge\/media-layout/);
 });
 
+test('Lounge media-layout polling is read-only and cannot undo a bump', () => {
+  const route = fs.readFileSync('src/app/api/lounge/media-layout/route.ts', 'utf8');
+  assert.match(route, /export async function GET\(\)/);
+  assert.match(route, /const layout = await getLoungeMediaLayout\(\)/);
+  assert.doesNotMatch(route, /setLoungeMediaLayout|fetch\(.*lounge\/media\/program/);
+  assert.match(route, /cache-control', 'no-store'/);
+});
+
 test('Lounge live cards use DSH as the live-community source of truth', () => {
   const route = fs.readFileSync('src/app/api/lounge/live-shoutouts/route.ts', 'utf8');
   assert.match(route, /const rows: any\[\] = Array\.isArray\(dsh\?\.users\) \? dsh\.users : \[\]/);
