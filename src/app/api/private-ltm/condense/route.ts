@@ -1,4 +1,4 @@
-import { isFreeGeminiConfigured } from '@/services/free-gemini-chat';
+import { isFreeChainConfigured } from '@/services/free-ai-chain';
 import { readAICostPolicy, AI_PAUSED_MESSAGE } from '@/services/ai-cost-policy';
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       return apiError('Forbidden', { status: 403, code: 'TENANT_MISMATCH' });
     }
 
-    if (!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured()) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
+    if (!readAICostPolicy().paidRoutesEnabled && !isFreeChainConfigured()) return apiOk({ success: false, available: false, reason: AI_PAUSED_MESSAGE });
 
     const messages = await readPrivateChatMessages(50, tenantId);
     if (messages.length < 10) {
