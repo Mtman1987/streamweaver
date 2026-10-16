@@ -8,8 +8,8 @@ const cooldowns = new Map<string, { until: number; category: FailureCategory }>(
 
 function safeUpstreamDetail(value: string): string {
   return String(value || '')
-    .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')
-    .replace(/[\\r\\n\\t]+/g, ' ')
+    .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+    .replace(/[\r\n\t]+/g, ' ')
     .slice(0, 500);
 }
 let active = 0;
