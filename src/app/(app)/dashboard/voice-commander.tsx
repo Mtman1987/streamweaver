@@ -10,6 +10,7 @@ import { Mic, LoaderCircle, Bot, Send, User, Maximize2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio } from "@/services/speech";
 import { browserSpeechRecognition } from "@/services/browser-speech";
+import { recognizeWithNativeBrowserSpeech } from "@/services/microphone-recognition";
 import { mergeSpeechRecognitionSegments } from "@/services/speech-transcript";
 import { translateToLanguage, type TargetLanguage } from "@/services/translation";
 import { createTwitchClip } from "@/services/twitch-client-api";
@@ -83,6 +84,20 @@ async function postTtsToCurrent(audioUrl: string, tenantId?: string | null) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audioUrl }),
     });
+}
+
+function speakWithBrowserFallback(text: string) {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(String(text || '').slice(0, 2000));
+        utterance.lang = 'en-US';
+        const voices = window.speechSynthesis.getVoices();
+        utterance.voice = voices.find(voice => /^en(-|_)/i.test(voice.lang)) || null;
+        window.speechSynthesis.speak(utterance);
+    } catch (error) {
+        console.error('[VoiceCommander] Browser speech fallback unavailable:', error);
+    }
 }
 
 async function playTtsLocally(audioUrl: string) {
@@ -1041,9 +1056,14 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     toast({ variant: "destructive", title: "No speech detected", description: "Please try speaking more clearly" });
                 }
             } catch (error: any) {
-                console.error('[VoiceCommander] Browser STT error:', error);
-                if (error.message !== 'No speech detected') {
-                    toast({ variant: "destructive", title: "Speech Recognition Failed", description: error.message });
+                console.warn('[VoiceCommander] Primary free transcription failed; trying native browser recognition:', error);
+                try {
+                    const fallbackTranscript = await recognizeWithNativeBrowserSpeech();
+                    if (fallbackTranscript) await processTranscription(fallbackTranscript);
+                    else throw new Error('No speech detected. Please try again.');
+                } catch (fallbackError: any) {
+                    console.error('[VoiceCommander] Browser STT fallback failed:', fallbackError);
+                    toast({ variant: "destructive", title: "Speech Recognition Failed", description: fallbackError?.message || error?.message || "Please try again or type your message." });
                 }
             } finally {
                 console.log('[VoiceCommander] Setting isTranscribing to false');
