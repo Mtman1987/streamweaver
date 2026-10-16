@@ -44,7 +44,6 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
       'gemini-3.7-flash',
       'gemini-3.6-flash',
       'gemini-3.1-flash-lite',
-      'gemini-2.5-flash-lite',
     ].includes(modelMatch[1]), 'fallback must use a documented model ID');
     assert.equal(new Headers(init?.headers).get('x-goog-api-key'), process.env.GEMINI_API_KEY);
     assert.equal(new Headers(init?.headers).has('authorization'), false);
@@ -127,7 +126,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   release();
   await Promise.all([quotaActive, quotaQueued]);
   blocked = undefined;
-  assert.equal(calls, beforeQuotaRelease + 5, 'one in-flight request may try the remaining verified free models, then cooldown blocks queued requests');
+  assert.equal(calls, beforeQuotaRelease + 1, 'quota exhaustion must stop after one request and cooldown queued requests');
   status = 429;
   await assert.rejects(generateAIResponse('Quota'), { category: 'quota' });
   const callsAtQuota = calls;
