@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
 
 const MODEL = 'gemini-3.5-flash-lite';
-const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent';
+// Keep this list on Google's free Gemini API family only. Try alternates only
+// when the provider reports temporary model overload (HTTP 503).
+const FREE_MODEL_FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'] as const;
+const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
 
@@ -78,39 +81,55 @@ export async function generateFreeGeminiResponse(
     if (queuedCooldown && queuedCooldown.until > Date.now()) {
       throw new FreeChatUnavailableError(queuedCooldown.category);
     }
-    let response: Response;
-    try {
-      response = await fetchImpl(ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
-          ...(systemPrompt.trim() ? { systemInstruction: { parts: [{ text: systemPrompt.slice(-12_000) }] } } : {}),
-          contents: [{ role: 'user', parts: [...(options.inlineAudio ? [{ inlineData: options.inlineAudio }] : []), { text: prompt.slice(-24_000) }] }],
-          generationConfig: {
-            maxOutputTokens: Math.max(32, Math.min(1200, Math.floor(Number(options.maxTokens) || 400))),
-            temperature: options.temperature !== undefined && Number.isFinite(Number(options.temperature))
-              ? Math.max(0, Math.min(1, Number(options.temperature))) : 0.7,
-          },
-        }),
-        signal: AbortSignal.timeout(15_000),
-        redirect: 'error',
+    let response: Response | undefined;
+    let selectedModel: string = MODEL;
+    let lastOverloadBody = '';
+    const models = [MODEL, ...FREE_MODEL_FALLBACKS];
+    for (let index = 0; index < models.length; index++) {
+      const model = models[index];
+      try {
+        response = await fetchImpl(ENDPOINT(model), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            ...(systemPrompt.trim() ? { systemInstruction: { parts: [{ text: systemPrompt.slice(-12_000) }] } } : {}),
+            contents: [{ role: 'user', parts: [...(options.inlineAudio ? [{ inlineData: options.inlineAudio }] : []), { text: prompt.slice(-24_000) }] }],
+            generationConfig: {
+              maxOutputTokens: Math.max(32, Math.min(1200, Math.floor(Number(options.maxTokens) || 400))),
+              temperature: options.temperature !== undefined && Number.isFinite(Number(options.temperature))
+                ? Math.max(0, Math.min(1, Number(options.temperature))) : 0.7,
+            },
+          }),
+          signal: AbortSignal.timeout(15_000),
+          redirect: 'error',
+        });
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        console.error('[Free Gemini] request failed before an HTTP response', {
+          model, errorName: err.name, errorMessage: safeUpstreamDetail(err.message),
+        });
+        // Network and timeout errors are not proof of model overload; don't fan out.
+        cooldowns.set(fingerprint, { until: Date.now() + 30_000, category: 'upstream' });
+        throw new FreeChatUnavailableError('upstream');
+      }
+      selectedModel = model;
+      if (response.status !== 503 || index === models.length - 1) break;
+      lastOverloadBody = safeUpstreamDetail(await response.text().catch(() => ''));
+      console.warn('[Free Gemini] model overloaded; trying next free model', {
+        model, status: response.status, nextModel: models[index + 1], responseBody: lastOverloadBody,
       });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      console.error('[Free Gemini] request failed before an HTTP response', {
-        model: MODEL, errorName: err.name, errorMessage: safeUpstreamDetail(err.message),
-      });
-      cooldowns.set(fingerprint, { until: Date.now() + 30_000, category: 'upstream' });
-      throw new FreeChatUnavailableError('upstream');
     }
+    if (!response) throw new FreeChatUnavailableError('upstream');
     if (!response.ok) {
       const authentication = response.status === 401 || response.status === 403;
       const category = authentication ? 'authentication' : response.status === 429 ? 'quota' : 'upstream';
       const body = safeUpstreamDetail(await response.text().catch(() => ''));
-      console.error('[Free Gemini] upstream HTTP error', {
-        model: MODEL, status: response.status, statusText: response.statusText, category, responseBody: body,
+      console.error('[Free Gemini] all free-model attempts failed or provider rejected request', {
+        model: selectedModel, status: response.status, statusText: response.statusText, category,
+        responseBody: body || lastOverloadBody,
       });
-      cooldowns.set(fingerprint, { until: Date.now() + (authentication ? 15 * 60_000 : 60_000), category });
+      // Only cool down on the final result; a temporary 503 already tried every configured free model.
+      cooldowns.set(fingerprint, { until: Date.now() + (authentication ? 15 * 60_000 : 30_000), category });
       throw new FreeChatUnavailableError(category);
     }
     const data = await response.json().catch(() => ({}));
