@@ -44,8 +44,8 @@ export async function generateScottishTTS(text: string): Promise<string> {
     });
     if (!response.ok) {
       const responseBody = (await response.text().catch(() => ''))
-        .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')
-        .replace(/[\\r\\n\\t]+/g, ' ').slice(0, 500);
+        .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+        .replace(/[\r\n\t]+/g, ' ').slice(0, 500);
       console.error('[Gemini TTS] upstream HTTP error', {
         model: MODEL, status: response.status, statusText: response.statusText, responseBody,
       });
