@@ -1,7 +1,6 @@
 import { readAICostPolicy } from './ai-cost-policy';
 import {
   FreeChatUnavailableError,
-  capAtCompleteSentence,
   generateFreeGeminiResponse,
   isFreeGeminiConfigured,
 } from './free-gemini-chat';
@@ -83,6 +82,18 @@ const TRANSIENT_COOLDOWN_MS = 30_000;
 const LOCAL_TRANSIENT_COOLDOWN_MS = 5 * 60_000;
 
 const cooldowns = new Map<FreeProviderId, { until: number; category: Category }>();
+
+function capAtCompleteSentence(text: string, limit: number): string {
+  const value = String(text || '').trim();
+  if (value.length <= limit) return value;
+  const candidate = value.slice(0, limit);
+  let sentenceEnd = -1;
+  for (const match of candidate.matchAll(/[.!?](?:["')\\]}]+)?(?=\\s|$)/g)) {
+    sentenceEnd = (match.index || 0) + match[0].length;
+  }
+  if (sentenceEnd >= Math.floor(limit * 0.6)) return candidate.slice(0, sentenceEnd).trim();
+  return `${candidate.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+}
 
 class ProviderFailure extends Error {
   constructor(readonly category: Category, readonly cooldownMs: number, detail = '') {
