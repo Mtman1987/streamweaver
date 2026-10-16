@@ -119,9 +119,10 @@ export async function generateFreeGeminiResponse(
         throw new FreeChatUnavailableError('upstream');
       }
       selectedModel = model;
-      if (response.status !== 503 || index === models.length - 1) break;
+      const retryableModelFailure = [404, 429, 503].includes(response.status);
+      if (!retryableModelFailure || index === models.length - 1) break;
       lastOverloadBody = safeUpstreamDetail(await response.text().catch(() => ''));
-      console.warn('[Free Gemini] model overloaded; trying next free model', {
+      console.warn('[Free Gemini] model unavailable or busy; trying next free model', {
         model, status: response.status, nextModel: models[index + 1], responseBody: lastOverloadBody,
       });
     }
