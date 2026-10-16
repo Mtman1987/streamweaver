@@ -2,6 +2,7 @@ import { readAICostPolicy } from './ai-cost-policy';
 
 export const SCOTTISH_VOICE_ID = 'gemini:charon:scottish';
 const MODEL = 'gemini-2.5-flash-preview-tts';
+const FREE_TTS_FALLBACKS = ['gemini-2.5-pro-preview-tts'] as const;
 const ACCENT = 'Read the transcript exactly in a natural adult male Scottish English accent. Warm, clear and conversational; avoid exaggeration or caricature. Do not read these instructions. Transcript:\n';
 let pending = 0;
 let queue: Promise<unknown> = Promise.resolve();
@@ -31,23 +32,35 @@ export async function generateScottishTTS(text: string): Promise<string> {
     if (Date.now() < cooldownUntil || Date.now() - queuedAt > 45_000) return '';
     // Re-check operational policy before spending any quota after queueing.
     if (!readAICostPolicy().geminiFreeTierVerified) return '';
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: ACCENT + text.slice(0, 2000) }] }],
-        generationConfig: { responseModalities: ['AUDIO'], speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } },
-        } },
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
+    const models = [MODEL, ...FREE_TTS_FALLBACKS];
+    let response: Response | undefined;
+    let selectedModel = MODEL;
+    for (let index = 0; index < models.length; index++) {
+      selectedModel = models[index];
+      response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + selectedModel + ':generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: ACCENT + text.slice(0, 2000) }] }],
+          generationConfig: { responseModalities: ['AUDIO'], speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } },
+          } },
+        }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (![404, 503].includes(response.status) || index === models.length - 1) break;
+      console.warn('[Gemini TTS] model unavailable or overloaded; trying free TTS fallback', {
+        model: selectedModel, status: response.status, nextModel: models[index + 1],
+      });
+      await response.text().catch(() => '');
+    }
+    if (!response) throw new Error('Gemini Scottish speech failed: no response');
     if (!response.ok) {
       const responseBody = (await response.text().catch(() => ''))
-        .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
-        .replace(/[\r\n\t]+/g, ' ').slice(0, 500);
+        .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')
+        .replace(/[\\r\\n\\t]+/g, ' ').slice(0, 500);
       console.error('[Gemini TTS] upstream HTTP error', {
-        model: MODEL, status: response.status, statusText: response.statusText, responseBody,
+        model: selectedModel, status: response.status, statusText: response.statusText, responseBody,
       });
       cooldownUntil = Date.now() + ([401, 403].includes(response.status) ? 6 * 60 * 60_000 : response.status === 429 ? 15 * 60_000 : 60_000);
       throw new Error('Gemini Scottish speech failed: ' + response.status);
