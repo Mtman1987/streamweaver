@@ -1,7 +1,7 @@
 'use server';
 
 import { readAICostPolicy, AI_PAUSED_MESSAGE } from './ai-cost-policy';
-import { isFreeGeminiConfigured } from './free-gemini-chat';
+import { isFreeChainConfigured } from './free-ai-chain';
 import { generateAIResponse } from './ai-provider';
 
 export type TargetLanguage = 'es' | 'fr' | 'ru' | 'de' | 'ja';
@@ -49,7 +49,7 @@ export async function translateToLanguage(
     };
   }
 
-  if (!readAICostPolicy().paidRoutesEnabled && !isFreeGeminiConfigured(tenantId)) return { translatedText: originalText, targetLanguage: targetLanguage as TargetLanguage, originalText, error: AI_PAUSED_MESSAGE };
+  if (!readAICostPolicy().paidRoutesEnabled && !isFreeChainConfigured(tenantId)) return { translatedText: originalText, targetLanguage: targetLanguage as TargetLanguage, originalText, error: AI_PAUSED_MESSAGE };
 
   const targetName = LANGUAGE_NAMES[targetLanguage];
   try {
