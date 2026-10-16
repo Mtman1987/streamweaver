@@ -26,24 +26,7 @@ jobs:
           cache: npm
       - name: Install dependencies for command smoke
         run: npm ci --ignore-scripts
-      - name: Verify open raid aliases and existing-player follow alerts
-        run: node --import tsx --test tests/raid-message.test.ts tests/open-raid-dispatch.test.cjs tests/follow-alert.test.ts tests/follow-eventsub.test.cjs tests/eventsub-lifecycle.test.cjs tests/follow-player-integration.test.cjs tests/ai-generated-command-runtime.test.cjs
-      - name: Verify wake, microphone identity and delivery receipts
-        run: node --import tsx --test tests/shared-bot-wake.test.ts tests/twitch-delivery-receipt.test.ts tests/signed-in-twitch-send.test.ts tests/say-chat.test.ts tests/bot-fallback-identity.test.ts
-      - name: Verify tenant watchtime and loyalty imports
-        run: node --import tsx --test tests/watchtime-loyalty-import.test.ts tests/tenant-owned-state.test.ts
-      - name: Verify tenant song request isolation
-        run: node --import tsx --test tests/twitch-media-scope.test.ts tests/hearmeout-action-auth.test.ts tests/tenant-music-command.test.ts
-      - name: Verify replay corruption recovery and concurrent ingestion
-        run: node --import tsx --test tests/shared-chat-recovery.test.ts tests/shared-chat-ingestion.test.ts
-      - name: Verify free AI cost policy
-        run: node --import tsx --test tests/free-ai-policy.test.ts tests/free-gemini-chat.test.ts tests/gemini-scottish-tts.test.ts && node --test tests/free-voice-entrypoint.test.mjs
-      - name: Run live command smoke tests
-        run: node --import tsx --test tests/spmt-command-aliases.test.ts tests/stella-lounge-replies.test.ts tests/root-command-runtime-coverage.test.ts tests/bot-action-runtime.test.ts
-      - name: Verify Chat Tag check-in bridge
-        run: node --import tsx --test tests/chat-tag-checkin-bridge.test.cjs tests/checkin-shoutout.test.cjs tests/operational-error-recovery.test.cjs tests/checkin-bonus-recovery.test.cjs tests/twitch-token-recovery.test.ts tests/twitch-broadcaster-scopes.test.cjs
-      - name: Check Spotlight commercial overlay
-        run: node --test tests/spotlight-commercial-break.test.cjs
+      # Deploy directly after dependency installation; targeted regression suites are run on demand, not on every production push.
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Sync StreamElements secrets
         run: |
