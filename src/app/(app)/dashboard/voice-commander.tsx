@@ -222,10 +222,16 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     body: JSON.stringify({ text: textToSpeak })
                 });
                 if (!ttsRes.ok) {
-                    console.error('[VoiceCommander] TTS failed for bot message:', ttsRes.status);
+                    console.warn('[VoiceCommander] Free TTS request failed; using browser speech synthesis:', ttsRes.status);
+                    speakWithBrowserFallback(textToSpeak);
                     return;
                 }
                 const ttsData = await ttsRes.json();
+                if (!ttsData.audioDataUri) {
+                    console.warn('[VoiceCommander] Free TTS unavailable; using browser speech synthesis');
+                    speakWithBrowserFallback(textToSpeak);
+                    return;
+                }
                 console.log('[VoiceCommander] TTS generated successfully');
                 
                 // Create and play audio directly
@@ -241,7 +247,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     await audio.play();
                     console.log('[VoiceCommander] Bot TTS audio playback started successfully');
                 } catch (e: any) {
-                    console.error('[VoiceCommander] Bot TTS audio playback failed:', e);
+                    console.error('[VoiceCommander] Bot TTS audio playback failed; using browser speech synthesis:', e);
+                    speakWithBrowserFallback(textToSpeak);
                     // Try to resume audio context if needed
                     if (e?.name === 'NotAllowedError') {
                         console.log('[VoiceCommander] Audio playback blocked by browser policy, trying to resume context');
@@ -259,7 +266,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     }
                 }
             } catch (error) {
-                 console.error('[VoiceCommander] Failed to generate TTS for bot message:', error);
+                 console.warn('[VoiceCommander] Failed to generate free TTS; using browser speech synthesis:', error);
+                 speakWithBrowserFallback(textToSpeak);
             }
         };
 
