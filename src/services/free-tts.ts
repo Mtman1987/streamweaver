@@ -26,8 +26,8 @@ export async function generateFreeTTS(text: string, voice: string): Promise<stri
       unavailableUntil = 0;
       return `data:audio/wav;base64,${bytes.toString('base64')}`;
     } catch {
-      unavailableUntil = Date.now() + 60_000;
-      console.info('[TTS] Free voice worker is temporarily unavailable; speech skipped for 60 seconds.');
+      unavailableUntil = Date.now() + 5_000;
+      console.warn('[TTS] Free voice worker request failed; retrying automatically after a 5-second cooldown.');
       return '';
     }
   });
