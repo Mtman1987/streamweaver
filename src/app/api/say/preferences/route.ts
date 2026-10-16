@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       discordUsername: identity.discordUsername,
     },
     voice: voice || '',
-    defaultVoice: DEFAULT_TTS_VOICE,
+    defaultVoice: effectiveDefaultVoice(),
     voices: voiceCatalog(),
   });
 }
