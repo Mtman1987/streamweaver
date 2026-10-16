@@ -43,6 +43,12 @@ export async function generateScottishTTS(text: string): Promise<string> {
       signal: AbortSignal.timeout(45_000),
     });
     if (!response.ok) {
+      const responseBody = (await response.text().catch(() => ''))
+        .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+        .replace(/[\r\n\t]+/g, ' ').slice(0, 500);
+      console.error('[Gemini TTS] upstream HTTP error', {
+        model: MODEL, status: response.status, statusText: response.statusText, responseBody,
+      });
       cooldownUntil = Date.now() + ([401, 403].includes(response.status) ? 6 * 60 * 60_000 : response.status === 429 ? 15 * 60_000 : 60_000);
       throw new Error('Gemini Scottish speech failed: ' + response.status);
     }
@@ -54,6 +60,11 @@ export async function generateScottishTTS(text: string): Promise<string> {
   });
   queue = task.catch(() => undefined);
   try { return await task; }
-  catch (error) { cooldownUntil = Math.max(cooldownUntil, Date.now() + 60_000); throw error; }
+  catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error('[Gemini TTS] request failed', { model: MODEL, errorName: err.name, errorMessage: err.message.slice(0, 500) });
+    cooldownUntil = Math.max(cooldownUntil, Date.now() + 60_000);
+    throw error;
+  }
   finally { pending--; }
 }

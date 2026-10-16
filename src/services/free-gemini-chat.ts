@@ -5,6 +5,13 @@ const MODEL = 'gemini-3.5-flash-lite';
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
+
+function safeUpstreamDetail(value: string): string {
+  return String(value || '')
+    .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 500);
+}
 let active = 0;
 const SLOT_WAIT_MS = 3_000;
 const MAX_WAITERS = 2;
@@ -88,13 +95,21 @@ export async function generateFreeGeminiResponse(
         signal: AbortSignal.timeout(15_000),
         redirect: 'error',
       });
-    } catch {
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error('[Free Gemini] request failed before an HTTP response', {
+        model: MODEL, errorName: err.name, errorMessage: safeUpstreamDetail(err.message),
+      });
       cooldowns.set(fingerprint, { until: Date.now() + 30_000, category: 'upstream' });
       throw new FreeChatUnavailableError('upstream');
     }
     if (!response.ok) {
       const authentication = response.status === 401 || response.status === 403;
       const category = authentication ? 'authentication' : response.status === 429 ? 'quota' : 'upstream';
+      const body = safeUpstreamDetail(await response.text().catch(() => ''));
+      console.error('[Free Gemini] upstream HTTP error', {
+        model: MODEL, status: response.status, statusText: response.statusText, category, responseBody: body,
+      });
       cooldowns.set(fingerprint, { until: Date.now() + (authentication ? 15 * 60_000 : 60_000), category });
       throw new FreeChatUnavailableError(category);
     }

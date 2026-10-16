@@ -25,9 +25,12 @@ export async function generateFreeTTS(text: string, voice: string): Promise<stri
       if (bytes.length < 44 || bytes.subarray(0, 4).toString() !== 'RIFF') throw new Error('Free voice worker returned invalid audio');
       unavailableUntil = 0;
       return `data:audio/wav;base64,${bytes.toString('base64')}`;
-    } catch {
+    } catch (error) {
       unavailableUntil = Date.now() + 60_000;
-      console.info('[TTS] Free voice worker is temporarily unavailable; speech skipped for 60 seconds.');
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.warn('[TTS] Free voice worker failed; speech skipped for 60 seconds.', {
+        errorName: err.name, errorMessage: err.message.slice(0, 300),
+      });
       return '';
     }
   });
