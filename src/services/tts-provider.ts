@@ -146,7 +146,21 @@ export async function generateTTS(
 
   const policy = readAICostPolicy();
   const requestedVoice = getTtsVoiceOption(voiceOverride || getTTSConfig(tenantId).voice);
-  if (requestedVoice.provider === 'gemini') return generateScottishTTS(normalizedText);
+  if (requestedVoice.provider === 'gemini') {
+    // Use Gemini only when the operator explicitly verified this project's free tier.
+    // A 429, unavailable model, or malformed audio must fall back to local Kokoro,
+    // not make !say silently fail or touch a paid provider.
+    if (policy.geminiFreeTierVerified) {
+      try {
+        const audio = await generateScottishTTS(normalizedText);
+        if (audio) return audio;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('[TTS] Verified-free Gemini voice unavailable; falling back to local Kokoro.', message.slice(0, 300));
+      }
+    }
+    return generateFreeTTS(normalizedText, requestedVoice.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice);
+  }
   if (!policy.paidRoutesEnabled || voiceOverride?.startsWith('kokoro:')) {
     const selected = getTtsVoiceOption(voiceOverride || getTTSConfig(tenantId).voice);
     const trialVoice = selected.id.startsWith('kokoro:')
