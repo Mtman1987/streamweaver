@@ -146,7 +146,7 @@ export default function SayPlayer() {
       const payload = result?.data || result || {};
       if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Could not save voice');
       setVoice(String(payload.voice || ''));
-      const label = TTS_VOICE_OPTIONS.find((item) => item.id === payload.voice)?.label || 'default voice';
+      const label = voiceOptions.find((item) => item.id === payload.voice)?.label || 'default voice';
       setStatus(`Saved. Your public messages will be spoken with ${label}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
