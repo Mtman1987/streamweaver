@@ -71,8 +71,8 @@ test('free-only policy prevents paid calls even with credentials and retries fre
   assert.equal(personalityResult.optimized, 'Kind and curious');
   assert.equal(personalityResult.available, false);
   assert.equal(calls, 0);
-  assert.match(await generateTTS('Hello.', 'deepgram:aura-2-athena-en', 'trial-test'), /^data:audio\\/wav;base64,/);
-  assert.match(await generateTTS('Hello.', 'kokoro:am_michael', 'trial-test'), /^data:audio\\/wav;base64,/);
+  assert.match(await generateTTS('Hello.', 'deepgram:aura-2-athena-en', 'trial-test'), /^data:audio\/wav;base64,/);
+  assert.match(await generateTTS('Hello.', 'kokoro:am_michael', 'trial-test'), /^data:audio\/wav;base64,/);
   assert.equal(calls, 2);
   fail = true;
   assert.deepEqual(await Promise.all(Array.from({ length: 20 }, () => generateFreeTTS('Hello.', 'af_heart'))), Array(20).fill(''));
