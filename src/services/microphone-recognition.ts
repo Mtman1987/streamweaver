@@ -59,6 +59,34 @@ export class MicrophoneRecognition {
 }
 
 // Mobile uses a bounded recorded clip instead of the unreliable Web Speech engine.
+export function recognizeWithNativeBrowserSpeech(): Promise<string> {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Browser speech recognition is unavailable.'));
+  const NativeSpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!NativeSpeechRecognition) return Promise.reject(new Error('This browser does not support native speech recognition.'));
+  return new Promise((resolve, reject) => {
+    const recognition = new NativeSpeechRecognition();
+    let transcript = '';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.onresult = (event: any) => {
+      const parts: string[] = [];
+      for (let i = 0; i < (event.results?.length || 0); i++) {
+        const value = String(event.results[i]?.[0]?.transcript || '').trim();
+        if (value) parts.push(value);
+      }
+      transcript = parts.join(' ').trim();
+    };
+    recognition.onerror = (event: any) => reject(new Error(event?.error === 'not-allowed'
+      ? 'Microphone permission is blocked. Allow microphone access and try again.'
+      : 'Browser speech recognition failed. Try again or type your message.'));
+    recognition.onend = () => transcript
+      ? resolve(transcript)
+      : reject(new Error('No speech detected. Please try again.'));
+    try { recognition.start(); } catch (error) { reject(error); }
+  });
+}
+
 export function getSpeechRecognitionConstructor(): any {
   if (typeof window === 'undefined') return null;
   const native = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;

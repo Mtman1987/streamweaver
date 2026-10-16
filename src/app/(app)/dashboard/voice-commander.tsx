@@ -10,6 +10,7 @@ import { Mic, LoaderCircle, Bot, Send, User, Maximize2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio } from "@/services/speech";
 import { browserSpeechRecognition } from "@/services/browser-speech";
+import { recognizeWithNativeBrowserSpeech } from "@/services/microphone-recognition";
 import { mergeSpeechRecognitionSegments } from "@/services/speech-transcript";
 import { translateToLanguage, type TargetLanguage } from "@/services/translation";
 import { createTwitchClip } from "@/services/twitch-client-api";
@@ -83,6 +84,20 @@ async function postTtsToCurrent(audioUrl: string, tenantId?: string | null) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audioUrl }),
     });
+}
+
+function speakWithBrowserFallback(text: string) {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(String(text || '').slice(0, 2000));
+        utterance.lang = 'en-US';
+        const voices = window.speechSynthesis.getVoices();
+        utterance.voice = voices.find(voice => /^en(-|_)/i.test(voice.lang)) || null;
+        window.speechSynthesis.speak(utterance);
+    } catch (error) {
+        console.error('[VoiceCommander] Browser speech fallback unavailable:', error);
+    }
 }
 
 async function playTtsLocally(audioUrl: string) {
@@ -207,10 +222,16 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     body: JSON.stringify({ text: textToSpeak })
                 });
                 if (!ttsRes.ok) {
-                    console.error('[VoiceCommander] TTS failed for bot message:', ttsRes.status);
+                    console.warn('[VoiceCommander] Free TTS request failed; using browser speech synthesis:', ttsRes.status);
+                    speakWithBrowserFallback(textToSpeak);
                     return;
                 }
                 const ttsData = await ttsRes.json();
+                if (!ttsData.audioDataUri) {
+                    console.warn('[VoiceCommander] Free TTS unavailable; using browser speech synthesis');
+                    speakWithBrowserFallback(textToSpeak);
+                    return;
+                }
                 console.log('[VoiceCommander] TTS generated successfully');
                 
                 // Create and play audio directly
@@ -226,7 +247,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     await audio.play();
                     console.log('[VoiceCommander] Bot TTS audio playback started successfully');
                 } catch (e: any) {
-                    console.error('[VoiceCommander] Bot TTS audio playback failed:', e);
+                    console.error('[VoiceCommander] Bot TTS audio playback failed; using browser speech synthesis:', e);
+                    speakWithBrowserFallback(textToSpeak);
                     // Try to resume audio context if needed
                     if (e?.name === 'NotAllowedError') {
                         console.log('[VoiceCommander] Audio playback blocked by browser policy, trying to resume context');
@@ -244,7 +266,8 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     }
                 }
             } catch (error) {
-                 console.error('[VoiceCommander] Failed to generate TTS for bot message:', error);
+                 console.warn('[VoiceCommander] Failed to generate free TTS; using browser speech synthesis:', error);
+                 speakWithBrowserFallback(textToSpeak);
             }
         };
 
@@ -1041,9 +1064,14 @@ export function VoiceCommander({ variant = 'card', className }: VoiceCommanderPr
                     toast({ variant: "destructive", title: "No speech detected", description: "Please try speaking more clearly" });
                 }
             } catch (error: any) {
-                console.error('[VoiceCommander] Browser STT error:', error);
-                if (error.message !== 'No speech detected') {
-                    toast({ variant: "destructive", title: "Speech Recognition Failed", description: error.message });
+                console.warn('[VoiceCommander] Primary free transcription failed; trying native browser recognition:', error);
+                try {
+                    const fallbackTranscript = await recognizeWithNativeBrowserSpeech();
+                    if (fallbackTranscript) await processTranscription(fallbackTranscript);
+                    else throw new Error('No speech detected. Please try again.');
+                } catch (fallbackError: any) {
+                    console.error('[VoiceCommander] Browser STT fallback failed:', fallbackError);
+                    toast({ variant: "destructive", title: "Speech Recognition Failed", description: fallbackError?.message || error?.message || "Please try again or type your message." });
                 }
             } finally {
                 console.log('[VoiceCommander] Setting isTranscribing to false');
