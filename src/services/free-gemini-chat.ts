@@ -5,11 +5,10 @@ const MODEL = 'gemini-3.5-flash-lite';
 // Keep this list on Google's free Gemini API family only. Try alternates only
 // when the provider reports temporary model overload (HTTP 503).
 const FREE_MODEL_FALLBACKS = [
+  'gemini-3.1-flash-lite',
   'gemini-3.8-flash',
   'gemini-3.7-flash',
   'gemini-3.6-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash-lite',
 ] as const;
 const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
@@ -119,7 +118,9 @@ export async function generateFreeGeminiResponse(
         throw new FreeChatUnavailableError('upstream');
       }
       selectedModel = model;
-      const retryableModelFailure = [404, 429, 503].includes(response.status);
+      // Only temporary overload is eligible for model fallback. Quota exhaustion
+      // must enter cooldown immediately instead of multiplying API requests.
+      const retryableModelFailure = response.status === 503 || response.status === 404;
       if (!retryableModelFailure || index === models.length - 1) break;
       lastOverloadBody = safeUpstreamDetail(await response.text().catch(() => ''));
       console.warn('[Free Gemini] model unavailable or busy; trying next free model', {
