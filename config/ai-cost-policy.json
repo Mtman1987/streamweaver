@@ -4,5 +4,13 @@
   "femaleTrialVoice": "af_heart",
   "maleTrialVoice": "am_michael",
   "azureTrial": "awaiting-free-F0-account",
-  "deepgramTrial": "awaiting-verified-credit-and-credential"
+  "deepgramTrial": "awaiting-verified-credit-and-credential",
+  "freeChain": [
+    "gemini",
+    "groq",
+    "cerebras",
+    "openrouter",
+    "mistral",
+    "local"
+  ]
 }
