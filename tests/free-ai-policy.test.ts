@@ -20,7 +20,7 @@ import { POST as condensePrivateMemory } from '../src/app/api/private-ltm/conden
 import { POST as optimizePersonality } from '../src/app/api/ai/optimize-personality/route';
 import { generateFreeTTS } from '../src/services/free-tts';
 
-test('free-only policy prevents paid calls even with credentials and recovers speech without fallback', async (t) => {
+test('free-only policy prevents paid calls even with credentials and retries free TTS voices', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'free-ai-policy-'));
   const file = path.join(dir, 'policy.json');
   const oldPath = process.env.AI_COST_POLICY_PATH;
@@ -76,7 +76,7 @@ test('free-only policy prevents paid calls even with credentials and recovers sp
   assert.equal(calls, 2);
   fail = true;
   assert.deepEqual(await Promise.all(Array.from({ length: 20 }, () => generateFreeTTS('Hello.', 'af_heart'))), Array(20).fill(''));
-  assert.equal(calls, 3, 'one failed worker attempt, no paid fallback or retry storm');
+  assert.equal(calls, 5, 'preferred voice plus two free fallbacks are tried once before cooldown');
   assert.equal(await generateTTS('Another.', undefined, 'trial-test'), '');
-  assert.equal(calls, 3);
+  assert.equal(calls, 5);
 });

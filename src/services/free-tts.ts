@@ -4,6 +4,9 @@ let queue: Promise<unknown> = Promise.resolve();
 let pending = 0;
 let unavailableUntil = 0;
 
+const FREE_KOKORO_VOICES = ['af_heart', 'af_bella', 'am_michael'] as const;
+const FREE_TTS_ATTEMPT_TIMEOUT_MS = 12_000;
+
 export async function generateFreeTTS(text: string, voice: string): Promise<string> {
   // Serialize CPU inference, bound queue and latency, and never retry a broken
   // worker on every chat message. No paid route is consulted here.
@@ -12,27 +15,50 @@ export async function generateFreeTTS(text: string, voice: string): Promise<stri
   pending++;
   const task = queue.then(async () => {
     if (Date.now() < unavailableUntil || Date.now() - enqueuedAt > 45_000) return '';
-    try {
-      const base = new URL(readAICostPolicy().speechWorkerUrl);
-      if (base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || base.port !== '8080' || base.username || base.password) return '';
-      const response = await fetch(new URL('/v1/audio/speech', base), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: text.slice(0, 2000), voice }),
-        signal: AbortSignal.timeout(45_000),
-      });
-      if (!response.ok || !String(response.headers.get('content-type')).startsWith('audio/wav')) throw new Error('Free voice worker unavailable');
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length < 44 || bytes.subarray(0, 4).toString() !== 'RIFF') throw new Error('Free voice worker returned invalid audio');
-      unavailableUntil = 0;
-      return `data:audio/wav;base64,${bytes.toString('base64')}`;
-    } catch (error) {
-      unavailableUntil = Date.now() + 60_000;
-      const err = error instanceof Error ? error : new Error(String(error));
-      console.warn('[TTS] Free voice worker failed; speech skipped for 60 seconds.', {
-        errorName: err.name, errorMessage: err.message.slice(0, 300),
-      });
-      return '';
+    const base = new URL(readAICostPolicy().speechWorkerUrl);
+    if (base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || base.port !== '8080' || base.username || base.password) return '';
+
+    // A timeout on the preferred voice must not immediately disable speech.
+    // Try the other free Kokoro voices before opening the short worker cooldown.
+    const voices = [voice, ...FREE_KOKORO_VOICES.filter((candidate) => candidate !== voice)];
+    const failures: string[] = [];
+    for (const candidate of voices) {
+      try {
+        const response = await fetch(new URL('/v1/audio/speech', base), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: text.slice(0, 2000), voice: candidate }),
+          signal: AbortSignal.timeout(FREE_TTS_ATTEMPT_TIMEOUT_MS),
+        });
+        if (!response.ok || !String(response.headers.get('content-type')).startsWith('audio/wav')) {
+          throw new Error(`HTTP ${response.status}: invalid free voice response`);
+        }
+        const bytes = Buffer.from(await response.arrayBuffer());
+        if (bytes.length < 44 || bytes.subarray(0, 4).toString() !== 'RIFF') {
+          throw new Error('Free voice worker returned invalid audio');
+        }
+        unavailableUntil = 0;
+        if (candidate !== voice) {
+          console.warn('[TTS] Preferred free voice failed; fallback voice succeeded.', {
+            preferredVoice: voice, fallbackVoice: candidate,
+          });
+        }
+        return `data:audio/wav;base64,${bytes.toString('base64')}`;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        failures.push(`${candidate}: ${err.name} ${err.message.slice(0, 160)}`);
+        console.warn('[TTS] Free voice attempt failed; trying next free Kokoro voice.', {
+          voice: candidate, errorName: err.name, errorMessage: err.message.slice(0, 200),
+          remainingFallbacks: voices.length - failures.length,
+        });
+      }
     }
+
+    unavailableUntil = Date.now() + 60_000;
+    console.warn('[TTS] All free Kokoro voices failed; speech paused for 60 seconds.', {
+      attempts: failures.length, failures,
+    });
+    return '';
   });
   queue = task.catch(() => undefined);
   try { return await task; } finally { pending--; }
