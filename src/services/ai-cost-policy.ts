@@ -7,6 +7,8 @@ export type AICostPolicy = {
   speechWorkerUrl: string;
   femaleTrialVoice: string;
   maleTrialVoice: string;
+  /** Optional order/allow-list of free AI providers. Empty uses the default chain. */
+  freeChain: string[];
 };
 
 const defaults: AICostPolicy = {
@@ -15,6 +17,7 @@ const defaults: AICostPolicy = {
   speechWorkerUrl: 'http://127.0.0.1:8080',
   femaleTrialVoice: 'af_heart',
   maleTrialVoice: 'am_michael',
+  freeChain: [],
 };
 
 // Public operational policy, never a secret. The entrypoint seeds this into
@@ -31,6 +34,7 @@ export function readAICostPolicy(): AICostPolicy {
       speechWorkerUrl: typeof p.speechWorkerUrl === 'string' ? p.speechWorkerUrl : defaults.speechWorkerUrl,
       femaleTrialVoice: ['af_heart', 'af_bella'].includes(p.femaleTrialVoice) ? p.femaleTrialVoice : defaults.femaleTrialVoice,
       maleTrialVoice: p.maleTrialVoice === 'am_michael' ? p.maleTrialVoice : defaults.maleTrialVoice,
+      freeChain: Array.isArray(p.freeChain) ? p.freeChain.filter((id: unknown): id is string => typeof id === 'string') : [],
     };
   } catch { return { ...defaults }; }
 }

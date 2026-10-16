@@ -1,4 +1,4 @@
-import { isFreeGeminiConfigured, generateFreeGeminiResponse } from './free-gemini-chat';
+import { isFreeChainConfigured, generateFreeChainResponse } from './free-ai-chain';
 import { readAICostPolicy, AI_PAUSED_MESSAGE, assertPaidAIAllowed } from './ai-cost-policy';
 import { createHash } from 'node:crypto';
 import { readUserConfigSync } from '@/lib/user-config';
@@ -36,6 +36,8 @@ export interface AIResponseOptions {
   maxTokens?: number;
   maxCharacters?: number;
   temperature?: number;
+  /** Free mode only: restrict this call to these providers (e.g. ['gemini'] for private data). */
+  freeProviders?: string[];
 }
 
 export function getAIConfig(tenantId?: string): AIConfig {
@@ -134,8 +136,13 @@ export async function generateAIResponse(
   options?: AIResponseOptions,
 ): Promise<string> {
   if (!readAICostPolicy().paidRoutesEnabled) {
-    if (!isFreeGeminiConfigured(tenantId)) return AI_PAUSED_MESSAGE;
-    return generateFreeGeminiResponse(prompt, governedPrompt(systemPrompt), tenantId, options);
+    if (!isFreeChainConfigured(tenantId, options?.freeProviders)) return AI_PAUSED_MESSAGE;
+    return generateFreeChainResponse(prompt, governedPrompt(systemPrompt), tenantId, {
+      maxTokens: options?.maxTokens,
+      maxCharacters: options?.maxCharacters,
+      temperature: options?.temperature,
+      providers: options?.freeProviders,
+    });
   }
   let edenFailure = '';
 

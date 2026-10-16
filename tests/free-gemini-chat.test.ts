@@ -119,14 +119,14 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   assert.equal(calls, beforeRelease, 'expired queued prompts must never be sent later');
   blocked = new Promise<void>(resolve => { release = resolve; });
   status = 429;
+  const callsBeforeQuota = calls;
   const quotaActive = assert.rejects(generateFreeGeminiResponse('Quota active'), { category: 'quota' });
   const quotaQueued = assert.rejects(generateFreeGeminiResponse('Quota queued'), { category: 'quota' });
   await new Promise<void>(resolve => setImmediate(resolve));
-  const beforeQuotaRelease = calls;
   release();
   await Promise.all([quotaActive, quotaQueued]);
   blocked = undefined;
-  assert.equal(calls, beforeQuotaRelease + 1, 'quota exhaustion must stop after one request and cooldown queued requests');
+  assert.equal(calls, callsBeforeQuota + 1, 'quota exhaustion must stop after one request and cooldown queued requests');
   status = 429;
   await assert.rejects(generateAIResponse('Quota'), { category: 'quota' });
   const callsAtQuota = calls;
