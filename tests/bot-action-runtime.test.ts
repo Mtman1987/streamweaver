@@ -49,6 +49,18 @@ test('Stella routes named Lounge games to the director', async () => {
   assert.deepEqual(await detectBotAction('Stella swap the screens'), {
     action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit',
   });
+  for (const [message, target] of [
+    ['Stella bump the current screen', 'toggle'],
+    ['Stella bump the main window', 'toggle'],
+    ['Stella put the movie on the big screen', 'media'],
+    ['Stella make Spotlight the main window', 'stream'],
+    ['Stella bring the current streamer to the big screen', 'stream'],
+    ['Stella bump the movie to the main stage', 'media'],
+  ] as const) {
+    assert.deepEqual(await detectBotAction(message), {
+      action: 'sw.lounge.layout', args: { target }, detection: 'explicit',
+    }, message);
+  }
   for(const [message,operation,gameId,surface] of [
     ['Stella start the game bingo','start-show','bingo',''],
     ['Stella, start a game of Mosaic','start-show','pixelbattle',''],
