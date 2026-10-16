@@ -2,15 +2,21 @@ import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
 
 const MODEL = 'gemini-3.5-flash-lite';
-// Keep this list on Google's free Gemini API family only. Try alternates only
-// when the provider reports temporary model overload (HTTP 503).
+// Only stable model IDs listed in Google's current Gemini API model catalogue.
+// Do not put invented versions or TTS-only model IDs in this text/chat/STT chain.
 const FREE_MODEL_FALLBACKS = [
   'gemini-3.8-flash',
-  'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.1-flash-lite',
   'gemini-2.5-flash-lite',
 ] as const;
+
+function isModelScopedRateLimit(body: string): boolean {
+  // A per-model RPM/TPM limit can recover on another model. A daily/project
+  // free-tier quota exhaustion cannot, so it must stop immediately.
+  return /PerMinutePerProjectPerModel|PerDayPerProjectPerModel|requests_per_minute|tokens_per_minute|rate.?limit.*(?:per.?model|per.?minute)|(?:RPM|TPM)\b/i.test(body)
+    && !/free_tier_requests|requests_per_day|daily quota|per.?day.*project/i.test(body);
+}
 const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
@@ -119,12 +125,21 @@ export async function generateFreeGeminiResponse(
         throw new FreeChatUnavailableError('upstream');
       }
       selectedModel = model;
-      const retryableModelFailure = [404, 429, 503].includes(response.status);
-      if (!retryableModelFailure || index === models.length - 1) break;
-      lastOverloadBody = safeUpstreamDetail(await response.text().catch(() => ''));
-      console.warn('[Free Gemini] model unavailable or busy; trying next free model', {
+      const retryableStatus = response.status === 404 || response.status === 503;
+      if (response.status === 429) {
+        lastOverloadBody = safeUpstreamDetail(await response.clone().text().catch(() => ''));
+        if (!isModelScopedRateLimit(lastOverloadBody)) {
+          // Do not send the same exhausted project/free-tier quota to every model.
+          // The final error handler below applies a cooldown and prevents retry storms.
+          break;
+        }
+      }
+      if ((!retryableStatus && response.status !== 429) || index === models.length - 1) break;
+      if (!lastOverloadBody) lastOverloadBody = safeUpstreamDetail(await response.clone().text().catch(() => ''));
+      console.warn('[Free Gemini] model unavailable or model-scoped rate limited; trying next free model', {
         model, status: response.status, nextModel: models[index + 1], responseBody: lastOverloadBody,
       });
+      lastOverloadBody = '';
     }
     if (!response) throw new FreeChatUnavailableError('upstream');
     if (!response.ok) {

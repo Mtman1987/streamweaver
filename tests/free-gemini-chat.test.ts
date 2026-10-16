@@ -41,7 +41,6 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     assert.ok([
       'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
-      'gemini-3.7-flash',
       'gemini-3.6-flash',
       'gemini-3.1-flash-lite',
       'gemini-2.5-flash-lite',
@@ -127,13 +126,21 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   release();
   await Promise.all([quotaActive, quotaQueued]);
   blocked = undefined;
-  assert.equal(calls, beforeQuotaRelease + 5, 'one in-flight request may try the remaining verified free models, then cooldown blocks queued requests');
+  assert.equal(calls, beforeQuotaRelease + 1, 'project quota errors stop immediately instead of hammering every model');
   status = 429;
+  payload = { error: { message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests; daily quota exhausted' } };
   await assert.rejects(generateAIResponse('Quota'), { category: 'quota' });
   const callsAtQuota = calls;
   await Promise.all(Array.from({ length: 20 }, () => assert.rejects(generateAIResponse('Retry'), { category: 'quota' })));
   assert.equal(calls, callsAtQuota, 'quota cooldown prevents retry storms and paid fallback');
   process.env.GEMINI_API_KEY += '-replacement';
+  status = 429;
+  payload = { error: { message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_requests_per_minute_per_model' } };
+  const beforeModelScopedFallback = calls;
+  await assert.rejects(generateFreeGeminiResponse('Per-model rate limit'), { category: 'quota' });
+  assert.equal(calls, beforeModelScopedFallback + 5, 'a per-model rate limit tries the other verified free models');
+  process.env.GEMINI_API_KEY += '-another-replacement';
   status = 200;
+  payload = { candidates: [{ content: { parts: [{ text: 'Hello from the free provider.' }] } }] };
   assert.equal(await generateAIResponse('New key'), 'Hello from the free provider.');
 });
