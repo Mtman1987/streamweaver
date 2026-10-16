@@ -4,7 +4,13 @@ import { readAICostPolicy } from './ai-cost-policy';
 const MODEL = 'gemini-3.5-flash-lite';
 // Keep this list on Google's free Gemini API family only. Try alternates only
 // when the provider reports temporary model overload (HTTP 503).
-const FREE_MODEL_FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'] as const;
+const FREE_MODEL_FALLBACKS = [
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+] as const;
 const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
