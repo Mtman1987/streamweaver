@@ -120,7 +120,7 @@ export async function generateFreeGeminiResponse(
       selectedModel = model;
       // Only temporary overload is eligible for model fallback. Quota exhaustion
       // must enter cooldown immediately instead of multiplying API requests.
-      const retryableModelFailure = response.status === 503 || response.status === 404;
+      const retryableModelFailure = response.status === 503;
       if (!retryableModelFailure || index === models.length - 1) break;
       lastOverloadBody = safeUpstreamDetail(await response.text().catch(() => ''));
       console.warn('[Free Gemini] model unavailable or busy; trying next free model', {
