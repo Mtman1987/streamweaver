@@ -5,14 +5,11 @@ import { DiscordSayRecognition } from '@/services/discord-say-recognition';
 import { getSpeechRecognitionConstructor } from '@/services/microphone-recognition';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS } from '@/lib/tts-voices';
+import { DEFAULT_TTS_VOICE } from '@/lib/tts-voices';
 import { captureSpeechChat } from '@/services/speech-chat-capture';
 import { useLoungeBroadcastVolume } from '@/lib/lounge-broadcast-volume';
 
-const VOICE_OPTIONS = [
-  { id: '', label: 'Default voice' },
-  ...TTS_VOICE_OPTIONS.map((voice) => ({ id: voice.id, label: `${voice.label} — ${voice.providerLabel}` })),
-];
+type VoiceOption = { id: string; label: string };
 
 type VoiceIdentity = { discordUserId: string; discordUsername: string };
 
@@ -37,6 +34,7 @@ export default function SayPlayer() {
     }
   }, [broadcastSource, tenantId, stellaLevel]);
   const [voice, setVoice] = useState('');
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([{ id: '', label: 'Default voice' }]);
   const [identity, setIdentity] = useState<VoiceIdentity | null>(null);
   const [voiceSaving, setVoiceSaving] = useState(false);
   const [status, setStatus] = useState('Activate this public TTS browser source to hear shared chat audio.');
@@ -67,6 +65,9 @@ export default function SayPlayer() {
         if (!response.ok || result?.ok === false) return;
         setIdentity(payload.identity || null);
         setPostingAs(String(payload.identity?.discordUsername || ''));
+        if (Array.isArray(payload.voices)) {
+          setVoiceOptions([{ id: '', label: `Default voice (${payload.defaultVoice || 'free Kokoro'})` }, ...payload.voices.map((item: any) => ({ id: String(item.id), label: `${String(item.label)} — ${String(item.provider)}` }))]);
+        }
         setVoice(String(payload.voice || ''));
       })
       .catch(() => {});
@@ -314,7 +315,7 @@ export default function SayPlayer() {
         <p style={{ margin: 0, minHeight: 24, color: '#cbd2e4' }}>{status}</p>
         {!active ? <button onClick={() => setActive(true)} style={{ padding: '13px 18px', borderRadius: 10, border: '1px solid #4fa476', background: '#153424', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>▶ Activate public TTS audio</button> : null}
         <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>Volume</strong><input type="range" min="0" max="100" value={Math.round(volume * 100)} onChange={(event) => updateVolume(Number(event.target.value) / 100)} style={{ flex: '1 1 260px' }} /><span>{Math.round(volume * 100)}%</span></label>
-        <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>My voice</strong><select value={voice} disabled={!identity || voiceSaving} onChange={(event) => void updateVoice(event.target.value)} style={{ flex: '1 1 360px', padding: 9, borderRadius: 8, border: '1px solid #3a4259', background: '#0b0e17', color: '#fff' }}>{VOICE_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+        <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>My voice</strong><select value={voice} disabled={!identity || voiceSaving} onChange={(event) => void updateVoice(event.target.value)} style={{ flex: '1 1 360px', padding: 9, borderRadius: 8, border: '1px solid #3a4259', background: '#0b0e17', color: '#fff' }}>{voiceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
         <p style={{ margin: '-8px 0 0 102px', color: '#8791aa', fontSize: 13 }}>{identity ? `Saved for ${identity.discordUsername || identity.discordUserId}. Everyone hears your selected voice when your public TTS is triggered.` : `No sign-in is needed to listen. Sign-in is only for saving a personal voice; otherwise ${TTS_VOICE_OPTIONS.find((item) => item.id === DEFAULT_TTS_VOICE)?.label || 'the default voice'} is used.`}</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button type="button" onClick={toggleMic} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: micActive ? '#4a1717' : '#153424', color: '#fff', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : micPending ? 'Connecting listener…' : '🎤 Speak to Chat'}</button><button type="button" onClick={resetCursor} disabled={!active} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: active ? 'pointer' : 'default' }}>Reset listener</button></div>
         <p style={{ margin: 0, color: '#aeb7ce', fontSize: 13 }}>{voiceRoute?.inVoice ? 'Voice input: Discord VC' + (voiceRoute.channelName ? ' — ' + voiceRoute.channelName : '') : voiceRoute ? 'Voice input: device microphone' : voiceRouteError || 'Checking voice input…'}</p>
