@@ -31,6 +31,8 @@ test('HearMeOut persona source variants converge on Say TTS', async () => {
   assert.match(serviceRoute, /hmo-say-/);
   assert.match(serviceRoute, /generateTTS\([\s\S]*DEFAULT_TTS_VOICE[\s\S]*sayStreamKey/);
   assert.match(serviceRoute, /source:\s*['"]say['"]/);
+  assert.match(serviceRoute, /body\?\.speak !== false/);
+  assert.match(serviceRoute, /speech-delegated-to-say-player/);
 });
 
 test('HearMeOut public persona routes never require a service secret or SPMT login', async () => {
