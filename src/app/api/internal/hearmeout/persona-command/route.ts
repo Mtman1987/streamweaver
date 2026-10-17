@@ -101,14 +101,20 @@ export async function POST(request: NextRequest) {
   if (!responseText) responseText = 'I could not form a response. Please try that again.';
 
   const sayStreamKey = hearMeOutSayStreamKey(roomId, tenantId);
-  const audioDataUri = await generateTTS(
-    responseText.slice(0, 2000),
-    DEFAULT_TTS_VOICE,
-    sayStreamKey,
-  ).catch((error) => {
-    console.warn(`[HearMeOutPersona:${tenantId}] Say TTS failed:`, error);
-    return '';
-  });
+  // HearMeOut's caller owns delivery through the canonical /api/say/queue
+  // endpoint. Skip the legacy inline audio generation when explicitly delegated
+  // so the same reply is not synthesized twice.
+  const shouldGenerateInlineAudio = body?.speak !== false;
+  const audioDataUri = shouldGenerateInlineAudio
+    ? await generateTTS(
+        responseText.slice(0, 2000),
+        DEFAULT_TTS_VOICE,
+        sayStreamKey,
+      ).catch((error) => {
+        console.warn(`[HearMeOutPersona:${tenantId}] Say TTS failed:`, error);
+        return '';
+      })
+    : '';
 
   return apiOk({
     accepted: true,
@@ -119,7 +125,13 @@ export async function POST(request: NextRequest) {
     bot: { name: botName, tenantId },
     tts: audioDataUri
       ? { ok: true, audioDataUri, source: 'say', streamKey: sayStreamKey, voice: DEFAULT_TTS_VOICE }
-      : { ok: false, source: 'say', streamKey: sayStreamKey, voice: DEFAULT_TTS_VOICE },
+      : {
+          ok: false,
+          source: 'say',
+          streamKey: sayStreamKey,
+          voice: DEFAULT_TTS_VOICE,
+          ...(shouldGenerateInlineAudio ? {} : { skipped: true, reason: 'speech-delegated-to-say-player' }),
+        },
     roomId,
   });
 }
