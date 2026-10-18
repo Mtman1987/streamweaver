@@ -7,6 +7,24 @@ let unavailableUntil = 0;
 const FREE_KOKORO_VOICES = ['af_heart', 'af_bella', 'am_michael'] as const;
 const FREE_TTS_ATTEMPT_TIMEOUT_MS = 12_000;
 
+function resolveFreeWorkerBase(): URL | null {
+  const configured = readAICostPolicy().speechWorkerUrl;
+  try {
+    const base = new URL(configured);
+    if (base.protocol === 'http:' && base.hostname === '127.0.0.1' && base.port === '8080' && !base.username && !base.password) {
+      return base;
+    }
+  } catch {
+    // Fall through to the safe in-process worker address below.
+  }
+
+  // Older persisted policies used the retired private Fly hostname. The free
+  // worker now runs beside the Next process, so stale policy must not disable
+  // every free voice request. Never honor an arbitrary remote URL here.
+  console.warn('[TTS] Ignoring stale/unsafe speechWorkerUrl; using local Kokoro worker.');
+  return new URL('http://127.0.0.1:8080');
+}
+
 export async function generateFreeTTS(text: string, voice: string): Promise<string> {
   // Serialize CPU inference, bound queue and latency, and never retry a broken
   // worker on every chat message. No paid route is consulted here.
@@ -15,8 +33,8 @@ export async function generateFreeTTS(text: string, voice: string): Promise<stri
   pending++;
   const task = queue.then(async () => {
     if (Date.now() < unavailableUntil || Date.now() - enqueuedAt > 45_000) return '';
-    const base = new URL(readAICostPolicy().speechWorkerUrl);
-    if (base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || base.port !== '8080' || base.username || base.password) return '';
+    const base = resolveFreeWorkerBase();
+    if (!base) return '';
 
     // A timeout on the preferred voice must not immediately disable speech.
     // Try the other free Kokoro voices before opening the short worker cooldown.
