@@ -65,13 +65,16 @@ function renderCard(input: {
     const deleteUrl = escapeHtml(`/api/ai/image/library?${deleteParams.toString()}`);
     controls += `<button class="delete-button" type="button" data-delete-url="${deleteUrl}" data-filename="${safeName}">Delete</button>`;
     if (input.gif) {
-      controls += `<button class="apply-button" type="button" data-apply-gif="${safeName}" data-tenant-id="${escapeHtml(input.tenantId)}">Apply to DM</button>`;
+      controls += `<button class="apply-button" type="button" data-apply-gif="${safeName}" data-tenant-id="${escapeHtml(input.tenantId)}" data-apply-scope="${input.scope}">Set</button>`;
     }
   }
 
   return `<article class="image-card" data-image-card data-library-kind="${input.gif ? 'gif' : 'image'}">
     <div class="image-toolbar">
-      <a href="${safeImageUrl}" target="_blank" rel="noopener noreferrer">Open full size</a>
+      <div class="toolbar-links">
+        <a href="${safeImageUrl}" target="_blank" rel="noopener noreferrer">Open full size</a>
+        <a href="${safeImageUrl}" download="${safeName}">Download</a>
+      </div>
       <div class="card-actions">${controls}</div>
     </div>
     <a href="${safeImageUrl}" target="_blank" rel="noopener noreferrer" class="image-link">
@@ -87,12 +90,16 @@ function renderActiveGifCard(url: string, canMutate: boolean): string {
     canMutate
       ? '<button class="delete-button" type="button" data-delete-url="/api/discord-media?slot=private-dm" data-filename="active private-DM GIF">Delete</button>'
       : '',
+    `<a href="${safeUrl}" download="active-private-dm.gif">Download</a>`,
     '<span class="active-badge">✓ Active DM GIF</span>',
   ].filter(Boolean).join('');
 
   return `<article class="image-card active-gif-card" data-image-card data-library-kind="gif" data-active-dm-gif>
     <div class="image-toolbar">
-      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open full size</a>
+      <div class="toolbar-links">
+        <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open full size</a>
+        <a href="${safeUrl}" download="active-private-dm.gif">Download</a>
+      </div>
       <div class="card-actions">${controls}</div>
     </div>
     <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="image-link">
@@ -173,7 +180,7 @@ export async function GET(request: NextRequest) {
   } catch {}
 
   const session = getTenantFromRequest(request);
-  const canMutate = scope === 'private' && Boolean(tenantId) && session?.tenantId === tenantId;
+  const canMutate = Boolean(tenantId) && session?.tenantId === tenantId;
   const gifFiles = scope === 'private' ? files.filter((filename) => /\.gif$/i.test(filename)) : [];
   const imageFiles = scope === 'private' ? files.filter((filename) => !/\.gif$/i.test(filename)) : files;
   const activePrivateGifUrl = scope === 'private' && tenantId
@@ -249,6 +256,7 @@ export async function GET(request: NextRequest) {
       if (!applyButton) return;
       const filename = applyButton.getAttribute('data-apply-gif') || '';
       const tenantId = applyButton.getAttribute('data-tenant-id') || '';
+      const scope = applyButton.getAttribute('data-apply-scope') || 'private';
       const buttons = Array.from(document.querySelectorAll('[data-apply-gif]'));
       applyButton.disabled = true;
       applyButton.textContent = 'Applying...';
@@ -257,13 +265,13 @@ export async function GET(request: NextRequest) {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tenantId: tenantId, scope: 'private', name: filename, action: 'apply-gif' })
+          body: JSON.stringify({ tenantId: tenantId, scope: scope, name: filename, action: 'apply-gif' })
         });
         const payload = await response.json().catch(function () { return {}; });
         if (!response.ok) throw new Error(payload.error || ('Apply failed (' + response.status + ')'));
         buttons.forEach(function (button) {
           button.disabled = false;
-          button.textContent = button === applyButton ? '✓ Active DM GIF' : 'Apply to DM';
+          button.textContent = button === applyButton ? '✓ Set' : 'Set';
           button.classList.toggle('active', button === applyButton);
         });
         window.location.reload();
@@ -306,6 +314,7 @@ export async function GET(request: NextRequest) {
     .image-card { min-width: 0; background: #1a1d24; border: 1px solid #30343c; border-radius: 12px; overflow: hidden; }
     .active-gif-card { border-color: #247a4b; }
     .image-toolbar { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
+    .toolbar-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
     .image-toolbar a { color: #9ecbff; text-decoration: none; font-size: 14px; }
     .image-toolbar a:hover { text-decoration: underline; }
     .card-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
@@ -366,8 +375,8 @@ export async function POST(request: NextRequest) {
   if (!tenantId || !isValidTenantId(tenantId)) {
     return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
   }
-  if (scope !== 'private' || action !== 'apply-gif') {
-    return NextResponse.json({ error: 'Only applying a private saved GIF is supported.' }, { status: 400 });
+  if ((scope !== 'private' && scope !== 'public') || action !== 'apply-gif') {
+    return NextResponse.json({ error: 'Only applying a saved GIF is supported.' }, { status: 400 });
   }
   if (!isSafePrivateGeneratedGifFilename(filename)) {
     return NextResponse.json({ error: 'invalid GIF filename' }, { status: 400 });
@@ -382,17 +391,29 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const gif = await readPrivateGeneratedGif(tenantId, filename);
+    let gif: Buffer | null = null;
+    if (scope === 'private') {
+      gif = await readPrivateGeneratedGif(tenantId, filename);
+    } else {
+      try {
+        gif = await fs.readFile(tenantPath(tenantId, `data/generated-images/${filename}`));
+      } catch (error: any) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+    }
     if (!gif) return NextResponse.json({ error: 'GIF not found' }, { status: 404 });
 
-    await writeDiscordMedia('private-dm', gif, tenantId);
-    const relativeUrl = getDiscordMediaPublicPath('private-dm', tenantId);
+    const slot = scope === 'private' ? 'private-dm' : 'public-discord';
+    await writeDiscordMedia(slot, gif, tenantId);
+    const relativeUrl = getDiscordMediaPublicPath(slot, tenantId);
     const baseUrl = getConfiguredAppUrl();
     const publicUrl = baseUrl ? `${baseUrl}${relativeUrl}` : relativeUrl;
-    await writeUserConfig({ PRIVATE_DM_GIF_URL: publicUrl }, tenantId);
-    await writePrivateChatSettings({ gifEnabled: true }, tenantId);
+    await writeUserConfig({
+      [scope === 'private' ? 'PRIVATE_DM_GIF_URL' : 'PUBLIC_DISCORD_GIF_URL']: publicUrl,
+    }, tenantId);
+    if (scope === 'private') await writePrivateChatSettings({ gifEnabled: true }, tenantId);
 
-    return NextResponse.json({ ok: true, applied: filename, url: publicUrl, gifEnabled: true });
+    return NextResponse.json({ ok: true, applied: filename, scope, url: publicUrl, ...(scope === 'private' ? { gifEnabled: true } : {}) });
   } catch (error) {
     console.error('[Private Image Library] Apply GIF failed:', error);
     return NextResponse.json({ error: 'Failed to apply saved GIF.' }, { status: 500 });
