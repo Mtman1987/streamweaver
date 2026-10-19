@@ -164,8 +164,8 @@ export async function POST(request: NextRequest) {
     try {
       result = await generator(generationOptions);
     } catch (error) {
-      if (genMode === 'cloudflare' && !(error instanceof AIProviderPausedError)) {
-        console.warn('[AI Image] Cloudflare generation failed; falling back to free Pollinations generation:', error instanceof Error ? error.message : String(error));
+      if (genMode === 'cloudflare') {
+        console.warn('[AI Image] Cloudflare generation unavailable or policy-gated; falling back to free Pollinations generation:', error instanceof Error ? error.message : String(error));
         result = await generateImageWithPollinations(generationOptions);
         effectiveGenMode = 'pollinations';
       } else if (genMode === 'seaart' && isSeaArtModelMismatchError(error)) {
