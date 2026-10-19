@@ -70,7 +70,7 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     url: 'https://api.cerebras.ai/v1/chat/completions',
     keyEnv: 'CEREBRAS_API_KEY',
     modelEnv: 'CEREBRAS_MODEL',
-    defaultModels: ['gpt-oss-120b', 'qwen-3.8-27b'],
+    defaultModels: ['gpt-oss-120b', 'llama3.1-8b'],
   },
   openrouter: {
     url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -233,7 +233,6 @@ async function requestCompatProvider(
     : 0.7;
 
   let last: { category: Category; cooldownMs: number } = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
-  let allKeysRejectedForAuth = true;
   const models = compatModels(id);
   for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
     const apiKey = apiKeys[keyIndex];
@@ -282,10 +281,9 @@ async function requestCompatProvider(
       last = { category: 'authentication', cooldownMs: AUTH_COOLDOWN_MS };
       break; // Try the next configured credential for this provider.
     }
-    allKeysRejectedForAuth = false;
     if (status === 429) {
       last = { category: 'quota', cooldownMs: parseRetryAfterMs(response) };
-      continue;
+      break; // Try the next credential instead of multiplying a quota failure across models.
     }
     if (status === 404) {
       last = { category: 'upstream', cooldownMs: MODEL_MISSING_COOLDOWN_MS };
@@ -298,10 +296,8 @@ async function requestCompatProvider(
     // 400/413/422 and similar describe this request, not the provider. Move on without a cooldown.
     throw new ProviderFailure('upstream', 0, body);
     }
-    if (!credentialRejectedForAuth) allKeysRejectedForAuth = false;
   }
-  if (!allKeysRejectedForAuth) throw new ProviderFailure(last.category, last.cooldownMs);
-  throw new ProviderFailure('authentication', AUTH_COOLDOWN_MS);
+  throw new ProviderFailure(last.category, last.cooldownMs);
 }
 
 function isTransientLocalFailure(message: string): boolean {
