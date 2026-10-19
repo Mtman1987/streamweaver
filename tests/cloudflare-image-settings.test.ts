@@ -15,3 +15,4 @@ test('Cloudflare catalog includes the Klein 4B default and private 9B profile', 
   assert.ok(cloudflare.some((item) => item.model === DEFAULT_CLOUDFLARE_IMAGE_MODEL));
   assert.ok(cloudflare.some((item) => item.model === '@cf/black-forest-labs/flux-2-klein-9b'));
 });
+

@@ -89,3 +89,14 @@ test('free-only policy prevents paid calls even with credentials and retries fre
   assert.equal(await generateTTS('Another.', undefined, 'trial-test'), '');
   assert.equal(calls, 5);
 });
+
+
+test('free Pollinations image generation remains available while paid routes are paused', async () => {
+  const { generateImageWithPollinations } = await import('../src/services/image-provider');
+  const result = await generateImageWithPollinations({
+    prompt: 'a quiet mountain landscape',
+    providerParams: { safe: true },
+  });
+  assert.ok(result.imageResourceUrl);
+  assert.equal(new URL(String(result.imageResourceUrl)).searchParams.get('safe'), 'true');
+});
