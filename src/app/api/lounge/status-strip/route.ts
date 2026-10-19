@@ -110,7 +110,10 @@ export async function GET() {
     else void pending.catch(() => {});
   }
   return NextResponse.json(cached!.value, {
-    headers: { 'cache-control': 'no-store, no-cache, must-revalidate' },
+    headers: {
+      'cache-control': 'no-store, no-cache, must-revalidate',
+      'access-control-allow-origin': 'https://spmt.live',
+    },
   });
 }
 
