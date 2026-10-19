@@ -394,3 +394,21 @@ test('public image overlay events support cached and current pack overlays', asy
   assert.ok(messages.every((message) => message.payload.imageUrl === 'https://streamweaver.test/generated/turtle.jpg'));
   assert.equal(messages[1].payload.prompt, 'turtle at the disco');
 });
+
+
+test('Pollinations image URLs default to SFW and omit the safety flag only when explicitly disabled', async () => {
+  const { generateImageWithPollinations } = await import('../src/services/image-provider');
+  const safe = await generateImageWithPollinations({
+    prompt: 'landscape illustration',
+    providerParams: { safe: true },
+  });
+  const safeUrl = new URL(String(safe.imageResourceUrl));
+  assert.equal(safeUrl.searchParams.get('safe'), 'true');
+
+  const adultMode = await generateImageWithPollinations({
+    prompt: 'adult portrait of fictional adults',
+    providerParams: { safe: false },
+  });
+  const adultUrl = new URL(String(adultMode.imageResourceUrl));
+  assert.equal(adultUrl.searchParams.has('safe'), false);
+});
