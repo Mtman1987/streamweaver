@@ -281,7 +281,8 @@ async function requestCompatProvider(
     }
     if (status === 429) {
       last = { category: 'quota', cooldownMs: parseRetryAfterMs(response) };
-      break; // Try the next credential instead of multiplying a quota failure across models.
+      if (id === 'nvidia') break; // NVIDIA has two credentials; rotate those before spending budget on more models.
+      continue;
     }
     if (status === 404) {
       last = { category: 'upstream', cooldownMs: MODEL_MISSING_COOLDOWN_MS };
