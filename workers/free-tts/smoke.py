@@ -27,7 +27,7 @@ for voice in ('af_heart', 'af_nicole', 'am_puck', 'bf_emma', 'bm_george'):
                 raise
             retry_after = error.headers.get('Retry-After')
             try:
-                delay = max(1, min(120, int(retry_after))) if retry_after else 60 * (attempt + 1)
+                delay = max(1, int(retry_after)) if retry_after else 60 * (attempt + 1)
             except ValueError:
                 delay = 60 * (attempt + 1)
             print(
