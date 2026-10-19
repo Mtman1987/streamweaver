@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
-import { globalPath } from '@/lib/tenant';
+import { globalPath, tenantPath } from '@/lib/tenant';
 import { deleteMessage, isDiscordApiError } from '@/services/discord-local';
 
 type PendingDiscordCleanup = {
@@ -33,6 +33,7 @@ type DiscordBotMessageHistoryEntry = PendingDiscordCleanup & {
 
 const CLEANUP_FILE = 'discord-message-cleanup.json';
 const HISTORY_FILE = 'discord-bot-message-history.json';
+const PRESERVED_FILE = 'data/discord-message-cleanup-preserved.json';
 const DEFAULT_DELETE_DELAY_MS = 10 * 60 * 1000;
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -157,6 +158,30 @@ export async function recordDiscordMessageCleanup(input: DiscordCleanupInput): P
   return entry.deleteAt;
 }
 
+async function readPreservedMessages(tenantId: string): Promise<Record<string, string[]>> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(tenantPath(tenantId, PRESERVED_FILE), 'utf-8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).map(([channelId, ids]) => [
+      channelId,
+      Array.isArray(ids) ? unique(ids.filter((id): id is string => typeof id === 'string')) : [],
+    ]));
+  } catch {
+    return {};
+  }
+}
+
+async function writePreservedMessages(tenantId: string, data: Record<string, string[]>): Promise<void> {
+  const filePath = tenantPath(tenantId, PRESERVED_FILE);
+  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+}
+
+export async function getPreservedDiscordMessageIds(tenantId: string, channelId: string): Promise<string[]> {
+  const preserved = await readPreservedMessages(tenantId);
+  return preserved[channelId] || [];
+}
+
 /** Return message IDs currently scheduled for deletion in a tenant-owned channel. */
 export async function getScheduledDiscordMessageCleanupIds(tenantId: string, channelId: string): Promise<string[]> {
   const queue = await readQueue();
@@ -206,8 +231,49 @@ export async function preserveDiscordMessageFromCleanup(
     }
   }
 
-  if (found) await writeQueue(next);
+  if (found) {
+    await writeQueue(next);
+    const preserved = await readPreservedMessages(tenantId);
+    preserved[channelId] = unique([...(preserved[channelId] || []), normalizedMessageId]);
+    await writePreservedMessages(tenantId, preserved);
+  }
   return found;
+}
+
+/** Re-enable cleanup for one previously preserved message, starting a fresh 10-minute window. */
+export async function restoreDiscordMessageCleanup(
+  tenantId: string,
+  channelId: string,
+  messageId: string,
+): Promise<boolean> {
+  const normalizedMessageId = messageId.trim();
+  if (!normalizedMessageId || !channelId.trim()) return false;
+
+  const preserved = await readPreservedMessages(tenantId);
+  const ids = preserved[channelId] || [];
+  if (!ids.includes(normalizedMessageId)) return false;
+  const remainingIds = ids.filter((id) => id !== normalizedMessageId);
+  if (remainingIds.length) preserved[channelId] = remainingIds;
+  else delete preserved[channelId];
+  await writePreservedMessages(tenantId, preserved);
+
+  const queue = await readQueue();
+  if (!queue.some((entry) => entry.tenantId === tenantId && entry.channelId === channelId
+    && (entry.triggerMessageId === normalizedMessageId || entry.replyMessageIds.includes(normalizedMessageId)))) {
+    const now = new Date();
+    const entry: PendingDiscordCleanup = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: now.toISOString(),
+      deleteAt: getDiscordMessageCleanupDeleteAt(now.getTime()),
+      tenantId,
+      channelId,
+      triggerMessageId: normalizedMessageId,
+      replyMessageIds: [],
+    };
+    await writeQueue([...queue, entry].slice(-250));
+    scheduleEntry(entry);
+  }
+  return true;
 }
 
 export async function processDueDiscordMessageCleanups(): Promise<void> {
