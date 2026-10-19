@@ -60,6 +60,8 @@ export default function PrivateDmTtsPlayer() {
   const [mediaUrl, setMediaUrl] = useState('');
   const [micActive, setMicActive] = useState(false);
   const [micTranscript, setMicTranscript] = useState('');
+  const [sendingTranscript, setSendingTranscript] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<PrivateTtsItem[]>([]);
 
   useEffect(() => {
     try {
@@ -155,7 +157,7 @@ export default function PrivateDmTtsPlayer() {
     let cancelled = false;
     const start = async () => {
       try {
-        const data = await postControl({ mode: 'toggle' });
+        const data = await postControl({ mode: 'on' });
         if (cancelled) return;
         const isEnabled = data.ttsEnabled === true;
         setEnabled(isEnabled);
@@ -163,6 +165,12 @@ export default function PrivateDmTtsPlayer() {
         setBotName(String(data.botName || 'Athena'));
         setMediaUrl(String(data.mediaUrl || ''));
         cursorRef.current = Math.max(0, Number(data.cursor || 0));
+        setHistoryEntries(data.currentText ? [{
+          cursor: cursorRef.current,
+          text: String(data.currentText),
+          timestamp: new Date().toISOString(),
+          audioDataUris: Array.isArray(data.audioDataUris) ? data.audioDataUris : [],
+        }] : []);
         if (data.currentEmbed && typeof data.currentEmbed === 'object') {
           setPreview(data.currentEmbed as PreviewEmbed);
         } else if (data.currentText) {
@@ -173,7 +181,7 @@ export default function PrivateDmTtsPlayer() {
           }));
         }
         if (!isEnabled) {
-          setStatus('Private Athena TTS was already running, so this click turned it OFF. You can close this page.');
+          setStatus('Private TTS is currently off. Use the 🔊 control in the DM to start it.');
           return;
         }
         setStatus('Private Athena TTS is ON. Reading this reply, then listening for new Athena replies…');
@@ -213,6 +221,7 @@ export default function PrivateDmTtsPlayer() {
         const items = Array.isArray(data.items) ? data.items as PrivateTtsItem[] : [];
         if (items.length) {
           cursorRef.current = Math.max(cursorRef.current, Number(data.cursor || items.at(-1)?.cursor || 0));
+          setHistoryEntries((current) => [...current, ...items].slice(-50));
           for (const item of items) {
             setPreview(buildSyntheticPreview({
               botName: String(data.botName || botName || 'Athena'),
@@ -291,17 +300,15 @@ export default function PrivateDmTtsPlayer() {
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
-    recognition.onresult = async (event: any) => {
+    recognition.onresult = (event: any) => {
       const transcript = String(event.results?.[0]?.[0]?.transcript || '').trim();
       setMicActive(false);
-      if (!transcript) return;
-      setMicTranscript(transcript);
-      try {
-        await navigator.clipboard.writeText(transcript);
-        setStatus('Push-to-talk transcript copied. Paste it into your Discord DM to Athena.');
-      } catch {
-        setStatus('Push-to-talk captured your words. Copy the transcript below into Discord.');
+      if (!transcript) {
+        setStatus('No speech was recognized. Try again or type your message below.');
+        return;
       }
+      setMicTranscript(transcript);
+      setStatus('Transcript ready. Correct any mistakes, then send it privately to Athena.');
     };
     recognition.onerror = (event: any) => {
       setMicActive(false);
@@ -313,6 +320,58 @@ export default function PrivateDmTtsPlayer() {
     microphoneRef.current = recognition;
     recognition.start();
     setStatus('Starting microphone… speak when it is ready.');
+  }
+
+  async function sendTranscript() {
+    const transcript = micTranscript.trim();
+    if (!transcript) {
+      setStatus('Speak first or type a message in the transcript box.');
+      return;
+    }
+    if (sendingTranscript) return;
+    setSendingTranscript(true);
+    try {
+      const data = await postControl({ mode: 'send', message: transcript });
+      if (data.submitted !== true) throw new Error(data.message || 'The private message was not sent.');
+      const reply = String(data.reply || '').trim();
+      const cursor = Math.max(0, Number(data.cursor || 0));
+      if (cursor) cursorRef.current = Math.max(cursorRef.current, cursor);
+      setBotName(String(data.botName || botName));
+      setMediaUrl(String(data.mediaUrl || mediaUrl));
+      if (data.currentEmbed && typeof data.currentEmbed === 'object') {
+        setPreview(data.currentEmbed as PreviewEmbed);
+      } else if (reply) {
+        setPreview(buildSyntheticPreview({ botName: String(data.botName || botName), text: reply, mediaUrl: String(data.mediaUrl || mediaUrl) }));
+      }
+      if (reply) {
+        const item: PrivateTtsItem = {
+          cursor,
+          question: transcript,
+          text: reply,
+          timestamp: new Date().toISOString(),
+          audioDataUris: Array.isArray(data.audioDataUris) ? data.audioDataUris : [],
+        };
+        setHistoryEntries((current) => [...current, item].slice(-50));
+      }
+      enqueueAudio(data.audioDataUris);
+      setMicTranscript('');
+      setStatus(String(data.message || 'Athena replied privately. Your transcript was not sent as a separate Discord message.'));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSendingTranscript(false);
+    }
+  }
+
+  async function testVoice() {
+    try {
+      setStatus('Generating a short test with the selected voice…');
+      const data = await postControl({ mode: 'test' });
+      enqueueAudio(data.audioDataUris);
+      setStatus(String(data.message || 'Test voice generated. Tap Play / Resume if playback is blocked.'));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
   }
 
   const fields = Array.isArray(preview?.fields)
@@ -359,11 +418,25 @@ export default function PrivateDmTtsPlayer() {
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" onClick={playResume} style={{ border: '1px solid #4f6aa3', background: '#18213a', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>▶ Play / Resume</button>
-              <button type="button" onClick={toggleMic} style={{ border: '1px solid #3c8d63', background: micActive ? '#4a1717' : '#153424', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : '🎤 Push to talk'}</button>
+              <button type="button" onClick={testVoice} style={{ border: '1px solid #7a68be', background: '#292044', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>🔈 Test voice</button>
+              <button type="button" onClick={toggleMic} style={{ border: '1px solid #3c8d63', background: micActive ? '#4a1717' : '#153424', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : '🎤 Speak'}</button>
               <button type="button" onClick={stop} style={{ border: '1px solid #a84f5c', background: '#40161d', color: '#fff', borderRadius: 9, padding: '10px 14px', cursor: 'pointer' }}>■ Stop private TTS</button>
             </div>
-            <p style={{ margin: 0, color: '#8f98ae', fontSize: 13 }}>Push-to-talk does not impersonate you through the Discord bot. It copies your speech transcript so you can paste it into the private DM.</p>
-            {micTranscript && <div style={{ background: '#0b0e17', border: '1px solid #292f43', borderRadius: 9, padding: 10 }}><strong>Last mic transcript:</strong> {micTranscript}</div>}
+            <label style={{ display: 'grid', gap: 8 }}>
+              <strong>Message to Athena (editable transcript)</strong>
+              <textarea
+                value={micTranscript}
+                onChange={(event) => setMicTranscript(event.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder="Tap Speak, then correct the transcript here—or type your message directly."
+                style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', background: '#0b0e17', color: '#f4f6ff', border: '1px solid #3a4259', borderRadius: 9, padding: 12, lineHeight: 1.45, font: 'inherit' }}
+              />
+            </label>
+            <button type="button" onClick={sendTranscript} disabled={sendingTranscript || !micTranscript.trim()} style={{ border: '1px solid #4fa476', background: sendingTranscript ? '#293148' : '#153424', color: '#fff', borderRadius: 9, padding: '12px 16px', fontWeight: 800, cursor: sendingTranscript ? 'wait' : 'pointer', opacity: sendingTranscript || !micTranscript.trim() ? 0.65 : 1 }}>
+              {sendingTranscript ? 'Sending privately…' : '➤ Send privately to Athena'}
+            </button>
+            <p style={{ margin: 0, color: '#8f98ae', fontSize: 13 }}>Your transcript goes to the private-chat pipeline only. Discord receives Athena’s reply embed; your words appear in its footer with your avatar, not as a separate copied DM.</p>
           </div>
         </section>
 
@@ -396,6 +469,23 @@ export default function PrivateDmTtsPlayer() {
           ) : (
             <p style={{ color: '#8f98ae' }}>The Discord embed preview will appear when the signed reply loads.</p>
           )}
+        </section>
+
+        <section style={{ border: '1px solid #292f43', borderRadius: 16, background: '#111522', padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: 17 }}>Private conversation history</h2>
+            <span style={{ color: '#8f98ae', fontSize: 12 }}>Most recent 50 turns</span>
+          </div>
+          <div aria-live="polite" style={{ marginTop: 12, display: 'grid', gap: 10, maxHeight: 340, overflowY: 'auto', overscrollBehavior: 'contain', paddingRight: 4 }}>
+            {historyEntries.length ? historyEntries.map((item, index) => (
+              <article key={`${item.cursor}-${item.timestamp || index}-${index}`} style={{ border: '1px solid #292f43', borderRadius: 10, background: '#0b0e17', padding: 12 }}>
+                {item.question ? <><strong style={{ color: '#a9bbff' }}>You</strong><p style={{ whiteSpace: 'pre-wrap', margin: '5px 0 10px', lineHeight: 1.45 }}>{item.question}</p></> : null}
+                <strong style={{ color: '#8ef0b1' }}>{botName}</strong>
+                <p style={{ whiteSpace: 'pre-wrap', margin: '5px 0 0', lineHeight: 1.48 }}>{item.text}</p>
+                {item.timestamp ? <small style={{ display: 'block', marginTop: 8, color: '#7f899f' }}>{new Date(item.timestamp).toLocaleTimeString()}</small> : null}
+              </article>
+            )) : <p style={{ margin: 0, color: '#8f98ae' }}>Your recent private replies will appear here and remain scrollable.</p>}
+          </div>
         </section>
       </div>
     </main>
