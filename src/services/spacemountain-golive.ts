@@ -105,7 +105,14 @@ export async function handleSpaceMountainGoLiveMessage(
 
   // Never trust a positive state without an explicit successful result.
   if (!(result.ok && (result.state === 'live' || result.state === 'already_live'))) {
-    await deps.reply(chatResultMessage({ ...result, ok: false })).catch(() => undefined);
+    const safeResult = {
+      ...result,
+      ok: false,
+      state: result.state === 'live' || result.state === 'already_live'
+        ? 'verification_unavailable' as const
+        : result.state,
+    };
+    await deps.reply(chatResultMessage(safeResult)).catch(() => undefined);
     return true;
   }
   await deps.reply(chatResultMessage(result)).catch(() => undefined);
