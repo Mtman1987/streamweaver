@@ -10,41 +10,55 @@ jobs:
   inspect:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@v1
-      - name: Install audio decoder
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Verify free-only synthesis and decoded audio
         shell: bash
         run: |
           set -euo pipefail
-          # Fixed sample only; no private conversations or credentials are logged.
-          flyctl ssh console --app streamweaver-new --command 'node --import tsx -e '\''const {generateTTS,getTTSConfig}=require("./src/services/tts-provider.ts");
+          # Keep audio on the machine; large base64 SSH output can lose the remote exit status.
+          # Only compact validation metadata is returned. Fixed sample; no private text or credentials.
+          remote_script='const {generateTTS,getTTSConfig}=require("./src/services/tts-provider.ts");
           (async()=>{
-           const {readAICostPolicy}=require("./src/services/ai-cost-policy.ts");
-           if(readAICostPolicy().paidRoutesEnabled) throw new Error("Paid routes must stay paused");
-           const config=getTTSConfig("94371378");
-           if(!config.voice.startsWith("kokoro:")) throw new Error("Expected free trial voice");
-           const originalFetch=globalThis.fetch;
-           globalThis.fetch=async(...args)=>{
-            if(new URL(String(args[0])).hostname!=="127.0.0.1") throw new Error("Non-trial AI route blocked by readiness check");
-            return originalFetch(...args);
-           };
-           const audio=await generateTTS("This is a free voice check.",undefined,"94371378");
-           if(!audio.startsWith("data:audio/wav;base64,")) throw new Error("Expected WAV audio");
-           console.log("TRIAL_AUDIO:"+audio.slice("data:audio/wav;base64,".length));
-          })().catch(()=>{console.error("Free speech check failed");process.exitCode=1});'\''' | python3 -c 'import sys,base64; line=next((s.strip() for s in sys.stdin if s.startswith("TRIAL_AUDIO:")), ""); assert line, "No trial audio returned"; sys.stdout.buffer.write(base64.b64decode(line.split(":",1)[1],validate=True))' > "$RUNNER_TEMP/trial.wav"
-          ffmpeg -v error -i "$RUNNER_TEMP/trial.wav" -ac 1 -ar 16000 -f s16le "$RUNNER_TEMP/trial.pcm"
-          python3 - "$RUNNER_TEMP/trial.pcm" <<'PY'
-          import array, json, math, sys
-          samples = array.array("h")
-          with open(sys.argv[1], "rb") as source:
-              samples.frombytes(source.read())
-          assert len(samples) > 1600, "Trial audio is too short"
-          rms = math.sqrt(sum((s / 32768) ** 2 for s in samples) / len(samples))
-          assert rms > 0.001, "Trial audio is silent"
-          print(json.dumps({"voice": "kokoro-free-trial", "seconds": round(len(samples) / 16000, 2), "rms": round(rms, 4), "decoded": True}))
-          PY
+            const {readAICostPolicy}=require("./src/services/ai-cost-policy.ts");
+            if(readAICostPolicy().paidRoutesEnabled) throw new Error("Paid routes must stay paused");
+            const config=getTTSConfig("94371378");
+            if(!config.voice.startsWith("kokoro:")) throw new Error("Expected free trial voice");
+            const originalFetch=globalThis.fetch;
+            globalThis.fetch=async(...args)=>{
+              if(new URL(String(args[0])).hostname!=="127.0.0.1") throw new Error("Non-trial AI route blocked by readiness check");
+              return originalFetch(...args);
+            };
+            const audio=await generateTTS("This is a free voice check.",undefined,"94371378");
+            if(!audio.startsWith("data:audio/wav;base64,")) throw new Error("Expected WAV audio");
+            const wav=Buffer.from(audio.slice("data:audio/wav;base64,".length),"base64");
+            if(wav.toString("ascii",0,4)!=="RIFF"||wav.toString("ascii",8,12)!=="WAVE") throw new Error("Invalid WAV container");
+            let offset=12, dataStart=-1, dataSize=0, format=0, bits=0;
+            while(offset+8<=wav.length){
+              const id=wav.toString("ascii",offset,offset+4), size=wav.readUInt32LE(offset+4), start=offset+8;
+              if(start+size>wav.length) throw new Error("Truncated WAV chunk");
+              if(id==="fmt "){format=wav.readUInt16LE(start);bits=wav.readUInt16LE(start+14);}
+              if(id==="data"){dataStart=start;dataSize=size;break;}
+              offset=start+size+(size%2);
+            }
+            if(format!==1||bits!==16||dataStart<0||dataSize<3200) throw new Error("WAV is not sufficiently long 16-bit PCM");
+            let energy=0;
+            for(let i=dataStart;i+1<dataStart+dataSize;i+=2){const s=wav.readInt16LE(i)/32768;energy+=s*s;}
+            const rms=Math.sqrt(energy/(dataSize/2));
+            if(rms<=0.001) throw new Error("Trial audio is silent");
+            console.log(JSON.stringify({voice:"kokoro-free-trial",seconds:Number((dataSize/32000).toFixed(2)),rms:Number(rms.toFixed(4)),decoded:true}));
+          })().catch(error=>{console.error("Free speech check failed: "+String(error.message||error));process.exit(1)});'
+          for attempt in 1 2 3; do
+            if flyctl ssh console --app streamweaver-new --command "node --import tsx -e '$remote_script'"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Remote SSH verification failed on attempt $attempt; retrying." >&2
+              sleep $((attempt * 5))
+            fi
+          done
+          echo "Free TTS readiness verification failed after 3 SSH attempts." >&2
+          exit 1
