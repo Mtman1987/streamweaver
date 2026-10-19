@@ -120,6 +120,50 @@ test('private gallery counts the active private-DM GIF and gives its owner a del
   }
 });
 
+test('private gallery preserves the selected GIF content-version URL when it renders the active slot', async () => {
+  const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-versioned-gif-'));
+  const originalPersistRoot = process.env.PERSIST_ROOT;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAppUrl = process.env.APP_URL;
+  const originalSessionSecret = process.env.STREAMWEAVER_SESSION_SECRET;
+  process.env.PERSIST_ROOT = runtimeRoot;
+  process.env.NODE_ENV = 'production';
+  process.env.APP_URL = 'https://streamweaver.test';
+  process.env.STREAMWEAVER_SESSION_SECRET = 'private-library-versioned-test-secret';
+
+  try {
+    const tenantId = 'tenant-versioned-gif';
+    const versionedUrl = `https://streamweaver.test/api/discord-media/private-dm.gif?tenant=${tenantId}&v=0123456789abcdef`;
+    const { writeDiscordMedia } = await import('../src/lib/discord-media-store');
+    const { writeUserConfig, readUserConfigSync } = await import('../src/lib/user-config');
+    await writeDiscordMedia('private-dm', Buffer.from('GIF89a-selected-version'), tenantId);
+    await writeUserConfig({ PRIVATE_DM_GIF_URL: versionedUrl }, tenantId);
+
+    const { NextRequest } = await import('next/server');
+    const { GET } = await import('../src/app/api/ai/image/library/route');
+    const cookie = serializeSessionCookie({ id: tenantId, username: 'owner' });
+    const response = await GET(new NextRequest(
+      `https://streamweaver.test/api/ai/image/library?tenantId=${tenantId}&scope=private`,
+      { headers: { cookie: `streamweaver-session=${cookie}` } },
+    ));
+    const html = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.equal(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL, versionedUrl);
+    assert.ok(html.includes(versionedUrl));
+  } finally {
+    if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
+    else process.env.PERSIST_ROOT = originalPersistRoot;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = originalAppUrl;
+    if (originalSessionSecret === undefined) delete process.env.STREAMWEAVER_SESSION_SECRET;
+    else process.env.STREAMWEAVER_SESSION_SECRET = originalSessionSecret;
+    await rm(runtimeRoot, { recursive: true, force: true });
+  }
+});
+
 test('private gallery migrates the configured DSH-converted GIF over an older StreamWeaver slot', async () => {
   const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), 'streamweaver-private-dsh-migration-'));
   const originalPersistRoot = process.env.PERSIST_ROOT;
