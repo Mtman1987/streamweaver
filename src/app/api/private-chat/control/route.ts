@@ -18,6 +18,8 @@ import {
 } from '@/lib/private-chat-settings-store';
 import { readPrivateChatMessages } from '@/lib/private-chat-store';
 import { getBotName } from '@/lib/bot-settings-store';
+import { TTS_VOICE_OPTIONS } from '@/lib/tts-voices';
+import { readAICostPolicy } from '@/services/ai-cost-policy';
 import { buildDiscordUserAvatarUrl } from '@/services/discord-branding';
 import { getInternalAppUrl } from '@/lib/runtime-origin';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
@@ -58,6 +60,22 @@ function ttsMode(value: unknown): 'toggle' | 'poll' | 'off' | 'on' | 'send' | 't
   if (normalized === 'send') return 'send';
   if (normalized === 'test') return 'test';
   return 'toggle';
+}
+
+function privateVoiceCatalog() {
+  const policy = readAICostPolicy();
+  const voices = policy.paidRoutesEnabled
+    ? TTS_VOICE_OPTIONS
+    : TTS_VOICE_OPTIONS.filter((voice) => (
+        voice.provider === 'kokoro' ||
+        (voice.provider === 'gemini' && policy.geminiFreeTierVerified)
+      ));
+  return voices.map((voice) => ({
+    id: voice.id,
+    label: voice.label,
+    providerLabel: voice.providerLabel,
+    description: voice.description,
+  }));
 }
 
 function voiceOverride(value: unknown): string | undefined {
@@ -205,7 +223,7 @@ export async function POST(request: NextRequest) {
       const linkedMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
       const linkedEmbed = Array.isArray(linkedMessage?.embeds) ? linkedMessage.embeds[0] : null;
       const linkedFooter = linkedEmbed?.footer || {};
-      const footerMatch = String(linkedFooter.text || '').match(/^Requested by\\s+([^•]+)/i);
+      const footerMatch = String(linkedFooter.text || '').match(/^Requested by\s+([^•]+)/i);
       let sourceUser = String(footerMatch?.[1] || '').trim() || 'You';
       let sourceUserAvatarUrl = String(linkedFooter.icon_url || '').trim();
 
@@ -242,7 +260,14 @@ export async function POST(request: NextRequest) {
         });
       }
       const privateData = await privateResponse.json().catch(() => ({}));
-      const reply = String(privateData?.response || privateData?.data?.response || '').trim();
+      const privateResult = privateData?.data || privateData;
+      if (privateResult?.available === false || privateResult?.provider === 'paused') {
+        return apiError('Private AI is paused right now. Your transcript was saved to private history, but no Discord reply was sent.', {
+          status: 503,
+          code: 'PRIVATE_AI_PAUSED',
+        });
+      }
+      const reply = String(privateResult?.response || '').trim();
       if (!reply) {
         return apiError('Athena returned an empty reply. The transcript was not posted to Discord.', {
           status: 502,
@@ -407,6 +432,7 @@ export async function POST(request: NextRequest) {
       ttsEnabled: true,
       tenantId,
       botName,
+      voices: privateVoiceCatalog(),
       cursor,
       currentText: text,
       currentEmbed: Array.isArray(discordMessage?.embeds) ? (discordMessage.embeds[0] || null) : null,
