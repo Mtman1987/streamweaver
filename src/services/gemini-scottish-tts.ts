@@ -72,7 +72,7 @@ export async function generateScottishTTS(
           response_format: { type: 'audio' },
           generation_config: { speech_config: [{ voice: String(voice || 'Charon').slice(0, 64) }] },
         }),
-        signal: AbortSignal.timeout(35_000),
+        signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
