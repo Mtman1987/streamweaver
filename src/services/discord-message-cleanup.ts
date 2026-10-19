@@ -118,8 +118,13 @@ function scheduleEntry(entry: PendingDiscordCleanup): void {
 
 export async function recordDiscordMessageCleanup(input: DiscordCleanupInput): Promise<string | null> {
   if (!cleanupEnabled()) return null;
-  const replyMessageIds = unique(input.replyMessageIds);
-  const triggerMessageId = input.triggerMessageId?.trim();
+  const preserved = input.tenantId ? await readPreservedMessages(input.tenantId) : {};
+  const preservedIds = new Set(preserved[input.channelId] || []);
+  const replyMessageIds = unique(input.replyMessageIds).filter((id) => !preservedIds.has(id));
+  const requestedTriggerMessageId = input.triggerMessageId?.trim();
+  const triggerMessageId = requestedTriggerMessageId && !preservedIds.has(requestedTriggerMessageId)
+    ? requestedTriggerMessageId
+    : undefined;
   if (!input.channelId || (!triggerMessageId && replyMessageIds.length === 0)) return null;
 
   const now = new Date();
