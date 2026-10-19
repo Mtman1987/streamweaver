@@ -218,6 +218,34 @@ export default function TestingPage() {
               {output ? (
                 <div className="mt-4 space-y-3 border-t pt-4">
                   <p className="text-sm font-semibold">{output.summary}</p>
+                  {id === "ai" && Array.isArray(output.payload?.results) ? (
+                    <div className="overflow-x-auto rounded-lg border">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="p-2">Provider</th>
+                            <th className="p-2">Model</th>
+                            <th className="p-2">Result</th>
+                            <th className="p-2">HTTP</th>
+                            <th className="p-2">Time</th>
+                            <th className="p-2">Output</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {output.payload.results.map((item: any, index: number) => (
+                            <tr key={String(item.provider) + "-" + String(item.model) + "-" + index} className="border-t align-top">
+                              <td className="p-2">{item.provider || "—"}</td>
+                              <td className="p-2 font-mono">{item.model || "—"}</td>
+                              <td className="p-2 font-semibold">{item.status || "UNKNOWN"}</td>
+                              <td className="p-2">{item.httpStatus ?? "—"}</td>
+                              <td className="p-2">{Number.isFinite(Number(item.ms)) ? Number(item.ms) + " ms" : "—"}</td>
+                              <td className="p-2">{item.outputTextLength ?? "—"} chars</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
                   <p className="text-xs text-muted-foreground">Finished {new Date(output.finishedAt).toLocaleString()}</p>
                   {typeof audio === "string" && audio.startsWith("data:audio/") ? <audio controls preload="none" src={audio} className="w-full" /> : null}
                   {images.map(src => <img key={src} src={src} alt="Generated diagnostic image" className="max-h-64 w-full rounded-lg object-contain" />)}
