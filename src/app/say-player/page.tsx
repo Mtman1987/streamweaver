@@ -16,12 +16,13 @@ type VoiceIdentity = { discordUserId: string; discordUsername: string };
 export default function SayPlayer() {
   const playing = useRef(false);
   const playingAudioRef = useRef<HTMLAudioElement | null>(null);
-  const queue = useRef<Array<{ id: number; audioUrl: string }>>([]);
+  const queue = useRef<Array<{ id: number; audioUrl: string; text?: string; addedAt?: string }>>([]);
   const knownIds = useRef<Set<number>>(new Set());
   const lastSeenId = useRef(0);
   const ready = useRef(false);
   const needsLiveResync = useRef(false);
   const recognitionRef = useRef<ReturnType<typeof captureSpeechChat> | null>(null);
+  const pendingCaptureId = useRef<string | null>(null);
   const [active, setActive] = useState(false);
   const [tenantId, setTenantId] = useState('');
   const [volume, setVolume] = useState(0.6);
@@ -43,6 +44,8 @@ export default function SayPlayer() {
   const [micPending, setMicPending] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [micTranscript, setMicTranscript] = useState('');
+  const [transcriptSending, setTranscriptSending] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<Array<{ id: number; text: string; addedAt?: string }>>([]);
   const [postingAs, setPostingAs] = useState('');
   const [botTtsEnabled, setBotTtsEnabled] = useState<boolean | null>(null);
 
@@ -193,7 +196,18 @@ export default function SayPlayer() {
           const id = Number(item?.id || 0);
           if (id && item?.audioUrl && !knownIds.current.has(id)) {
             knownIds.current.add(id);
-            queue.current.push(item);
+            const queueItem = {
+              id,
+              audioUrl: String(item.audioUrl),
+              ...(typeof item.text === 'string' && item.text.trim() ? { text: item.text.trim() } : {}),
+              ...(typeof item.addedAt === 'string' ? { addedAt: item.addedAt } : {}),
+            };
+            queue.current.push(queueItem);
+            if (queueItem.text) {
+              setHistoryEntries((current) => current.some((entry) => entry.id === id)
+                ? current
+                : [...current, { id, text: queueItem.text!, addedAt: queueItem.addedAt }].slice(-50));
+            }
           }
         }
         if (playing.current || !queue.current.length) return;
@@ -268,21 +282,10 @@ export default function SayPlayer() {
       complete: async (transcript) => {
         recognitionRef.current = null;
         setMicActive(false); setMicPending(false);
-        if (!transcript) { setStatus('No completed speech heard. Try again.'); return; }
-        try {
-          const response = await fetch('/api/say/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: transcript, captureId, streamKey: tenantId || undefined, voice: voice || undefined }),
-          });
-          const result = await response.json().catch(() => null);
-          const payload = result?.data || result || {};
-          if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Chat post failed');
-          if (payload?.identity?.username) setPostingAs(payload.identity.username);
-          setStatus('Posted to chat and queued on this same public TTS browser source.');
-        } catch (error) {
-          setStatus(error instanceof Error ? error.message : String(error));
-        }
+        if (!transcript) { setStatus('No completed speech heard. Try again or type below.'); return; }
+        pendingCaptureId.current = captureId;
+        setMicTranscript(transcript);
+        setStatus('Transcript ready. Correct any recognition errors, then send it to chat.');
       },
       error: (message) => {
         recognitionRef.current = null;
@@ -302,6 +305,39 @@ export default function SayPlayer() {
     setStatus(voiceRoute.inVoice ? 'Joining Discord VC… speak when the listener is ready.' : 'Starting microphone… speak when it is ready.');
   }
 
+  async function sendTranscript() {
+    const text = micTranscript.trim();
+    if (!text) {
+      setStatus('Speak first or type a message into the transcript box.');
+      return;
+    }
+    if (transcriptSending) return;
+    setTranscriptSending(true);
+    try {
+      const response = await fetch('/api/say/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          ...(pendingCaptureId.current ? { captureId: pendingCaptureId.current } : {}),
+          streamKey: tenantId || undefined,
+          voice: voice || undefined,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      const payload = result?.data || result || {};
+      if (!response.ok || result?.ok === false) throw new Error(result?.error || payload?.error || 'Chat post failed');
+      if (payload?.identity?.username) setPostingAs(payload.identity.username);
+      pendingCaptureId.current = null;
+      setMicTranscript('');
+      setStatus('Sent to the selected public chat. Its existing public TTS route will handle playback.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTranscriptSending(false);
+    }
+  }
+
   const sourceLabel = tenantId || 'global public TTS';
   return (
     <main style={{ minHeight: '100vh', background: '#090b12', color: '#f4f6ff', fontFamily: 'system-ui,sans-serif', padding: 20 }}>
@@ -317,10 +353,33 @@ export default function SayPlayer() {
         <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>Volume</strong><input type="range" min="0" max="100" value={Math.round(volume * 100)} onChange={(event) => updateVolume(Number(event.target.value) / 100)} style={{ flex: '1 1 260px' }} /><span>{Math.round(volume * 100)}%</span></label>
         <label style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}><strong style={{ width: 90 }}>My voice</strong><select value={voice} disabled={!identity || voiceSaving} onChange={(event) => void updateVoice(event.target.value)} style={{ flex: '1 1 360px', padding: 9, borderRadius: 8, border: '1px solid #3a4259', background: '#0b0e17', color: '#fff' }}>{voiceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
         <p style={{ margin: '-8px 0 0 102px', color: '#8791aa', fontSize: 13 }}>{identity ? `Saved for ${identity.discordUsername || identity.discordUserId}. Everyone hears your selected voice when your public TTS is triggered.` : `No sign-in is needed to listen. Sign-in is only for saving a personal voice; otherwise ${'Kokoro Heart'} is used.`}</p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button type="button" onClick={toggleMic} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: micActive ? '#4a1717' : '#153424', color: '#fff', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : micPending ? 'Connecting listener…' : '🎤 Speak to Chat'}</button><button type="button" onClick={resetCursor} disabled={!active} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: active ? 'pointer' : 'default' }}>Reset listener</button></div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button type="button" onClick={toggleMic} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: micActive ? '#4a1717' : '#153424', color: '#fff', cursor: 'pointer' }}>{micActive ? '🔴 Finish recording' : micPending ? 'Connecting listener…' : '🎤 Speak to Chat'}</button>
+          <button type="button" onClick={sendTranscript} disabled={transcriptSending || !micTranscript.trim()} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #4fa476', background: transcriptSending ? '#293148' : '#153424', color: '#fff', fontWeight: 800, opacity: transcriptSending || !micTranscript.trim() ? 0.65 : 1, cursor: transcriptSending ? 'wait' : 'pointer' }}>{transcriptSending ? 'Sending…' : '➤ Send to chat & speak'}</button>
+          <button type="button" onClick={() => { setMicTranscript(''); pendingCaptureId.current = null; setStatus('Transcript cleared.'); }} disabled={!micTranscript && !pendingCaptureId.current} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: 'pointer' }}>Clear transcript</button>
+          <button type="button" onClick={resetCursor} disabled={!active} style={{ padding: '10px 14px', borderRadius: 9, border: '1px solid #3a4259', background: '#171b29', color: '#fff', cursor: active ? 'pointer' : 'default' }}>Reset listener</button>
+        </div>
+        <label style={{ display: 'grid', gap: 8 }}>
+          <strong>Message to post (editable transcript)</strong>
+          <textarea value={micTranscript} onChange={(event) => setMicTranscript(event.target.value)} rows={3} maxLength={500} placeholder="Speak to fill this in, correct any mistakes, or type your message directly." style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', background: '#0b0e17', color: '#f4f6ff', border: '1px solid #3a4259', borderRadius: 9, padding: 12, lineHeight: 1.45, font: 'inherit' }} />
+        </label>
         <p style={{ margin: 0, color: '#aeb7ce', fontSize: 13 }}>{voiceRoute?.inVoice ? 'Voice input: Discord VC' + (voiceRoute.channelName ? ' — ' + voiceRoute.channelName : '') : voiceRoute ? 'Voice input: device microphone' : voiceRouteError || 'Checking voice input…'}</p>
         {postingAs ? <p style={{ margin: 0, color: '#8ef0b1', fontSize: 13 }}>Posting as verified user: {postingAs}</p> : null}
-        {micTranscript ? <p style={{ margin: 0, color: '#aeb7ce', fontSize: 13 }}>Last voice input: “{micTranscript}”</p> : null}
+        <p style={{ margin: 0, color: '#8791aa', fontSize: 13 }}>Public mode: the final text is posted through the selected Twitch or Discord adapter. It is not published until you press Send.</p>
+        <section style={{ border: '1px solid #293148', borderRadius: 12, background: '#0b0e17', padding: 12, display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <strong>Recent public TTS history</strong>
+            <span style={{ color: '#8791aa', fontSize: 12 }}>Newest 50</span>
+          </div>
+          <div aria-live="polite" style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+            {historyEntries.length ? historyEntries.slice().reverse().map((item) => (
+              <article key={item.id} style={{ border: '1px solid #293148', borderRadius: 8, padding: 10, background: '#111522' }}>
+                <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>{item.text}</p>
+                {item.addedAt ? <small style={{ display: 'block', marginTop: 6, color: '#7f899f' }}>{new Date(item.addedAt).toLocaleTimeString()}</small> : null}
+              </article>
+            )) : <p style={{ margin: 0, color: '#8791aa' }}>Spoken messages appear here when their source includes text.</p>}
+          </div>
+        </section>
         <p style={{ margin: 0, color: '#8791aa', fontSize: 13 }}>HearMeOut/LiveKit is optional. This public TTS page does not create or join a LiveKit room; an active HearMeOut room may consume TTS separately when explicitly configured.</p>
       </section>
     </main>
