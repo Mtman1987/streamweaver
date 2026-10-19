@@ -2,14 +2,13 @@ import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
 
 const MODEL = 'gemini-3.5-flash-lite';
-// Keep candidates on Google's currently documented stable Flash family.
-// 3.1 Flash-Lite is retired; missing-model responses must fall through too.
+// Keep the primary quick model, then only two current alternatives to preserve
+// a bounded latency budget. Gemini 3.7 is deprecated; 3.6/3.8 are stable.
 const FREE_MODEL_FALLBACKS = [
   'gemini-3.8-flash',
-  'gemini-3.7-flash',
   'gemini-3.6-flash',
 ] as const;
-const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MS = 7_000;
 const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
