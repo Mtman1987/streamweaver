@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -101,11 +101,14 @@ test('applying a saved GIF requires ownership and switches the active private DM
     const { serializeSessionCookie } = await import('../src/lib/session-cookie');
     const { readUserConfig } = await import('../src/lib/user-config');
     const { readPrivateChatSettings } = await import('../src/lib/private-chat-settings-store');
+    const { writeDiscordMedia } = await import('../src/lib/discord-media-store');
     const tenantId = 'tenant-apply-gif';
     const dir = tenantPath(tenantId, 'data/private-generated-images');
     await mkdir(dir, { recursive: true });
     const gifBytes = Buffer.from('GIF89a-saved-test');
+    const previousGifBytes = Buffer.from('GIF89a-previous-active');
     await writeFile(path.join(dir, 'favorite.gif'), gifBytes);
+    await writeDiscordMedia('private-dm', previousGifBytes, tenantId);
 
     const { POST } = await import('../src/app/api/ai/image/library/route');
     const url = 'https://streamweaver.test/api/ai/image/library';
@@ -149,6 +152,10 @@ test('applying a saved GIF requires ownership and switches the active private DM
     assert.equal(config.PRIVATE_DM_GIF_URL, payload.url);
     const settings = await readPrivateChatSettings(tenantId);
     assert.equal(settings.gifEnabled, true);
+    const galleryFiles = await readdir(dir);
+    const archivedPrevious = galleryFiles.find((name) => name !== 'favorite.gif' && name.endsWith('.gif'));
+    assert.ok(archivedPrevious, 'previous active GIF should be preserved in the gallery');
+    assert.deepEqual(await readFile(path.join(dir, archivedPrevious)), previousGifBytes);
   });
 });
 
