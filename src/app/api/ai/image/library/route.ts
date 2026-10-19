@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import path from 'path';
 import { tenantPath } from '@/lib/tenant';
 import { getTenantFromRequest } from '@/lib/tenant-context';
@@ -422,7 +422,11 @@ export async function POST(request: NextRequest) {
     await writeDiscordMedia(slot, gif, tenantId);
     const relativeUrl = getDiscordMediaPublicPath(slot, tenantId);
     const baseUrl = getConfiguredAppUrl();
-    const publicUrl = baseUrl ? `${baseUrl}${relativeUrl}` : relativeUrl;
+    // Discord caches embed images by URL. A content-derived version makes each
+    // selected GIF a new URL so Discord fetches the newly active media.
+    const version = createHash('sha256').update(gif).digest('hex').slice(0, 16);
+    const versionedRelativeUrl = `${relativeUrl}&v=${version}`;
+    const publicUrl = baseUrl ? `${baseUrl}${versionedRelativeUrl}` : versionedRelativeUrl;
     await writeUserConfig({
       [scope === 'private' ? 'PRIVATE_DM_GIF_URL' : 'PUBLIC_DISCORD_GIF_URL']: publicUrl,
     }, tenantId);
