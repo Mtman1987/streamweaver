@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'test') {
-    const audioDataUri = await generateFreeTTS('Hello! This is a quick voice test. How does this voice sound to you?', voice.replace(/^kokoro:/, ''));
+    const audioDataUri = await generateFreeTTS('Hello! This is a quick voice test. How does this voice sound to you?', voice.replace(/^kokoro:/, ''), true);
     if (!audioDataUri) return apiError('This voice could not be generated right now. Check that the local Kokoro worker is healthy and try again.', { status: 503, code: 'VOICE_TEST_FAILED' });
     return apiOk({ audioDataUri, voice });
   }
