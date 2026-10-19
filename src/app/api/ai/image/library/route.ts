@@ -182,8 +182,8 @@ export async function GET(request: NextRequest) {
 
   const session = getTenantFromRequest(request);
   const canMutate = Boolean(tenantId) && session?.tenantId === tenantId;
-  const gifFiles = scope === 'private' ? files.filter((filename) => /\.gif$/i.test(filename)) : [];
-  const imageFiles = scope === 'private' ? files.filter((filename) => !/\.gif$/i.test(filename)) : files;
+  const gifFiles = files.filter((filename) => /\.gif$/i.test(filename));
+  const imageFiles = files.filter((filename) => !/\.gif$/i.test(filename));
   const activePrivateGifUrl = scope === 'private' && tenantId
     ? await resolveActivePrivateGifUrl(tenantId)
     : '';
@@ -212,9 +212,11 @@ export async function GET(request: NextRequest) {
   const title = scope === 'private' ? 'Private Generated Media' : 'Generated Images';
   const ownerNote = scope === 'private'
     ? canMutate
-      ? '<p class="note">Images and GIFs are stored separately below. The active private-DM GIF is one canonical StreamWeaver media slot, including MP4s converted by DiscordStreamHub. Delete the active slot directly, delete generated GIFs you do not want to keep, or use <strong>Set</strong> to replace it.</p>'
-      : '<p class="note warning">Viewing mode. Sign in to StreamWeaver as this account in this browser to enable Delete and Apply controls.</p>'
-    : '';
+      ? '<p class="note">Images and GIFs are stored separately below. The active private-DM GIF is one canonical StreamWeaver media slot, including MP4s converted by DiscordStreamHub. Saved GIFs remain available after you use <strong>Set</strong> to replace the active one.</p>'
+      : '<p class="note warning">Viewing mode. Sign in to StreamWeaver as this account in this browser to enable Set and Delete controls.</p>'
+    : canMutate
+      ? '<p class="note">Saved public images and GIFs stay in the gallery. Use <strong>Set</strong> on a GIF to change the active public Discord GIF without deleting the saved copy.</p>'
+      : '<p class="note warning">Viewing mode. Sign in to StreamWeaver as this account in this browser to enable Set and Delete controls.</p>';
 
   const mutationScript = canMutate ? `<script>
     document.addEventListener('click', async function (event) {
@@ -284,16 +286,18 @@ export async function GET(request: NextRequest) {
     });
   </script>` : '';
 
-  const privateGifSection = scope === 'private' ? `
+  const gifSection = `
     <section class="library-section">
       <div class="section-heading">
         <div>
-          <h2>Saved GIFs (<span id="gif-count">${savedGifCount}</span>)</h2>
-          <p>The active DM slot appears first, followed by saved generated GIFs you can delete or apply.</p>
+          <h2>${scope === 'private' ? 'Saved GIFs' : 'Saved Public GIFs'} (<span id="gif-count">${savedGifCount}</span>)</h2>
+          <p>${scope === 'private'
+            ? 'The active private-DM slot appears first. Saved GIFs remain in the gallery when you set a different one.'
+            : 'GIFs stay animated here. Set makes a saved GIF active for public Discord media without removing it from the gallery.'}</p>
         </div>
       </div>
       <div id="gif-gallery" class="media-gallery">${gifRows || '<p class="empty">Nothing saved in this section yet.</p>'}</div>
-    </section>` : '';
+    </section>`;
 
   return new NextResponse(`<!doctype html>
 <html>
@@ -352,7 +356,7 @@ export async function GET(request: NextRequest) {
       </div>
       <div id="image-gallery" class="media-gallery">${imageRows || '<p class="empty">Nothing saved in this section yet.</p>'}</div>
     </section>
-    ${privateGifSection}
+    ${gifSection}
   </main>
   ${mutationScript}
 </body>
