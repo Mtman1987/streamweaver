@@ -10,7 +10,7 @@ import onnxruntime as ort
 import soundfile as sf
 from kokoro_onnx import Kokoro
 
-VOICES = {"af_heart", "af_bella", "am_michael"}
+VOICES = {"af_heart", "af_bella", "af_nicole", "af_kore", "af_sarah", "af_aoede", "am_michael", "am_puck", "am_fenrir", "am_adam", "bm_george", "bf_emma"}
 options = ort.SessionOptions()
 options.intra_op_num_threads = 2
 options.inter_op_num_threads = 1
