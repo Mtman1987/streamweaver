@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { mergeSpeechRecognitionSegments } from "@/services/speech-transcript";
 
@@ -300,6 +301,7 @@ export default function ChatPage() {
   const [selectedDiscordChannel, setSelectedDiscordChannel] = React.useState("");
   const [messages, setMessages] = React.useState<DiscordMessage[]>([]);
   const [scheduledCleanupIds, setScheduledCleanupIds] = React.useState<Set<string>>(new Set());
+  const [preservedMessageIds, setPreservedMessageIds] = React.useState<Set<string>>(new Set());
   const [preservingMessageId, setPreservingMessageId] = React.useState<string | null>(null);
   const [messageText, setMessageText] = React.useState("");
   const [messageFilter, setMessageFilter] = React.useState("");
@@ -493,6 +495,7 @@ export default function ChatPage() {
   const refreshScheduledCleanupIds = React.useCallback(async () => {
     if (!selectedDiscordChannel || selectedDiscordChannel.startsWith('__app_')) {
       setScheduledCleanupIds(new Set());
+      setPreservedMessageIds(new Set());
       return;
     }
     try {
@@ -503,31 +506,45 @@ export default function ChatPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error || 'Could not load cleanup status.');
       setScheduledCleanupIds(new Set(Array.isArray(body.scheduledMessageIds) ? body.scheduledMessageIds : []));
+      setPreservedMessageIds(new Set(Array.isArray(body.preservedMessageIds) ? body.preservedMessageIds : []));
     } catch {
       // Message browsing remains usable if cleanup status is temporarily unavailable.
       setScheduledCleanupIds(new Set());
+      setPreservedMessageIds(new Set());
     }
   }, [selectedDiscordChannel]);
 
-  const keepDiscordMessage = React.useCallback(async (messageId: string) => {
+  const toggleDiscordMessageCleanup = React.useCallback(async (messageId: string, enabled: boolean) => {
     if (!selectedDiscordChannel || preservingMessageId) return;
     setPreservingMessageId(messageId);
     try {
       const response = await fetch('/api/discord-message-cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId: selectedDiscordChannel, messageId }),
+        body: JSON.stringify({ channelId: selectedDiscordChannel, messageId, enabled }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error || 'Could not preserve this message.');
+      if (!response.ok) throw new Error(body?.error || 'Could not update this message cleanup setting.');
       setScheduledCleanupIds((current) => {
         const next = new Set(current);
-        next.delete(messageId);
+        if (enabled) next.add(messageId);
+        else next.delete(messageId);
         return next;
       });
-      toast({ title: 'Message will be kept', description: 'Only this message was removed from the cleanup queue. Other messages still clean up normally.' });
+      setPreservedMessageIds((current) => {
+        const next = new Set(current);
+        if (enabled) next.delete(messageId);
+        else next.add(messageId);
+        return next;
+      });
+      toast({
+        title: enabled ? 'Automatic cleanup enabled for this message' : 'Message will be kept',
+        description: enabled
+          ? 'This message will be cleaned up in 10 minutes. Other messages are unchanged.'
+          : 'Only this message was removed from the cleanup queue. Other messages still clean up normally.',
+      });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Could not keep message', description: error?.message || 'Please try again.' });
+      toast({ variant: 'destructive', title: 'Could not update message cleanup', description: error?.message || 'Please try again.' });
     } finally {
       setPreservingMessageId(null);
     }
@@ -784,18 +801,17 @@ export default function ChatPage() {
                             <span className="font-medium">{author}</span>
                             {message.author?.bot ? <Badge variant="outline" className="text-[10px]">bot</Badge> : null}
                             <span className="text-xs text-muted-foreground">{formatTime(message.timestamp)}</span>
-                            {scheduledCleanupIds.has(message.id) ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="ml-auto h-7 px-2 text-xs"
-                                disabled={preservingMessageId !== null}
-                                onClick={() => void keepDiscordMessage(message.id)}
-                                title="Remove only this message from the 10-minute cleanup queue"
-                              >
-                                {preservingMessageId === message.id ? "Keeping…" : "Keep message"}
-                              </Button>
+                            {scheduledCleanupIds.has(message.id) || preservedMessageIds.has(message.id) ? (
+                              <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>{preservedMessageIds.has(message.id) ? "Keep message" : "Auto-cleanup"}</span>
+                                {preservingMessageId === message.id ? <span>Saving…</span> : null}
+                                <Switch
+                                  checked={scheduledCleanupIds.has(message.id)}
+                                  disabled={preservingMessageId !== null}
+                                  onCheckedChange={(enabled) => void toggleDiscordMessageCleanup(message.id, enabled)}
+                                  aria-label={scheduledCleanupIds.has(message.id) ? "Disable cleanup for this message" : "Enable cleanup for this message"}
+                                />
+                              </div>
                             ) : null}
                           </div>
                           {message.content ? <ParsedMessageContent content={message.content} mentions={message.mentions} /> : null}
