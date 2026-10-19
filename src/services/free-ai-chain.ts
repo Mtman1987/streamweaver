@@ -282,7 +282,12 @@ async function requestCompatProvider(
     if (status === 429) {
       last = { category: 'quota', cooldownMs: parseRetryAfterMs(response) };
       if (id === 'nvidia') break; // NVIDIA has two credentials; rotate those before spending budget on more models.
-      continue;
+      const explicitModelAlternates = String(process.env[spec.modelEnv] || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean).length > 1;
+      if (explicitModelAlternates) continue; // Only probe a second model when the operator explicitly configured alternatives.
+      break; // Default model IDs share the same provider quota; don't multiply a quota failure.
     }
     if (status === 404) {
       last = { category: 'upstream', cooldownMs: MODEL_MISSING_COOLDOWN_MS };
