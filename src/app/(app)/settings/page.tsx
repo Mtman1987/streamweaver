@@ -83,21 +83,21 @@ export default function SettingsPage() {
     }
   }
 
-  async function toggleCleanupForSelectedMessage(enabled: boolean) {
+  async function toggleCleanupForSelectedMessage(keepMessage: boolean) {
     if (!cleanupChannelId || !cleanupMessageId) return;
     setCleanupBusy(true);
     try {
       const response = await fetch('/api/discord-message-cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId: cleanupChannelId, messageId: cleanupMessageId, enabled: !enabled }),
+        body: JSON.stringify({ channelId: cleanupChannelId, messageId: cleanupMessageId, enabled: !keepMessage }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(data?.error || 'Could not update cleanup for this message.'));
-      setCleanupMessageKept(!enabled);
+      setCleanupMessageKept(keepMessage);
       toast({
-        title: !enabled ? 'Message will be kept' : 'Normal cleanup restored',
-        description: !enabled
+        title: keepMessage ? 'Message will be kept' : 'Normal cleanup restored',
+        description: keepMessage
           ? 'Only this message is excluded from cleanup. Other messages still expire after 10 minutes.'
           : 'This message is back on the normal cleanup schedule, starting now.',
       });
