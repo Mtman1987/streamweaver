@@ -165,7 +165,11 @@ export async function POST(request: NextRequest) {
           code: 'PRIVATE_GIF_NOT_CONFIGURED',
         });
       }
-      let updatedEmbeds = applyPrivateDmGif(currentEmbeds, mediaUrl, current.gifEnabled);
+      // Discord aggressively caches embeds by image URL. A refresh must produce a
+      // distinct URL even when the selected media endpoint itself is unchanged.
+      const refreshedMediaUrl = new URL(mediaUrl);
+      refreshedMediaUrl.searchParams.set('refresh', String(Date.now()));
+      let updatedEmbeds = applyPrivateDmGif(currentEmbeds, refreshedMediaUrl.toString(), current.gifEnabled);
       updatedEmbeds = attachPrivateDmControls(updatedEmbeds, {
         channelId: control.channelId,
         messageId: control.messageId,
@@ -177,7 +181,7 @@ export async function POST(request: NextRequest) {
       return apiOk({
         action,
         refreshed: true,
-        mediaUrl,
+        mediaUrl: refreshedMediaUrl.toString(),
         message: current.gifEnabled
           ? 'The embed now points to the currently selected, versioned private GIF.'
           : 'The active private GIF is configured, but GIF display is currently disabled.',
