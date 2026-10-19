@@ -109,7 +109,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (action === 'settings') {
-    return NextResponse.redirect(new URL('/bot-functions', getConfiguredAppUrl()));
+    const settingsUrl = new URL('/settings', getConfiguredAppUrl());
+    settingsUrl.searchParams.set('cleanupChannelId', control.channelId);
+    settingsUrl.searchParams.set('cleanupMessageId', control.messageId);
+    return NextResponse.redirect(settingsUrl);
   }
 
   if (action === 'tts') {
