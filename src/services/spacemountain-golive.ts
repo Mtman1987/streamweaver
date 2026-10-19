@@ -134,7 +134,7 @@ export async function requestSpaceMountainGoLive(): Promise<SpaceMountainGoLiveR
           accept: 'application/json',
         },
         cache: 'no-store',
-        signal: AbortSignal.timeout(125_000),
+        signal: AbortSignal.timeout(250_000),
       });
       const payload = await response.json().catch(() => null) as Partial<SpaceMountainGoLiveResult> | null;
       const allowedStates: SpaceMountainGoLiveState[] = [
