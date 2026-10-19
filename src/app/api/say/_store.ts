@@ -4,6 +4,8 @@ export type SayQueueItem = {
   id: number;
   audioUrl: string;
   addedAt: string;
+  /** Optional plain transcript for the public player's scrollable history. */
+  text?: string;
 };
 
 const sayQueues = new Map<string, SayQueueItem[]>();
@@ -25,16 +27,18 @@ export function getSayQueue(tenantId?: unknown): SayQueueItem[] {
   return queue;
 }
 
-export function addSayQueueItem(tenantId: unknown, audioUrl: string): SayQueueItem {
+export function addSayQueueItem(tenantId: unknown, audioUrl: string, text?: string): SayQueueItem {
   const key = normalizeSayQueueTenant(tenantId);
   const nextId = (saySequenceByTenant.get(key) || 0) + 1;
   saySequenceByTenant.set(key, nextId);
 
   const queue = getSayQueue(key);
-  const item = {
+  const cleanText = String(text || '').replace(/\\s+/g, ' ').trim().slice(0, 500);
+  const item: SayQueueItem = {
     id: nextId,
     audioUrl,
     addedAt: new Date().toISOString(),
+    ...(cleanText ? { text: cleanText } : {}),
   };
   queue.push(item);
   if (queue.length > MAX_SAY_ITEMS_PER_TENANT) {
