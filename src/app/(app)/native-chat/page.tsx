@@ -299,6 +299,8 @@ export default function ChatPage() {
   const [discordChannels, setDiscordChannels] = React.useState<DiscordChannelOption[]>([]);
   const [selectedDiscordChannel, setSelectedDiscordChannel] = React.useState("");
   const [messages, setMessages] = React.useState<DiscordMessage[]>([]);
+  const [scheduledCleanupIds, setScheduledCleanupIds] = React.useState<Set<string>>(new Set());
+  const [preservingMessageId, setPreservingMessageId] = React.useState<string | null>(null);
   const [messageText, setMessageText] = React.useState("");
   const [messageFilter, setMessageFilter] = React.useState("");
   const [isLoadingMessages, setIsLoadingMessages] = React.useState(false);
@@ -488,13 +490,60 @@ export default function ChatPage() {
     }
   }, [mapAppMemoryMessage, selectedDiscordChannel, toast]);
 
+  const refreshScheduledCleanupIds = React.useCallback(async () => {
+    if (!selectedDiscordChannel || selectedDiscordChannel.startsWith('__app_')) {
+      setScheduledCleanupIds(new Set());
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/discord-message-cleanup?channelId=${encodeURIComponent(selectedDiscordChannel)}`,
+        { cache: 'no-store' },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || 'Could not load cleanup status.');
+      setScheduledCleanupIds(new Set(Array.isArray(body.scheduledMessageIds) ? body.scheduledMessageIds : []));
+    } catch {
+      // Message browsing remains usable if cleanup status is temporarily unavailable.
+      setScheduledCleanupIds(new Set());
+    }
+  }, [selectedDiscordChannel]);
+
+  const keepDiscordMessage = React.useCallback(async (messageId: string) => {
+    if (!selectedDiscordChannel || preservingMessageId) return;
+    setPreservingMessageId(messageId);
+    try {
+      const response = await fetch('/api/discord-message-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: selectedDiscordChannel, messageId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || 'Could not preserve this message.');
+      setScheduledCleanupIds((current) => {
+        const next = new Set(current);
+        next.delete(messageId);
+        return next;
+      });
+      toast({ title: 'Message will be kept', description: 'Only this message was removed from the cleanup queue. Other messages still clean up normally.' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Could not keep message', description: error?.message || 'Please try again.' });
+    } finally {
+      setPreservingMessageId(null);
+    }
+  }, [preservingMessageId, selectedDiscordChannel, toast]);
+
   React.useEffect(() => {
     if (!selectedDiscordChannel) return;
     void fetchDiscordMessages();
+    void refreshScheduledCleanupIds();
     if (!autoRefresh) return;
-    const timer = window.setInterval(() => void fetchDiscordMessages(true), 10000);
+    const timer = window.setInterval(() => {
+      void fetchDiscordMessages(true);
+      void refreshScheduledCleanupIds();
+    }, 10000);
     return () => window.clearInterval(timer);
-  }, [autoRefresh, fetchDiscordMessages, selectedDiscordChannel]);
+  }, [autoRefresh, fetchDiscordMessages, refreshScheduledCleanupIds, selectedDiscordChannel]);
 
   React.useEffect(() => {
     const viewport = scrollRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null;
@@ -731,10 +780,23 @@ export default function ChatPage() {
                           <AvatarFallback>{author.slice(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-wrap items-baseline gap-2">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
                             <span className="font-medium">{author}</span>
                             {message.author?.bot ? <Badge variant="outline" className="text-[10px]">bot</Badge> : null}
                             <span className="text-xs text-muted-foreground">{formatTime(message.timestamp)}</span>
+                            {scheduledCleanupIds.has(message.id) ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="ml-auto h-7 px-2 text-xs"
+                                disabled={preservingMessageId !== null}
+                                onClick={() => void keepDiscordMessage(message.id)}
+                                title="Remove only this message from the 10-minute cleanup queue"
+                              >
+                                {preservingMessageId === message.id ? "Keeping…" : "Keep message"}
+                              </Button>
+                            ) : null}
                           </div>
                           {message.content ? <ParsedMessageContent content={message.content} mentions={message.mentions} /> : null}
                           {message.attachments?.map((attachment) => <AttachmentRenderer key={attachment.id} attachment={attachment} />)}
