@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
+import path from 'path';
 import { tenantPath } from '@/lib/tenant';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import {
@@ -59,7 +60,7 @@ function renderCard(input: {
   if (input.canMutate) {
     const deleteParams = new URLSearchParams({
       tenantId: input.tenantId,
-      scope: 'private',
+      scope: input.scope,
       name: input.filename,
     });
     const deleteUrl = escapeHtml(`/api/ai/image/library?${deleteParams.toString()}`);
@@ -429,8 +430,8 @@ export async function DELETE(request: NextRequest) {
   if (!tenantId || !isValidTenantId(tenantId)) {
     return NextResponse.json({ error: 'invalid tenantId' }, { status: 400 });
   }
-  if (scope !== 'private') {
-    return NextResponse.json({ error: 'Only private image library deletion is supported.' }, { status: 400 });
+  if (scope !== 'private' && scope !== 'public') {
+    return NextResponse.json({ error: 'Invalid image library scope.' }, { status: 400 });
   }
 
   const session = getTenantFromRequest(request);
@@ -442,12 +443,24 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const result = await deletePrivateGeneratedImage(tenantId, filename);
-    if (result === 'invalid') {
-      return NextResponse.json({ error: 'invalid image filename' }, { status: 400 });
-    }
-    if (result === 'not_found') {
-      return NextResponse.json({ error: 'image not found' }, { status: 404 });
+    if (scope === 'private') {
+      const result = await deletePrivateGeneratedImage(tenantId, filename);
+      if (result === 'invalid') {
+        return NextResponse.json({ error: 'invalid image filename' }, { status: 400 });
+      }
+      if (result === 'not_found') {
+        return NextResponse.json({ error: 'image not found' }, { status: 404 });
+      }
+    } else {
+      if (!/^[a-zA-Z0-9_-]+\.(gif|png|jpg|jpeg|webp)$/i.test(filename) || path.basename(filename) !== filename) {
+        return NextResponse.json({ error: 'invalid image filename' }, { status: 400 });
+      }
+      try {
+        await fs.unlink(tenantPath(tenantId, `data/generated-images/${filename}`));
+      } catch (error: any) {
+        if (error?.code === 'ENOENT') return NextResponse.json({ error: 'image not found' }, { status: 404 });
+        throw error;
+      }
     }
     return NextResponse.json({ ok: true, deleted: filename });
   } catch (error) {
