@@ -64,23 +64,23 @@ export function isAuthorizedSpaceMountainGoLive(input: ChatCommandInput): boolea
 function chatResultMessage(result: SpaceMountainGoLiveResult): string {
   switch (result.state) {
     case 'live':
-      return '@mtman1987, Twitch confirms SpaceMountainLive is live.';
+      return '@spacemountainlive, Twitch confirms SpaceMountainLive is live.';
     case 'already_live':
-      return '@mtman1987, Twitch already confirms SpaceMountainLive is live.';
+      return '@spacemountainlive, Twitch already confirms SpaceMountainLive is live.';
     case 'login_required':
-      return '@mtman1987, Restream needs you to sign in in the saved Studio browser. Twitch is not live, so I have not reported success.';
+      return '@spacemountainlive, Restream needs you to sign in in the saved Studio browser. Twitch is not live, so I have not reported success.';
     case 'local_host_active':
-      return '@mtman1987, the local Companion currently owns the Restream host. I did not start a second host; use the existing local Studio session.';
+      return '@spacemountainlive, the local Companion currently owns the Restream host. I did not start a second host; use the existing local Studio session.';
     case 'start_failed':
-      return '@mtman1987, the saved Restream Studio could not start. Twitch is not live, so I have not reported success.';
+      return '@spacemountainlive, the saved Restream Studio could not start. Twitch is not live, so I have not reported success.';
     case 'not_live':
-      return '@mtman1987, Restream was asked to start, but Twitch did not confirm SpaceMountainLive live within 90 seconds. No success reported.';
+      return '@spacemountainlive, Restream was asked to start, but Twitch did not confirm SpaceMountainLive live within 90 seconds. No success reported.';
     case 'verification_unavailable':
-      return '@mtman1987, I could not verify Twitch live status, so I will not claim the stream started.';
+      return '@spacemountainlive, I could not verify Twitch live status, so I will not claim the stream started.';
     case 'in_progress':
-      return '@mtman1987, a SpaceMountainLive start/check is already in progress. I will not trigger a second start.';
+      return '@spacemountainlive, a SpaceMountainLive start/check is already in progress. I will not trigger a second start.';
     default:
-      return '@mtman1987, the Restream control service is unavailable. I could not verify the broadcast, so I will not claim it started.';
+      return '@spacemountainlive, the Restream control service is unavailable. I could not verify the broadcast, so I will not claim it started.';
   }
 }
 
@@ -94,7 +94,7 @@ export async function handleSpaceMountainGoLiveMessage(
   if (!isAuthorizedSpaceMountainGoLive(input)) return true;
 
   try {
-    await deps.reply('@mtman1987, checking the saved Restream browser now. I will only confirm once Twitch reports SpaceMountainLive live.');
+    await deps.reply('@spacemountainlive, checking the saved Restream browser now. I will only confirm once Twitch reports SpaceMountainLive live.');
   } catch {
     // A failed chat acknowledgement must not cause the start action to be skipped.
   }
