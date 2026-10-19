@@ -50,12 +50,13 @@ function safeError(error: unknown): string {
     .slice(0, 300);
 }
 
-function ttsMode(value: unknown): 'toggle' | 'poll' | 'off' | 'on' | 'send' {
+function ttsMode(value: unknown): 'toggle' | 'poll' | 'off' | 'on' | 'send' | 'test' {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'poll') return 'poll';
   if (normalized === 'off') return 'off';
   if (normalized === 'on' || normalized === 'start') return 'on';
   if (normalized === 'send') return 'send';
+  if (normalized === 'test') return 'test';
   return 'toggle';
 }
 
@@ -295,6 +296,29 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (mode === 'test') {
+      try {
+        const audioDataUris = await generatePrivateAudio('This is your private TTS voice test. If you can hear this, playback is working.', tenantId, selectedVoice);
+        if (!audioDataUris.length) {
+          return apiError('The speech worker returned no audio. Check the local voice worker health.', {
+            status: 502,
+            code: 'PRIVATE_TTS_EMPTY_AUDIO',
+          });
+        }
+        return apiOk({
+          action,
+          ttsEnabled: current.ttsEnabled,
+          audioDataUris,
+          message: 'Voice test audio generated. Tap Play / Resume if your browser blocks playback.',
+        });
+      } catch (error) {
+        return apiError('Private TTS could not generate speech: ' + safeError(error), {
+          status: 502,
+          code: 'PRIVATE_TTS_GENERATION_FAILED',
+        });
+      }
+    }
+
     if (mode === 'off') {
       const next = current.ttsEnabled
         ? await writePrivateChatSettings({ ttsEnabled: false }, tenantId)
@@ -349,8 +373,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Opening the signed speaker link toggles this tenant bot's private listening session.
-    const next = await writePrivateChatSettings({ ttsEnabled: !current.ttsEnabled }, tenantId);
+    // Opening the signed speaker link uses an idempotent start; a second tab must never turn audio off.
+    const next = mode === 'on'
+      ? (current.ttsEnabled ? current : await writePrivateChatSettings({ ttsEnabled: true }, tenantId))
+      : await writePrivateChatSettings({ ttsEnabled: !current.ttsEnabled }, tenantId);
     await updateControlIcons({
       channelId: control.channelId,
       messageId: control.messageId,
