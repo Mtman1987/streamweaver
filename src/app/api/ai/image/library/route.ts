@@ -153,10 +153,15 @@ async function resolveActivePrivateGifUrl(tenantId: string): Promise<string> {
 
   const stored = await readTenantDiscordMedia('private-dm', tenantId).catch(() => null);
   if (stored) {
-    if (configured !== canonicalUrl) {
+    // Keep the content-version query written by the Set action. Rewriting this
+    // to the stable slot URL while rendering the gallery reintroduces Discord's
+    // stale embed-image cache and can make newly sent DMs show an older GIF.
+    // Only migrate configurations that do not already point at this tenant's
+    // canonical media endpoint.
+    if (!isCanonicalPrivateGifUrl(configured, tenantId)) {
       await writeUserConfig({ PRIVATE_DM_GIF_URL: canonicalUrl }, tenantId).catch(() => undefined);
     }
-    return canonicalUrl;
+    return configured && isCanonicalPrivateGifUrl(configured, tenantId) ? configured : canonicalUrl;
   }
 
   return '';

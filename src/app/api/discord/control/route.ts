@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const action = parseDiscordMessageControlAction(body?.action);
   const control = verifyDiscordMessageControlToken(token);
 
-  if (!control || control.scope !== 'public' || !action || action === 'adult') {
+  if (!control || control.scope !== 'public' || !action || action === 'adult' || action === 'refresh') {
     return apiError('This public Discord control link is invalid or expired.', { status: 401, code: 'INVALID_PUBLIC_CONTROL' });
   }
 

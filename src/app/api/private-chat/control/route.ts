@@ -149,6 +149,41 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (action === 'refresh') {
+      const discordMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
+      const currentEmbeds = Array.isArray(discordMessage?.embeds) ? discordMessage.embeds : [];
+      if (!currentEmbeds.length) {
+        return apiError('This Discord message has no embed to refresh.', {
+          status: 409,
+          code: 'PRIVATE_EMBED_NOT_FOUND',
+        });
+      }
+      const mediaUrl = resolvePrivateDmMediaUrl(tenantId);
+      if (!mediaUrl) {
+        return apiError('No active private-DM GIF is configured yet.', {
+          status: 409,
+          code: 'PRIVATE_GIF_NOT_CONFIGURED',
+        });
+      }
+      let updatedEmbeds = applyPrivateDmGif(currentEmbeds, mediaUrl, current.gifEnabled);
+      updatedEmbeds = attachPrivateDmControls(updatedEmbeds, {
+        channelId: control.channelId,
+        messageId: control.messageId,
+        gifEnabled: current.gifEnabled,
+        ttsEnabled: current.ttsEnabled,
+        adultMode: current.adultMode,
+      });
+      await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
+      return apiOk({
+        action,
+        refreshed: true,
+        mediaUrl,
+        message: current.gifEnabled
+          ? 'The embed now points to the currently selected, versioned private GIF.'
+          : 'The active private GIF is configured, but GIF display is currently disabled.',
+      });
+    }
+
     if (action === 'gif') {
       const carouselRestarted = await restartPrivateImageCarousel({
         tenantId,

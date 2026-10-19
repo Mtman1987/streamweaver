@@ -17,6 +17,7 @@ export const PRIVATE_DM_CONTROL_ACTIONS = {
   gif: 'g',
   tts: 't',
   adult: 'a',
+  refresh: 'r',
   settings: 's',
   delete: 'd',
 } as const;
@@ -239,7 +240,7 @@ export function buildPrivateDmControlField(input: {
   const links: Array<[string, PrivateDmControlAction]> = [
     [gifEmoji, 'gif'],
     [ttsEmoji, 'tts'],
-    ['🔞', 'adult'],
+    ['🔄', 'refresh'],
     ['⚙️', 'settings'],
     ['🗑️', 'delete'],
   ];

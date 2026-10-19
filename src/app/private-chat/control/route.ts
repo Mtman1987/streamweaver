@@ -34,9 +34,9 @@ function renderError(message: string): string {
 </html>`;
 }
 
-function renderControlPage(token: string, action: 'gif' | 'adult' | 'delete'): string {
-  const icon = action === 'gif' ? '🖼️' : action === 'adult' ? '🔞' : '🗑️';
-  const title = action === 'gif' ? 'Private GIF' : action === 'adult' ? 'Adult Mode' : 'Delete private message';
+function renderControlPage(token: string, action: 'gif' | 'adult' | 'refresh' | 'delete'): string {
+  const icon = action === 'gif' ? '🖼️' : action === 'adult' ? '🔞' : action === 'refresh' ? '🔄' : '🗑️';
+  const title = action === 'gif' ? 'Private GIF' : action === 'adult' ? 'Adult Mode' : action === 'refresh' ? 'Refresh private GIF' : 'Delete private message';
   const initialStatus = action === 'delete'
     ? 'Tap the trash can again to delete this exact Discord message.'
     : 'Working…';

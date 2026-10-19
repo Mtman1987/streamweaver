@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
   const token = String(request.nextUrl.searchParams.get('k') || '').trim();
   const action = parseDiscordMessageControlAction(request.nextUrl.searchParams.get('a'));
   const control = verifyDiscordMessageControlToken(token);
-  if (!control || control.scope !== 'public' || !action || action === 'adult') {
+  if (!control || control.scope !== 'public' || !action || action === 'adult' || action === 'refresh') {
     return htmlResponse(renderError('This link is invalid or expired. Open a newer public bot reply and use its control strip.'), 401);
   }
 
