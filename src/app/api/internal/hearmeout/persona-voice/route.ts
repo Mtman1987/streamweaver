@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { hasInternalServiceAccess } from '@/lib/internal-service-auth';
 import { getBotSettings, reloadBotSettings, setBotSettings } from '@/lib/bot-settings-store';
-import { readAICostPolicy } from '@/services/ai-cost-policy';
 import { generateFreeTTS } from '@/services/free-tts';
 import { getTtsVoiceOption, KOKORO_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
 import { writeUserConfig } from '@/lib/user-config';
@@ -44,9 +43,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'test') {
-    if (!readAICostPolicy().freeTtsEnabled) {
-      return apiError('Free Kokoro speech is currently disabled by the server policy.', { status: 503, code: 'FREE_TTS_DISABLED' });
-    }
     const audioDataUri = await generateFreeTTS('Hello! This is a quick voice test. How does this voice sound to you?', voice.replace(/^kokoro:/, ''));
     if (!audioDataUri) return apiError('This voice could not be generated right now. Check that the local Kokoro worker is healthy and try again.', { status: 503, code: 'VOICE_TEST_FAILED' });
     return apiOk({ audioDataUri, voice });
