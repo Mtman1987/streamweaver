@@ -1,6 +1,5 @@
 import { getSpmtServiceToken } from '../lib/spmt-service-token';
 import {
-  getAdminTwitchId,
   SPACEMOUNTAIN_SYSTEM_TENANT_ID,
   SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
 } from '../lib/tenant';
@@ -32,6 +31,7 @@ type ChatCommandInput = {
   self: boolean;
   mirrored: boolean;
   botAuthored: boolean;
+  broadcasterBadge: boolean;
 };
 
 type GoLiveDependencies = {
@@ -39,7 +39,7 @@ type GoLiveDependencies = {
   reply: (message: string) => Promise<unknown>;
 };
 
-const OWNER_LOGIN = 'mtman1987';
+const BROADCASTER_LOGIN = 'spacemountainlive';
 const SPMT_BASE_URL = String(process.env.SPMT_BASE_URL || 'https://spmt.live').replace(/\/$/, '');
 
 export function isSpaceMountainGoLiveCommand(message: string, channel: string): boolean {
@@ -48,11 +48,14 @@ export function isSpaceMountainGoLiveCommand(message: string, channel: string): 
 }
 
 export function isAuthorizedSpaceMountainGoLive(input: ChatCommandInput): boolean {
+  // Twitch supplies the broadcaster badge and immutable user ID in its
+  // authenticated IRC tags. Require both, plus the exact channel-owner login.
+  // The SPMT control-profile owner (mtman1987) is not the Twitch channel login.
   return input.tenantId === SPACEMOUNTAIN_SYSTEM_TENANT_ID
     && input.channel.replace(/^#/, '').trim().toLowerCase() === SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL
-    && input.username.trim().toLowerCase() === OWNER_LOGIN
-    && Boolean(getAdminTwitchId())
-    && input.userId === getAdminTwitchId()
+    && input.username.trim().toLowerCase() === BROADCASTER_LOGIN
+    && Boolean(input.userId.trim())
+    && input.broadcasterBadge === true
     && input.self !== true
     && input.mirrored !== true
     && input.botAuthored !== true;
