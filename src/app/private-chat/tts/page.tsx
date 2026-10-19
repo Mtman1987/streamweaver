@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import { TTS_VOICE_OPTIONS, normalizeTtsVoice } from '@/lib/tts-voices';
 
 const VOICE_OPTIONS = [
-  { id: '', label: 'Tenant default (lifelike Eden voice)' },
-  ...TTS_VOICE_OPTIONS.map((voice) => ({
+  { id: '', label: 'Tenant default' },
+  ...TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'kokoro').map((voice) => ({
     id: voice.id,
     label: `${voice.label} — ${voice.providerLabel}`,
   })),
@@ -55,6 +55,7 @@ export default function PrivateDmTtsPlayer() {
   const [status, setStatus] = useState('Opening private Athena TTS…');
   const [volume, setVolume] = useState(0.6);
   const [voice, setVoice] = useState('');
+  const [voiceOptions, setVoiceOptions] = useState(VOICE_OPTIONS);
   const [preview, setPreview] = useState<PreviewEmbed | null>(null);
   const [botName, setBotName] = useState('Athena');
   const [mediaUrl, setMediaUrl] = useState('');
@@ -164,6 +165,15 @@ export default function PrivateDmTtsPlayer() {
         sessionStartedRef.current = isEnabled;
         setBotName(String(data.botName || 'Athena'));
         setMediaUrl(String(data.mediaUrl || ''));
+        if (Array.isArray(data.voices)) {
+          const availableVoices = [
+            { id: '', label: 'Tenant default' },
+            ...data.voices.map((option: any) => ({ id: String(option.id), label: `${String(option.label)} — ${String(option.providerLabel || 'TTS')}` })),
+          ];
+          setVoiceOptions(availableVoices);
+          const supported = new Set(availableVoices.map((option) => option.id));
+          setVoice((current) => supported.has(current) ? current : '');
+        }
         cursorRef.current = Math.max(0, Number(data.cursor || 0));
         setHistoryEntries(data.currentText ? [{
           cursor: cursorRef.current,
@@ -412,7 +422,7 @@ export default function PrivateDmTtsPlayer() {
                 onChange={(event) => updateVoice(event.target.value)}
                 style={{ flex: '1 1 320px', background: '#0b0e17', color: '#f4f6ff', border: '1px solid #3a4259', borderRadius: 8, padding: '9px 10px' }}
               >
-                {VOICE_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                {voiceOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
               </select>
             </label>
 
