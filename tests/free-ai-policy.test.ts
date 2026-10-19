@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readAICostPolicy, AI_PAUSED_MESSAGE } from '../src/services/ai-cost-policy';
@@ -8,7 +8,7 @@ import { generateAIResponse } from '../src/services/ai-provider';
 import { requestPrivateChatCompletion } from '../src/services/private-chat-ai';
 import { requestOpenAiFallback, isOpenAiFallbackConfigured } from '../src/services/openai-fallback';
 import { generateTTS, generateDeepgramTTS, generateOpenAITTS } from '../src/services/tts-provider';
-import { getTtsVoiceOption } from '../src/lib/tts-voices';
+import { getTtsVoiceOption, KOKORO_VOICE_OPTIONS } from '../src/lib/tts-voices';
 import { generateImageWithOpenAI, generateImageWithEdenAI, generateImageWithSeaArt } from '../src/services/image-provider';
 import { generateImageWithCloudflare } from '../src/services/cloudflare-image';
 import { moderateImagePrompt } from '../src/services/image-content-moderation';
@@ -19,6 +19,15 @@ import { serializeSessionCookie } from '../src/lib/session-cookie';
 import { POST as condensePrivateMemory } from '../src/app/api/private-ltm/condense/route';
 import { POST as optimizePersonality } from '../src/app/api/ai/optimize-personality/route';
 import { generateFreeTTS } from '../src/services/free-tts';
+
+test('Kokoro voice picker and local synthesis worker expose the same voices', () => {
+  const workerSource = readFileSync(new URL('../workers/free-tts/server.py', import.meta.url), 'utf8');
+  const allowlist = workerSource.match(/^VOICES = \{([^}]+)\}/m);
+  assert.ok(allowlist, 'Kokoro worker voice allowlist must exist');
+  const workerVoices = Array.from(allowlist[1].matchAll(/"([^"]+)"/g), (match) => match[1]).sort();
+  const pickerVoices = KOKORO_VOICE_OPTIONS.map((voice) => voice.id.slice('kokoro:'.length)).sort();
+  assert.deepEqual(pickerVoices, workerVoices, 'every selectable Kokoro voice must be accepted by the deployed synthesis worker');
+});
 
 test('free-only policy prevents paid calls even with credentials and retries free TTS voices', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'free-ai-policy-'));
@@ -43,7 +52,7 @@ test('free-only policy prevents paid calls even with credentials and retries fre
     calls++;
     assert.equal(String(url), 'http://127.0.0.1:8080/v1/audio/speech');
     const body = JSON.parse(String(init?.body));
-    assert.ok(['af_heart', 'af_bella', 'af_nicole', 'af_kore', 'af_sarah', 'af_aoede', 'am_michael', 'am_puck', 'am_fenrir', 'am_adam', 'bm_george', 'bf_emma'].includes(body.voice));
+    assert.ok(['af_heart', 'af_bella', 'af_nicole', 'af_kore', 'af_sarah', 'af_aoede', 'af_alloy', 'af_jessica', 'af_nova', 'af_river', 'af_sky', 'am_michael', 'am_puck', 'am_fenrir', 'am_adam', 'am_echo', 'am_eric', 'am_liam', 'am_onyx', 'am_santa', 'bm_george', 'bf_emma', 'bf_alice', 'bf_isabella', 'bf_lily', 'bm_daniel', 'bm_fable', 'bm_lewis'].includes(body.voice));
     assert.equal(new Headers(init?.headers).has('authorization'), false);
     return fail ? new Response(null, { status: 503 }) : new Response(wav, { headers: { 'content-type': 'audio/wav' } });
   });
