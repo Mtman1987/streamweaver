@@ -27,9 +27,9 @@ test('HearMeOut persona source variants converge on Say TTS', async () => {
   assert.match(botRoute, /return ['"]hearmeout['"]/);
   assert.match(botRoute, /useHearMeOutSay\s*=\s*source === ['"]hearmeout['"]/);
 
-  assert.match(serviceRoute, /DEFAULT_TTS_VOICE/);
+  assert.match(serviceRoute, /getBotVoice\(tenantId\)/);
   assert.match(serviceRoute, /hmo-say-/);
-  assert.match(serviceRoute, /generateTTS\([\s\S]*DEFAULT_TTS_VOICE[\s\S]*sayStreamKey/);
+  assert.match(serviceRoute, /generateTTS\([\s\S]*voice[\s\S]*sayStreamKey/);
   assert.match(serviceRoute, /source:\s*['"]say['"]/);
   assert.match(serviceRoute, /body\?\.speak !== false/);
   assert.match(serviceRoute, /speech-delegated-to-say-player/);
