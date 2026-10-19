@@ -12,6 +12,12 @@ type Result = {
   status: string;
   ms: number;
   detail?: string;
+  httpStatus?: number;
+  finishReason?: string;
+  completionTokens?: number;
+  outputTextLength?: number;
+  responseShape?: string;
+  hasReasoningMetadata?: boolean;
 };
 
 type Candidate = {
@@ -19,6 +25,26 @@ type Candidate = {
   request: (signal: AbortSignal) => Promise<Response>;
   usable: (body: any) => boolean;
 };
+
+function responseMetadata(body: any, httpStatus: number): Partial<Result> {
+  const message = body?.choices?.[0]?.message;
+  const content = message?.content ?? body?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') ?? '';
+  const outputText = typeof content === 'string' ? content : Array.isArray(content)
+    ? content.map((part: any) => typeof part?.text === 'string' ? part.text : '').join('') : '';
+  const usage = body?.usage ?? body?.usageMetadata ?? {};
+  const finish = body?.choices?.[0]?.finish_reason ?? body?.candidates?.[0]?.finishReason;
+  const completionTokens = usage.completion_tokens ?? usage.candidatesTokenCount ?? usage.output_tokens;
+  const shape = body == null ? 'non-JSON/empty body' : Array.isArray(body?.choices) ? 'chat-completions choices' : Array.isArray(body?.candidates) ? 'Gemini candidates' : typeof body === 'object' ? 'JSON object (unexpected schema)' : typeof body;
+  const hasReasoning = Boolean(message?.reasoning || message?.reasoning_content || message?.analysis || body?.choices?.[0]?.message?.reasoning_details);
+  return {
+    httpStatus,
+    ...(finish !== undefined ? { finishReason: safeDetail(finish) } : {}),
+    ...(Number.isFinite(Number(completionTokens)) ? { completionTokens: Number(completionTokens) } : {}),
+    outputTextLength: outputText.trim().length,
+    responseShape: shape,
+    hasReasoningMetadata: hasReasoning,
+  };
+}
 
 const TIMEOUT_MS = 7_000;
 const MIN_REPEAT_INTERVAL_MS = 10_000;
@@ -55,23 +81,28 @@ async function runCandidate(provider: string, candidate: Candidate): Promise<Res
   try {
     const response = await candidate.request(AbortSignal.timeout(TIMEOUT_MS));
     const body = await response.json().catch(() => null);
+    const metadata = responseMetadata(body, response.status);
     if (response.ok && candidate.usable(body)) {
       const selectedModel = provider === 'OpenRouter' && body?.model
         ? 'Router selected ' + safeDetail(body.model)
         : 'Returned non-empty text using the expected chat-completions format.';
-      return { provider, model: candidate.model, capability: 'AI text', status: 'PASS', ms: Date.now() - started, detail: selectedModel };
+      return { provider, model: candidate.model, capability: 'AI text', status: 'PASS', ms: Date.now() - started, detail: selectedModel, ...metadata };
     }
     if (response.ok) {
       return {
         provider, model: candidate.model, capability: 'AI text',
         status: 'EMPTY/INVALID OUTPUT', ms: Date.now() - started,
-        detail: 'HTTP succeeded but the expected non-empty text response was missing.',
+        detail: metadata.hasReasoningMetadata
+          ? 'HTTP succeeded but no user-visible text was returned; reasoning metadata was present.'
+          : 'HTTP succeeded but the expected non-empty user-visible text response was missing.',
+        ...metadata,
       };
     }
     return {
       provider, model: candidate.model, capability: 'AI text',
       status: classifyStatus(response.status), ms: Date.now() - started,
       detail: errorDetail(body, response.status),
+      ...metadata,
     };
   } catch (error) {
     return {
@@ -163,20 +194,9 @@ async function testProvider(
       : candidate;
     const result = await runCandidate(provider, boundCandidate);
     results.push(result);
-    if (result.status === 'PASS') {
-      for (const remaining of models.slice(results.length)) {
-        results.push(skipped(provider, remaining.model, 'SKIPPED — FALLBACK NOT NEEDED', 'An earlier candidate returned usable output.'));
-      }
-      break;
-    }
-    // Auth/config and quota failures usually apply to the credential, not just
-    // this model. Avoid turning a diagnostic into a retry storm.
-    if (['AUTH/PERMISSION', 'QUOTA/RATE LIMIT'].includes(result.status)) {
-      for (const remaining of models.slice(results.length)) {
-        results.push(skipped(provider, remaining.model, 'SKIPPED — CREDENTIAL/QUOTA FAILURE', 'Stopped after the credential or quota failure above.'));
-      }
-      break;
-    }
+    // This is a diagnostic sweep, not production fallback execution: test every
+    // configured model even after a pass. Calls remain sequential per provider
+    // to reduce rate-limit pressure, and each request has a strict timeout.
   }
   return results;
 }
@@ -252,6 +272,6 @@ export async function POST(request: NextRequest) {
     finishedAt: new Date().toISOString(),
     testedCredentialCount: [geminiKey, groqKey, cerebrasKey, openRouterKey, mistralKey, nvidiaKey, nvidiaSecondKey].filter(Boolean).length,
     results,
-    note: 'Runs small, bounded AI-text probes against the configured free-chain providers only, including both NVIDIA NIM credentials. Each provider tries compatible model IDs in order and stops on the first usable response, credential failure, quota failure, or timeout. Raw provider bodies and secret values are never returned. Gemini is not called unless its free-tier policy flag is explicitly verified.',
+    note: 'Runs small, bounded AI-text probes against the configured free-chain providers only, including both NVIDIA NIM credentials. Every configured candidate is tested independently; candidates run sequentially within each provider and are not skipped after a pass. A strict timeout bounds each request. Raw provider bodies and secret values are never returned. Gemini is not called unless its free-tier policy flag is explicitly verified.',
   });
 }
