@@ -59,7 +59,8 @@ class Handler(BaseHTTPRequestHandler):
         if not lock.acquire(blocking=False):
             return self.reply(429, b'{"error":"voice worker busy"}')
         try:
-            samples, rate = engine.create(text.strip(), voice=voice, lang="en-us")
+            language = "en-gb" if voice.startswith(("bf_", "bm_")) else "en-us"
+            samples, rate = engine.create(text.strip(), voice=voice, lang=language)
             audio = io.BytesIO()
             sf.write(audio, samples, rate, format="WAV", subtype="PCM_16")
             self.reply(200, audio.getvalue(), "audio/wav")
