@@ -11,6 +11,7 @@
     "cerebras",
     "openrouter",
     "mistral",
-    "local"
+    "local",
+    "nvidia"
   ]
 }
