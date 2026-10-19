@@ -193,7 +193,7 @@ export function DiscordChannelSettings() {
                     <option value="pollinations">pollinations/free</option>
                     <option value="perchance">perchance</option>
                   </select>
-                  <p className="text-xs text-muted-foreground mt-1">Active generator backend default.</p>
+                  <p className="text-xs text-muted-foreground mt-1">SFW by default. Private Adult Mode on the Private Chat page enables the adult-capable free route for private image generation; public generation stays SFW.</p>
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
