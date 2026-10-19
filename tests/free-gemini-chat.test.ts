@@ -41,9 +41,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     assert.ok([
       'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
-      'gemini-3.7-flash',
       'gemini-3.6-flash',
-      'gemini-3.1-flash-lite',
     ].includes(modelMatch[1]), 'fallback must use a documented model ID');
     assert.equal(new Headers(init?.headers).get('x-goog-api-key'), process.env.GEMINI_API_KEY);
     assert.equal(new Headers(init?.headers).has('authorization'), false);
@@ -135,4 +133,38 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
   process.env.GEMINI_API_KEY += '-replacement';
   status = 200;
   assert.equal(await generateAIResponse('New key'), 'Hello from the free provider.');
+});
+
+
+test('Gemini skips a retired or missing model and reaches the next stable candidate', async t => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'free-gemini-fallback-'));
+  const policy = path.join(dir, 'policy.json');
+  const oldPath = process.env.AI_COST_POLICY_PATH;
+  const oldKey = process.env.GEMINI_API_KEY;
+  process.env.AI_COST_POLICY_PATH = policy;
+  process.env.GEMINI_API_KEY = 'unit-test-fallback-key-' + Date.now();
+  writeFileSync(policy, JSON.stringify({ paidRoutesEnabled: false, geminiFreeTierVerified: true }));
+  t.after(() => {
+    if (oldPath === undefined) delete process.env.AI_COST_POLICY_PATH; else process.env.AI_COST_POLICY_PATH = oldPath;
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const urls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: any) => {
+    urls.push(String(url));
+    if (urls.length === 1) {
+      return new Response(JSON.stringify({ error: { message: 'model not found' } }), {
+        status: 404, headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'served by fallback' }] } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  assert.equal(await generateFreeGeminiResponse('Quick fallback test'), 'served by fallback');
+  assert.match(urls[0], /gemini-3\.5-flash-lite/);
+  assert.match(urls[1], /gemini-3\.8-flash/);
+  assert.equal(urls.length, 2, 'stop after a usable fallback succeeds');
 });

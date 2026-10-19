@@ -15,7 +15,7 @@ import { AI_PAUSED_MESSAGE } from '../src/services/ai-cost-policy';
 
 const ENV_KEYS = [
   'AI_COST_POLICY_PATH', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'GROQ_MODEL', 'CEREBRAS_API_KEY', 'CEREBRAS_MODEL',
-  'OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'MISTRAL_API_KEY', 'MISTRAL_MODEL', 'SPMT_LOCAL_LLM_ENABLED',
+  'OPENROUTER_API_KEY', 'OPENROUTER_MODEL', 'NVIDIA_API_KEY', 'NVIDIA_2_API_KEY', 'NVIDIA_NIM_MODEL', 'MISTRAL_API_KEY', 'MISTRAL_MODEL', 'SPMT_LOCAL_LLM_ENABLED',
 ];
 const saved: Record<string, string | undefined> = {};
 let dir = '';
@@ -197,3 +197,57 @@ test('every provider failing surfaces a FreeChatUnavailableError', async () => {
     (error: unknown) => error instanceof FreeChatUnavailableError && error.category === 'upstream',
   );
 });
+
+
+test('NVIDIA NIM uses documented OpenAI-compatible endpoint and falls back across free models', async () => {
+  process.env.NVIDIA_API_KEY = 'nim-test-key';
+  const calls: Array<{ url: string; authorization: string | null; model: string; body: any }> = [];
+  const fetchImpl = (async (url: any, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    calls.push({
+      url: String(url),
+      authorization: new Headers(init?.headers).get('authorization'),
+      model: body.model,
+      body,
+    });
+    if (body.model === 'openai/gpt-oss-20b') {
+      return new Response(JSON.stringify({ error: { message: 'temporarily unavailable' } }), { status: 503 });
+    }
+    return chatReply('NVIDIA NIM fallback worked.');
+  }) as typeof fetch;
+
+  assert.equal(await generateFreeChainResponse('Hello from NIM', '', undefined, {}, fetchImpl), 'NVIDIA NIM fallback worked.');
+  assert.deepEqual(calls.map(call => call.model), ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash']);
+  assert.ok(calls.every(call => call.url === 'https://integrate.api.nvidia.com/v1/chat/completions'));
+  assert.ok(calls.every(call => call.authorization === 'Bearer nim-test-key'));
+  assert.equal(calls[0].body.stream, false);
+});
+
+test('NVIDIA NIM model override cannot select an unapproved non-free model', () => {
+  process.env.NVIDIA_API_KEY = 'nim-test-key';
+  process.env.NVIDIA_NIM_MODEL = 'some/paid-model';
+  assert.equal(isFreeChainConfigured(), false);
+  process.env.NVIDIA_NIM_MODEL = 'openai/gpt-oss-20b, z-ai/glm-5-3-flash';
+  assert.equal(isFreeChainConfigured(), true);
+});
+
+
+test('NVIDIA NIM tries the secondary credential when the primary key is rejected', async () => {
+  process.env.NVIDIA_API_KEY = 'nim-primary-test-key';
+  process.env.NVIDIA_2_API_KEY = 'nim-secondary-test-key';
+  const authHeaders: string[] = [];
+  const models: string[] = [];
+  const fetchImpl = (async (_url: any, init?: RequestInit) => {
+    const auth = new Headers(init?.headers).get('authorization') || '';
+    const model = JSON.parse(String(init?.body)).model;
+    authHeaders.push(auth);
+    models.push(model);
+    if (auth === 'Bearer nim-primary-test-key') return new Response('{}', { status: 401 });
+    return chatReply('Secondary NVIDIA key worked.');
+  }) as typeof fetch;
+
+  assert.equal(await generateFreeChainResponse('NIM secondary-key fallback', '', undefined, {}, fetchImpl), 'Secondary NVIDIA key worked.');
+  assert.deepEqual(authHeaders, ['Bearer nim-primary-test-key', 'Bearer nim-secondary-test-key']);
+  assert.deepEqual(models, ['openai/gpt-oss-20b', 'openai/gpt-oss-20b']);
+});
+

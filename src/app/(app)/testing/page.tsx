@@ -1,95 +1,240 @@
 "use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 
-type Result = { provider: string; model: string; capability: string; status: string; ms?: number; detail?: string };
-type Report = { startedAt: string; finishedAt: string; testedCredentialCount: number; results: Result[]; note: string };
+type TestId = "tts" | "voice" | "ai" | "picture";
+type TestOutput = { id: TestId; title: string; startedAt: string; finishedAt: string; summary: string; payload: any };
+
+const tests: { id: TestId; title: string; description: string; button: string }[] = [
+  { id: "tts", title: "TTS chain", description: "Calls StreamWeaver's real speech endpoint and returns playable audio for listening.", button: "Test TTS chain" },
+  { id: "voice", title: "Full voice response chain", description: "Runs the actual free AI response chain, sends its answer through the actual TTS endpoint, and verifies both outputs.", button: "Test voice chain" },
+  { id: "ai", title: "Free AI model chain", description: "Tests the currently configured free AI providers with tiny prompts, current model IDs, correct API formats, bounded timeouts, and model fallbacks.", button: "Test AI chain" },
+  { id: "picture", title: "Picture generation chain", description: "Generates one public diagnostic image through StreamWeaver's image endpoint and checks for usable image output.", button: "Test picture chain" },
+];
+
+function collectImageUrls(value: any, found: string[] = [], depth = 0): string[] {
+  if (depth > 7 || value == null) return found;
+  if (typeof value === "string") {
+    if (
+      (/^https?:\/\//i.test(value) && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(value)) ||
+      /^\/api\/ai\/image\/file\//i.test(value) ||
+      /^data:image\//i.test(value)
+    ) found.push(value);
+    return found;
+  }
+  if (Array.isArray(value)) {
+    value.forEach(item => collectImageUrls(item, found, depth + 1));
+  } else if (typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      if (/^(image|images|imageUrl|imageUrls|imageResourceUrl|imageResourceUrls|persistedImageUrl|persistedImageUrls|url)$/i.test(key)) {
+        collectImageUrls(item, found, depth + 1);
+      } else if (item && typeof item === "object") {
+        collectImageUrls(item, found, depth + 1);
+      }
+    }
+  }
+  return [...new Set(found)];
+}
+
+function withoutLargeMedia(value: any, depth = 0): any {
+  if (depth > 8 || value == null) return value;
+  if (typeof value === "string") {
+    return value.startsWith("data:audio/") || value.startsWith("data:image/")
+      ? "[encoded media omitted from copied details]"
+      : value;
+  }
+  if (Array.isArray(value)) return value.map(item => withoutLargeMedia(item, depth + 1));
+  if (typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    /^(audioDataUri|audioContent|base64Audio|imageDataUri)$/i.test(key)
+      ? "[media omitted]"
+      : withoutLargeMedia(item, depth + 1),
+  ]));
+}
 
 export default function TestingPage() {
-  const [running, setRunning] = useState(false);
-  const [report, setReport] = useState<Report | null>(null);
-  const [error, setError] = useState('');
+  const [running, setRunning] = useState<TestId | "all" | null>(null);
+  const [outputs, setOutputs] = useState<Partial<Record<TestId, TestOutput>>>({});
+  const [errors, setErrors] = useState<Partial<Record<TestId, string>>>({});
 
-  async function runTests() {
-    setRunning(true);
-    setError('');
-    setReport(null);
+  async function requestJson(url: string, init: RequestInit, timeoutMs: number): Promise<any> {
+    const response = await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "error",
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = payload?.error?.message || payload?.error || payload?.message;
+      throw new Error((typeof message === "string" && message) || ("Request failed with HTTP " + response.status));
+    }
+    return payload;
+  }
+
+  async function runOne(id: TestId): Promise<void> {
+    const startedAt = new Date().toISOString();
+    setErrors(prev => ({ ...prev, [id]: "" }));
     try {
-      const response = await fetch('/api/testing/free-model-candidates', { method: 'POST' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'The test run failed.');
-      setReport(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The test run failed.');
-    } finally {
-      setRunning(false);
+      let summary = "Request completed.";
+      let payload: any;
+
+      if (id === "tts") {
+        payload = await requestJson("/api/tts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: "StreamWeaver text to speech chain test. If you can hear this, speech generation returned audio." }),
+        }, 40_000);
+        const audio = payload?.audioDataUri || payload?.data?.audioDataUri;
+        if (typeof audio !== "string" || !audio.startsWith("data:audio/")) {
+          if (payload?.available === false || payload?.data?.available === false) {
+            throw new Error(payload?.reason || payload?.data?.reason || "TTS endpoint responded, but free speech was unavailable.");
+          }
+          throw new Error("TTS endpoint returned no recognizable audio data. Expand test details to inspect the response.");
+        }
+        payload.audioDataUri = audio;
+        summary = "PASS — StreamWeaver returned playable audio (" + Math.round(audio.length * 0.75 / 1024) + " KB encoded estimate).";
+      } else if (id === "voice") {
+        const aiResponse = await requestJson("/api/ai/generate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ prompt: "Reply with one short sentence: StreamWeaver voice response test passed." }),
+        }, 40_000);
+        const generatedText = aiResponse?.text || aiResponse?.data?.text;
+        if (typeof generatedText !== "string" || !generatedText.trim()) {
+          throw new Error("The AI endpoint returned no usable text. Check the provider chain test for provider-specific results.");
+        }
+        const speechResponse = await requestJson("/api/tts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: generatedText.slice(0, 2000) }),
+        }, 40_000);
+        const audio = speechResponse?.audioDataUri || speechResponse?.data?.audioDataUri;
+        if (typeof audio !== "string" || !audio.startsWith("data:audio/")) {
+          throw new Error(speechResponse?.reason || speechResponse?.data?.reason || "AI returned text, but TTS did not return playable audio.");
+        }
+        payload = {
+          ai: withoutLargeMedia(aiResponse),
+          generatedText,
+          speech: withoutLargeMedia(speechResponse),
+          audioDataUri: audio,
+        };
+        summary = "PASS — free AI generated text and TTS returned playable audio.";
+      } else if (id === "ai") {
+        payload = await requestJson("/api/testing/free-model-candidates", { method: "POST" }, 50_000);
+        const results = Array.isArray(payload?.results) ? payload.results : [];
+        const passes = results.filter((item: any) => String(item.status).startsWith("PASS")).length;
+        const attempts = results.filter((item: any) => !String(item.status).startsWith("SKIPPED")).length;
+        summary = passes + " passing candidate(s) out of " + attempts + " attempted check(s).";
+        if (!results.length) summary = "Endpoint responded, but no provider results were returned.";
+      } else {
+        payload = await requestJson("/api/ai/image", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            prompt: "A simple cheerful blue mountain under a clear sky, clean illustration, no text, diagnostic test image.",
+            numImages: 1,
+            scope: "public",
+          }),
+        }, 90_000);
+        const images = collectImageUrls(payload);
+        if (!images.length) {
+          throw new Error("The image endpoint completed without a recognizable image URL. Expand test details to inspect the response.");
+        }
+        payload.__testImageUrls = images;
+        summary = "PASS — " + images.length + " usable image output(s) detected.";
+      }
+
+      setOutputs(prev => ({
+        ...prev,
+        [id]: {
+          id,
+          title: tests.find(t => t.id === id)?.title || id,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          summary,
+          payload,
+        },
+      }));
+    } catch (error) {
+      setErrors(prev => ({ ...prev, [id]: error instanceof Error ? error.message : "Test failed." }));
     }
   }
 
-  const reportText = report ? [
-    'StreamWeaver focused free-model candidate test',
-    'Started: ' + report.startedAt,
-    'Finished: ' + report.finishedAt,
-    'Configured providers tested: ' + report.testedCredentialCount,
-    '',
-    ...report.results.map(r => [r.provider, '|', r.model, '|', r.capability, '|', r.status, r.ms == null ? '' : '| ' + r.ms + ' ms', r.detail ? '| ' + r.detail : ''].filter(Boolean).join(' ')),
-    '',
-    report.note,
-  ].join('\n') : '';
-
-  async function copyReport() {
-    if (!reportText) return;
+  async function run(id: TestId | "all") {
+    if (running) return;
+    setRunning(id);
     try {
-      await navigator.clipboard.writeText(reportText);
-    } catch {
-      setError('Clipboard access failed. Select and copy the report text below.');
+      if (id === "all") {
+        for (const test of tests) await runOne(test.id);
+      } else {
+        await runOne(id);
+      }
+    } finally {
+      setRunning(null);
     }
+  }
+
+  async function copyOutput(id: TestId) {
+    const output = outputs[id];
+    if (!output) return;
+    await navigator.clipboard.writeText(JSON.stringify({
+      title: output.title,
+      startedAt: output.startedAt,
+      finishedAt: output.finishedAt,
+      summary: output.summary,
+      payload: withoutLargeMedia(output.payload),
+    }, null, 2));
   }
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 p-4 md:p-8">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Temporary diagnostic</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Free Model Candidate Test</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Diagnostics</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Provider & Chain Tests</h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Tests current Gemini free-tier text and speech candidates plus OpenRouter's free-model router.
-          It does not call providers already returning quota or billing errors. Secret values are never shown.
+          Run a test individually or use Run all tests. Real endpoints are exercised where possible; model probes use small prompts and bounded per-request timeouts. Paid providers are not called by the free-model candidate sweep.
         </p>
-      </header>
-      <section className="rounded-xl border p-5">
-        <p className="text-sm">One short prompt per candidate. Gemini uses the configured API key and may consume a small amount of its free-tier quota. OpenRouter uses its zero-priced free router.</p>
-        <button type="button" onClick={runTests} disabled={running} className="mt-4 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">
-          {running ? 'Testing free candidates…' : 'Test free candidates'}
+        <button type="button" onClick={() => run("all")} disabled={running !== null} className="mt-4 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">
+          {running === "all" ? "Running all tests…" : "Run all tests"}
         </button>
-        {running ? <p className="mt-3 text-sm text-muted-foreground">Running five bounded checks. This may take up to a minute.</p> : null}
-        {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
+      </header>
+      <section className="grid gap-4 md:grid-cols-2">
+        {tests.map(test => {
+          const output = outputs[test.id];
+          const error = errors[test.id];
+          const isRunning = running === test.id || running === "all";
+          const images: string[] = output?.payload?.__testImageUrls || [];
+          const audio = output?.payload?.audioDataUri || output?.payload?.data?.audioDataUri;
+          const displayPayload = withoutLargeMedia(output?.payload);
+          return (
+            <article key={test.id} className="min-w-0 rounded-xl border p-5">
+              <h2 className="text-lg font-semibold">{test.title}</h2>
+              <p className="mt-2 min-h-12 text-sm text-muted-foreground">{test.description}</p>
+              <button type="button" onClick={() => run(test.id)} disabled={running !== null} className="mt-4 rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-60">
+                {isRunning ? "Testing…" : test.button}
+              </button>
+              {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
+              {output ? (
+                <div className="mt-4 space-y-3 border-t pt-4">
+                  <p className="text-sm font-semibold">{output.summary}</p>
+                  <p className="text-xs text-muted-foreground">Finished {new Date(output.finishedAt).toLocaleString()}</p>
+                  {typeof audio === "string" && audio.startsWith("data:audio/") ? <audio controls preload="none" src={audio} className="w-full" /> : null}
+                  {images.map(src => <img key={src} src={src} alt="Generated diagnostic image" className="max-h-64 w-full rounded-lg object-contain" />)}
+                  <details>
+                    <summary className="cursor-pointer text-sm font-medium">View test details</summary>
+                    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-xs">{JSON.stringify(displayPayload, null, 2)}</pre>
+                  </details>
+                  <button type="button" onClick={() => copyOutput(test.id)} className="rounded-lg border px-3 py-2 text-xs font-medium">Copy results</button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
       </section>
-      {report ? (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Results — {report.results.length} checks</h2>
-            <button type="button" onClick={copyReport} className="rounded-lg border px-4 py-2 text-sm font-medium">Copy results</button>
-          </div>
-          <div className="overflow-x-auto rounded-xl border">
-            <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="bg-muted/60"><tr><th className="p-3">Provider</th><th className="p-3">Model</th><th className="p-3">Capability</th><th className="p-3">Result</th><th className="p-3">Latency</th><th className="p-3">Detail</th></tr></thead>
-              <tbody>
-                {report.results.map((r, i) => <tr key={r.provider + r.model + r.capability + i} className="border-t">
-                  <td className="p-3">{r.provider}</td>
-                  <td className="p-3 font-mono text-xs">{r.model}</td>
-                  <td className="p-3">{r.capability}</td>
-                  <td className="p-3 font-semibold">{r.status}</td>
-                  <td className="p-3 tabular-nums">{r.ms == null ? '—' : r.ms + ' ms'}</td>
-                  <td className="max-w-sm p-3 text-muted-foreground">{r.detail || 'Usable output detected'}</td>
-                </tr>)}
-              </tbody>
-            </table>
-          </div>
-          <label htmlFor="provider-report" className="block text-sm font-medium">Copyable report</label>
-          <textarea id="provider-report" readOnly value={reportText} rows={Math.min(24, Math.max(8, report.results.length + 5))} className="w-full rounded-xl border bg-background p-3 font-mono text-xs" />
-          <p className="text-xs text-muted-foreground">{report.note}</p>
-        </section>
-      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Model candidate results are direct text-provider probes. The voice test validates the real AI-to-TTS path. A successful test is point-in-time evidence, not a guarantee that a provider will remain available later.
+      </p>
     </main>
   );
 }

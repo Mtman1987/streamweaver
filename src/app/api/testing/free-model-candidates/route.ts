@@ -1,20 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { readAICostPolicy } from '@/services/ai-cost-policy';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 55;
 
 type Result = {
   provider: string;
   model: string;
-  capability: 'AI text' | 'TTS audio';
+  capability: 'AI text';
   status: string;
   ms: number;
   detail?: string;
 };
 
-const TIMEOUT_MS = 12_000;
+type Candidate = {
+  model: string;
+  request: (signal: AbortSignal) => Promise<Response>;
+  usable: (body: any) => boolean;
+};
+
+const TIMEOUT_MS = 7_000;
+const MIN_REPEAT_INTERVAL_MS = 10_000;
 const lastRunByUser = new Map<string, number>();
+const prompt = 'Reply with exactly: TEST_OK';
 
 function secret(name: string): string {
   return String(process.env[name] || '').trim();
@@ -23,153 +32,218 @@ function secret(name: string): string {
 function safeDetail(value: unknown): string {
   return String(value || '')
     .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret|bearer)\s*[:=]?\s*[^\s,;"]+/gi, '$1=[REDACTED]')
-    .replace(/sk-or-v1-[a-zA-Z0-9_-]+/g, '[REDACTED]')
+    .replace(/sk-or-v1-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{12,}/g, '[REDACTED]')
     .replace(/[\r\n\t]+/g, ' ')
     .slice(0, 220);
 }
 
-function classify(status: number): string {
-  if (status >= 200 && status < 300) return 'PASS';
+function classifyStatus(status: number): string {
   if (status === 401 || status === 403) return 'AUTH/PERMISSION';
   if (status === 402 || status === 429) return 'QUOTA/RATE LIMIT';
   if (status === 404 || status === 405) return 'MODEL/ENDPOINT UNAVAILABLE';
-  if (status >= 500) return 'PROVIDER ERROR';
+  if (status === 408 || status >= 500) return 'PROVIDER/TIMEOUT ERROR';
   return 'REQUEST REJECTED';
 }
 
-async function test(
-  provider: string,
-  model: string,
-  capability: Result['capability'],
-  request: (signal: AbortSignal) => Promise<Response>,
-  usable: (body: any, contentType: string) => boolean,
-): Promise<Result> {
+function errorDetail(body: any, status: number): string {
+  const message = body?.error?.message || body?.message || body?.error?.type || '';
+  return safeDetail(['HTTP ' + status, message].filter(Boolean).join(' — '));
+}
+
+async function runCandidate(provider: string, candidate: Candidate): Promise<Result> {
   const started = Date.now();
   try {
-    const response = await request(AbortSignal.timeout(TIMEOUT_MS));
-    const contentType = response.headers.get('content-type') || '';
-    let body: any = null;
-    if (contentType.includes('json')) body = await response.json().catch(() => null);
-    else if (contentType.startsWith('audio/')) body = { audioBytes: (await response.arrayBuffer()).byteLength };
-    const valid = response.ok && usable(body, contentType);
-    if (valid) {
-      const selected = provider === 'OpenRouter' && body?.model ? 'Router selected ' + safeDetail(body.model) : '';
-      return { provider, model, capability, status: 'PASS', ms: Date.now() - started, ...(selected ? { detail: selected } : {}) };
+    const response = await candidate.request(AbortSignal.timeout(TIMEOUT_MS));
+    const body = await response.json().catch(() => null);
+    if (response.ok && candidate.usable(body)) {
+      const selectedModel = provider === 'OpenRouter' && body?.model
+        ? 'Router selected ' + safeDetail(body.model)
+        : 'Returned non-empty text using the expected chat-completions format.';
+      return { provider, model: candidate.model, capability: 'AI text', status: 'PASS', ms: Date.now() - started, detail: selectedModel };
     }
-    const apiError = body?.error || body?.message;
-    const diagnostic = apiError
-      ? [apiError.code, apiError.status, apiError.message || apiError].filter(Boolean).join(' ')
-      : '';
+    if (response.ok) {
+      return {
+        provider, model: candidate.model, capability: 'AI text',
+        status: 'EMPTY/INVALID OUTPUT', ms: Date.now() - started,
+        detail: 'HTTP succeeded but the expected non-empty text response was missing.',
+      };
+    }
     return {
-      provider, model, capability, status: response.ok ? 'EMPTY/INVALID OUTPUT' : classify(response.status),
-      ms: Date.now() - started,
-      detail: safeDetail([ 'HTTP ' + response.status, diagnostic ].filter(Boolean).join(' — ')),
+      provider, model: candidate.model, capability: 'AI text',
+      status: classifyStatus(response.status), ms: Date.now() - started,
+      detail: errorDetail(body, response.status),
     };
   } catch (error) {
-    return { provider, model, capability, status: 'REQUEST ERROR', ms: Date.now() - started, detail: error instanceof Error ? error.name : 'Request failed' };
+    return {
+      provider, model: candidate.model, capability: 'AI text',
+      status: 'REQUEST ERROR', ms: Date.now() - started,
+      detail: error instanceof Error ? error.name : 'Request failed',
+    };
   }
 }
 
-function geminiText(key: string, model: string): Promise<Result> {
-  return test('Gemini', model, 'AI text', signal => fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Reply with exactly: TEST_OK' }] }],
-        generationConfig: { maxOutputTokens: 96, temperature: 0 },
-      }),
-      signal,
-      redirect: 'error',
-    },
-  ), body => typeof body?.candidates?.[0]?.content?.parts?.[0]?.text === 'string'
-    && body.candidates[0].content.parts[0].text.trim().length > 0);
+function skipped(provider: string, model: string, status: string, detail: string): Result {
+  return { provider, model, capability: 'AI text', status, ms: 0, detail };
 }
 
-function geminiTts(key: string, model: string): Promise<Result> {
-  return test('Gemini', model, 'TTS audio', signal => fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Say clearly: short voice capability test.' }] }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+function chatCandidate(
+  model: string,
+  endpoint: string,
+  key: string,
+  platform: 'openai-compatible' | 'gemini',
+  extraHeaders: Record<string, string> = {},
+): Candidate {
+  if (platform === 'gemini') {
+    return {
+      model,
+      request: signal => fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 24, temperature: 0 },
+          }),
+          signal,
+          redirect: 'error',
         },
-      }),
-      signal,
-      redirect: 'error',
-    },
-  ), body => Array.isArray(body?.candidates?.[0]?.content?.parts)
-    && body.candidates[0].content.parts.some((part: any) => Boolean(part?.inlineData?.data)));
-}
+      ),
+      usable: body => Array.isArray(body?.candidates?.[0]?.content?.parts)
+        && body.candidates[0].content.parts.some((part: any) => typeof part?.text === 'string' && part.text.trim().length > 0),
+    };
+  }
 
-function openRouterFree(key: string): Promise<Result> {
-  return test('OpenRouter', 'openrouter/free', 'AI text', signal => fetch(
-    'https://openrouter.ai/api/v1/chat/completions',
-    {
+  return {
+    model,
+    request: signal => fetch(endpoint, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key, 'http-referer': 'https://streamweaver-new.fly.dev', 'x-title': 'StreamWeaver free model test' },
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer ' + key,
+        ...extraHeaders,
+      },
       body: JSON.stringify({
-        model: 'openrouter/free',
-        messages: [{ role: 'user', content: 'Reply with exactly: TEST_OK' }],
-        max_tokens: 96,
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 24,
         temperature: 0,
         stream: false,
       }),
       signal,
       redirect: 'error',
-    },
-  ), body => typeof body?.choices?.[0]?.message?.content === 'string'
-    && body.choices[0].message.content.trim().length > 0);
+    }),
+    usable: body => typeof body?.choices?.[0]?.message?.content === 'string'
+      && body.choices[0].message.content.trim().length > 0,
+  };
+}
+
+async function testProvider(
+  provider: string,
+  keyName: string,
+  models: Candidate[],
+): Promise<Result[]> {
+  const key = secret(keyName);
+  if (!key) {
+    return [skipped(provider, models[0]?.model || '—', 'NOT CONFIGURED', keyName + ' is not configured.')];
+  }
+
+  const results: Result[] = [];
+  for (const candidate of models) {
+    const boundCandidate = candidate.model === 'openrouter/free'
+      ? candidate
+      : candidate;
+    const result = await runCandidate(provider, boundCandidate);
+    results.push(result);
+    if (result.status === 'PASS') {
+      for (const remaining of models.slice(results.length)) {
+        results.push(skipped(provider, remaining.model, 'SKIPPED — FALLBACK NOT NEEDED', 'An earlier candidate returned usable output.'));
+      }
+      break;
+    }
+    // Auth/config and quota failures usually apply to the credential, not just
+    // this model. Avoid turning a diagnostic into a retry storm.
+    if (['AUTH/PERMISSION', 'QUOTA/RATE LIMIT'].includes(result.status)) {
+      for (const remaining of models.slice(results.length)) {
+        results.push(skipped(provider, remaining.model, 'SKIPPED — CREDENTIAL/QUOTA FAILURE', 'Stopped after the credential or quota failure above.'));
+      }
+      break;
+    }
+  }
+  return results;
 }
 
 export async function POST(request: NextRequest) {
   const session = getTenantFromRequest(request);
   if (!session) return NextResponse.json({ error: 'Sign in to StreamWeaver first.' }, { status: 401 });
   if (session.username.toLowerCase() !== 'mtman1987') {
-    return NextResponse.json({ error: 'This temporary diagnostic is restricted to the owner account.' }, { status: 403 });
+    return NextResponse.json({ error: 'This diagnostic is restricted to the owner account.' }, { status: 403 });
   }
 
   const now = Date.now();
   const previous = lastRunByUser.get(session.username) || 0;
-  if (now - previous < 60_000) {
-    return NextResponse.json({ error: 'Please wait one minute between candidate test runs.' }, { status: 429 });
+  if (now - previous < MIN_REPEAT_INTERVAL_MS) {
+    return NextResponse.json({ error: 'A test just ran. Wait ten seconds before starting another sweep.' }, { status: 429 });
   }
   lastRunByUser.set(session.username, now);
 
   const geminiKey = secret('GEMINI_API_KEY');
+  const geminiVerified = readAICostPolicy().geminiFreeTierVerified;
+  const groqKey = secret('GROQ_API_KEY');
+  const cerebrasKey = secret('CEREBRAS_API_KEY');
   const openRouterKey = secret('OPENROUTER_API_KEY');
-  const jobs: Promise<Result>[] = [];
+  const mistralKey = secret('MISTRAL_API_KEY');
 
-  if (geminiKey) {
-    // Known-good baseline plus two current model candidates. Keep requests tiny.
-    jobs.push(geminiText(geminiKey, 'gemini-3.5-flash-lite'));
-    jobs.push(geminiText(geminiKey, 'gemini-3.6-flash'));
-    jobs.push(geminiText(geminiKey, 'gemini-3.8-flash'));
-    jobs.push(geminiTts(geminiKey, 'gemini-3.8-flash-lite-tts'));
+  const jobs: Promise<Result[]>[] = [];
+  if (!geminiKey) {
+    jobs.push(Promise.resolve([skipped('Gemini', 'gemini-3.5-flash-lite', 'NOT CONFIGURED', 'GEMINI_API_KEY is not configured.')]));
+  } else if (!geminiVerified) {
+    jobs.push(Promise.resolve([skipped('Gemini', 'gemini-3.5-flash-lite', 'SKIPPED — FREE TIER NOT VERIFIED', 'The application policy does not mark this Gemini credential/project as verified free-tier. The test will not call Google until that is explicitly verified.')]));
   } else {
-    for (const model of ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.8-flash']) {
-      jobs.push(Promise.resolve<Result>({ provider: 'Gemini', model, capability: 'AI text', status: 'NOT CONFIGURED', ms: 0, detail: 'GEMINI_API_KEY is not configured.' }));
-    }
-    jobs.push(Promise.resolve<Result>({ provider: 'Gemini', model: 'gemini-3.8-flash-lite-tts', capability: 'TTS audio', status: 'NOT CONFIGURED', ms: 0, detail: 'GEMINI_API_KEY is not configured.' }));
+    jobs.push(testProvider('Gemini', 'GEMINI_API_KEY', [
+      chatCandidate('gemini-3.5-flash-lite', '', geminiKey, 'gemini'),
+      chatCandidate('gemini-3.8-flash', '', geminiKey, 'gemini'),
+      chatCandidate('gemini-3.1-flash-lite', '', geminiKey, 'gemini'),
+      chatCandidate('gemini-3.6-flash', '', geminiKey, 'gemini'),
+    ]));
   }
 
-  if (openRouterKey) {
-    jobs.push(openRouterFree(openRouterKey));
-  } else {
-    jobs.push(Promise.resolve<Result>({ provider: 'OpenRouter', model: 'openrouter/free', capability: 'AI text', status: 'NOT CONFIGURED', ms: 0, detail: 'OPENROUTER_API_KEY is not configured.' }));
-  }
+  jobs.push(testProvider('Groq', 'GROQ_API_KEY', [
+    chatCandidate('openai/gpt-oss-20b', 'https://api.groq.com/openai/v1/chat/completions', groqKey, 'openai-compatible'),
+    chatCandidate('openai/gpt-oss-120b', 'https://api.groq.com/openai/v1/chat/completions', groqKey, 'openai-compatible'),
+  ]));
+  jobs.push(testProvider('Cerebras', 'CEREBRAS_API_KEY', [
+    chatCandidate('gpt-oss-120b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
+    chatCandidate('llama3.1-8b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
+  ]));
+  jobs.push(testProvider('OpenRouter', 'OPENROUTER_API_KEY', [
+    chatCandidate('openrouter/free', 'https://openrouter.ai/api/v1/chat/completions', openRouterKey, 'openai-compatible', {
+      'http-referer': 'https://streamweaver-new.fly.dev',
+      'x-title': 'StreamWeaver free model diagnostics',
+    }),
+  ]));
+  jobs.push(testProvider('Mistral', 'MISTRAL_API_KEY', [
+    chatCandidate('mistral-small-latest', 'https://api.mistral.ai/v1/chat/completions', mistralKey, 'openai-compatible'),
+  ]));
 
-  const results = await Promise.all(jobs);
+  // Validate each NIM key independently. In production, both credentials are
+  // one provider fallback pool and a rejected primary key falls through to the second.
+  const nvidiaKey = secret('NVIDIA_API_KEY');
+  const nvidiaSecondKey = secret('NVIDIA_2_API_KEY');
+  const nvidiaEndpoint = 'https://integrate.api.nvidia.com/v1/chat/completions';
+  const nvidiaModels = (key: string) => [
+    chatCandidate('openai/gpt-oss-20b', nvidiaEndpoint, key, 'openai-compatible'),
+    chatCandidate('z-ai/glm-5-3-flash', nvidiaEndpoint, key, 'openai-compatible'),
+  ];
+  jobs.push(testProvider('NVIDIA NIM (NVIDIA_API_KEY)', 'NVIDIA_API_KEY', nvidiaModels(nvidiaKey)));
+  jobs.push(testProvider('NVIDIA NIM (NVIDIA_2_API_KEY)', 'NVIDIA_2_API_KEY', nvidiaModels(nvidiaSecondKey)));
+
+  const results = (await Promise.all(jobs)).flat();
   return NextResponse.json({
     startedAt: new Date(now).toISOString(),
     finishedAt: new Date().toISOString(),
-    testedCredentialCount: Number(Boolean(geminiKey)) + Number(Boolean(openRouterKey)),
+    testedCredentialCount: [geminiKey, groqKey, cerebrasKey, openRouterKey, mistralKey, nvidiaKey, nvidiaSecondKey].filter(Boolean).length,
     results,
-    note: 'Focused free-model test only: Gemini free-tier candidates and OpenRouter free router. No OpenAI, EdenAI, Deepgram, Inworld, or other paid/quota-failing providers are called. Secret values and raw response bodies are never returned.',
+    note: 'Runs small, bounded AI-text probes against the configured free-chain providers only, including both NVIDIA NIM credentials. Each provider tries compatible model IDs in order and stops on the first usable response, credential failure, quota failure, or timeout. Raw provider bodies and secret values are never returned. Gemini is not called unless its free-tier policy flag is explicitly verified.',
   });
 }

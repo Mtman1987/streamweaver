@@ -16,11 +16,11 @@ import { isSpmtLocalLlmEnabled, requestSpmtLocalLlm } from './spmt-local-llm';
  * config/ai-cost-policy.json under `freeChain`.
  */
 
-export type FreeProviderId = 'gemini' | 'groq' | 'cerebras' | 'openrouter' | 'mistral' | 'local';
+export type FreeProviderId = 'gemini' | 'groq' | 'nvidia' | 'cerebras' | 'openrouter' | 'mistral' | 'local';
 type Category = ConstructorParameters<typeof FreeChatUnavailableError>[0];
 
 export const DEFAULT_FREE_CHAIN: readonly FreeProviderId[] = [
-  'gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'local',
+  'gemini', 'groq', 'nvidia', 'cerebras', 'openrouter', 'mistral', 'local',
 ];
 
 export type FreeChainOptions = {
@@ -29,9 +29,11 @@ export type FreeChainOptions = {
   maxCharacters?: number;
   /** Restrict this call to these providers (e.g. keep private data on one provider). */
   providers?: readonly string[];
+  /** Internal monotonic deadline shared by every provider attempt in one turn. */
+  deadlineAtMs?: number;
 };
 
-type CompatId = 'groq' | 'cerebras' | 'openrouter' | 'mistral';
+type CompatId = 'groq' | 'nvidia' | 'cerebras' | 'openrouter' | 'mistral';
 type CompatSpec = {
   url: string;
   keyEnv: string;
@@ -39,6 +41,10 @@ type CompatSpec = {
   defaultModels: string[];
   /** OpenRouter only: refuse any model that is not a ':free' variant so it can never spend credits. */
   requireFreeSuffix?: boolean;
+  /** Provider-specific allow-list: don't let env configuration select paid NIM models. */
+  allowedModels?: string[];
+  /** Additional credentials for the same provider, attempted only if an earlier credential fails. */
+  additionalKeyEnvs?: string[];
 };
 
 // Model IDs change often on free tiers. Override with the *_MODEL env var
@@ -50,11 +56,21 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     modelEnv: 'GROQ_MODEL',
     defaultModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'],
   },
+  nvidia: {
+    url: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    keyEnv: 'NVIDIA_API_KEY',
+    additionalKeyEnvs: ['NVIDIA_2_API_KEY'],
+    modelEnv: 'NVIDIA_NIM_MODEL',
+    // Both hosted endpoints are currently listed as free in NVIDIA's API catalog.
+    // GLM-5.3-Flash also accepts images/tool calls; this basic probe validates text chat.
+    defaultModels: ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash'],
+    allowedModels: ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash'],
+  },
   cerebras: {
     url: 'https://api.cerebras.ai/v1/chat/completions',
     keyEnv: 'CEREBRAS_API_KEY',
     modelEnv: 'CEREBRAS_MODEL',
-    defaultModels: ['llama-3.3-70b'],
+    defaultModels: ['gpt-oss-120b', 'llama3.1-8b'],
   },
   openrouter: {
     url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -71,8 +87,9 @@ const COMPAT: Record<CompatId, CompatSpec> = {
   },
 };
 
-const REQUEST_TIMEOUT_MS = 20_000;
-const MAX_MODELS_PER_PROVIDER = 3;
+const REQUEST_TIMEOUT_MS = 7_000;
+const MAX_MODELS_PER_PROVIDER = 2;
+const MAX_CHAIN_DURATION_MS = 35_000;
 const AUTH_COOLDOWN_MS = 6 * 60 * 60_000;
 const MODEL_MISSING_COOLDOWN_MS = 30 * 60_000;
 const DEFAULT_QUOTA_COOLDOWN_MS = 2 * 60_000;
@@ -105,12 +122,16 @@ class ProviderFailure extends Error {
 function safeDetail(value: string): string {
   return String(value || '')
     .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret|bearer)\s*[:=]?\s*[^\s,;"]+/gi, '$1=[REDACTED]')
+    .replace(/sk-or-v1-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{12,}/g, '[REDACTED]')
     .replace(/[\r\n\t]+/g, ' ')
     .slice(0, 300);
 }
 
-function compatKey(id: CompatId): string {
-  return String(process.env[COMPAT[id].keyEnv] || '').trim();
+function compatKeys(id: CompatId): string[] {
+  const spec = COMPAT[id];
+  return [spec.keyEnv, ...(spec.additionalKeyEnvs || [])]
+    .map((name) => String(process.env[name] || '').trim())
+    .filter(Boolean);
 }
 
 function compatModels(id: CompatId): string[] {
@@ -121,13 +142,14 @@ function compatModels(id: CompatId): string[] {
     .filter(Boolean);
   let models = configured.length ? configured : spec.defaultModels;
   if (spec.requireFreeSuffix) models = models.filter((model) => model === 'openrouter/free' || model.endsWith(':free'));
+  if (spec.allowedModels) models = models.filter((model) => spec.allowedModels!.includes(model));
   return Array.from(new Set(models)).slice(0, MAX_MODELS_PER_PROVIDER);
 }
 
 function isProviderConfigured(id: FreeProviderId, tenantId?: string): boolean {
   if (id === 'gemini') return isFreeGeminiConfigured(tenantId);
   if (id === 'local') return isSpmtLocalLlmEnabled();
-  return Boolean(compatKey(id)) && compatModels(id).length > 0;
+  return compatKeys(id).length > 0 && compatModels(id).length > 0;
 }
 
 function resolveChain(allowed?: readonly string[]): FreeProviderId[] {
@@ -199,7 +221,8 @@ async function requestCompatProvider(
   fetchImpl: typeof fetch,
 ): Promise<string> {
   const spec = COMPAT[id];
-  const apiKey = compatKey(id);
+  const apiKeys = compatKeys(id);
+  if (!apiKeys.length) throw new ProviderFailure('not_configured', 0);
   const messages = [
     ...(systemPrompt.trim() ? [{ role: 'system', content: systemPrompt.slice(-12_000) }] : []),
     { role: 'user', content: prompt.slice(-24_000) },
@@ -210,14 +233,24 @@ async function requestCompatProvider(
     : 0.7;
 
   let last: { category: Category; cooldownMs: number } = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
-  for (const model of compatModels(id)) {
+  const models = compatModels(id);
+  for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
+    const apiKey = apiKeys[keyIndex];
+    for (const model of models) {
+    const remainingMs = typeof options.deadlineAtMs === 'number'
+      ? Math.min(REQUEST_TIMEOUT_MS, options.deadlineAtMs - Date.now())
+      : REQUEST_TIMEOUT_MS;
+    if (remainingMs <= 0) {
+      last = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
+      break;
+    }
     let response: Response;
     try {
       response = await fetchImpl(spec.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature, stream: false }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(Math.max(1, remainingMs)),
         redirect: 'error',
       });
     } catch (error) {
@@ -242,10 +275,19 @@ async function requestCompatProvider(
     const body = safeDetail(await response.text().catch(() => ''));
     console.warn('[Free AI Chain] provider rejected request', { provider: id, model, status, responseBody: body });
 
-    if (status === 401 || status === 403) throw new ProviderFailure('authentication', AUTH_COOLDOWN_MS);
+    if (status === 401 || status === 403) {
+      last = { category: 'authentication', cooldownMs: AUTH_COOLDOWN_MS };
+      break; // Try the next configured credential for this provider.
+    }
     if (status === 429) {
       last = { category: 'quota', cooldownMs: parseRetryAfterMs(response) };
-      continue;
+      if (id === 'nvidia') break; // NVIDIA has two credentials; rotate those before spending budget on more models.
+      const explicitModelAlternates = String(process.env[spec.modelEnv] || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean).length > 1;
+      if (explicitModelAlternates) continue; // Only probe a second model when the operator explicitly configured alternatives.
+      break; // Default model IDs share the same provider quota; don't multiply a quota failure.
     }
     if (status === 404) {
       last = { category: 'upstream', cooldownMs: MODEL_MISSING_COOLDOWN_MS };
@@ -257,6 +299,7 @@ async function requestCompatProvider(
     }
     // 400/413/422 and similar describe this request, not the provider. Move on without a cooldown.
     throw new ProviderFailure('upstream', 0, body);
+    }
   }
   throw new ProviderFailure(last.category, last.cooldownMs);
 }
@@ -298,8 +341,17 @@ export async function generateFreeChainResponse(
   const failures: string[] = [];
   let anyConfigured = false;
   let lastCategory: Category = 'not_configured';
+  const deadlineAtMs = typeof options.deadlineAtMs === 'number'
+    ? options.deadlineAtMs
+    : Date.now() + MAX_CHAIN_DURATION_MS;
+  const boundedOptions: FreeChainOptions = { ...options, deadlineAtMs };
 
   for (const id of resolveChain(options.providers)) {
+    if (Date.now() >= deadlineAtMs) {
+      failures.push('chain: time budget exhausted');
+      lastCategory = 'upstream';
+      break;
+    }
     if (!isProviderConfigured(id, tenantId)) continue;
     anyConfigured = true;
 
@@ -312,7 +364,7 @@ export async function generateFreeChainResponse(
     cooldowns.delete(id);
 
     try {
-      const text = await callProvider(id, prompt, systemPrompt, tenantId, options, fetchImpl);
+      const text = await callProvider(id, prompt, systemPrompt, tenantId, boundedOptions, fetchImpl);
       if (failures.length) {
         console.info(`[Free AI Chain] ${id} served tenant ${tenantId || 'global'} after: ${failures.join('; ')}`);
       }

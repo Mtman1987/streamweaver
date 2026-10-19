@@ -2,14 +2,13 @@ import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
 
 const MODEL = 'gemini-3.5-flash-lite';
-// Keep this list on Google's free Gemini API family only. Try alternates only
-// when the provider reports temporary model overload (HTTP 503).
+// Keep the primary quick model, then only two current alternatives to preserve
+// a bounded latency budget. Gemini 3.7 is deprecated; 3.6/3.8 are stable.
 const FREE_MODEL_FALLBACKS = [
-  'gemini-3.1-flash-lite',
   'gemini-3.8-flash',
-  'gemini-3.7-flash',
   'gemini-3.6-flash',
 ] as const;
+const REQUEST_TIMEOUT_MS = 7_000;
 const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
 const cooldowns = new Map<string, { until: number; category: FailureCategory }>();
@@ -69,7 +68,7 @@ export async function generateFreeGeminiResponse(
   prompt: string,
   systemPrompt = '',
   tenantId?: string,
-  options: { maxTokens?: number; temperature?: number; maxCharacters?: number; inlineAudio?: { mimeType: string; data: string } } = {},
+  options: { maxTokens?: number; temperature?: number; maxCharacters?: number; inlineAudio?: { mimeType: string; data: string }; deadlineAtMs?: number } = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
   if (!isFreeGeminiConfigured(tenantId)) throw new FreeChatUnavailableError('not_configured');
@@ -92,6 +91,12 @@ export async function generateFreeGeminiResponse(
     const models = [MODEL, ...FREE_MODEL_FALLBACKS];
     for (let index = 0; index < models.length; index++) {
       const model = models[index];
+      const deadlineRemainingMs = typeof options.deadlineAtMs === 'number'
+        ? options.deadlineAtMs - Date.now()
+        : REQUEST_TIMEOUT_MS;
+      if (deadlineRemainingMs <= 0) {
+        throw new FreeChatUnavailableError('upstream');
+      }
       try {
         response = await fetchImpl(ENDPOINT(model), {
           method: 'POST',
@@ -105,7 +110,7 @@ export async function generateFreeGeminiResponse(
                 ? Math.max(0, Math.min(1, Number(options.temperature))) : 0.7,
             },
           }),
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(Math.max(1, Math.min(REQUEST_TIMEOUT_MS, deadlineRemainingMs))),
           redirect: 'error',
         });
       } catch (error) {
@@ -118,12 +123,12 @@ export async function generateFreeGeminiResponse(
         throw new FreeChatUnavailableError('upstream');
       }
       selectedModel = model;
-      // Only temporary overload is eligible for model fallback. Quota exhaustion
-      // must enter cooldown immediately instead of multiplying API requests.
-      const retryableModelFailure = response.status === 503;
+      // Missing/retired models and temporary upstream failures should move to
+      // the next known-good free candidate. Auth and quota errors stop early.
+      const retryableModelFailure = [404, 408, 500, 502, 503, 504].includes(response.status);
       if (!retryableModelFailure || index === models.length - 1) break;
       lastOverloadBody = safeUpstreamDetail(await response.text().catch(() => ''));
-      console.warn('[Free Gemini] model unavailable or busy; trying next free model', {
+      console.warn('[Free Gemini] model unavailable or temporarily unhealthy; trying next free model', {
         model, status: response.status, nextModel: models[index + 1], responseBody: lastOverloadBody,
       });
     }
