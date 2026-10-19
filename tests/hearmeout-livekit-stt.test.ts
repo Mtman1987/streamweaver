@@ -54,6 +54,7 @@ test('StreamWeaver middleware cannot demand an SPMT session from HearMeOut perso
   for (const route of [
     '/api/internal/hearmeout/bots',
     '/api/internal/hearmeout/persona-command',
+    '/api/internal/hearmeout/persona-voice',
     '/api/speech/transcribe',
   ]) {
     assert.ok(middleware.includes(`'${route}'`), `${route} must bypass SPMT user-session middleware`);
