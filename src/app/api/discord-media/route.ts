@@ -1,4 +1,7 @@
 import { NextRequest } from 'next/server';
+import { promises as fs } from 'fs';
+import { randomUUID } from 'crypto';
+import { tenantPath } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
 import {
@@ -6,6 +9,7 @@ import {
   getDiscordMediaPublicPath,
   importDiscordStreamHubMedia,
   isDiscordMediaSlot,
+  readTenantDiscordMedia,
   writeDiscordMedia,
 } from '@/lib/discord-media-store';
 import {
@@ -29,6 +33,21 @@ async function persistCanonicalSlot(slot: 'private-dm' | 'public-discord', tenan
   const url = canonicalMediaUrl(slot, tenantId);
   await writeUserConfig({ [configKeyForSlot(slot)]: url }, tenantId);
   return url;
+}
+
+// Keep the active Discord GIF slot replaceable, but archive every saved GIF
+// under a unique filename so subsequent uploads/conversions never erase gallery history.
+async function archiveGalleryGif(slot: 'private-dm' | 'public-discord', tenantId: string) {
+  const active = await readTenantDiscordMedia(slot, tenantId);
+  if (!active?.body?.length) throw new Error('Saved GIF could not be read for gallery archive');
+  const directory = tenantPath(
+    tenantId,
+    slot === 'private-dm' ? 'data/private-generated-images' : 'data/generated-images',
+  );
+  await fs.mkdir(directory, { recursive: true });
+  const filename = `${randomUUID()}.gif`;
+  await fs.writeFile(`${directory}/${filename}`, active.body, { flag: 'wx' });
+  return filename;
 }
 
 export async function POST(request: NextRequest) {
@@ -81,18 +100,21 @@ export async function POST(request: NextRequest) {
       });
       await importDiscordStreamHubMedia(slot, converted.url, session.tenantId);
       const url = await persistCanonicalSlot(slot, session.tenantId);
+      const galleryFilename = await archiveGalleryGif(slot, session.tenantId);
       return apiOk({
         success: true,
         url,
         filename: url.split('/').pop(),
+        galleryFilename,
         converted: true,
         source: 'streamweaver',
       });
     }
 
-    const { filename } = await writeDiscordMedia(slot, Buffer.from(await file.arrayBuffer()), session.tenantId);
+    await writeDiscordMedia(slot, Buffer.from(await file.arrayBuffer()), session.tenantId);
     const url = await persistCanonicalSlot(slot, session.tenantId);
-    return apiOk({ success: true, url, filename, converted: false, source: 'streamweaver' });
+    const galleryFilename = await archiveGalleryGif(slot, session.tenantId);
+    return apiOk({ success: true, url, filename: galleryFilename, galleryFilename, converted: false, source: 'streamweaver' });
   } catch (error: any) {
     console.error('[Discord Media API] Error:', error);
     return apiError(error?.message || 'Failed to save media', { status: 500, code: 'INTERNAL_ERROR' });
