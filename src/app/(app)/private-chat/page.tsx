@@ -187,7 +187,7 @@ export default function PrivateChatPage() {
             <div>
               <Label htmlFor="adult-mode">Adult Mode</Label>
               <p className="mt-1 text-sm text-muted-foreground">
-                This changes Athena&apos;s private-chat policy only. It does not switch to a different moderation path or provider.
+                This enables adult-mode image generation for your private requests. Public image generation stays SFW; private-chat response behavior is configured separately.
               </p>
             </div>
             <Switch
