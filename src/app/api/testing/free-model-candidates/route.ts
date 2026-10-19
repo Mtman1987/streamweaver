@@ -153,15 +153,15 @@ export async function POST(request: NextRequest) {
     jobs.push(geminiTts(geminiKey, 'gemini-3.8-flash-lite-tts'));
   } else {
     for (const model of ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.8-flash']) {
-      jobs.push(Promise.resolve({ provider: 'Gemini', model, capability: 'AI text', status: 'NOT CONFIGURED', ms: 0, detail: 'GEMINI_API_KEY is not configured.' }));
+      jobs.push(Promise.resolve<Result>({ provider: 'Gemini', model, capability: 'AI text', status: 'NOT CONFIGURED', ms: 0, detail: 'GEMINI_API_KEY is not configured.' }));
     }
-    jobs.push(Promise.resolve({ provider: 'Gemini', model: 'gemini-3.8-flash-lite-tts', capability: 'TTS audio', status: 'NOT CONFIGURED', ms: 0, detail: 'GEMINI_API_KEY is not configured.' }));
+    jobs.push(Promise.resolve<Result>({ provider: 'Gemini', model: 'gemini-3.8-flash-lite-tts', capability: 'TTS audio', status: 'NOT CONFIGURED', ms: 0, detail: 'GEMINI_API_KEY is not configured.' }));
   }
 
   if (openRouterKey) {
     jobs.push(openRouterFree(openRouterKey));
   } else {
-    jobs.push(Promise.resolve({ provider: 'OpenRouter', model: 'openrouter/free', capability: 'AI text', status: 'NOT CONFIGURED', ms: 0, detail: 'OPENROUTER_API_KEY is not configured.' }));
+    jobs.push(Promise.resolve<Result>({ provider: 'OpenRouter', model: 'openrouter/free', capability: 'AI text', status: 'NOT CONFIGURED', ms: 0, detail: 'OPENROUTER_API_KEY is not configured.' }));
   }
 
   const results = await Promise.all(jobs);
