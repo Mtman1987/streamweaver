@@ -197,3 +197,32 @@ test('applying a saved public GIF requires ownership and switches the active pub
     assert.deepEqual(await readFile(path.join(dir, 'public-favorite.gif')), gifBytes);
   });
 });
+
+
+test('public image gallery separates saved GIFs and makes them selectable', async () => {
+  await withPrivateLibraryRuntime(async () => {
+    const { tenantPath } = await import('../src/lib/tenant');
+    const { serializeSessionCookie } = await import('../src/lib/session-cookie');
+    const tenantId = 'tenant-public-gallery';
+    const dir = tenantPath(tenantId, 'data/generated-images');
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, 'public-animation.gif'), Buffer.from('GIF89a-public-gallery'));
+    await writeFile(path.join(dir, 'public-still.png'), Buffer.from('png-still'));
+
+    const { GET } = await import('../src/app/api/ai/image/library/route');
+    const ownerCookie = serializeSessionCookie({ id: tenantId, username: 'owner' });
+    const response = await GET(new NextRequest(
+      `https://streamweaver.test/api/ai/image/library?tenantId=${tenantId}&scope=public`,
+      { headers: { cookie: `streamweaver-session=${ownerCookie}` } },
+    ));
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /Saved Public GIFs/);
+    assert.match(html, /data-library-kind="gif"/);
+    assert.match(html, /data-library-kind="image"/);
+    assert.match(html, /data-apply-scope="public"/);
+    assert.match(html, /data-apply-gif="public-animation\.gif"/);
+    assert.match(html, /download="public-animation\.gif"/);
+    assert.match(html, />Set</);
+  });
+});
