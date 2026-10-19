@@ -31,6 +31,7 @@ async function probe(
     const contentType = response.headers.get('content-type') || '';
     let body: any = null;
     if (contentType.includes('json')) body = await response.json().catch(() => null);
+    else if (contentType.startsWith('audio/')) body = { audioBytes: (await response.arrayBuffer()).byteLength };
     const ok = response.ok && valid(body, contentType);
     return {
       credential, capability, status: ok ? 'PASS' : httpStatus(response.status),
@@ -61,7 +62,7 @@ function openAiTts(key: string) {
     method: 'POST', headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' },
     body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice: 'alloy', input: 'Short voice capability test.' }),
     signal, redirect: 'error',
-  }).then(response => ({ response, valid: (_body: any, type: string) => type.startsWith('audio/') })));
+  }).then(response => ({ response, valid: (body: any, type: string) => type.startsWith('audio/') && Number(body?.audioBytes || 0) > 44 })));
 }
 function geminiText(name: string, key: string) {
   return probe(name, 'AI text', postJson('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
