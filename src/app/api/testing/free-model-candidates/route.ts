@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
     jobs.push(testProvider('Gemini', 'GEMINI_API_KEY', [
       chatCandidate('gemini-3.5-flash-lite', '', geminiKey, 'gemini'),
       chatCandidate('gemini-3.8-flash', '', geminiKey, 'gemini'),
-      chatCandidate('gemini-3.7-flash', '', geminiKey, 'gemini'),
+      chatCandidate('gemini-3.1-flash-lite', '', geminiKey, 'gemini'),
       chatCandidate('gemini-3.6-flash', '', geminiKey, 'gemini'),
     ]));
   }
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
   ]));
   jobs.push(testProvider('Cerebras', 'CEREBRAS_API_KEY', [
     chatCandidate('gpt-oss-120b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
-    chatCandidate('qwen-3.8-27b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
+    chatCandidate('llama3.1-8b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
   ]));
   jobs.push(testProvider('OpenRouter', 'OPENROUTER_API_KEY', [
     chatCandidate('openrouter/free', 'https://openrouter.ai/api/v1/chat/completions', openRouterKey, 'openai-compatible', {
@@ -226,12 +226,24 @@ export async function POST(request: NextRequest) {
     chatCandidate('mistral-small-latest', 'https://api.mistral.ai/v1/chat/completions', mistralKey, 'openai-compatible'),
   ]));
 
+  // Validate each NIM key independently. In production, both credentials are
+  // one provider fallback pool and a rejected primary key falls through to the second.
+  const nvidiaKey = secret('NVIDIA_API_KEY');
+  const nvidiaSecondKey = secret('NVIDIA_2_API_KEY');
+  const nvidiaEndpoint = 'https://integrate.api.nvidia.com/v1/chat/completions';
+  const nvidiaModels = (key: string) => [
+    chatCandidate('openai/gpt-oss-20b', nvidiaEndpoint, key, 'openai-compatible'),
+    chatCandidate('z-ai/glm-5-3-flash', nvidiaEndpoint, key, 'openai-compatible'),
+  ];
+  jobs.push(testProvider('NVIDIA NIM (NVIDIA_API_KEY)', 'NVIDIA_API_KEY', nvidiaModels(nvidiaKey)));
+  jobs.push(testProvider('NVIDIA NIM (NVIDIA_2_API_KEY)', 'NVIDIA_2_API_KEY', nvidiaModels(nvidiaSecondKey)));
+
   const results = (await Promise.all(jobs)).flat();
   return NextResponse.json({
     startedAt: new Date(now).toISOString(),
     finishedAt: new Date().toISOString(),
-    testedCredentialCount: [geminiKey, groqKey, cerebrasKey, openRouterKey, mistralKey].filter(Boolean).length,
+    testedCredentialCount: [geminiKey, groqKey, cerebrasKey, openRouterKey, mistralKey, nvidiaKey, nvidiaSecondKey].filter(Boolean).length,
     results,
-    note: 'Runs small, bounded AI-text probes against the configured free-chain providers only. Each provider tries compatible model IDs in order and stops on the first usable response, credential failure, quota failure, or timeout. Raw provider bodies and secret values are never returned. Gemini is not called unless its free-tier policy flag is explicitly verified.',
+    note: 'Runs small, bounded AI-text probes against the configured free-chain providers only, including both NVIDIA NIM credentials. Each provider tries compatible model IDs in order and stops on the first usable response, credential failure, quota failure, or timeout. Raw provider bodies and secret values are never returned. Gemini is not called unless its free-tier policy flag is explicitly verified.',
   });
 }
