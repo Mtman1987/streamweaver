@@ -16,11 +16,11 @@ import { isSpmtLocalLlmEnabled, requestSpmtLocalLlm } from './spmt-local-llm';
  * config/ai-cost-policy.json under `freeChain`.
  */
 
-export type FreeProviderId = 'gemini' | 'groq' | 'cerebras' | 'openrouter' | 'mistral' | 'local';
+export type FreeProviderId = 'gemini' | 'groq' | 'nvidia' | 'cerebras' | 'openrouter' | 'mistral' | 'local';
 type Category = ConstructorParameters<typeof FreeChatUnavailableError>[0];
 
 export const DEFAULT_FREE_CHAIN: readonly FreeProviderId[] = [
-  'gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'local',
+  'gemini', 'groq', 'nvidia', 'cerebras', 'openrouter', 'mistral', 'local',
 ];
 
 export type FreeChainOptions = {
@@ -33,7 +33,7 @@ export type FreeChainOptions = {
   deadlineAtMs?: number;
 };
 
-type CompatId = 'groq' | 'cerebras' | 'openrouter' | 'mistral';
+type CompatId = 'groq' | 'nvidia' | 'cerebras' | 'openrouter' | 'mistral';
 type CompatSpec = {
   url: string;
   keyEnv: string;
@@ -41,6 +41,8 @@ type CompatSpec = {
   defaultModels: string[];
   /** OpenRouter only: refuse any model that is not a ':free' variant so it can never spend credits. */
   requireFreeSuffix?: boolean;
+  /** Provider-specific allow-list: don't let env configuration select paid NIM models. */
+  allowedModels?: string[];
 };
 
 // Model IDs change often on free tiers. Override with the *_MODEL env var
@@ -51,6 +53,15 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     keyEnv: 'GROQ_API_KEY',
     modelEnv: 'GROQ_MODEL',
     defaultModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'],
+  },
+  nvidia: {
+    url: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    keyEnv: 'NVIDIA_NIM_API_KEY',
+    modelEnv: 'NVIDIA_NIM_MODEL',
+    // Both are explicitly listed as free endpoints in NVIDIA's hosted API catalog.
+    // The second candidate is a multimodal-capable fallback; the tested request is text-only.
+    defaultModels: ['openai/gpt-oss-20b', 'z-ai/glm-5.3-flash'],
+    allowedModels: ['openai/gpt-oss-20b', 'z-ai/glm-5.3-flash'],
   },
   cerebras: {
     url: 'https://api.cerebras.ai/v1/chat/completions',
@@ -125,6 +136,7 @@ function compatModels(id: CompatId): string[] {
     .filter(Boolean);
   let models = configured.length ? configured : spec.defaultModels;
   if (spec.requireFreeSuffix) models = models.filter((model) => model === 'openrouter/free' || model.endsWith(':free'));
+  if (spec.allowedModels) models = models.filter((model) => spec.allowedModels!.includes(model));
   return Array.from(new Set(models)).slice(0, MAX_MODELS_PER_PROVIDER);
 }
 
