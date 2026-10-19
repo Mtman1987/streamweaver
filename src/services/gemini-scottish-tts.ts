@@ -1,13 +1,14 @@
 import { readAICostPolicy } from './ai-cost-policy';
 
 export const SCOTTISH_VOICE_ID = 'gemini:charon:scottish';
-const MODEL = 'gemini-2.5-flash-preview-tts';
-const FREE_TTS_FALLBACKS: readonly string[] = []; // Do not assume preview/pro TTS is free; Kokoro is the guaranteed free fallback.
-const ACCENT = 'Read the transcript exactly in a natural adult male Scottish English accent. Warm, clear and conversational; avoid exaggeration or caricature. Do not read these instructions. Transcript:\n';
+const MODEL = 'gemini-3.8-flash-tts';
+const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+const DEFAULT_SCOTTISH_STYLE = 'A natural adult male Scottish English accent. Warm, clear and conversational, with gentle pitch variation, human pacing and natural pauses. Keep the accent authentic rather than exaggerated. Never flat or robotic. Read the transcript exactly without adding words.';
 let pending = 0;
 let queue: Promise<unknown> = Promise.resolve();
 let cooldownUntil = 0;
 
+/** Compatibility helper for any callers that still need to wrap 24 kHz PCM. */
 export function pcmToWav(pcm: Buffer): Buffer {
   if (!pcm.length || pcm.length % 2 || pcm.length > 10 * 1024 * 1024) throw new Error('Invalid Gemini speech audio');
   const header = Buffer.alloc(44);
@@ -19,9 +20,31 @@ export function pcmToWav(pcm: Buffer): Buffer {
   return Buffer.concat([header, pcm]);
 }
 
-export async function generateScottishTTS(text: string): Promise<string> {
-  // This route is available only on the already verified free Gemini project.
-  // It never enables paid routes or substitutes an unrelated accent.
+function isWav(audio: Buffer): boolean {
+  return audio.length >= 44 && audio.subarray(0, 4).toString() === 'RIFF' && audio.subarray(8, 12).toString() === 'WAVE';
+}
+
+function audioDataFromResponse(result: any): string {
+  if (typeof result?.output_audio?.data === 'string') return result.output_audio.data;
+  const steps = Array.isArray(result?.steps) ? result.steps : [];
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i];
+    if (step?.type !== 'model_output' || !Array.isArray(step?.content)) continue;
+    for (let j = step.content.length - 1; j >= 0; j--) {
+      const part = step.content[j];
+      if (part?.type === 'audio' && typeof part.data === 'string') return part.data;
+    }
+  }
+  return '';
+}
+
+export async function generateScottishTTS(
+  text: string,
+  voice = 'Charon',
+  style = DEFAULT_SCOTTISH_STYLE,
+): Promise<string> {
+  // Cloud TTS stays disabled until an operator explicitly verifies that this API key
+  // is on a genuinely free-tier project. Local Kokoro remains the safe fallback.
   if (!readAICostPolicy().geminiFreeTierVerified) throw new Error('Gemini free tier has not been verified');
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key) throw new Error('Gemini speech is not configured');
@@ -30,52 +53,55 @@ export async function generateScottishTTS(text: string): Promise<string> {
   pending++;
   const task = queue.then(async () => {
     if (Date.now() < cooldownUntil || Date.now() - queuedAt > 45_000) return '';
-    // Re-check operational policy before spending any quota after queueing.
     if (!readAICostPolicy().geminiFreeTierVerified) return '';
-    const models = [MODEL, ...FREE_TTS_FALLBACKS];
-    let response: Response | undefined;
-    let selectedModel = MODEL;
-    for (let index = 0; index < models.length; index++) {
-      selectedModel = models[index];
-      response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + selectedModel + ':generateContent', {
+    let response: Response;
+    try {
+      response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: ACCENT + text.slice(0, 2000) }] }],
-          generationConfig: { responseModalities: ['AUDIO'], speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } },
-          } },
+          model: MODEL,
+          input: [{
+            type: 'user_input',
+            content: [{
+              type: 'text',
+              text: String(text || '').slice(0, 2000),
+              annotations: [{ type: 'speech_metadata', style: String(style || DEFAULT_SCOTTISH_STYLE).slice(0, 600) }],
+            }],
+          }],
+          response_format: { type: 'audio' },
+          generation_config: { speech_config: [{ voice: String(voice || 'Charon').slice(0, 64) }] },
         }),
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout(15_000),
       });
-      if (![404, 503].includes(response.status) || index === models.length - 1) break;
-      console.warn('[Gemini TTS] model unavailable or overloaded; trying free TTS fallback', {
-        model: selectedModel, status: response.status, nextModel: models[index + 1],
-      });
-      await response.text().catch(() => '');
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      cooldownUntil = Date.now() + 60_000;
+      throw new Error('Gemini TTS request failed: ' + err.name);
     }
-    if (!response) throw new Error('Gemini Scottish speech failed: no response');
     if (!response.ok) {
-      const responseBody = (await response.text().catch(() => ''))
-        .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')
-        .replace(/[\\r\\n\\t]+/g, ' ').slice(0, 500);
-      console.error('[Gemini TTS] upstream HTTP error', {
-        model: selectedModel, status: response.status, statusText: response.statusText, responseBody,
-      });
-      cooldownUntil = Date.now() + ([401, 403].includes(response.status) ? 6 * 60 * 60_000 : response.status === 429 ? 15 * 60_000 : 60_000);
-      throw new Error('Gemini Scottish speech failed: ' + response.status);
+      await response.text().catch(() => '');
+      const status = response.status;
+      cooldownUntil = Date.now() + ([401, 403].includes(status) ? 6 * 60 * 60_000 : status === 429 ? 15 * 60_000 : 60_000);
+      console.warn('[Gemini TTS] upstream request failed', { model: MODEL, status });
+      throw new Error('Gemini TTS failed: ' + status);
     }
-    const result = await response.json();
-    const audio = result?.candidates?.[0]?.content?.parts?.find((part: any) => part.inlineData)?.inlineData;
-    if (!audio?.data || !/^audio\/L16;.*rate=24000/i.test(String(audio.mimeType))) throw new Error('Gemini returned no supported speech audio');
-    const wav = pcmToWav(Buffer.from(audio.data, 'base64'));
+    const result = await response.json().catch(() => ({}));
+    const audioBase64 = audioDataFromResponse(result);
+    if (!audioBase64) throw new Error('Gemini TTS returned no audio data');
+    const wav = Buffer.from(audioBase64, 'base64');
+    if (!isWav(wav)) throw new Error('Gemini TTS returned invalid WAV audio');
+    if (wav.length > 30 * 1024 * 1024) throw new Error('Gemini TTS audio is too large');
+    cooldownUntil = 0;
     return 'data:audio/wav;base64,' + wav.toString('base64');
   });
   queue = task.catch(() => undefined);
   try { return await task; }
   catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    console.error('[Gemini TTS] request failed', { model: MODEL, errorName: err.name, errorMessage: err.message.slice(0, 500) });
+    console.warn('[Gemini TTS] generation failed; local Kokoro fallback is available', {
+      errorName: err.name, errorMessage: err.message.slice(0, 220),
+    });
     cooldownUntil = Math.max(cooldownUntil, Date.now() + 60_000);
     throw error;
   }

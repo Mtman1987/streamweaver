@@ -34,7 +34,7 @@ export type GenerateTTSOptions = {
 
 export const TTS_VOICES: Record<TTSProvider, string[]> = {
   gemini: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'gemini').map((voice) => voice.id),
-  kokoro: ['kokoro:af_heart', 'kokoro:af_bella', 'kokoro:am_michael'],
+  kokoro: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'kokoro').map((voice) => voice.id),
   edenai: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'edenai').map((voice) => voice.id),
   deepgram: TTS_VOICE_OPTIONS.filter((voice) => voice.provider === 'deepgram').map((voice) => voice.id),
 };
@@ -48,10 +48,14 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
   const policy = readAICostPolicy();
   const savedVoice = getTtsVoiceOption(config.TTS_VOICE);
+  // Never silently ship ordinary/private speech to a third-party TTS API just because
+  // its free tier was verified. Gemini is used only when a tenant explicitly selects a Gemini voice.
   const voice = savedVoice.provider === 'gemini'
     ? savedVoice.id
     : !policy.paidRoutesEnabled
-    ? savedVoice.provider === 'kokoro' ? savedVoice.id : `kokoro:${savedVoice.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice}`
+    ? savedVoice.provider === 'kokoro'
+      ? savedVoice.id
+      : `kokoro:${savedVoice.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice}`
     : tenantId === ATHENA_TENANT_ID
     ? ATHENA_CANONICAL_TTS_VOICE
     : normalizeTtsVoice(config.TTS_VOICE);
@@ -152,7 +156,11 @@ export async function generateTTS(
     // not make !say silently fail or touch a paid provider.
     if (policy.geminiFreeTierVerified) {
       try {
-        const audio = await generateScottishTTS(normalizedText);
+        const audio = await generateScottishTTS(
+          normalizedText,
+          requestedVoice.geminiVoice || 'Charon',
+          requestedVoice.speechStyle,
+        );
         if (audio) return audio;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

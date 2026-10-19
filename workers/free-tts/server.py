@@ -10,7 +10,7 @@ import onnxruntime as ort
 import soundfile as sf
 from kokoro_onnx import Kokoro
 
-VOICES = {"af_heart", "af_bella", "am_michael"}
+VOICES = {"af_heart", "af_bella", "af_nicole", "af_kore", "af_sarah", "af_aoede", "am_michael", "am_puck", "am_fenrir", "am_adam", "bm_george", "bf_emma"}
 options = ort.SessionOptions()
 options.intra_op_num_threads = 2
 options.inter_op_num_threads = 1
@@ -59,7 +59,8 @@ class Handler(BaseHTTPRequestHandler):
         if not lock.acquire(blocking=False):
             return self.reply(429, b'{"error":"voice worker busy"}')
         try:
-            samples, rate = engine.create(text.strip(), voice=voice, lang="en-us")
+            language = "en-gb" if voice.startswith(("bf_", "bm_")) else "en-us"
+            samples, rate = engine.create(text.strip(), voice=voice, lang=language)
             audio = io.BytesIO()
             sf.write(audio, samples, rate, format="WAV", subtype="PCM_16")
             self.reply(200, audio.getvalue(), "audio/wav")

@@ -32,8 +32,8 @@ export function readAICostPolicy(): AICostPolicy {
       // Explicitly confirm the key project has no billing; model names alone do not enforce free usage.
       geminiFreeTierVerified: p.geminiFreeTierVerified === true,
       speechWorkerUrl: typeof p.speechWorkerUrl === 'string' ? p.speechWorkerUrl : defaults.speechWorkerUrl,
-      femaleTrialVoice: ['af_heart', 'af_bella'].includes(p.femaleTrialVoice) ? p.femaleTrialVoice : defaults.femaleTrialVoice,
-      maleTrialVoice: p.maleTrialVoice === 'am_michael' ? p.maleTrialVoice : defaults.maleTrialVoice,
+      femaleTrialVoice: ['af_heart', 'af_bella', 'af_nicole', 'af_kore', 'af_sarah', 'af_aoede', 'bf_emma'].includes(p.femaleTrialVoice) ? p.femaleTrialVoice : defaults.femaleTrialVoice,
+      maleTrialVoice: ['am_michael', 'am_puck', 'am_fenrir', 'am_adam', 'bm_george'].includes(p.maleTrialVoice) ? p.maleTrialVoice : defaults.maleTrialVoice,
       freeChain: Array.isArray(p.freeChain) ? p.freeChain.filter((id: unknown): id is string => typeof id === 'string') : [],
     };
   } catch { return { ...defaults }; }

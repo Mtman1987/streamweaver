@@ -14,6 +14,10 @@ export type TTSVoiceOption = {
   edenaiVoiceModel: string;
   deepgramModel?: string;
   livekitDescriptor?: string;
+  /** Prebuilt voice name on Gemini TTS; only used with an operator-verified free-tier key. */
+  geminiVoice?: string;
+  /** Natural-language delivery direction sent as structured speech metadata. */
+  speechStyle?: string;
 };
 
 export const ATHENA_TENANT_ID = '94371378';
@@ -215,18 +219,53 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
 ];
 
 export const KOKORO_VOICE_OPTIONS: TTSVoiceOption[] = [
-  ['af_heart', 'Heart', 'Female'], ['af_bella', 'Bella', 'Female'], ['am_michael', 'Michael', 'Male'],
+  ['af_heart', 'Heart', 'Female'], ['af_bella', 'Bella', 'Female'],
+  ['af_nicole', 'Nicole', 'Female'], ['af_kore', 'Kore', 'Female'],
+  ['af_sarah', 'Sarah', 'Female'], ['af_aoede', 'Aoede', 'Female'],
+  ['am_michael', 'Michael', 'Male'], ['am_puck', 'Puck', 'Male'],
+  ['am_fenrir', 'Fenrir', 'Male'], ['am_adam', 'Adam', 'Male'],
+  ['bm_george', 'George (UK)', 'Male'], ['bf_emma', 'Emma (UK)', 'Female'],
 ].map(([name, label, gender]) => ({
   id: `kokoro:${name}`, label, gender: gender as 'Male' | 'Female', provider: 'kokoro',
   providerLabel: 'Kokoro free voice trial', description: 'Local neural voice; no per-character provider charge',
   edenaiProvider: 'openai', edenaiOption: gender === 'Male' ? 'MALE' : 'FEMALE', edenaiVoiceModel: name,
 }));
-export const GEMINI_VOICE_OPTIONS: TTSVoiceOption[] = [{
-  id: 'gemini:charon:scottish', label: 'Scottish Male', provider: 'gemini',
-  providerLabel: 'Gemini free voice trial', gender: 'Male',
-  description: 'Charon with a natural Scottish English accent; accent strength may vary',
-  edenaiProvider: 'openai', edenaiOption: 'MALE', edenaiVoiceModel: 'Charon',
-}];
+export const SCOTTISH_GEMINI_VOICE_ID = 'gemini:charon:scottish';
+
+export const GEMINI_VOICE_OPTIONS: TTSVoiceOption[] = [
+  {
+    id: 'gemini:kore:natural', label: 'Kore — Warm & Natural', provider: 'gemini',
+    providerLabel: 'Gemini free-tier TTS (opt-in)', gender: 'Female',
+    description: 'Warm, expressive conversational delivery; requires a verified-free Gemini API key.',
+    edenaiProvider: 'openai', edenaiOption: 'FEMALE', edenaiVoiceModel: 'Kore',
+    geminiVoice: 'Kore',
+    speechStyle: 'A warm, natural adult female conversational voice. Use human-like prosody, gently varied pitch and pace, clear articulation and natural pauses. Friendly and present, never flat, stiff, or robotic. Read the transcript exactly without adding words.',
+  },
+  {
+    id: 'gemini:aoede:breezy', label: 'Aoede — Breezy & Friendly', provider: 'gemini',
+    providerLabel: 'Gemini free-tier TTS (opt-in)', gender: 'Female',
+    description: 'Light, personable voice with lively but restrained cadence.',
+    edenaiProvider: 'openai', edenaiOption: 'FEMALE', edenaiVoiceModel: 'Aoede',
+    geminiVoice: 'Aoede',
+    speechStyle: 'A breezy, friendly adult female voice speaking naturally to a friend. Use varied intonation, subtle warmth, relaxed phrasing, clear pronunciation and natural pauses. Avoid sing-song exaggeration and monotone delivery. Read the transcript exactly without adding words.',
+  },
+  {
+    id: 'gemini:puck:upbeat', label: 'Puck — Lively & Conversational', provider: 'gemini',
+    providerLabel: 'Gemini free-tier TTS (opt-in)', gender: 'Male',
+    description: 'Lively male voice with natural emphasis and conversational pacing.',
+    edenaiProvider: 'openai', edenaiOption: 'MALE', edenaiVoiceModel: 'Puck',
+    geminiVoice: 'Puck',
+    speechStyle: 'A lively, warm adult male conversational voice. Emphasize meaningful words naturally, use varied pitch and pace with brief human pauses, and sound engaged rather than announcer-like. Never monotone or robotic. Read the transcript exactly without adding words.',
+  },
+  {
+    id: SCOTTISH_GEMINI_VOICE_ID, label: 'Charon — Scottish', provider: 'gemini',
+    providerLabel: 'Gemini free-tier TTS (opt-in)', gender: 'Male',
+    description: 'Scottish English delivery, with conversational warmth and varied cadence.',
+    edenaiProvider: 'openai', edenaiOption: 'MALE', edenaiVoiceModel: 'Charon',
+    geminiVoice: 'Charon',
+    speechStyle: 'A natural adult male Scottish English accent. Warm, clear and conversational, with gentle pitch variation, human pacing and natural pauses. Keep the accent authentic rather than exaggerated. Never flat or robotic. Read the transcript exactly without adding words.',
+  },
+];
 export const TTS_VOICE_OPTIONS = [...KOKORO_VOICE_OPTIONS, ...GEMINI_VOICE_OPTIONS, ...DEEPGRAM_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS];
 export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
 export const DEFAULT_TTS_VOICE = 'edenai:openai:nova';

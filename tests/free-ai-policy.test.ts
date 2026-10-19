@@ -43,7 +43,7 @@ test('free-only policy prevents paid calls even with credentials and retries fre
     calls++;
     assert.equal(String(url), 'http://127.0.0.1:8080/v1/audio/speech');
     const body = JSON.parse(String(init?.body));
-    assert.ok(['af_heart', 'af_bella', 'am_michael'].includes(body.voice));
+    assert.ok(['af_heart', 'af_bella', 'af_nicole', 'af_kore', 'af_sarah', 'af_aoede', 'am_michael', 'am_puck', 'am_fenrir', 'am_adam', 'bm_george', 'bf_emma'].includes(body.voice));
     assert.equal(new Headers(init?.headers).has('authorization'), false);
     return fail ? new Response(null, { status: 503 }) : new Response(wav, { headers: { 'content-type': 'audio/wav' } });
   });
