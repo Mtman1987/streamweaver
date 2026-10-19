@@ -9,8 +9,9 @@ export const dynamic = 'force-dynamic';
 
 function effectiveDefaultVoice(): string {
   const policy = readAICostPolicy();
-  if (policy.paidRoutesEnabled) return DEFAULT_TTS_VOICE;
-  return policy.geminiFreeTierVerified ? 'gemini:kore:natural' : 'kokoro:af_heart';
+  // Keep the default local; Gemini becomes selectable only after free-tier verification
+  // and is activated only when a user deliberately saves that voice.
+  return policy.paidRoutesEnabled ? DEFAULT_TTS_VOICE : 'kokoro:af_heart';
 }
 
 function voiceCatalog() {
