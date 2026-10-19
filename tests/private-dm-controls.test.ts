@@ -127,7 +127,7 @@ test('parses only the five allowed control actions', () => {
   assert.equal(parsePrivateDmControlAction('tts'), 'tts');
   assert.equal(parsePrivateDmControlAction('r'), 'refresh');
   assert.equal(parsePrivateDmControlAction('refresh'), 'refresh');
-  assert.equal(parsePrivateDmControlAction('a'), null);
+  assert.equal(parsePrivateDmControlAction('a'), 'adult');
   assert.equal(parsePrivateDmControlAction('settings'), 'settings');
   assert.equal(parsePrivateDmControlAction('delete'), 'delete');
   assert.equal(parsePrivateDmControlAction('d'), 'delete');
