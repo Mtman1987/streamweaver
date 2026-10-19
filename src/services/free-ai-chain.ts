@@ -29,6 +29,8 @@ export type FreeChainOptions = {
   maxCharacters?: number;
   /** Restrict this call to these providers (e.g. keep private data on one provider). */
   providers?: readonly string[];
+  /** Internal monotonic deadline shared by every provider attempt in one turn. */
+  deadlineAtMs?: number;
 };
 
 type CompatId = 'groq' | 'cerebras' | 'openrouter' | 'mistral';
@@ -54,7 +56,7 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     url: 'https://api.cerebras.ai/v1/chat/completions',
     keyEnv: 'CEREBRAS_API_KEY',
     modelEnv: 'CEREBRAS_MODEL',
-    defaultModels: ['llama-3.3-70b'],
+    defaultModels: ['gpt-oss-120b', 'qwen-3.8-27b'],
   },
   openrouter: {
     url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -71,8 +73,9 @@ const COMPAT: Record<CompatId, CompatSpec> = {
   },
 };
 
-const REQUEST_TIMEOUT_MS = 20_000;
-const MAX_MODELS_PER_PROVIDER = 3;
+const REQUEST_TIMEOUT_MS = 7_000;
+const MAX_MODELS_PER_PROVIDER = 2;
+const MAX_CHAIN_DURATION_MS = 35_000;
 const AUTH_COOLDOWN_MS = 6 * 60 * 60_000;
 const MODEL_MISSING_COOLDOWN_MS = 30 * 60_000;
 const DEFAULT_QUOTA_COOLDOWN_MS = 2 * 60_000;
@@ -105,6 +108,7 @@ class ProviderFailure extends Error {
 function safeDetail(value: string): string {
   return String(value || '')
     .replace(/(x-goog-api-key|authorization|api[_-]?key|token|secret|bearer)\s*[:=]?\s*[^\s,;"]+/gi, '$1=[REDACTED]')
+    .replace(/sk-or-v1-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{12,}/g, '[REDACTED]')
     .replace(/[\r\n\t]+/g, ' ')
     .slice(0, 300);
 }
@@ -211,13 +215,20 @@ async function requestCompatProvider(
 
   let last: { category: Category; cooldownMs: number } = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
   for (const model of compatModels(id)) {
+    const remainingMs = typeof options.deadlineAtMs === 'number'
+      ? Math.min(REQUEST_TIMEOUT_MS, options.deadlineAtMs - Date.now())
+      : REQUEST_TIMEOUT_MS;
+    if (remainingMs <= 0) {
+      last = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
+      break;
+    }
     let response: Response;
     try {
       response = await fetchImpl(spec.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature, stream: false }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(Math.max(1, remainingMs)),
         redirect: 'error',
       });
     } catch (error) {
@@ -298,8 +309,17 @@ export async function generateFreeChainResponse(
   const failures: string[] = [];
   let anyConfigured = false;
   let lastCategory: Category = 'not_configured';
+  const deadlineAtMs = typeof options.deadlineAtMs === 'number'
+    ? options.deadlineAtMs
+    : Date.now() + MAX_CHAIN_DURATION_MS;
+  const boundedOptions: FreeChainOptions = { ...options, deadlineAtMs };
 
   for (const id of resolveChain(options.providers)) {
+    if (Date.now() >= deadlineAtMs) {
+      failures.push('chain: time budget exhausted');
+      lastCategory = 'upstream';
+      break;
+    }
     if (!isProviderConfigured(id, tenantId)) continue;
     anyConfigured = true;
 
@@ -312,7 +332,7 @@ export async function generateFreeChainResponse(
     cooldowns.delete(id);
 
     try {
-      const text = await callProvider(id, prompt, systemPrompt, tenantId, options, fetchImpl);
+      const text = await callProvider(id, prompt, systemPrompt, tenantId, boundedOptions, fetchImpl);
       if (failures.length) {
         console.info(`[Free AI Chain] ${id} served tenant ${tenantId || 'global'} after: ${failures.join('; ')}`);
       }
