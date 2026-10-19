@@ -187,7 +187,7 @@ export function DiscordChannelSettings() {
                 <div className="col-span-2">
                   <Label>Provider mode</Label>
                   <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={genSettings.mode} onChange={(e) => setGenSettings(prev => ({ ...prev, mode: e.target.value as GenerationSettings['mode'] }))}>
-                    <option value="cloudflare">cloudflare (free when configured; Pollinations fallback)</option>
+                    <option value="cloudflare">cloudflare (policy-gated; Pollinations fallback)</option>
                     <option value="eden">eden (may use paid credits)</option>
                     <option value="seaart">seaart</option>
                     <option value="pollinations">pollinations/free</option>
