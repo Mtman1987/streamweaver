@@ -92,7 +92,6 @@ function renderActiveGifCard(url: string, canMutate: boolean): string {
     canMutate
       ? '<button class="delete-button" type="button" data-delete-url="/api/discord-media?slot=private-dm" data-filename="active private-DM GIF">Delete</button>'
       : '',
-    `<a href="${safeUrl}" download="active-private-dm.gif">Download</a>`,
     '<span class="active-badge">✓ Active DM GIF</span>',
   ].filter(Boolean).join('');
 
@@ -213,7 +212,7 @@ export async function GET(request: NextRequest) {
   const title = scope === 'private' ? 'Private Generated Media' : 'Generated Images';
   const ownerNote = scope === 'private'
     ? canMutate
-      ? '<p class="note">Images and GIFs are stored separately below. The active private-DM GIF is one canonical StreamWeaver media slot, including MP4s converted by DiscordStreamHub. Delete the active slot directly, delete generated GIFs you do not want to keep, or use <strong>Apply to DM</strong> to replace it.</p>'
+      ? '<p class="note">Images and GIFs are stored separately below. The active private-DM GIF is one canonical StreamWeaver media slot, including MP4s converted by DiscordStreamHub. Delete the active slot directly, delete generated GIFs you do not want to keep, or use <strong>Set</strong> to replace it.</p>'
       : '<p class="note warning">Viewing mode. Sign in to StreamWeaver as this account in this browser to enable Delete and Apply controls.</p>'
     : '';
 
@@ -261,7 +260,7 @@ export async function GET(request: NextRequest) {
       const scope = applyButton.getAttribute('data-apply-scope') || 'private';
       const buttons = Array.from(document.querySelectorAll('[data-apply-gif]'));
       applyButton.disabled = true;
-      applyButton.textContent = 'Applying...';
+      applyButton.textContent = 'Setting...';
       try {
         const response = await fetch('/api/ai/image/library', {
           method: 'POST',
@@ -280,7 +279,7 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         window.alert(error && error.message ? error.message : 'Apply failed.');
         applyButton.disabled = false;
-        applyButton.textContent = 'Apply to DM';
+        applyButton.textContent = 'Set';
       }
     });
   </script>` : '';
