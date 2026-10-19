@@ -154,7 +154,14 @@ test('private TTS player keeps the say-style controls but listens only to privat
 
   assert.match(playerSource, /TTS_VOICE_OPTIONS/);
   assert.match(playerSource, /type="range"/);
-  assert.match(playerSource, /Push to talk/);
+  assert.match(playerSource, /Speak/);
+  assert.match(playerSource, /textarea/);
+  assert.match(playerSource, /Send privately to Athena/);
+  assert.match(playerSource, /Private conversation history/);
+  assert.match(playerSource, /mode: 'on'/);
+  assert.match(playerSource, /mode: 'send'/);
+  assert.match(playerSource, /mode: 'test'/);
+  assert.doesNotMatch(playerSource, /navigator\\.clipboard/);
   assert.match(playerSource, /mode: 'poll'/);
   assert.match(playerSource, /mode: 'off'/);
   assert.match(playerSource, /pagehide/);
