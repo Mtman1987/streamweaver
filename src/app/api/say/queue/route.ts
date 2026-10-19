@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const queued = activeQueueTenantIds.map((id) => {
-      const item = addSayQueueItem(id, audioDataUri);
+      const item = addSayQueueItem(id, audioDataUri, cleanText);
       return { tenantId: id, queued: getSayQueue(id).length, id: item.id };
     });
     return NextResponse.json({
