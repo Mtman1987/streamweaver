@@ -9,6 +9,7 @@ import {
   getDiscordMediaPublicPath,
   importDiscordStreamHubMedia,
   isDiscordMediaSlot,
+  readTenantDiscordMedia,
   writeDiscordMedia,
 } from '@/lib/discord-media-store';
 import {

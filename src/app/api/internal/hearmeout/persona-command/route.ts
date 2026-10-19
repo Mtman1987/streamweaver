@@ -1,11 +1,10 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
 import { internalServiceHeaders } from '@/lib/internal-service-auth';
-import { getBotName } from '@/lib/bot-settings-store';
+import { getBotName, getBotVoice } from '@/lib/bot-settings-store';
 import { detectOpenBotCommandWithAi, runOpenBotCommand } from '@/services/open-bot-commands';
 import { routeBotAction } from '@/services/bot-action-runtime';
 import { generateTTS } from '@/services/tts-provider';
-import { DEFAULT_TTS_VOICE } from '@/lib/tts-voices';
 import { isTheCountName, isTheCountTwitchLogin } from '@/lib/the-count';
 
 function text(value: unknown, max = 5000) {
@@ -101,6 +100,7 @@ export async function POST(request: NextRequest) {
   if (!responseText) responseText = 'I could not form a response. Please try that again.';
 
   const sayStreamKey = hearMeOutSayStreamKey(roomId, tenantId);
+  const voice = getBotVoice(tenantId);
   // HearMeOut's caller owns delivery through the canonical /api/say/queue
   // endpoint. Skip the legacy inline audio generation when explicitly delegated
   // so the same reply is not synthesized twice.
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
   const audioDataUri = shouldGenerateInlineAudio
     ? await generateTTS(
         responseText.slice(0, 2000),
-        DEFAULT_TTS_VOICE,
+        voice,
         sayStreamKey,
       ).catch((error) => {
         console.warn(`[HearMeOutPersona:${tenantId}] Say TTS failed:`, error);
@@ -124,12 +124,12 @@ export async function POST(request: NextRequest) {
     response: responseText,
     bot: { name: botName, tenantId },
     tts: audioDataUri
-      ? { ok: true, audioDataUri, source: 'say', streamKey: sayStreamKey, voice: DEFAULT_TTS_VOICE }
+      ? { ok: true, audioDataUri, source: 'say', streamKey: sayStreamKey, voice }
       : {
           ok: false,
           source: 'say',
           streamKey: sayStreamKey,
-          voice: DEFAULT_TTS_VOICE,
+          voice,
           ...(shouldGenerateInlineAudio ? {} : { skipped: true, reason: 'speech-delegated-to-say-player' }),
         },
     roomId,

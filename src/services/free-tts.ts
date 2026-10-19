@@ -25,7 +25,7 @@ function resolveFreeWorkerBase(): URL | null {
   return new URL('http://127.0.0.1:8080');
 }
 
-export async function generateFreeTTS(text: string, voice: string): Promise<string> {
+export async function generateFreeTTS(text: string, voice: string, strictVoice = false): Promise<string> {
   // Serialize CPU inference, bound queue and latency, and never retry a broken
   // worker on every chat message. No paid route is consulted here.
   if (Date.now() < unavailableUntil || pending >= 8) return '';
@@ -38,7 +38,7 @@ export async function generateFreeTTS(text: string, voice: string): Promise<stri
 
     // A timeout on the preferred voice must not immediately disable speech.
     // Try the other free Kokoro voices before opening the short worker cooldown.
-    const voices = [voice, ...FREE_KOKORO_VOICES.filter((candidate) => candidate !== voice)];
+    const voices = strictVoice ? [voice] : [voice, ...FREE_KOKORO_VOICES.filter((candidate) => candidate !== voice)];
     const failures: string[] = [];
     for (const candidate of voices) {
       try {

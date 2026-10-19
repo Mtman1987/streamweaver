@@ -27,9 +27,9 @@ test('HearMeOut persona source variants converge on Say TTS', async () => {
   assert.match(botRoute, /return ['"]hearmeout['"]/);
   assert.match(botRoute, /useHearMeOutSay\s*=\s*source === ['"]hearmeout['"]/);
 
-  assert.match(serviceRoute, /DEFAULT_TTS_VOICE/);
+  assert.match(serviceRoute, /getBotVoice\(tenantId\)/);
   assert.match(serviceRoute, /hmo-say-/);
-  assert.match(serviceRoute, /generateTTS\([\s\S]*DEFAULT_TTS_VOICE[\s\S]*sayStreamKey/);
+  assert.match(serviceRoute, /generateTTS\([\s\S]*voice[\s\S]*sayStreamKey/);
   assert.match(serviceRoute, /source:\s*['"]say['"]/);
   assert.match(serviceRoute, /body\?\.speak !== false/);
   assert.match(serviceRoute, /speech-delegated-to-say-player/);
@@ -54,6 +54,7 @@ test('StreamWeaver middleware cannot demand an SPMT session from HearMeOut perso
   for (const route of [
     '/api/internal/hearmeout/bots',
     '/api/internal/hearmeout/persona-command',
+    '/api/internal/hearmeout/persona-voice',
     '/api/speech/transcribe',
   ]) {
     assert.ok(middleware.includes(`'${route}'`), `${route} must bypass SPMT user-session middleware`);
