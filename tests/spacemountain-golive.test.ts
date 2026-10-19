@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  getAdminTwitchId,
   SPACEMOUNTAIN_SYSTEM_TENANT_ID,
   SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL,
 } from '../src/lib/tenant';
@@ -17,11 +16,12 @@ const ownerInput = {
   message: '!golive',
   channel: `#${SPACEMOUNTAIN_SYSTEM_TWITCH_CHANNEL}`,
   tenantId: SPACEMOUNTAIN_SYSTEM_TENANT_ID,
-  username: 'mtman1987',
-  userId: getAdminTwitchId(),
+  username: 'spacemountainlive',
+  userId: 'valid-twitch-user-id',
   self: false,
   mirrored: false,
   botAuthored: false,
+  broadcasterBadge: true,
 };
 
 test('recognizes only the exact !golive command in the SpaceMountainLive channel', () => {
@@ -31,10 +31,12 @@ test('recognizes only the exact !golive command in the SpaceMountainLive channel
   assert.equal(isSpaceMountainGoLiveCommand('!golive', 'anotherchannel'), false);
 });
 
-test('requires the configured immutable owner Twitch ID plus owner login and direct channel', () => {
+test('requires the authenticated SpaceMountainLive broadcaster badge, nonempty Twitch ID, exact channel and login', () => {
   assert.equal(isAuthorizedSpaceMountainGoLive(ownerInput), true);
-  assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, username: 'moderator' }), false);
-  assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, userId: '123456789' }), false);
+  assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, username: 'mtman1987', broadcasterBadge: false }), false);
+  assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, username: 'moderator', broadcasterBadge: false }), false);
+  assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, userId: '' }), false);
+  assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, broadcasterBadge: false }), false);
   assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, tenantId: 'another-tenant' }), false);
   assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, self: true }), false);
   assert.equal(isAuthorizedSpaceMountainGoLive({ ...ownerInput, mirrored: true }), false);
@@ -45,7 +47,7 @@ test('unauthorized !golive attempts in the SpaceMountainLive chat are silently c
   let starts = 0;
   const replies: string[] = [];
   const handled = await handleSpaceMountainGoLiveMessage(
-    { ...ownerInput, username: 'friendlymoderator', userId: '777', moderator: true } as typeof ownerInput,
+    { ...ownerInput, username: 'friendlymoderator', userId: '777', broadcasterBadge: false },
     {
       start: async () => { starts += 1; return { ok: true, state: 'live' }; },
       reply: async (message) => { replies.push(message); },
