@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import { tenantPath } from '@/lib/tenant';
 import { getTenantFromRequest } from '@/lib/tenant-context';
@@ -405,6 +406,16 @@ export async function POST(request: NextRequest) {
     if (!gif) return NextResponse.json({ error: 'GIF not found' }, { status: 404 });
 
     const slot = scope === 'private' ? 'private-dm' : 'public-discord';
+    // Preserve the previous active GIF before replacing the single active Discord slot.
+    const previousActive = await readTenantDiscordMedia(slot, tenantId).catch(() => null);
+    if (previousActive?.body?.length && !previousActive.body.equals(gif)) {
+      const galleryDir = tenantPath(
+        tenantId,
+        scope === 'private' ? 'data/private-generated-images' : 'data/generated-images',
+      );
+      await fs.mkdir(galleryDir, { recursive: true });
+      await fs.writeFile(path.join(galleryDir, `${randomUUID()}.gif`), previousActive.body, { flag: 'wx' });
+    }
     await writeDiscordMedia(slot, gif, tenantId);
     const relativeUrl = getDiscordMediaPublicPath(slot, tenantId);
     const baseUrl = getConfiguredAppUrl();
