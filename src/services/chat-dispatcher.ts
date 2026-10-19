@@ -32,6 +32,7 @@ import { internalServiceHeaders } from '../lib/internal-service-auth';
 import { replaceDiscordUserMentions } from './discord-mentions';
 import { getTenantIdFromChannel } from './twitch-client';
 import { handleBotWakeCommand, isSharedBotAwake, setSharedBotAwake } from './shared-bot-wake';
+import { handleSpaceMountainGoLiveMessage, requestSpaceMountainGoLive } from './spacemountain-golive';
 import { isConfirmedLoungeStellaShoutout } from './lounge-stella-shoutout-command';
 import { incrementMetric } from './metrics';
 import { isKnownBot } from './known-bots';
@@ -2688,6 +2689,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         const outgoing = lounge ? prepareStellaLoungeReply(msg, as) : { message: msg, as };
         return sendChatMessage(outgoing.message, outgoing.as, replyChannel, tenantId);
     };
+
+    // !golive is reserved for the SpaceMountainLive owner. It uses the
+    // existing SPMT Restream browser and consumes untrusted attempts silently.
+    if (await handleSpaceMountainGoLiveMessage({
+        message,
+        channel: replyChannel,
+        tenantId,
+        username: String(username || ''),
+        userId: String(tags['user-id'] || ''),
+        self,
+        mirrored: Boolean(
+            (tags['source-room-id'] && tags['source-room-id'] !== tags['room-id'])
+            || (tags['source-id'] && tags['source-id'] !== tags['room-id'])
+        ),
+        botAuthored: Boolean(tags.badges?.bot) || String(tags.id || '').startsWith('app-chat-'),
+    }, {
+        start: requestSpaceMountainGoLive,
+        reply: (text) => reply(text, 'bot'),
+    })) return;
 
     // Mirror Twitch dispatcher outputs to Kick for duel-stream mode.
     // Enable with: KICK_MIRROR_CHAT=true
