@@ -229,10 +229,18 @@ test('NVIDIA NIM uses documented OpenAI-compatible endpoint and falls back acros
   assert.equal(calls[0].body.stream, false);
 });
 
-test('NVIDIA NIM model override cannot select an unapproved non-free model', () => {
+test('NVIDIA NIM model override cannot select an unapproved non-free model', async () => {
   process.env.NVIDIA_API_KEY = 'nim-test-key';
   process.env.NVIDIA_NIM_MODEL = 'some/paid-model';
-  assert.equal(isFreeChainConfigured(), false);
+  assert.equal(isFreeChainConfigured(), true, 'invalid override should fall back to approved free models');
+
+  let seenModel = '';
+  const fetchImpl = (async (_url: any, init?: RequestInit) => {
+    seenModel = JSON.parse(String(init?.body)).model;
+    return chatReply('safe NIM fallback worked');
+  }) as typeof fetch;
+  assert.equal(await generateFreeChainResponse('Hello', '', undefined, {}, fetchImpl), 'safe NIM fallback worked');
+  assert.equal(seenModel, 'openai/gpt-oss-20b', 'must never send the unapproved override');
   process.env.NVIDIA_NIM_MODEL = 'openai/gpt-oss-20b, z-ai/glm-5-3-flash';
   assert.equal(isFreeChainConfigured(), true);
 });
