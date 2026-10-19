@@ -12,7 +12,7 @@ export async function handleTenantMusicCommand(input: {
   let command = match[1].toLowerCase();
   const argument = String(match[2] || '').trim();
   if (command === 'sr') {
-    if (/^shuffle(?:\\s|$)/i.test(argument)) command = 'playlist';
+    if (/^shuffle(?:\s|$)/i.test(argument)) command = 'playlist';
     else { try { const url = new URL(argument); if (url.pathname === '/playlist' && url.searchParams.has('list')) command = 'playlist'; } catch {} }
   }
   const reply = async (text: string) => { await input.reply(text).catch(() => {}); };
@@ -23,7 +23,7 @@ export async function handleTenantMusicCommand(input: {
   // Another bot may own !play in this chat. Consume it silently; never emit a conflict message.
   if (command === 'play') return true;
   if (command === 'wr') { await reply('@' + input.username + ', !wr is disabled for this stream. Use !sr <song or YouTube URL>.'); return true; }
-  const readOnly = ['np', 'nowplaying', 'status'].includes(command) || ['playlist', 'radio', 'autoradio'].includes(command) && (!argument || argument.toLowerCase() === 'status' || /^shuffle\\s+status$/i.test(argument));
+  const readOnly = ['np', 'nowplaying', 'status'].includes(command) || ['playlist', 'radio', 'autoradio'].includes(command) && (!argument || argument.toLowerCase() === 'status' || /^shuffle\s+status$/i.test(argument));
   const source = command === 'sr' && /^(source|overlay|obs)$/i.test(argument);
   if (source && !input.isBroadcaster) { await reply('The broadcaster can get their OBS source with !sr source.'); return true; }
   if (command !== 'sr' && !readOnly && !input.canControl) { await reply('@' + input.username + ', only the broadcaster or a moderator can use !' + command + '.'); return true; }
@@ -33,8 +33,8 @@ export async function handleTenantMusicCommand(input: {
       const result = await input.execute({ ...base, action: source ? 'hmo.media.source' : 'hmo.media.request', query: argument });
       await reply(source ? 'OBS browser source (1920×1080): ' + result.sourceUrl : '@' + input.username + ', "' + (result.request?.item?.title || argument) + '" is queued for this stream.');
     } else if (['playlist', 'radio', 'autoradio'].includes(command)) {
-      const value = argument.replace(/^add\\s+/i, '');
-      const shuffleMatch = value.match(/^shuffle(?:\\s+(on|off|status))?$/i);
+      const value = argument.replace(/^add\s+/i, '');
+      const shuffleMatch = value.match(/^shuffle(?:\s+(on|off|status))?$/i);
       if (shuffleMatch) {
         const shuffleControl = (shuffleMatch[1] || 'status').toLowerCase();
         const result = await input.execute({ ...base, action: 'hmo.media.playlist', control: 'shuffle-' + shuffleControl });
