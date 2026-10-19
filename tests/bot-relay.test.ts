@@ -45,3 +45,25 @@ test('keeps quoted relay content available for exact delivery', () => {
   assert.equal(result.targetName, 'mothermayrien');
   assert.equal(result.relayMessage, 'I said "heello"');
 });
+
+test('does not classify a normal request to tell the requester a joke as a relay', () => {
+  const result = detectBotRelayRequest({
+    message: 'Athena tell me a joke',
+    speakerName: 'Athena',
+    targets: [reaper],
+  });
+
+  assert.equal(result.matched, false);
+});
+
+test('still detects an explicit named relay target after pronoun guard', () => {
+  const result = detectBotRelayRequest({
+    message: 'Athena tell Reaper I have a joke for you',
+    speakerName: 'Athena',
+    targets: [reaper],
+  });
+
+  assert.equal(result.matched, true);
+  assert.equal(result.target?.currentName, 'Reaper');
+  assert.equal(result.relayMessage, 'I have a joke for you');
+});
