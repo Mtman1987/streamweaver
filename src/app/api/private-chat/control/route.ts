@@ -133,19 +133,38 @@ export async function POST(request: NextRequest) {
 
     const current = await readPrivateChatSettings(tenantId);
 
-    if (action === 'adult') {
-      const next = await writePrivateChatSettings({ adultMode: !current.adultMode }, tenantId);
-      await updateControlIcons({
+    if (action === 'refresh') {
+      const discordMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
+      const currentEmbeds = Array.isArray(discordMessage?.embeds) ? discordMessage.embeds : [];
+      if (!currentEmbeds.length) {
+        return apiError('This Discord message has no embed to refresh.', {
+          status: 409,
+          code: 'PRIVATE_EMBED_NOT_FOUND',
+        });
+      }
+      const mediaUrl = resolvePrivateDmMediaUrl(tenantId);
+      if (!mediaUrl) {
+        return apiError('No active private-DM GIF is configured yet.', {
+          status: 409,
+          code: 'PRIVATE_GIF_NOT_CONFIGURED',
+        });
+      }
+      let updatedEmbeds = applyPrivateDmGif(currentEmbeds, mediaUrl, current.gifEnabled);
+      updatedEmbeds = attachPrivateDmControls(updatedEmbeds, {
         channelId: control.channelId,
         messageId: control.messageId,
-        gifEnabled: next.gifEnabled,
-        ttsEnabled: next.ttsEnabled,
-        adultMode: next.adultMode,
+        gifEnabled: current.gifEnabled,
+        ttsEnabled: current.ttsEnabled,
+        adultMode: current.adultMode,
       });
+      await editDiscordMessage(control.channelId, control.messageId, { embeds: updatedEmbeds });
       return apiOk({
         action,
-        adultMode: next.adultMode,
-        message: `Adult Mode is now ${next.adultMode ? 'ON' : 'OFF'} for private DMs.`,
+        refreshed: true,
+        mediaUrl,
+        message: current.gifEnabled
+          ? 'The embed now points to the currently selected, versioned private GIF.'
+          : 'The active private GIF is configured, but GIF display is currently disabled.',
       });
     }
 
