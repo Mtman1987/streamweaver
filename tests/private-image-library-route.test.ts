@@ -90,7 +90,7 @@ test('private library renders a separate saved GIF section with owner Apply cont
     assert.match(html, /Saved GIFs/);
     assert.match(html, /saved-animation\.gif/);
     assert.match(html, /data-apply-gif="saved-animation\.gif"/);
-    assert.match(html, />Apply to DM</);
+    assert.match(html, />Set</);
     assert.match(html, /data-delete-url=/);
   });
 });
@@ -149,5 +149,44 @@ test('applying a saved GIF requires ownership and switches the active private DM
     assert.equal(config.PRIVATE_DM_GIF_URL, payload.url);
     const settings = await readPrivateChatSettings(tenantId);
     assert.equal(settings.gifEnabled, true);
+  });
+});
+
+
+test('applying a saved public GIF requires ownership and switches the active public Discord media slot', async () => {
+  await withPrivateLibraryRuntime(async () => {
+    const { tenantPath } = await import('../src/lib/tenant');
+    const { serializeSessionCookie } = await import('../src/lib/session-cookie');
+    const { readUserConfig } = await import('../src/lib/user-config');
+    const tenantId = 'tenant-apply-public-gif';
+    const dir = tenantPath(tenantId, 'data/generated-images');
+    await mkdir(dir, { recursive: true });
+    const gifBytes = Buffer.from('GIF89a-public-saved-test');
+    await writeFile(path.join(dir, 'public-favorite.gif'), gifBytes);
+
+    const { POST } = await import('../src/app/api/ai/image/library/route');
+    const ownerCookie = serializeSessionCookie({ id: tenantId, username: 'owner' });
+    const response = await POST(new NextRequest('https://streamweaver.test/api/ai/image/library', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: `streamweaver-session=${ownerCookie}` },
+      body: JSON.stringify({
+        tenantId,
+        scope: 'public',
+        name: 'public-favorite.gif',
+        action: 'apply-gif',
+      }),
+    }));
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.ok, true);
+    assert.equal(payload.applied, 'public-favorite.gif');
+    assert.equal(payload.scope, 'public');
+    assert.match(payload.url, /\/api\/discord-media\/public-discord\.gif\?tenant=tenant-apply-public-gif$/);
+    const config = await readUserConfig(tenantId);
+    assert.equal(config.PUBLIC_DISCORD_GIF_URL, payload.url);
+    const activeGif = await readFile(tenantPath(tenantId, 'data/discord-media/public-discord.gif'));
+    assert.deepEqual(activeGif, gifBytes);
+    assert.deepEqual(await readFile(path.join(dir, 'public-favorite.gif')), gifBytes);
   });
 });
