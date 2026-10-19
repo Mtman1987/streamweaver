@@ -280,7 +280,7 @@ async function queuePersistentPublicBotTts(input: { channelId: string; tenantId:
   for (const chunk of chunks) {
     const audioDataUri = await generateTTS(chunk, undefined, streamKey, { requireActiveConsumer: true, consumerScope: 'say' });
     if (!audioDataUri) continue;
-    addSayQueueItem(streamKey, audioDataUri);
+    addSayQueueItem(streamKey, audioDataUri, chunk);
     queued += 1;
   }
   return queued;
