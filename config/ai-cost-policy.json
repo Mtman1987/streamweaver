@@ -8,10 +8,10 @@
   "freeChain": [
     "gemini",
     "groq",
+    "nvidia",
     "cerebras",
     "openrouter",
     "mistral",
-    "local",
-    "nvidia"
+    "local"
   ]
 }
