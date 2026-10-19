@@ -144,7 +144,7 @@ test('applying a saved GIF requires ownership and switches the active private DM
     const payload = await applied.json();
     assert.equal(payload.ok, true);
     assert.equal(payload.applied, 'favorite.gif');
-    assert.match(payload.url, /\/api\/discord-media\/private-dm\.gif\?tenant=tenant-apply-gif$/);
+    assert.match(payload.url, /\/api\/discord-media\/private-dm\.gif\?tenant=tenant-apply-gif&v=[a-f0-9]{16}$/);
 
     const activeGif = await readFile(tenantPath(tenantId, 'data/discord-media/private-dm.gif'));
     assert.deepEqual(activeGif, gifBytes);
@@ -189,7 +189,7 @@ test('applying a saved public GIF requires ownership and switches the active pub
     assert.equal(payload.ok, true);
     assert.equal(payload.applied, 'public-favorite.gif');
     assert.equal(payload.scope, 'public');
-    assert.match(payload.url, /\/api\/discord-media\/public-discord\.gif\?tenant=tenant-apply-public-gif$/);
+    assert.match(payload.url, /\/api\/discord-media\/public-discord\.gif\?tenant=tenant-apply-public-gif&v=[a-f0-9]{16}$/);
     const config = await readUserConfig(tenantId);
     assert.equal(config.PUBLIC_DISCORD_GIF_URL, payload.url);
     const activeGif = await readFile(tenantPath(tenantId, 'data/discord-media/public-discord.gif'));
