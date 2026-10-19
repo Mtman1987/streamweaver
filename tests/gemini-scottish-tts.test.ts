@@ -54,6 +54,8 @@ test('Gemini TTS uses the current Interactions API, structured delivery style an
   const { generateTTS, getTTSConfig } = await import('../src/services/tts-provider');
   const { writeUserConfig } = await import('../src/lib/user-config');
   await writeUserConfig({ TTS_VOICE: SCOTTISH_VOICE_ID, TTS_PROVIDER: 'gemini' }, 'scottish-test');
+  await writeUserConfig({ TTS_VOICE: 'edenai:openai:nova', TTS_PROVIDER: 'edenai' }, 'local-default-test');
+  assert.equal(getTTSConfig('local-default-test').voice, 'kokoro:af_heart', 'verifying a free Gemini tier must not silently switch unrelated speech to an external provider');
   assert.equal(getTTSConfig('scottish-test').voice, SCOTTISH_VOICE_ID, 'free-only mode must preserve saved Gemini voice');
   assert.equal(getTTSConfig('scottish-test').provider, 'gemini');
   const audio = await generateTTS('Hello captain', undefined, 'scottish-test');
