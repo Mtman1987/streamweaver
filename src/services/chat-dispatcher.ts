@@ -2667,6 +2667,7 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
         moderator: tags.mod === true || tags.mod === '1',
         mirrored: Boolean(tags['source-room-id'] && tags['source-room-id'] !== tags['room-id']),
         botAuthored: Boolean(tags.badges?.bot) || String(tags.id || '').startsWith('app-chat-'),
+        broadcasterBadge: String(tags.badges?.broadcaster || '') === '1' || tags.badges?.broadcaster === true,
     }, {
         read: isSharedBotAwake,
         write: setSharedBotAwake,
