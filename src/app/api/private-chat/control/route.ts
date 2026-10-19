@@ -133,6 +133,22 @@ export async function POST(request: NextRequest) {
 
     const current = await readPrivateChatSettings(tenantId);
 
+    if (action === 'adult') {
+      const next = await writePrivateChatSettings({ adultMode: !current.adultMode }, tenantId);
+      await updateControlIcons({
+        channelId: control.channelId,
+        messageId: control.messageId,
+        gifEnabled: next.gifEnabled,
+        ttsEnabled: next.ttsEnabled,
+        adultMode: next.adultMode,
+      });
+      return apiOk({
+        action,
+        adultMode: next.adultMode,
+        message: `Adult Mode is now ${next.adultMode ? 'ON' : 'OFF'} for private DMs.`,
+      });
+    }
+
     if (action === 'refresh') {
       const discordMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
       const currentEmbeds = Array.isArray(discordMessage?.embeds) ? discordMessage.embeds : [];
