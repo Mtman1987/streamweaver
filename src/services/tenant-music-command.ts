@@ -12,7 +12,8 @@ export async function handleTenantMusicCommand(input: {
   let command = match[1].toLowerCase();
   const argument = String(match[2] || '').trim();
   if (command === 'sr') {
-    try { const url = new URL(argument); if (url.pathname === '/playlist' && url.searchParams.has('list')) command = 'playlist'; } catch {}
+    if (/^shuffle(?:\s|$)/i.test(argument)) command = 'playlist';
+    else { try { const url = new URL(argument); if (url.pathname === '/playlist' && url.searchParams.has('list')) command = 'playlist'; } catch {} }
   }
   const reply = async (text: string) => { await input.reply(text).catch(() => {}); };
   const base = { tenantId: input.tenantId, streamMode: 'twitch' as const,
@@ -22,7 +23,7 @@ export async function handleTenantMusicCommand(input: {
   // Another bot may own !play in this chat. Consume it silently; never emit a conflict message.
   if (command === 'play') return true;
   if (command === 'wr') { await reply('@' + input.username + ', !wr is disabled for this stream. Use !sr <song or YouTube URL>.'); return true; }
-  const readOnly = ['np', 'nowplaying', 'status'].includes(command) || ['playlist', 'radio', 'autoradio'].includes(command) && (!argument || argument.toLowerCase() === 'status');
+  const readOnly = ['np', 'nowplaying', 'status'].includes(command) || ['playlist', 'radio', 'autoradio'].includes(command) && (!argument || argument.toLowerCase() === 'status' || /^shuffle\s+status$/i.test(argument));
   const source = command === 'sr' && /^(source|overlay|obs)$/i.test(argument);
   if (source && !input.isBroadcaster) { await reply('The broadcaster can get their OBS source with !sr source.'); return true; }
   if (command !== 'sr' && !readOnly && !input.canControl) { await reply('@' + input.username + ', only the broadcaster or a moderator can use !' + command + '.'); return true; }
@@ -33,9 +34,16 @@ export async function handleTenantMusicCommand(input: {
       await reply(source ? 'OBS browser source (1920×1080): ' + result.sourceUrl : '@' + input.username + ', "' + (result.request?.item?.title || argument) + '" is queued for this stream.');
     } else if (['playlist', 'radio', 'autoradio'].includes(command)) {
       const value = argument.replace(/^add\s+/i, '');
-      const control = /^(on|off|status|clear)$/i.test(value) ? value.toLowerCase() : value ? 'set' : 'status';
-      const result = await input.execute({ ...base, action: 'hmo.media.playlist', control, query: control === 'set' ? value : undefined });
-      await reply('🎵 Backup playlist ' + (result.playlist?.enabled ? 'on' : 'off') + ': ' + (result.playlist?.title || 'not set') + ' (' + (result.playlist?.count || 0) + ' songs). Song requests play first.');
+      const shuffleMatch = value.match(/^shuffle(?:\s+(on|off|status))?$/i);
+      if (shuffleMatch) {
+        const shuffleControl = (shuffleMatch[1] || 'status').toLowerCase();
+        const result = await input.execute({ ...base, action: 'hmo.media.playlist', control: 'shuffle-' + shuffleControl });
+        await reply('🔀 Playlist shuffle is ' + (result.playlist?.shuffleEnabled ? 'ON' : 'OFF') + '. Use !sr shuffle on or !sr shuffle off to change it.');
+      } else {
+        const control = /^(on|off|status|clear)$/i.test(value) ? value.toLowerCase() : value ? 'set' : 'status';
+        const result = await input.execute({ ...base, action: 'hmo.media.playlist', control, query: control === 'set' ? value : undefined });
+        await reply('🎵 Backup playlist ' + (result.playlist?.enabled ? 'on' : 'off') + ': ' + (result.playlist?.title || 'not set') + ' (' + (result.playlist?.count || 0) + ' songs). Song requests play first.');
+      }
     } else if (readOnly) {
       const result = await input.execute({ ...base, action: 'hmo.media.state.read' });
       await reply(result.session?.current ? '▶️ Now playing: ' + result.session.current.item.title + ' · ' + (result.session.queue?.length || 0) + ' requests queued.' : 'Nothing is playing in this stream.');

@@ -48,3 +48,16 @@ test('global dispatcher silently ignores !play before tenant and shared Lounge h
  assert(source.indexOf('!play may belong to another bot') < source.indexOf('const hearMeOutCommand ='));
  assert(!source.includes('!play is disabled globally.'));
 });
+
+test('!sr shuffle on/off/status controls shuffle in the tenant Twitch stream', async () => {
+ const sent:any[]=[], replies:string[]=[];
+ const input={tenantId:'fatkid',username:'owner',userId:'3',canControl:true,isBroadcaster:true,
+  execute:async(p:any)=>{sent.push(p);return {playlist:{enabled:true,shuffleEnabled:p.control!=='shuffle-off',title:'Backup',count:12}};},
+  reply:async(t:string)=>{replies.push(t)}};
+ await handleTenantMusicCommand({...input,message:'!sr shuffle on'});
+ await handleTenantMusicCommand({...input,message:'!sr shuffle off'});
+ await handleTenantMusicCommand({...input,message:'!sr shuffle status'});
+ assert.deepEqual(sent.map(p=>p.control),['shuffle-on','shuffle-off','shuffle-status']);
+ assert(sent.every(p=>p.action==='hmo.media.playlist'&&p.sessionId==='watch-twitch-fatkid-music'));
+ assert.match(replies[0],/ON/);assert.match(replies[1],/OFF/);assert.match(replies[2],/ON/);
+});
