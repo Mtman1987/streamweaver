@@ -11,7 +11,7 @@ import { generateImageWithPerchance } from '@/services/image-provider';
 import { generateImageWithPollinations } from '@/services/image-provider';
 import { generateImageWithOpenAI } from '@/services/image-provider';
 import { isSeaArtModelMismatchError } from '@/services/image-provider';
-import { CloudflareWorkersAIUnavailableError, generateImageWithCloudflare } from '@/services/cloudflare-image';
+import { generateImageWithCloudflare } from '@/services/cloudflare-image';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { readPrivateChatSettings } from '@/lib/private-chat-settings-store';
