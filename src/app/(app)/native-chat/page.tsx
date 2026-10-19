@@ -800,7 +800,17 @@ export default function ChatPage() {
                           <div className="mb-1 flex flex-wrap items-center gap-2">
                             <span className="font-medium">{author}</span>
                             {message.author?.bot ? <Badge variant="outline" className="text-[10px]">bot</Badge> : null}
-                            <span className="text-xs text-muted-foreground">{formatTime(message.timestamp)}</span>
+                            {selectedDiscordChannel && !selectedDiscordChannel.startsWith('__app_') ? (
+                              <a
+                                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                                href={`/settings?cleanupChannelId=${encodeURIComponent(selectedDiscordChannel)}&cleanupMessageId=${encodeURIComponent(message.id)}`}
+                                title="Open settings for this exact message"
+                              >
+                                {formatTime(message.timestamp)} · cleanup settings
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">{formatTime(message.timestamp)}</span>
+                            )}
                             {scheduledCleanupIds.has(message.id) || preservedMessageIds.has(message.id) ? (
                               <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>{preservedMessageIds.has(message.id) ? "Keep message" : "Auto-cleanup"}</span>
