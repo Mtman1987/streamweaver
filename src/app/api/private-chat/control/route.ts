@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { apiError, apiOk } from '@/lib/api-response';
-import { deleteMessage, getDiscordMessage, editDiscordMessage } from '@/services/discord-local';
+import { deleteMessage, getDiscordMessage, editDiscordMessage, getChannelMessages } from '@/services/discord-local';
 import { deletePrivateChatAiMessage } from '@/lib/private-chat-store';
 import {
   applyPrivateDmGif,
@@ -18,6 +18,10 @@ import {
 } from '@/lib/private-chat-settings-store';
 import { readPrivateChatMessages } from '@/lib/private-chat-store';
 import { getBotName } from '@/lib/bot-settings-store';
+import { buildDiscordUserAvatarUrl } from '@/services/discord-branding';
+import { getInternalAppUrl } from '@/lib/runtime-origin';
+import { internalServiceHeaders } from '@/lib/internal-service-auth';
+import { sendStructuredDiscordReply } from '@/services/discord-structured-replies';
 import { generateTTS } from '@/services/tts-provider';
 import { restartPrivateImageCarousel } from '@/services/private-image-carousel';
 import {
@@ -34,6 +38,7 @@ type PrivateControlBody = {
   mode?: unknown;
   after?: unknown;
   voice?: unknown;
+  message?: unknown;
 };
 
 function safeError(error: unknown): string {
@@ -45,10 +50,12 @@ function safeError(error: unknown): string {
     .slice(0, 300);
 }
 
-function ttsMode(value: unknown): 'toggle' | 'poll' | 'off' {
+function ttsMode(value: unknown): 'toggle' | 'poll' | 'off' | 'on' | 'send' {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'poll') return 'poll';
   if (normalized === 'off') return 'off';
+  if (normalized === 'on' || normalized === 'start') return 'on';
+  if (normalized === 'send') return 'send';
   return 'toggle';
 }
 
@@ -184,6 +191,109 @@ export async function POST(request: NextRequest) {
 
     const mode = ttsMode(body?.mode);
     const selectedVoice = voiceOverride(body?.voice);
+
+    if (mode === 'send') {
+      const transcript = String(body?.message || '').trim().slice(0, 2000);
+      if (!transcript) {
+        return apiError('Please speak or type a message before sending.', { status: 400, code: 'EMPTY_PRIVATE_TRANSCRIPT' });
+      }
+
+      // Reuse the linked reply's footer identity, then refresh it from Discord's
+      // actual DM authors when possible. The transcript itself is never posted as
+      // a separate Discord message; it is used privately and rendered in the reply footer.
+      const linkedMessage = await getDiscordMessage(control.channelId, control.messageId) as any;
+      const linkedEmbed = Array.isArray(linkedMessage?.embeds) ? linkedMessage.embeds[0] : null;
+      const linkedFooter = linkedEmbed?.footer || {};
+      const footerMatch = String(linkedFooter.text || '').match(/^Requested by\\s+([^•]+)/i);
+      let sourceUser = String(footerMatch?.[1] || '').trim() || 'You';
+      let sourceUserAvatarUrl = String(linkedFooter.icon_url || '').trim();
+
+      try {
+        const dmMessages = await getChannelMessages(control.channelId, 20) as any;
+        const latestHuman = Array.isArray(dmMessages)
+          ? dmMessages.find((item) => item?.author?.id && item.author.bot !== true)
+          : null;
+        const author = latestHuman?.author;
+        if (author) {
+          sourceUser = String(author.global_name || author.globalName || author.username || sourceUser).trim();
+          sourceUserAvatarUrl = buildDiscordUserAvatarUrl(String(author.id || ''), author.avatar) || sourceUserAvatarUrl;
+        }
+      } catch {
+        // Signed DM control + the existing private embed footer are a safe fallback.
+      }
+
+      const privateResponse = await fetch(`${getInternalAppUrl()}/api/private-chat/respond`, {
+        method: 'POST',
+        headers: internalServiceHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          username: sourceUser,
+          message: transcript,
+          tenantId,
+          historyLimit: 30,
+        }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!privateResponse.ok) {
+        console.warn('[Private DM TTS] Private response generation failed:', privateResponse.status);
+        return apiError('Athena could not generate a reply. Your transcript has not been sent to Discord.', {
+          status: 502,
+          code: 'PRIVATE_REPLY_FAILED',
+        });
+      }
+      const privateData = await privateResponse.json().catch(() => ({}));
+      const reply = String(privateData?.response || privateData?.data?.response || '').trim();
+      if (!reply) {
+        return apiError('Athena returned an empty reply. The transcript was not posted to Discord.', {
+          status: 502,
+          code: 'EMPTY_PRIVATE_REPLY',
+        });
+      }
+
+      const sent = await sendStructuredDiscordReply({
+        channelId: control.channelId,
+        message: reply,
+        tenantId,
+        botName,
+        responseType: 'AI Answer',
+        sourceMessage: transcript,
+        sourceUser,
+        sourceUserAvatarUrl,
+        isPrivate: true,
+        gifEnabled: current.gifEnabled,
+        ttsEnabled: current.ttsEnabled,
+        adultMode: current.adultMode,
+      });
+
+      const updatedHistory = await readPrivateChatMessages(60, tenantId);
+      const cursor = findPrivateAiCursorByText(updatedHistory, reply) || latestPrivateAiCursor(updatedHistory);
+      let audioDataUris: string[] = [];
+      if (current.ttsEnabled) {
+        try {
+          audioDataUris = await generatePrivateAudio(reply, tenantId, selectedVoice);
+        } catch (error) {
+          console.warn('[Private DM TTS] Immediate speech generation failed; private reply was delivered.', safeError(error));
+        }
+      }
+      let currentEmbed: any = null;
+      if (sent.messageId) {
+        try {
+          const sentMessage = await getDiscordMessage(control.channelId, sent.messageId) as any;
+          currentEmbed = Array.isArray(sentMessage?.embeds) ? sentMessage.embeds[0] || null : null;
+        } catch {}
+      }
+
+      return apiOk({
+        action,
+        submitted: true,
+        botName,
+        reply,
+        cursor,
+        audioDataUris,
+        currentEmbed,
+        mediaUrl: current.gifEnabled ? resolvePrivateDmMediaUrl(tenantId) : '',
+        message: `${botName} replied privately. Your transcript was included in the reply footer, not sent as a separate DM.`,
+      });
+    }
 
     if (mode === 'off') {
       const next = current.ttsEnabled
