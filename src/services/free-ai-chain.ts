@@ -48,7 +48,7 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     url: 'https://api.groq.com/openai/v1/chat/completions',
     keyEnv: 'GROQ_API_KEY',
     modelEnv: 'GROQ_MODEL',
-    defaultModels: ['llama-3.3-70b-versatile'],
+    defaultModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'],
   },
   cerebras: {
     url: 'https://api.cerebras.ai/v1/chat/completions',
@@ -60,7 +60,7 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     url: 'https://openrouter.ai/api/v1/chat/completions',
     keyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL',
-    defaultModels: ['meta-llama/llama-3.3-70b-instruct:free'],
+    defaultModels: ['openrouter/free'],
     requireFreeSuffix: true,
   },
   mistral: {
@@ -120,7 +120,7 @@ function compatModels(id: CompatId): string[] {
     .map((model) => model.trim())
     .filter(Boolean);
   let models = configured.length ? configured : spec.defaultModels;
-  if (spec.requireFreeSuffix) models = models.filter((model) => model.endsWith(':free'));
+  if (spec.requireFreeSuffix) models = models.filter((model) => model === 'openrouter/free' || model.endsWith(':free'));
   return Array.from(new Set(models)).slice(0, MAX_MODELS_PER_PROVIDER);
 }
 
