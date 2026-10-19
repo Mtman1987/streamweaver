@@ -414,6 +414,29 @@ export async function POST(request: NextRequest) {
     if (!gif) return NextResponse.json({ error: 'GIF not found' }, { status: 404 });
 
     const slot = scope === 'private' ? 'private-dm' : 'public-discord';
+
+    // Preserve the previous active private GIF before replacing the canonical
+    // slot. Use a content-addressed filename so re-applying/changing GIFs never
+    // creates duplicate gallery entries for the same previous media.
+    if (scope === 'private') {
+      const configuredUrl = String(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL || '').trim();
+      const previous = await readTenantDiscordMedia('private-dm', tenantId).catch(() => null);
+      const slotIsConfiguredActive = !configuredUrl || isCanonicalPrivateGifUrl(configuredUrl, tenantId);
+      if (previous && slotIsConfiguredActive && !previous.body.equals(gif)) {
+        const galleryDir = tenantPath(tenantId, 'data/private-generated-images');
+        await fs.mkdir(galleryDir, { recursive: true });
+        const archiveHash = createHash('sha256').update(previous.body).digest('hex').slice(0, 32);
+        const archivePath = path.join(galleryDir, `active-${archiveHash}.gif`);
+        try {
+          await fs.access(archivePath);
+        } catch {
+          await fs.writeFile(archivePath, previous.body, { flag: 'wx' }).catch(async (error: any) => {
+            if (error?.code !== 'EEXIST') throw error;
+          });
+        }
+      }
+    }
+
     await writeDiscordMedia(slot, gif, tenantId);
     const relativeUrl = getDiscordMediaPublicPath(slot, tenantId);
     const baseUrl = getConfiguredAppUrl();

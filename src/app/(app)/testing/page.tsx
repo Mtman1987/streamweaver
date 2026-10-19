@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-type Result = { credential: string; capability: string; status: string; ms?: number; detail?: string };
+type Result = { provider: string; model: string; capability: string; status: string; ms?: number; detail?: string };
 type Report = { startedAt: string; finishedAt: string; testedCredentialCount: number; results: Result[]; note: string };
 
 export default function TestingPage() {
@@ -15,7 +15,7 @@ export default function TestingPage() {
     setError('');
     setReport(null);
     try {
-      const response = await fetch('/api/testing/provider-sweep', { method: 'POST' });
+      const response = await fetch('/api/testing/free-model-candidates', { method: 'POST' });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'The test run failed.');
       setReport(data);
@@ -27,12 +27,12 @@ export default function TestingPage() {
   }
 
   const reportText = report ? [
-    'StreamWeaver provider capability sweep',
+    'StreamWeaver focused free-model candidate test',
     'Started: ' + report.startedAt,
     'Finished: ' + report.finishedAt,
-    'Configured credentials tested: ' + report.testedCredentialCount,
+    'Configured providers tested: ' + report.testedCredentialCount,
     '',
-    ...report.results.map(r => [r.credential, '|', r.capability, '|', r.status, r.ms == null ? '' : '| ' + r.ms + ' ms', r.detail ? '| ' + r.detail : ''].filter(Boolean).join(' ')),
+    ...report.results.map(r => [r.provider, '|', r.model, '|', r.capability, '|', r.status, r.ms == null ? '' : '| ' + r.ms + ' ms', r.detail ? '| ' + r.detail : ''].filter(Boolean).join(' ')),
     '',
     report.note,
   ].join('\n') : '';
@@ -50,18 +50,18 @@ export default function TestingPage() {
     <main className="mx-auto w-full max-w-5xl space-y-6 p-4 md:p-8">
       <header>
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Temporary diagnostic</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Provider Capability Testing</h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Free Model Candidate Test</h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Tests configured AI and speech credentials from the StreamWeaver server. Secret values are never shown.
-          Some providers do not offer every capability; those are reported separately.
+          Tests current Gemini free-tier text and speech candidates plus OpenRouter's free-model router.
+          It does not call providers already returning quota or billing errors. Secret values are never shown.
         </p>
       </header>
       <section className="rounded-xl border p-5">
-        <p className="text-sm">Each run sends a short test prompt to supported provider endpoints. It may consume small amounts of provider quota.</p>
+        <p className="text-sm">One short prompt per candidate. Gemini uses the configured API key and may consume a small amount of its free-tier quota. OpenRouter uses its zero-priced free router.</p>
         <button type="button" onClick={runTests} disabled={running} className="mt-4 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">
-          {running ? 'Testing providers…' : 'Test'}
+          {running ? 'Testing free candidates…' : 'Test free candidates'}
         </button>
-        {running ? <p className="mt-3 text-sm text-muted-foreground">Running bounded tests. This may take up to a minute.</p> : null}
+        {running ? <p className="mt-3 text-sm text-muted-foreground">Running five bounded checks. This may take up to a minute.</p> : null}
         {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}
       </section>
       {report ? (
@@ -72,10 +72,11 @@ export default function TestingPage() {
           </div>
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="bg-muted/60"><tr><th className="p-3">Credential</th><th className="p-3">Capability</th><th className="p-3">Result</th><th className="p-3">Latency</th><th className="p-3">Detail</th></tr></thead>
+              <thead className="bg-muted/60"><tr><th className="p-3">Provider</th><th className="p-3">Model</th><th className="p-3">Capability</th><th className="p-3">Result</th><th className="p-3">Latency</th><th className="p-3">Detail</th></tr></thead>
               <tbody>
-                {report.results.map((r, i) => <tr key={r.credential + r.capability + i} className="border-t">
-                  <td className="p-3 font-mono text-xs">{r.credential}</td>
+                {report.results.map((r, i) => <tr key={r.provider + r.model + r.capability + i} className="border-t">
+                  <td className="p-3">{r.provider}</td>
+                  <td className="p-3 font-mono text-xs">{r.model}</td>
                   <td className="p-3">{r.capability}</td>
                   <td className="p-3 font-semibold">{r.status}</td>
                   <td className="p-3 tabular-nums">{r.ms == null ? '—' : r.ms + ' ms'}</td>

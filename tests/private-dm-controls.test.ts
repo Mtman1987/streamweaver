@@ -35,7 +35,7 @@ test('signs private DM controls and rejects tampering or expiration', () => {
   assert.equal(verifyPrivateDmControlToken(token, 1_601), null);
 });
 
-test('creates five emoji-only markdown links including the GIF refresh control', () => {
+test('creates four emoji-only markdown links without a redundant GIF refresh control', () => {
   const field = buildPrivateDmControlField({
     channelId,
     messageId,
@@ -44,10 +44,10 @@ test('creates five emoji-only markdown links including the GIF refresh control',
   assert.equal(field.name, PRIVATE_DM_CONTROL_FIELD_NAME);
   assert.equal(field.inline, false);
   assert.ok(field.value.length <= 1024);
-  assert.equal((field.value.match(/\]\(/g) || []).length, 5);
+  assert.equal((field.value.match(/\]\(/g) || []).length, 4);
   assert.match(field.value, /\[🖼️\]/u);
   assert.match(field.value, /\[🔊\]/u);
-  assert.match(field.value, /\[🔄\]/u);
+  assert.doesNotMatch(field.value, /\[🔄\]/u);
   assert.doesNotMatch(field.value, /\[🔞\]/u);
   assert.match(field.value, /\[⚙️\]/u);
   assert.match(field.value, /\[🗑️\]/u);
