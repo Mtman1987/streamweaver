@@ -270,7 +270,7 @@ export async function restoreDiscordMessageCleanup(
       triggerMessageId: normalizedMessageId,
       replyMessageIds: [],
     };
-    await writeQueue([...queue, entry].slice(-250));
+    await writeQueue([...queue, entry]);
     scheduleEntry(entry);
   }
   return true;
