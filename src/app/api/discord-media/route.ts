@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { promises as fs } from 'fs';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { tenantPath } from '@/lib/tenant';
 import { apiError, apiOk } from '@/lib/api-response';
 import { getConfiguredAppUrl } from '@/lib/runtime-origin';
@@ -30,7 +30,12 @@ function canonicalMediaUrl(slot: 'private-dm' | 'public-discord', tenantId: stri
 }
 
 async function persistCanonicalSlot(slot: 'private-dm' | 'public-discord', tenantId: string) {
-  const url = canonicalMediaUrl(slot, tenantId);
+  const canonicalUrl = canonicalMediaUrl(slot, tenantId);
+  const active = await readTenantDiscordMedia(slot, tenantId);
+  const version = active?.body?.length
+    ? createHash('sha256').update(active.body).digest('hex').slice(0, 16)
+    : '';
+  const url = version ? canonicalUrl + '&v=' + version : canonicalUrl;
   await writeUserConfig({ [configKeyForSlot(slot)]: url }, tenantId);
   return url;
 }
