@@ -8,7 +8,9 @@ import { getSayVoicePreference, setSayVoicePreference } from '@/services/say-tts
 export const dynamic = 'force-dynamic';
 
 function effectiveDefaultVoice(): string {
-  return readAICostPolicy().paidRoutesEnabled ? DEFAULT_TTS_VOICE : 'kokoro:af_heart';
+  const policy = readAICostPolicy();
+  if (policy.paidRoutesEnabled) return DEFAULT_TTS_VOICE;
+  return policy.geminiFreeTierVerified ? 'gemini:kore:natural' : 'kokoro:af_heart';
 }
 
 function voiceCatalog() {
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
         discordUsername: identity.discordUsername,
       },
       voice: voice || '',
-      defaultVoice: DEFAULT_TTS_VOICE,
+      defaultVoice: effectiveDefaultVoice(),
       voices: voiceCatalog(),
     });
   } catch (error) {
