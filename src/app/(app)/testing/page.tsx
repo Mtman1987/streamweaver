@@ -16,7 +16,7 @@ const tests: { id: TestId; title: string; description: string; button: string }[
 function collectImageUrls(value: any, found: string[] = [], depth = 0): string[] {
   if (depth > 5 || value == null) return found;
   if (typeof value === "string") {
-    if (/^https?:\/\//i.test(value) && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(value)) found.push(value);
+    if ((/^https?:\/\//i.test(value) && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(value)) || /^\/api\/ai\/image\/file\//i.test(value) || /^data:image\//i.test(value)) found.push(value);
     return found;
   }
   if (Array.isArray(value)) value.forEach(item => collectImageUrls(item, found, depth + 1));
