@@ -122,7 +122,11 @@ export async function POST(request: NextRequest) {
       getGenMode(tenantId).catch(() => 'cloudflare' as const),
       scope === 'private' ? readPrivateChatSettings(tenantId).catch(() => undefined) : Promise.resolve(undefined),
     ]);
-    const genMode = parsed.data.providerOverride || settings?.mode || legacyMode;
+    const configuredGenMode = parsed.data.providerOverride || settings?.mode || legacyMode;
+    const privateAdultMode = scope === 'private' && privateSettings?.adultMode === true;
+    // Cloudflare's hosted model path is SFW-only. Adult-mode private generation
+    // uses the no-key Pollinations path rather than silently ignoring the toggle.
+    const genMode = privateAdultMode && configuredGenMode === 'cloudflare' ? 'pollinations' : configuredGenMode;
     const generator = genMode === 'cloudflare'
       ? generateImageWithCloudflare
       : genMode === 'openai'
@@ -148,9 +152,11 @@ export async function POST(request: NextRequest) {
         steps: settings?.steps,
         cfg: settings?.cfg,
         seed: settings?.seed,
-        scope,
-        adultMode: scope === 'private' && privateSettings?.adultMode === true,
         ...(parsed.data.providerParams || {}),
+        // Never let request-supplied providerParams override tenant scope or adult gating.
+        scope,
+        adultMode: privateAdultMode,
+        safe: !privateAdultMode,
       },
     };
     let effectiveGenMode = genMode;
@@ -159,21 +165,13 @@ export async function POST(request: NextRequest) {
       result = await generator(generationOptions);
     } catch (error) {
       if (genMode === 'cloudflare' && error instanceof CloudflareWorkersAIUnavailableError) {
-        console.warn('[AI Image] Cloudflare credentials are not configured; falling back to EdenAI ByteDance.');
-        result = await generateImageWithEdenAI({
-          ...generationOptions,
-          model: 'image/generation/bytedance',
-          providerParams: undefined,
-        });
-        effectiveGenMode = 'eden';
+        console.warn('[AI Image] Cloudflare credentials are not configured; falling back to free Pollinations generation.');
+        result = await generateImageWithPollinations(generationOptions);
+        effectiveGenMode = 'pollinations';
       } else if (genMode === 'seaart' && isSeaArtModelMismatchError(error)) {
-        console.warn('[AI Image] SeaArt rejected the saved model version after preset fallback; generating with EdenAI.');
-        result = await generateImageWithEdenAI({
-          ...generationOptions,
-          model: 'image/generation/bytedance',
-          providerParams: undefined,
-        });
-        effectiveGenMode = 'eden';
+        console.warn('[AI Image] SeaArt rejected the saved model version after preset fallback; using free Pollinations generation.');
+        result = await generateImageWithPollinations(generationOptions);
+        effectiveGenMode = 'pollinations';
       } else {
         throw error;
       }
