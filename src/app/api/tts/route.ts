@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTTS } from '@/services/tts-provider';
+import { getFreeTTSStatus } from '@/services/free-tts';
 import { apiError, apiOk } from '@/lib/api-response';
 import { z } from 'zod';
 import { getTenantFromRequest } from '@/lib/tenant-context';
@@ -34,7 +35,17 @@ export async function POST(request: NextRequest) {
     console.log('[TTS API] Request:', { textLength: text.length, textPreview: text.slice(0, 80), voice: voice ?? '(default)', tenantId: tenantId ?? 'global' });
 
     const audioDataUri = await generateTTS(text, voice, tenantId);
-    if (!audioDataUri) return apiOk({ audioDataUri: '', available: false, reason: 'Free speech is temporarily unavailable.' });
+    if (!audioDataUri) {
+      const freeSpeech = getFreeTTSStatus();
+      return apiOk({
+        audioDataUri: '',
+        available: false,
+        reason: freeSpeech.lastFailure || (freeSpeech.coolingDownSeconds > 0
+          ? `Free speech worker is cooling down for ${freeSpeech.coolingDownSeconds}s.`
+          : 'Free speech worker returned no audio; inspect worker availability and logs.'),
+        diagnostics: { pendingRequests: freeSpeech.pendingRequests, coolingDownSeconds: freeSpeech.coolingDownSeconds },
+      });
+    }
     console.log('[TTS API] Success, audioDataUri length:', audioDataUri.length);
     return apiOk({ audioDataUri });
   } catch (error: any) {

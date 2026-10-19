@@ -117,12 +117,18 @@ test('request-shaped errors move on without cooling the provider down', async ()
   assert.equal(calls.filter((host) => host === 'api.groq.com').length, 2);
 });
 
-test('OpenRouter refuses non-free models so it can never spend credits', () => {
+test('OpenRouter falls back to a safe free model when its override is paid-only', async () => {
   process.env.OPENROUTER_API_KEY = 'or-test-key';
   process.env.OPENROUTER_MODEL = 'openai/gpt-4o';
-  assert.equal(isFreeChainConfigured(), false);
-  process.env.OPENROUTER_MODEL = 'openai/gpt-4o, meta-llama/llama-3.3-70b-instruct:free';
-  assert.equal(isFreeChainConfigured(), true);
+  assert.equal(isFreeChainConfigured(), true, 'invalid paid override must not disable all free AI');
+
+  let seenModel = '';
+  const fetchImpl = (async (_url: any, init?: RequestInit) => {
+    seenModel = JSON.parse(String(init?.body)).model;
+    return chatReply('free router fallback works');
+  }) as typeof fetch;
+  assert.equal(await generateFreeChainResponse('Hello', '', undefined, {}, fetchImpl), 'free router fallback works');
+  assert.equal(seenModel, 'openrouter/free', 'must never silently use the paid override');
 });
 
 test('comma-separated models are tried in order inside one provider', async () => {
@@ -223,10 +229,18 @@ test('NVIDIA NIM uses documented OpenAI-compatible endpoint and falls back acros
   assert.equal(calls[0].body.stream, false);
 });
 
-test('NVIDIA NIM model override cannot select an unapproved non-free model', () => {
+test('NVIDIA NIM model override cannot select an unapproved non-free model', async () => {
   process.env.NVIDIA_API_KEY = 'nim-test-key';
   process.env.NVIDIA_NIM_MODEL = 'some/paid-model';
-  assert.equal(isFreeChainConfigured(), false);
+  assert.equal(isFreeChainConfigured(), true, 'invalid override should fall back to approved free models');
+
+  let seenModel = '';
+  const fetchImpl = (async (_url: any, init?: RequestInit) => {
+    seenModel = JSON.parse(String(init?.body)).model;
+    return chatReply('safe NIM fallback worked');
+  }) as typeof fetch;
+  assert.equal(await generateFreeChainResponse('Hello', '', undefined, {}, fetchImpl), 'safe NIM fallback worked');
+  assert.equal(seenModel, 'openai/gpt-oss-20b', 'must never send the unapproved override');
   process.env.NVIDIA_NIM_MODEL = 'openai/gpt-oss-20b, z-ai/glm-5-3-flash';
   assert.equal(isFreeChainConfigured(), true);
 });

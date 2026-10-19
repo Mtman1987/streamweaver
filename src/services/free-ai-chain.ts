@@ -143,6 +143,9 @@ function compatModels(id: CompatId): string[] {
   let models = configured.length ? configured : spec.defaultModels;
   if (spec.requireFreeSuffix) models = models.filter((model) => model === 'openrouter/free' || model.endsWith(':free'));
   if (spec.allowedModels) models = models.filter((model) => spec.allowedModels!.includes(model));
+  // Invalid/paid model overrides must never disable the entire free chain. Fall
+  // back to the provider's known-safe defaults after enforcing free-only allow-lists.
+  if (models.length === 0) models = spec.defaultModels;
   return Array.from(new Set(models)).slice(0, MAX_MODELS_PER_PROVIDER);
 }
 

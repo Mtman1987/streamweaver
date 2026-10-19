@@ -126,15 +126,23 @@ function chatCandidate(
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 24,
+        // Reasoning models (notably GPT-OSS) need more than 24 tokens to
+        // finish their internal reasoning and emit a user-visible answer.
+        max_tokens: 128,
         temperature: 0,
         stream: false,
       }),
       signal,
       redirect: 'error',
     }),
-    usable: body => typeof body?.choices?.[0]?.message?.content === 'string'
-      && body.choices[0].message.content.trim().length > 0,
+    usable: body => {
+      const content = body?.choices?.[0]?.message?.content;
+      if (typeof content === 'string') return content.trim().length > 0;
+      if (Array.isArray(content)) return content.some((part: any) =>
+        typeof part?.text === 'string' && part.text.trim().length > 0
+      );
+      return false;
+    },
   };
 }
 

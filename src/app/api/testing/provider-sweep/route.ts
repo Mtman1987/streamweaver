@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { getFreeChainStatus } from '@/services/free-ai-chain';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -161,6 +162,15 @@ export async function POST(request: NextRequest) {
     finishedAt: new Date().toISOString(),
     testedCredentialCount: Object.values(keys).filter(Boolean).length,
     results,
+    // Report what the production free chain can actually select, not only
+    // whether a raw credential probe succeeded.
+    freeChain: getFreeChainStatus(session.tenantId).map((item) => ({
+      provider: item.provider,
+      configured: item.configured,
+      coolingDownSeconds: item.coolingDownSeconds,
+      reason: item.reason,
+    })),
+    diagnosticNote: 'Credential probes and production free-chain eligibility are separate. A passing provider probe may still be excluded by policy or model configuration.',
     note: 'Only credential names, status, latency, and generic diagnostics are returned. Secret values and raw provider response bodies are never returned.',
   });
 }
