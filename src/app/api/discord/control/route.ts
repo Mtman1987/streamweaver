@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     for (const chunk of splitDiscordTtsText(text)) {
       const audioDataUri = await generateTTS(chunk, undefined, streamKey, { requireActiveConsumer: true, consumerScope: 'say' });
       if (!audioDataUri) continue;
-      addSayQueueItem(streamKey, audioDataUri);
+      addSayQueueItem(streamKey, audioDataUri, chunk);
       queued += 1;
     }
 
