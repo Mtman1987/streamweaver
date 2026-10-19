@@ -48,14 +48,13 @@ export function getTTSConfig(tenantId?: string): TTSConfig {
   const config = readUserConfigSync(tenantId);
   const policy = readAICostPolicy();
   const savedVoice = getTtsVoiceOption(config.TTS_VOICE);
-  const freeGenderDefault = savedVoice.gender === 'Male' ? 'gemini:puck:upbeat' : 'gemini:kore:natural';
+  // Never silently ship ordinary/private speech to a third-party TTS API just because
+  // its free tier was verified. Gemini is used only when a tenant explicitly selects a Gemini voice.
   const voice = savedVoice.provider === 'gemini'
     ? savedVoice.id
     : !policy.paidRoutesEnabled
     ? savedVoice.provider === 'kokoro'
       ? savedVoice.id
-      : policy.geminiFreeTierVerified
-      ? freeGenderDefault
       : `kokoro:${savedVoice.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice}`
     : tenantId === ATHENA_TENANT_ID
     ? ATHENA_CANONICAL_TTS_VOICE
