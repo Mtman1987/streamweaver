@@ -35,7 +35,7 @@ test('signs private DM controls and rejects tampering or expiration', () => {
   assert.equal(verifyPrivateDmControlToken(token, 1_601), null);
 });
 
-test('creates five emoji-only markdown links without Discord buttons', () => {
+test('creates five emoji-only markdown links including the GIF refresh control', () => {
   const field = buildPrivateDmControlField({
     channelId,
     messageId,
@@ -47,7 +47,8 @@ test('creates five emoji-only markdown links without Discord buttons', () => {
   assert.equal((field.value.match(/\]\(/g) || []).length, 5);
   assert.match(field.value, /\[🖼️\]/u);
   assert.match(field.value, /\[🔊\]/u);
-  assert.match(field.value, /\[🔞\]/u);
+  assert.match(field.value, /\[🔄\]/u);
+  assert.doesNotMatch(field.value, /\[🔞\]/u);
   assert.match(field.value, /\[⚙️\]/u);
   assert.match(field.value, /\[🗑️\]/u);
   assert.equal(/button|components|toggle gif|settings/i.test(field.value), false);
@@ -124,7 +125,9 @@ test('shared private DM finalizer is authenticated and applies saved controls', 
 test('parses only the five allowed control actions', () => {
   assert.equal(parsePrivateDmControlAction('g'), 'gif');
   assert.equal(parsePrivateDmControlAction('tts'), 'tts');
-  assert.equal(parsePrivateDmControlAction('a'), 'adult');
+  assert.equal(parsePrivateDmControlAction('r'), 'refresh');
+  assert.equal(parsePrivateDmControlAction('refresh'), 'refresh');
+  assert.equal(parsePrivateDmControlAction('a'), null);
   assert.equal(parsePrivateDmControlAction('settings'), 'settings');
   assert.equal(parsePrivateDmControlAction('delete'), 'delete');
   assert.equal(parsePrivateDmControlAction('d'), 'delete');
@@ -155,6 +158,8 @@ test('settings and TTS controls redirect through the configured public app URL',
   assert.doesNotMatch(routeSource, /new URL\('\/bot-functions', request\.url\)/);
   assert.match(apiRouteSource, /redirectUrl: '\/private-chat'/);
   assert.match(apiRouteSource, /deleteMessage\(control\.channelId, control\.messageId\)/);
+  assert.match(apiRouteSource, /action === 'refresh'/);
+  assert.match(apiRouteSource, /currently selected, versioned private GIF/);
   assert.match(routeSource, /action !== 'delete'/);
   assert.match(apiRouteSource, /listPrivateAiTurnsAfter\(history, after, 4\)/);
   assert.match(apiRouteSource, /mode === 'poll'/);
