@@ -168,6 +168,12 @@ export default function SayPlayer() {
     const response = await fetch(`/api/say/next?${params.toString()}`, { cache: 'no-store' });
     const result = await response.json();
     lastSeenId.current = Math.max(0, Number(result.latestId || 0));
+    if (Array.isArray(result.history)) {
+      setHistoryEntries(result.history
+        .filter((item: any) => Number(item?.id || 0) > 0 && typeof item?.text === 'string' && item.text.trim())
+        .map((item: any) => ({ id: Number(item.id), text: String(item.text).trim(), addedAt: typeof item.addedAt === 'string' ? item.addedAt : undefined }))
+        .slice(-50));
+    }
     try { localStorage.setItem(`streamweaver-say-last-${tenantId || 'global'}`, String(lastSeenId.current)); } catch {}
     ready.current = true;
     needsLiveResync.current = false;
