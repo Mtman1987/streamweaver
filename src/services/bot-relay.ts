@@ -57,6 +57,15 @@ function nestedRelayToHandle(normalized: string): BotRelayRequest | null {
 }
 
 const GENERIC_TARGET_STOP_WORDS = new Set([
+  // First-person/second-person pronouns are not delivery destinations. In
+  // particular, "tell me a joke" must remain a normal request to the bot.
+  'me',
+  'myself',
+  'us',
+  'ourselves',
+  'you',
+  'yourself',
+  'yourselves',
   'your',
   'my',
   'his',
