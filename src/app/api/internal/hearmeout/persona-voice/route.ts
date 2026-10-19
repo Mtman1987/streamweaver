@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
   const tenantId = String(request.nextUrl.searchParams.get('tenantId') || '').trim().slice(0, 128);
   if (!tenantId) return apiError('tenantId is required', { status: 400, code: 'INVALID_TENANT' });
   const settings = getBotSettings(tenantId);
-  const voice = normalizeTtsVoice(settings.voice);
+  const normalized = normalizeTtsVoice(settings.voice);
+  const voice = KOKORO_VOICE_OPTIONS.some((entry) => entry.id === normalized) ? normalized : 'kokoro:af_heart';
   return apiOk({ voices: catalog(), voice });
 }
 
