@@ -26,7 +26,7 @@ type Candidate = {
   usable: (body: any) => boolean;
 };
 
-function responseMetadata(body: any, provider: string, httpStatus: number): Partial<Result> {
+function responseMetadata(body: any, httpStatus: number): Partial<Result> {
   const message = body?.choices?.[0]?.message;
   const content = message?.content ?? body?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') ?? '';
   const outputText = typeof content === 'string' ? content : Array.isArray(content)
@@ -81,7 +81,7 @@ async function runCandidate(provider: string, candidate: Candidate): Promise<Res
   try {
     const response = await candidate.request(AbortSignal.timeout(TIMEOUT_MS));
     const body = await response.json().catch(() => null);
-    const metadata = responseMetadata(body, provider, response.status);
+    const metadata = responseMetadata(body, response.status);
     if (response.ok && candidate.usable(body)) {
       const selectedModel = provider === 'OpenRouter' && body?.model
         ? 'Router selected ' + safeDetail(body.model)
