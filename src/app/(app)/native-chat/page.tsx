@@ -811,18 +811,7 @@ export default function ChatPage() {
                             ) : (
                               <span className="text-xs text-muted-foreground">{formatTime(message.timestamp)}</span>
                             )}
-                            {scheduledCleanupIds.has(message.id) || preservedMessageIds.has(message.id) ? (
-                              <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>{preservedMessageIds.has(message.id) ? "Keep message" : "Auto-cleanup"}</span>
-                                {preservingMessageId === message.id ? <span>Saving…</span> : null}
-                                <Switch
-                                  checked={scheduledCleanupIds.has(message.id)}
-                                  disabled={preservingMessageId !== null}
-                                  onCheckedChange={(enabled) => void toggleDiscordMessageCleanup(message.id, enabled)}
-                                  aria-label={scheduledCleanupIds.has(message.id) ? "Disable cleanup for this message" : "Enable cleanup for this message"}
-                                />
-                              </div>
-                            ) : null}
+
                           </div>
                           {message.content ? <ParsedMessageContent content={message.content} mentions={message.mentions} /> : null}
                           {message.attachments?.map((attachment) => <AttachmentRenderer key={attachment.id} attachment={attachment} />)}
