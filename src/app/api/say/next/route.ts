@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
       text: null,
       item: null,
       items: [],
+      // History is display-only; the listener cursor still skips old audio after opening.
+      history: sayQueue
+        .filter((item) => typeof item.text === 'string' && item.text.trim())
+        .slice(-50)
+        .map((item) => ({ id: item.id, text: item.text, addedAt: item.addedAt })),
       tenantId,
       latestId,
       remaining: 0,
