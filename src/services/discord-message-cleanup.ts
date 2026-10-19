@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
-import { globalPath } from '@/lib/tenant';
+import { globalPath, tenantPath } from '@/lib/tenant';
 import { deleteMessage, isDiscordApiError } from '@/services/discord-local';
 
 type PendingDiscordCleanup = {
@@ -33,6 +33,7 @@ type DiscordBotMessageHistoryEntry = PendingDiscordCleanup & {
 
 const CLEANUP_FILE = 'discord-message-cleanup.json';
 const HISTORY_FILE = 'discord-bot-message-history.json';
+const SETTINGS_FILE = 'data/discord-message-cleanup-settings.json';
 const DEFAULT_DELETE_DELAY_MS = 10 * 60 * 1000;
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -40,6 +41,43 @@ let processing = false;
 
 function cleanupEnabled(): boolean {
   return process.env.DISCORD_BOT_MESSAGE_CLEANUP_ENABLED !== 'false';
+}
+
+async function readTenantCleanupSetting(tenantId: string): Promise<boolean | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(tenantPath(tenantId, SETTINGS_FILE), 'utf-8'));
+    return typeof parsed?.enabled === 'boolean' ? parsed.enabled : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tenant preference, with the existing environment switch retained as a global kill switch. */
+export async function isDiscordMessageCleanupEnabled(tenantId?: string): Promise<boolean> {
+  if (!cleanupEnabled()) return false;
+  if (!tenantId) return true;
+  const saved = await readTenantCleanupSetting(tenantId);
+  return saved ?? true;
+}
+
+export async function setDiscordMessageCleanupEnabled(tenantId: string, enabled: boolean): Promise<void> {
+  const filePath = tenantPath(tenantId, SETTINGS_FILE);
+  await fs.mkdir(resolve(filePath, '..'), { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify({ enabled, updatedAt: new Date().toISOString() }, null, 2));
+  if (!enabled) await cancelDiscordMessageCleanupsForTenant(tenantId);
+}
+
+/** Cancel queued deletes for this tenant without deleting any Discord messages. */
+export async function cancelDiscordMessageCleanupsForTenant(tenantId: string): Promise<void> {
+  const queue = await readQueue();
+  const cancelled = queue.filter((entry) => entry.tenantId === tenantId);
+  const remaining = queue.filter((entry) => entry.tenantId !== tenantId);
+  await writeQueue(remaining);
+  for (const entry of cancelled) {
+    const timer = timers.get(entryKey(entry));
+    if (timer) clearTimeout(timer);
+    timers.delete(entryKey(entry));
+  }
 }
 
 function cleanupFilePath(): string {
@@ -116,7 +154,7 @@ function scheduleEntry(entry: PendingDiscordCleanup): void {
 }
 
 export async function recordDiscordMessageCleanup(input: DiscordCleanupInput): Promise<string | null> {
-  if (!cleanupEnabled()) return null;
+  if (!(await isDiscordMessageCleanupEnabled(input.tenantId))) return null;
   const replyMessageIds = unique(input.replyMessageIds);
   const triggerMessageId = input.triggerMessageId?.trim();
   if (!input.channelId || (!triggerMessageId && replyMessageIds.length === 0)) return null;
@@ -163,8 +201,14 @@ export async function processDueDiscordMessageCleanups(): Promise<void> {
   try {
     const now = Date.now();
     const queue = await readQueue();
-    const due = queue.filter((entry) => new Date(entry.deleteAt).getTime() <= now);
-    const pending = queue.filter((entry) => new Date(entry.deleteAt).getTime() > now);
+    const enabledEntries = (await Promise.all(queue.map(async (entry) => ({
+      entry,
+      enabled: await isDiscordMessageCleanupEnabled(entry.tenantId),
+    })))).filter((item) => item.enabled).map((item) => item.entry);
+    // Entries belonging to a tenant that disabled cleanup are discarded from
+    // the queue, not deleted from Discord.
+    const due = enabledEntries.filter((entry) => new Date(entry.deleteAt).getTime() <= now);
+    const pending = enabledEntries.filter((entry) => new Date(entry.deleteAt).getTime() > now);
 
     for (const entry of due) {
       const messageIds = unique([
