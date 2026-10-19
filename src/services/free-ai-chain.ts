@@ -236,7 +236,6 @@ async function requestCompatProvider(
   const models = compatModels(id);
   for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
     const apiKey = apiKeys[keyIndex];
-    let credentialRejectedForAuth = false;
     for (const model of models) {
     const remainingMs = typeof options.deadlineAtMs === 'number'
       ? Math.min(REQUEST_TIMEOUT_MS, options.deadlineAtMs - Date.now())
@@ -277,7 +276,6 @@ async function requestCompatProvider(
     console.warn('[Free AI Chain] provider rejected request', { provider: id, model, status, responseBody: body });
 
     if (status === 401 || status === 403) {
-      credentialRejectedForAuth = true;
       last = { category: 'authentication', cooldownMs: AUTH_COOLDOWN_MS };
       break; // Try the next configured credential for this provider.
     }
