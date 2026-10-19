@@ -57,10 +57,57 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<ConfigPayload | null>(null);
   const [working, setWorking] = useState<Record<Section, Record<string, string>> | null>(null);
+  const [cleanupChannelId, setCleanupChannelId] = useState('');
+  const [cleanupMessageId, setCleanupMessageId] = useState('');
+  const [cleanupMessageKept, setCleanupMessageKept] = useState(false);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
 
   useEffect(() => {
     void loadConfig('');
+    const params = new URLSearchParams(window.location.search);
+    const channelId = params.get('cleanupChannelId') || '';
+    const messageId = params.get('cleanupMessageId') || '';
+    setCleanupChannelId(channelId);
+    setCleanupMessageId(messageId);
+    if (channelId && messageId) void loadCleanupMessageState(channelId, messageId);
   }, []);
+
+  async function loadCleanupMessageState(channelId: string, messageId: string) {
+    try {
+      const response = await fetch('/api/discord-message-cleanup?channelId=' + encodeURIComponent(channelId), { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.error || 'Could not read message cleanup state.'));
+      setCleanupMessageKept(Array.isArray(data.preservedMessageIds) && data.preservedMessageIds.includes(messageId));
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Could not load message cleanup state', description: String(error?.message || error) });
+    }
+  }
+
+  async function toggleCleanupForSelectedMessage(enabled: boolean) {
+    if (!cleanupChannelId || !cleanupMessageId) return;
+    setCleanupBusy(true);
+    try {
+      const response = await fetch('/api/discord-message-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: cleanupChannelId, messageId: cleanupMessageId, enabled: !enabled }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.error || 'Could not update cleanup for this message.'));
+      setCleanupMessageKept(!enabled);
+      toast({
+        title: !enabled ? 'Message will be kept' : 'Normal cleanup restored',
+        description: !enabled
+          ? 'Only this message is excluded from cleanup. Other messages still expire after 10 minutes.'
+          : 'This message is back on the normal cleanup schedule, starting now.',
+      });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Could not update message', description: String(error?.message || error) });
+      void loadCleanupMessageState(cleanupChannelId, cleanupMessageId);
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
 
   const activeSummary = useMemo(() => {
     if (!working) return [];
@@ -221,8 +268,35 @@ export default function SettingsPage() {
             Keep a specific Discord message past its normal 10-minute cleanup without changing cleanup for other messages.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button asChild>
+        <CardContent className="space-y-3">
+          {cleanupChannelId && cleanupMessageId ? (
+            <>
+              <p className="text-sm">
+                Selected message ID: <code className="break-all">{cleanupMessageId}</code>
+              </p>
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                <div className="space-y-1">
+                  <Label htmlFor="keep-selected-discord-message">Keep this message</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {cleanupMessageKept
+                      ? 'On — this message is excluded from automatic cleanup.'
+                      : 'Off — this message follows the normal 10-minute cleanup.'}
+                  </p>
+                </div>
+                <Switch
+                  id="keep-selected-discord-message"
+                  checked={cleanupMessageKept}
+                  disabled={cleanupBusy}
+                  onCheckedChange={(checked) => void toggleCleanupForSelectedMessage(checked)}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Open a message’s cleanup link to load its channel and message IDs here. No other messages are affected.
+            </p>
+          )}
+          <Button asChild variant="outline">
             <a href="/native-chat">Open Public Messages</a>
           </Button>
         </CardContent>
