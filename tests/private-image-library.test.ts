@@ -150,7 +150,7 @@ test('private gallery preserves the selected GIF content-version URL when it ren
 
     assert.equal(response.status, 200);
     assert.equal(readUserConfigSync(tenantId).PRIVATE_DM_GIF_URL, versionedUrl);
-    assert.ok(html.includes(versionedUrl));
+    assert.ok(html.includes(versionedUrl.replace('&', '&amp;')));
   } finally {
     if (originalPersistRoot === undefined) delete process.env.PERSIST_ROOT;
     else process.env.PERSIST_ROOT = originalPersistRoot;
