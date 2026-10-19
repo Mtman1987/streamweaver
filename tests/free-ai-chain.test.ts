@@ -227,7 +227,7 @@ test('NVIDIA NIM model override cannot select an unapproved non-free model', () 
   process.env.NVIDIA_API_KEY = 'nim-test-key';
   process.env.NVIDIA_NIM_MODEL = 'some/paid-model';
   assert.equal(isFreeChainConfigured(), false);
-  process.env.NVIDIA_NIM_MODEL = 'openai/gpt-oss-20b, z-ai/glm-5.3-flash';
+  process.env.NVIDIA_NIM_MODEL = 'openai/gpt-oss-20b, z-ai/glm-5-3-flash';
   assert.equal(isFreeChainConfigured(), true);
 });
 
