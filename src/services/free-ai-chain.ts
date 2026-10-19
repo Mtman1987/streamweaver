@@ -43,6 +43,8 @@ type CompatSpec = {
   requireFreeSuffix?: boolean;
   /** Provider-specific allow-list: don't let env configuration select paid NIM models. */
   allowedModels?: string[];
+  /** Additional credentials for the same provider, attempted only if an earlier credential fails. */
+  additionalKeyEnvs?: string[];
 };
 
 // Model IDs change often on free tiers. Override with the *_MODEL env var
@@ -56,12 +58,13 @@ const COMPAT: Record<CompatId, CompatSpec> = {
   },
   nvidia: {
     url: 'https://integrate.api.nvidia.com/v1/chat/completions',
-    keyEnv: 'NVIDIA_NIM_API_KEY',
+    keyEnv: 'NVIDIA_API_KEY',
+    additionalKeyEnvs: ['NVIDIA_2_API_KEY'],
     modelEnv: 'NVIDIA_NIM_MODEL',
-    // Both are explicitly listed as free endpoints in NVIDIA's hosted API catalog.
-    // The second candidate is a multimodal-capable fallback; the tested request is text-only.
-    defaultModels: ['openai/gpt-oss-20b', 'z-ai/glm-5.3-flash'],
-    allowedModels: ['openai/gpt-oss-20b', 'z-ai/glm-5.3-flash'],
+    // Both hosted endpoints are currently listed as free in NVIDIA's API catalog.
+    // GLM-5.3-Flash also accepts images/tool calls; this basic probe validates text chat.
+    defaultModels: ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash'],
+    allowedModels: ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash'],
   },
   cerebras: {
     url: 'https://api.cerebras.ai/v1/chat/completions',
@@ -124,8 +127,11 @@ function safeDetail(value: string): string {
     .slice(0, 300);
 }
 
-function compatKey(id: CompatId): string {
-  return String(process.env[COMPAT[id].keyEnv] || '').trim();
+function compatKeys(id: CompatId): string[] {
+  const spec = COMPAT[id];
+  return [spec.keyEnv, ...(spec.additionalKeyEnvs || [])]
+    .map((name) => String(process.env[name] || '').trim())
+    .filter(Boolean);
 }
 
 function compatModels(id: CompatId): string[] {
@@ -143,7 +149,7 @@ function compatModels(id: CompatId): string[] {
 function isProviderConfigured(id: FreeProviderId, tenantId?: string): boolean {
   if (id === 'gemini') return isFreeGeminiConfigured(tenantId);
   if (id === 'local') return isSpmtLocalLlmEnabled();
-  return Boolean(compatKey(id)) && compatModels(id).length > 0;
+  return compatKeys(id).length > 0 && compatModels(id).length > 0;
 }
 
 function resolveChain(allowed?: readonly string[]): FreeProviderId[] {
@@ -215,7 +221,8 @@ async function requestCompatProvider(
   fetchImpl: typeof fetch,
 ): Promise<string> {
   const spec = COMPAT[id];
-  const apiKey = compatKey(id);
+  const apiKeys = compatKeys(id);
+  if (!apiKeys.length) throw new ProviderFailure('not_configured', 0);
   const messages = [
     ...(systemPrompt.trim() ? [{ role: 'system', content: systemPrompt.slice(-12_000) }] : []),
     { role: 'user', content: prompt.slice(-24_000) },
@@ -226,7 +233,12 @@ async function requestCompatProvider(
     : 0.7;
 
   let last: { category: Category; cooldownMs: number } = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
-  for (const model of compatModels(id)) {
+  let allKeysRejectedForAuth = true;
+  const models = compatModels(id);
+  for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
+    const apiKey = apiKeys[keyIndex];
+    let credentialRejectedForAuth = false;
+    for (const model of models) {
     const remainingMs = typeof options.deadlineAtMs === 'number'
       ? Math.min(REQUEST_TIMEOUT_MS, options.deadlineAtMs - Date.now())
       : REQUEST_TIMEOUT_MS;
@@ -265,7 +277,12 @@ async function requestCompatProvider(
     const body = safeDetail(await response.text().catch(() => ''));
     console.warn('[Free AI Chain] provider rejected request', { provider: id, model, status, responseBody: body });
 
-    if (status === 401 || status === 403) throw new ProviderFailure('authentication', AUTH_COOLDOWN_MS);
+    if (status === 401 || status === 403) {
+      credentialRejectedForAuth = true;
+      last = { category: 'authentication', cooldownMs: AUTH_COOLDOWN_MS };
+      break; // Try the next configured credential for this provider.
+    }
+    allKeysRejectedForAuth = false;
     if (status === 429) {
       last = { category: 'quota', cooldownMs: parseRetryAfterMs(response) };
       continue;
@@ -280,8 +297,11 @@ async function requestCompatProvider(
     }
     // 400/413/422 and similar describe this request, not the provider. Move on without a cooldown.
     throw new ProviderFailure('upstream', 0, body);
+    }
+    if (!credentialRejectedForAuth) allKeysRejectedForAuth = false;
   }
-  throw new ProviderFailure(last.category, last.cooldownMs);
+  if (!allKeysRejectedForAuth) throw new ProviderFailure(last.category, last.cooldownMs);
+  throw new ProviderFailure('authentication', AUTH_COOLDOWN_MS);
 }
 
 function isTransientLocalFailure(message: string): boolean {
