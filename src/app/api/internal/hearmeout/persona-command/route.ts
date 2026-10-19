@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
           ok: false,
           source: 'say',
           streamKey: sayStreamKey,
-          voice: DEFAULT_TTS_VOICE,
+          voice,
           ...(shouldGenerateInlineAudio ? {} : { skipped: true, reason: 'speech-delegated-to-say-player' }),
         },
     roomId,
