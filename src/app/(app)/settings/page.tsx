@@ -57,15 +57,61 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<ConfigPayload | null>(null);
   const [working, setWorking] = useState<Record<Section, Record<string, string>> | null>(null);
+  const [cleanupEnabled, setCleanupEnabled] = useState(true);
+  const [cleanupSaving, setCleanupSaving] = useState(false);
 
   useEffect(() => {
     void loadConfig('');
+    void loadCleanupSetting();
   }, []);
 
   const activeSummary = useMemo(() => {
     if (!working) return [];
     return sections.map((section) => ({ section, count: Object.keys(working[section] || {}).length }));
   }, [working]);
+
+  async function loadCleanupSetting() {
+    try {
+      const response = await fetch('/api/discord-message-cleanup-settings', { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.error || 'Failed to load cleanup preference.'));
+      setCleanupEnabled(data.enabled === true);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not load message cleanup setting',
+        description: String(error?.message || error),
+      });
+    }
+  }
+
+  async function updateCleanupSetting(enabled: boolean) {
+    setCleanupSaving(true);
+    try {
+      const response = await fetch('/api/discord-message-cleanup-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(data?.error || 'Failed to save cleanup preference.'));
+      setCleanupEnabled(data.enabled === true);
+      toast({
+        title: data.enabled ? 'Automatic cleanup enabled' : 'Automatic cleanup disabled',
+        description: data.enabled
+          ? 'Tracked public Discord messages will be cleaned up after 10 minutes.'
+          : 'Queued automatic deletions were cancelled; existing Discord messages will remain.',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not save message cleanup setting',
+        description: String(error?.message || error),
+      });
+    } finally {
+      setCleanupSaving(false);
+    }
+  }
 
   async function loadConfig(nextKey: string) {
     setLoading(true);
@@ -211,6 +257,31 @@ export default function SettingsPage() {
           <p className="text-xs text-muted-foreground">
             These trims belong to StreamWeaver. They layer over the shared SpaceMountain theme so this app can compensate for a monitor or embed without changing the rest of the suite.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Public Discord Messages</CardTitle>
+          <CardDescription>Choose whether StreamWeaver automatically removes tracked public Discord messages after 10 minutes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div className="space-y-1">
+              <Label htmlFor="discord-message-auto-cleanup">Automatic message cleanup</Label>
+              <p className="text-xs text-muted-foreground">
+                {cleanupEnabled
+                  ? 'On — tracked messages are scheduled for cleanup after 10 minutes.'
+                  : 'Off — new messages will not be scheduled for cleanup, and pending cleanup jobs are cancelled.'}
+              </p>
+            </div>
+            <Switch
+              id="discord-message-auto-cleanup"
+              checked={cleanupEnabled}
+              disabled={cleanupSaving}
+              onCheckedChange={(checked) => void updateCleanupSetting(checked)}
+            />
+          </div>
         </CardContent>
       </Card>
 
