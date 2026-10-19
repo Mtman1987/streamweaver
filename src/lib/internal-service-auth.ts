@@ -20,6 +20,7 @@ export function getInternalServiceSecrets(): string[] {
     configuredSecret('STREAMWEAVER_CLIENT_SECRET'),
     configuredSecret('DSH_SERVICE_SECRET'),
     configuredSecret('DSH_CLIENT_SECRET'),
+    configuredSecret('HEARMEOUT_PERSONA_VOICE_SECRET'),
   ]);
 }
 
