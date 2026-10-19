@@ -4,6 +4,7 @@ import { getTenantFromRequest } from '@/lib/tenant-context';
 import { readGenerationSettings } from '@/lib/gen-settings-store';
 import { getGenMode } from '@/lib/gen-mode-store';
 import { readUserConfigSync } from '@/lib/user-config';
+import { readAICostPolicy } from '@/services/ai-cost-policy';
 
 type ProviderStatus = {
   name: string;
@@ -22,13 +23,19 @@ export async function GET(request: NextRequest) {
   const activeMode = settings?.mode || legacyMode;
 
   const config = readUserConfigSync(tenantId);
-  const cloudflareReady = Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN);
+  const paidRoutesEnabled = readAICostPolicy().paidRoutesEnabled;
+  const cloudflareCredentialsReady = Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN);
+  const cloudflareReady = cloudflareCredentialsReady && paidRoutesEnabled;
 
   const providers: ProviderStatus[] = [
     {
       name: 'cloudflare',
       configured: cloudflareReady,
-      ...(!cloudflareReady ? { reason: 'CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN not set; requests fall back to Pollinations' } : {}),
+      ...(!cloudflareCredentialsReady
+        ? { reason: 'Cloudflare credentials are not set; requests fall back to Pollinations' }
+        : !paidRoutesEnabled
+          ? { reason: 'Provider policy is paused; requests fall back to free Pollinations' }
+          : {}),
     },
     {
       name: 'eden',
@@ -53,10 +60,15 @@ export async function GET(request: NextRequest) {
   ];
 
   const active = providers.find((p) => p.name === activeMode);
+  const effective = activeMode === 'cloudflare' && !cloudflareReady
+    ? providers.find((p) => p.name === 'pollinations')
+    : active;
 
   return apiOk({
     activeMode,
-    activeProviderReady: active?.configured ?? false,
+    effectiveMode: effective?.name || activeMode,
+    activeProviderReady: effective?.configured ?? false,
+    configuredProviderReady: active?.configured ?? false,
     settings: settings ? { mode: settings.mode, model: settings.model, resolution: settings.resolution } : null,
     providers,
   });
