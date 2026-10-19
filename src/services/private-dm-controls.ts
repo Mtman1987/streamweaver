@@ -386,6 +386,20 @@ export function resolvePublicDiscordMediaUrl(tenantId: string): string {
   return configured ? rewriteLegacyMediaUrl(configured, tenantId) : '';
 }
 
+function isSameConfiguredMediaSlot(currentValue: string, configuredValue: string): boolean {
+  if (!currentValue || !configuredValue) return false;
+  try {
+    const current = new URL(currentValue, getConfiguredAppUrl());
+    const configured = new URL(configuredValue, getConfiguredAppUrl());
+    return current.origin === configured.origin &&
+      current.pathname === configured.pathname &&
+      current.pathname.startsWith('/api/discord-media/') &&
+      current.searchParams.get('tenant') === configured.searchParams.get('tenant');
+  } catch {
+    return false;
+  }
+}
+
 export function applyConfiguredDiscordGif(
   embeds: Record<string, unknown>[],
   configuredMediaUrl: string,
@@ -395,9 +409,12 @@ export function applyConfiguredDiscordGif(
   const next = embeds.map((embed) => ({ ...embed })) as DiscordEmbed[];
   const first = next[0];
   const currentImage = String(first.image?.url || '').trim();
-  if (visible && configuredMediaUrl && !currentImage) {
+  const isCurrentConfiguredSlot = isSameConfiguredMediaSlot(currentImage, configuredMediaUrl);
+  if (visible && configuredMediaUrl && (!currentImage || isCurrentConfiguredSlot)) {
+    // The same stable endpoint can serve different GIFs over time. Replace its
+    // old versioned URL when selection changes, but preserve app-specific art.
     first.image = { url: configuredMediaUrl };
-  } else if (!visible && configuredMediaUrl && currentImage === configuredMediaUrl) {
+  } else if (!visible && configuredMediaUrl && (currentImage === configuredMediaUrl || isCurrentConfiguredSlot)) {
     delete first.image;
   }
   return next;

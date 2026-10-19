@@ -92,6 +92,21 @@ test('private GIF settings preserve app-specific embed artwork', () => {
   assert.equal((hidden.embeds[0] as any).image.url, appImage);
 });
 
+test('private GIF selection replaces an older cached URL for the same media slot', () => {
+  const oldUrl = 'https://streamweaver.example/api/discord-media/private-dm.gif?tenant=tenant-a&v=old';
+  const newUrl = 'https://streamweaver.example/api/discord-media/private-dm.gif?tenant=tenant-a&v=new';
+  const shown = togglePrivateDmGif([{
+    description: 'Private answer',
+    image: { url: oldUrl },
+  }], newUrl);
+  assert.equal(shown.visible, true);
+  assert.equal((shown.embeds[0] as any).image.url, newUrl);
+
+  const hidden = togglePrivateDmGif(shown.embeds, newUrl);
+  assert.equal(hidden.visible, false);
+  assert.equal((hidden.embeds[0] as any).image, undefined);
+});
+
 test('shared private DM finalizer is authenticated and applies saved controls', () => {
   const routeSource = readFileSync(
     new URL('../src/app/api/private-chat/finalize-discord-message/route.ts', import.meta.url),
