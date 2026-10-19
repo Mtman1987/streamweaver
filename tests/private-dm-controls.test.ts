@@ -166,6 +166,18 @@ test('settings and TTS controls redirect through the configured public app URL',
   assert.match(apiRouteSource, /mode === 'off'/);
 });
 
+test('public Discord settings gear opens the exact message cleanup toggle', () => {
+  const routeSource = readFileSync(
+    new URL('../src/app/discord/control/route.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(routeSource, /new URL\('\/settings', getConfiguredAppUrl\(\)\)/);
+  assert.match(routeSource, /searchParams\.set\('cleanupChannelId', control\.channelId\)/);
+  assert.match(routeSource, /searchParams\.set\('cleanupMessageId', control\.messageId\)/);
+  assert.doesNotMatch(routeSource, /new URL\('\/bot-functions', getConfiguredAppUrl\(\)\)/);
+});
+
 test('private TTS player keeps the say-style controls but listens only to private Athena polling', () => {
   const playerSource = readFileSync(
     new URL('../src/app/private-chat/tts/page.tsx', import.meta.url),
