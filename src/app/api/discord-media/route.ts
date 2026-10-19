@@ -39,7 +39,8 @@ async function persistCanonicalSlot(slot: 'private-dm' | 'public-discord', tenan
 // under a unique filename so subsequent uploads/conversions never erase gallery history.
 async function archiveGalleryGif(slot: 'private-dm' | 'public-discord', tenantId: string) {
   const active = await readTenantDiscordMedia(slot, tenantId);
-  if (!active?.body?.length) throw new Error('Saved GIF could not be read for gallery archive');
+  // A first GIF has no previous slot to archive. Only archive when replacing an existing GIF.
+  if (!active?.body?.length) return null;
   const directory = tenantPath(
     tenantId,
     slot === 'private-dm' ? 'data/private-generated-images' : 'data/generated-images',
@@ -98,23 +99,34 @@ export async function POST(request: NextRequest) {
         sessionToken: request.cookies.get('streamweaver-session')?.value || '',
         slot,
       });
+      // Archive the OLD active GIF before importing the replacement into the canonical slot.
+      const archivedPreviousFilename = await archiveGalleryGif(slot, session.tenantId);
       await importDiscordStreamHubMedia(slot, converted.url, session.tenantId);
       const url = await persistCanonicalSlot(slot, session.tenantId);
-      const galleryFilename = await archiveGalleryGif(slot, session.tenantId);
       return apiOk({
         success: true,
         url,
         filename: url.split('/').pop(),
-        galleryFilename,
+        galleryFilename: archivedPreviousFilename,
+        archivedPreviousFilename,
         converted: true,
         source: 'streamweaver',
       });
     }
 
+    // Preserve the old active GIF before replacing the single canonical Discord slot.
+    const archivedPreviousFilename = await archiveGalleryGif(slot, session.tenantId);
     await writeDiscordMedia(slot, Buffer.from(await file.arrayBuffer()), session.tenantId);
     const url = await persistCanonicalSlot(slot, session.tenantId);
-    const galleryFilename = await archiveGalleryGif(slot, session.tenantId);
-    return apiOk({ success: true, url, filename: galleryFilename, galleryFilename, converted: false, source: 'streamweaver' });
+    return apiOk({
+      success: true,
+      url,
+      filename: archivedPreviousFilename,
+      galleryFilename: archivedPreviousFilename,
+      archivedPreviousFilename,
+      converted: false,
+      source: 'streamweaver',
+    });
   } catch (error: any) {
     console.error('[Discord Media API] Error:', error);
     return apiError(error?.message || 'Failed to save media', { status: 500, code: 'INTERNAL_ERROR' });
