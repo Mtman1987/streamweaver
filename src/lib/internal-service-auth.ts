@@ -5,7 +5,7 @@ function bearerToken(request: NextRequest): string {
   return header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
 }
 
-function configuredSecret(name: 'BOT_SECRET_KEY' | 'MOUNTAINVIEW_STREAMWEAVER_SECRET' | 'STREAMWEAVER_SECRET' | 'STREAMWEAVER_CLIENT_SECRET' | 'DSH_SERVICE_SECRET' | 'DSH_CLIENT_SECRET'): string {
+function configuredSecret(name: 'BOT_SECRET_KEY' | 'MOUNTAINVIEW_STREAMWEAVER_SECRET' | 'STREAMWEAVER_SECRET' | 'STREAMWEAVER_CLIENT_SECRET' | 'DSH_SERVICE_SECRET' | 'DSH_CLIENT_SECRET' | 'HEARMEOUT_PERSONA_VOICE_SECRET'): string {
   return String(process.env[name] || '').trim();
 }
 
@@ -20,6 +20,7 @@ export function getInternalServiceSecrets(): string[] {
     configuredSecret('STREAMWEAVER_CLIENT_SECRET'),
     configuredSecret('DSH_SERVICE_SECRET'),
     configuredSecret('DSH_CLIENT_SECRET'),
+    configuredSecret('HEARMEOUT_PERSONA_VOICE_SECRET'),
   ]);
 }
 
