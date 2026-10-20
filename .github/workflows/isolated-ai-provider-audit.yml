@@ -1,0 +1,45 @@
+name: Isolated AI Provider Audit
+
+on:
+  push:
+    branches:
+      - audit/isolated-ai-provider-probes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provider-audit:
+    name: Probe configured provider credentials (no app deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GOOGLE_GENAI_API_KEY: ${{ secrets.GOOGLE_GENAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_2_API_KEY: ${{ secrets.NVIDIA_2_API_KEY }}
+      NVIDIA_NIM_MODEL: ${{ vars.NVIDIA_NIM_MODEL }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      CEREBRAS_MODEL: ${{ vars.CEREBRAS_MODEL }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      MISTRAL_MODEL: ${{ vars.MISTRAL_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run isolated probes
+        run: node scripts/isolated-ai-provider-audit.mjs
+      - name: Upload sanitized report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-ai-provider-audit
+          path: provider-audit-results.json
+          if-no-files-found: ignore
+          retention-days: 7
