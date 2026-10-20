@@ -137,6 +137,32 @@ function parseSeaArtModelSpec(value: unknown): { modelNo?: string; modelVerNo?: 
   const raw = String(value || '').trim();
   if (!raw) return {};
 
+  // Accept the full SeaArt create URL as well as the compact modelNo:modelVerNo
+  // form shown in Generation Settings. Process URLs before separator parsing,
+  // because the URL scheme itself contains a colon.
+  if (/^https?:\\/\\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      const modelNo = url.searchParams.get('model_no')
+        || url.searchParams.get('modelNo')
+        || url.searchParams.get('id')
+        || '';
+      const modelVerNo = url.searchParams.get('model_ver_no')
+        || url.searchParams.get('modelVerNo')
+        || url.searchParams.get('version')
+        || url.searchParams.get('versionNo')
+        || '';
+      if (modelNo || modelVerNo) {
+        return {
+          modelNo: modelNo.trim() || undefined,
+          modelVerNo: modelVerNo.trim() || undefined,
+        };
+      }
+    } catch {
+      // Fall through to JSON / compact pair parsing.
+    }
+  }
+
   if (raw.startsWith('{')) {
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -372,6 +398,9 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
   const createEndpoint = process.env.SEAART_TEXT2IMG_ENDPOINT || '/api/v1/task/v2/text-to-img';
   const progressEndpoint = process.env.SEAART_TASK_RESULT_ENDPOINT || '/api/v1/task/batch-progress';
   let { key: modelKey, modelNo, modelVerNo, hd } = getSeaArtModel(options);
+  const configuredModel = options.model || options.providerParams?.model || process.env.SEAART_MODEL || 'seaart-infinity';
+  const requestedPresetKey = normalizeSeaArtModelKey(configuredModel);
+  const isCustomSeaArtModel = !seaArtModels[requestedPresetKey] && hasCompleteSeaArtModelSpec(configuredModel);
   if (process.env.SEAART_CLI_DISABLED !== 'true') {
     try {
       const result = await generateImageWithSeaArtCli(options, { modelNo, modelVerNo });
@@ -380,7 +409,12 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
     } catch (error) {
       if (isSeaArtModelMismatchError(error)) {
         const fallback = seaArtModels['seaart-infinity'];
-        if (modelKey !== 'seaart-infinity') {
+        if (isCustomSeaArtModel) {
+          // A custom URL identifies the model the user explicitly chose. Do not
+          // silently replace it with SeaArt Infinity; let the provider adapter
+          // retry the same custom model/version pair below.
+          console.warn('[SeaArt] CLI rejected the custom model/version pair; retrying the same pair with the provider adapter.');
+        } else if (modelKey !== 'seaart-infinity') {
           console.warn(`[SeaArt] CLI rejected stale model=${modelKey}; retrying with seaart-infinity.`);
           try {
             const result = await generateImageWithSeaArtCli(options, {
@@ -398,10 +432,12 @@ export async function generateImageWithSeaArt(options: ImageGenerationOptions): 
         } else {
           console.warn('[SeaArt] CLI rejected the seaart-infinity version; trying the provider adapter.');
         }
-        modelKey = 'seaart-infinity';
-        modelNo = fallback.modelNo;
-        modelVerNo = fallback.modelVerNo;
-        hd = fallback.hd;
+        if (!isCustomSeaArtModel) {
+          modelKey = 'seaart-infinity';
+          modelNo = fallback.modelNo;
+          modelVerNo = fallback.modelVerNo;
+          hd = fallback.hd;
+        }
       } else {
         if (!(error instanceof SeaArtCliUnavailableError)) throw error;
         console.warn(`[SeaArt] official CLI unavailable; using existing provider adapter: ${error.message}`);
