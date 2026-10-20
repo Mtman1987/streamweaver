@@ -173,7 +173,19 @@ export async function POST(request: NextRequest) {
         result = await generateImageWithPollinations(generationOptions);
         effectiveGenMode = 'pollinations';
       } else {
-        throw error;
+        // If a configured provider is unavailable, attempt the existing no-key
+        // providers in order. Paid provider policy remains enforced inside each
+        // paid adapter; this fallback does not enable or bypass paid routes.
+        const primaryMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`[AI Image] Provider ${genMode} failed; trying Perchance then Pollinations fallback: ${primaryMessage.slice(0, 300)}`);
+        try {
+          result = await generateImageWithPerchance(generationOptions);
+          effectiveGenMode = 'perchance';
+        } catch (perchanceError) {
+          console.warn('[AI Image] Perchance fallback failed; trying Pollinations:', perchanceError instanceof Error ? perchanceError.message.slice(0, 300) : String(perchanceError).slice(0, 300));
+          result = await generateImageWithPollinations(generationOptions);
+          effectiveGenMode = 'pollinations';
+        }
       }
     }
 
