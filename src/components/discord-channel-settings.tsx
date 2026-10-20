@@ -200,7 +200,8 @@ export function DiscordChannelSettings() {
                     <Label>Image model</Label>
                     <Link href="/generation/models" className="text-xs text-indigo-400 hover:text-indigo-300">Browse models</Link>
                   </div>
-                  <Input value={genSettings.model} onChange={(e) => setGenSettings(prev => ({ ...prev, model: e.target.value }))} placeholder="Preset or modelNo:modelVerNo" />
+                  <Input value={genSettings.model} onChange={(e) => setGenSettings(prev => ({ ...prev, model: e.target.value }))} placeholder="SeaArt URL or modelNo:modelVerNo" />
+                  <p className="text-xs text-muted-foreground mt-1">For a custom SeaArt model, paste its full create URL or enter model ID:model version ID. Select seaart above.</p>
                 </div>
                 <div>
                   <Label>SeaArt character ID</Label>
