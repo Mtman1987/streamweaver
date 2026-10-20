@@ -229,9 +229,8 @@ export async function POST(request: NextRequest) {
     jobs.push(Promise.resolve([skipped('Gemini', 'gemini-3.5-flash-lite', 'SKIPPED — FREE TIER NOT VERIFIED', 'The application policy does not mark this Gemini credential/project as verified free-tier. The test will not call Google until that is explicitly verified.')]));
   } else {
     jobs.push(testProvider('Gemini', 'GEMINI_API_KEY', [
+      // Only include the candidate confirmed usable by the latest live sweep.
       chatCandidate('gemini-3.5-flash-lite', '', geminiKey, 'gemini'),
-      chatCandidate('gemini-3.1-flash-lite', '', geminiKey, 'gemini'),
-      chatCandidate('gemini-3.6-flash', '', geminiKey, 'gemini'),
     ]));
   }
 
