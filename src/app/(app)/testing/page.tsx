@@ -306,7 +306,7 @@ export default function TestingPage() {
                             <th className="p-2">Result</th>
                             <th className="p-2">HTTP</th>
                             <th className="p-2">Time</th>
-                            <th className="p-2">Output</th>
+                            <th className="p-2">Output / audio</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -317,7 +317,7 @@ export default function TestingPage() {
                               <td className="p-2 font-semibold">{item.status || "UNKNOWN"}</td>
                               <td className="p-2">{item.httpStatus ?? item.reason ?? "—"}</td>
                               <td className="p-2">{Number.isFinite(Number(item.ms)) ? Number(item.ms) + " ms" : "—"}</td>
-                              <td className="p-2">{item.outputTextLength ?? "—"} chars</td>
+                              <td className="p-2">{item.outputTextLength !== undefined ? item.outputTextLength + " chars" : item.audioDataUri ? <audio controls preload="none" src={item.audioDataUri} className="max-w-40" /> : "—"}</td>
                             </tr>
                           ))}
                         </tbody>
