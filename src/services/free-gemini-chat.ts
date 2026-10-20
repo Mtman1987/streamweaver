@@ -2,12 +2,9 @@ import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
 
 const MODEL = 'gemini-3.5-flash-lite';
-// Keep the primary quick model, then only alternatives that passed the live
-// candidate sweep. Avoid the 3.8 candidate, which timed out in the live probe.
-const FREE_MODEL_FALLBACKS = [
-  'gemini-3.1-flash-lite',
-  'gemini-3.6-flash',
-] as const;
+// The latest live sweep only confirmed the primary model. The former
+// fallback candidates timed out or returned no user-visible text.
+const FREE_MODEL_FALLBACKS: readonly string[] = [];
 const REQUEST_TIMEOUT_MS = 7_000;
 const ENDPOINT = (model: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
 type FailureCategory = 'not_configured' | 'busy' | 'quota' | 'authentication' | 'upstream' | 'empty_response' | 'blocked' | 'invalid_audio';
