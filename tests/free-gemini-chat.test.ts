@@ -165,6 +165,6 @@ test('Gemini skips a retired or missing model and reaches the next stable candid
 
   assert.equal(await generateFreeGeminiResponse('Quick fallback test'), 'served by fallback');
   assert.match(urls[0], /gemini-3\.5-flash-lite/);
-  assert.match(urls[1], /gemini-3\.8-flash/);
+  assert.match(urls[1], /gemini-3\.1-flash-lite/);
   assert.equal(urls.length, 2, 'stop after a usable fallback succeeds');
 });
