@@ -246,7 +246,6 @@ test('NVIDIA NIM uses its verified free model and falls back across free credent
   assert.deepEqual(calls.map(call => call.model), ['openai/gpt-oss-20b', 'openai/gpt-oss-20b']);
   assert.deepEqual(calls.map(call => call.authorization), ['Bearer nim-primary-test-key', 'Bearer nim-secondary-test-key']);
   assert.ok(calls.every(call => call.url === 'https://integrate.api.nvidia.com/v1/chat/completions'));
-  assert.ok(calls.every(call => call.authorization === 'Bearer nim-test-key'));
   assert.equal(calls[0].body.stream, false);
 });
 
