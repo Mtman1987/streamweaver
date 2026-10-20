@@ -336,9 +336,12 @@ async function generateEdenAIDeepgramTTS(text: string, voice: TTSVoiceOption, ap
 
 export async function generateOpenAITTS(text: string, voice: TTSVoiceOption, apiKey: string): Promise<string> {
   assertPaidAIAllowed();
-  if (voice.edenaiProvider !== 'openai' || !['nova', 'shimmer', 'echo', 'fable', 'onyx'].includes(voice.edenaiVoiceModel)) {
+  const legacyVoices = ['nova', 'shimmer', 'echo', 'fable', 'onyx'];
+  const currentVoices = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse', 'marin', 'cedar'];
+  if (voice.edenaiProvider !== 'openai' || !currentVoices.includes(voice.edenaiVoiceModel)) {
     throw new Error('Unsupported OpenAI speech voice');
   }
+  const model = legacyVoices.includes(voice.edenaiVoiceModel) && !voice.id.startsWith('openai:') ? 'tts-1' : 'gpt-4o-mini-tts';
   const response = await fetchWithRetry('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: {
@@ -347,7 +350,7 @@ export async function generateOpenAITTS(text: string, voice: TTSVoiceOption, api
       Accept: 'audio/mpeg',
     },
     body: JSON.stringify({
-      model: 'tts-1',
+      model,
       voice: voice.edenaiVoiceModel,
       input: text.slice(0, 4096),
       response_format: 'mp3',
