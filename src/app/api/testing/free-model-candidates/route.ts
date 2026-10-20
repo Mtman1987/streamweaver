@@ -159,7 +159,7 @@ function chatCandidate(
         messages: [{ role: 'user', content: prompt }],
         // Reasoning models (notably GPT-OSS) need more than 24 tokens to
         // finish their internal reasoning and emit a user-visible answer.
-        max_tokens: 128,
+        max_tokens: 512,
         temperature: 0,
         stream: false,
       }),
@@ -230,7 +230,6 @@ export async function POST(request: NextRequest) {
   } else {
     jobs.push(testProvider('Gemini', 'GEMINI_API_KEY', [
       chatCandidate('gemini-3.5-flash-lite', '', geminiKey, 'gemini'),
-      chatCandidate('gemini-3.8-flash', '', geminiKey, 'gemini'),
       chatCandidate('gemini-3.1-flash-lite', '', geminiKey, 'gemini'),
       chatCandidate('gemini-3.6-flash', '', geminiKey, 'gemini'),
     ]));
@@ -242,7 +241,6 @@ export async function POST(request: NextRequest) {
   ]));
   jobs.push(testProvider('Cerebras', 'CEREBRAS_API_KEY', [
     chatCandidate('gpt-oss-120b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
-    chatCandidate('llama3.1-8b', 'https://api.cerebras.ai/v1/chat/completions', cerebrasKey, 'openai-compatible'),
   ]));
   jobs.push(testProvider('OpenRouter', 'OPENROUTER_API_KEY', [
     chatCandidate('openrouter/free', 'https://openrouter.ai/api/v1/chat/completions', openRouterKey, 'openai-compatible', {
@@ -261,7 +259,6 @@ export async function POST(request: NextRequest) {
   const nvidiaEndpoint = 'https://integrate.api.nvidia.com/v1/chat/completions';
   const nvidiaModels = (key: string) => [
     chatCandidate('openai/gpt-oss-20b', nvidiaEndpoint, key, 'openai-compatible'),
-    chatCandidate('z-ai/glm-5-3-flash', nvidiaEndpoint, key, 'openai-compatible'),
   ];
   jobs.push(testProvider('NVIDIA NIM (NVIDIA_API_KEY)', 'NVIDIA_API_KEY', nvidiaModels(nvidiaKey)));
   jobs.push(testProvider('NVIDIA NIM (NVIDIA_2_API_KEY)', 'NVIDIA_2_API_KEY', nvidiaModels(nvidiaSecondKey)));
