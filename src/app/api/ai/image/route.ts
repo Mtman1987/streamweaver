@@ -172,6 +172,25 @@ export async function POST(request: NextRequest) {
         console.warn('[AI Image] SeaArt rejected the saved model version after preset fallback; using free Pollinations generation.');
         result = await generateImageWithPollinations(generationOptions);
         effectiveGenMode = 'pollinations';
+      } else if (genMode !== 'pollinations') {
+        // Recover from outages across configured image providers. Keep the
+        // adult/private safety route on Pollinations only; Perchance is used
+        // as an additional fallback only for non-adult generation.
+        const primaryMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`[AI Image] Provider ${genMode} failed; starting fallback chain: ${primaryMessage.slice(0, 240)}`);
+        if (!privateAdultMode) {
+          try {
+            result = await generateImageWithPerchance(generationOptions);
+            effectiveGenMode = 'perchance';
+          } catch (perchanceError) {
+            console.warn('[AI Image] Perchance fallback failed; trying Pollinations:', perchanceError instanceof Error ? perchanceError.message.slice(0, 240) : String(perchanceError).slice(0, 240));
+            result = await generateImageWithPollinations(generationOptions);
+            effectiveGenMode = 'pollinations';
+          }
+        } else {
+          result = await generateImageWithPollinations(generationOptions);
+          effectiveGenMode = 'pollinations';
+        }
       } else {
         throw error;
       }
