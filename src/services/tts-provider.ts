@@ -199,6 +199,16 @@ export async function generateTTS(
       if (voice.provider === 'deepgram') {
         return await generatePortableDeepgramTTS(normalizedText, voice, config, tenantId);
       }
+      // The openai:* catalog entries are direct OpenAI API voices, not Eden AI
+      // voices. Never send these IDs to Eden AI's legacy TTS endpoint when
+      // OPENAI_API_KEY is absent. Throwing here lets the existing same-gender
+      // fallback chain try a configured provider and ultimately local Kokoro.
+      if (voice.id.startsWith('openai:')) {
+        if (!config.openaiApiKey) {
+          throw new Error('Direct OpenAI voice requires OPENAI_API_KEY; trying configured fallback voices');
+        }
+        return await generateOpenAITTS(normalizedText, voice, config.openaiApiKey);
+      }
       if (voice.edenaiProvider === 'openai' && config.openaiApiKey) {
         return await generateOpenAITTS(normalizedText, voice, config.openaiApiKey);
       }
