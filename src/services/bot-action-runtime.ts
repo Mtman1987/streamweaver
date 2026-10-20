@@ -516,8 +516,9 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if (
     (/\bstella\b/.test(value) || /^this (?:froze|is frozen|is stuck|crashed)[.!?]*$/.test(value))
     && (/\b(?:this|lounge|browser source|overlay|screen)\b.*\b(?:froze|frozen|stuck|crashed)\b/.test(value)
-      || /\b(?:froze|frozen|stuck|crashed)\b.*\b(?:lounge|browser source|overlay|screen)\b/.test(value)
-      || /\b(?:refresh|reload|restart)\b.*\b(?:lounge|browser source|overlay)\b/.test(value))
+      || /\b(?:froze|frozen|stuck|crashed)\b.*\b(?:lounge|browser(?:\s+source)?|overlay|screen)\b/.test(value)
+      || /\b(?:refresh|reload|restart|reset)\b.*\b(?:lounge|browser(?:\s+source)?|overlay|screen)\b/.test(value)
+      || /\b(?:lounge|browser(?:\s+source)?|overlay|screen)\b.*\b(?:refresh|reload|restart|reset)\b/.test(value))
   ) {
     return { action: 'sw.lounge.browser.refresh', args: {}, detection: 'explicit' };
   }
