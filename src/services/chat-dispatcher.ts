@@ -5697,6 +5697,16 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                     });
                     if (botAction) {
                         await reply(botAction.response, 'bot');
+                        // The Lounge browser refresh needs an audible acknowledgement too:
+                        // the chat response alone does not reach the existing TTS browser source.
+                        if (botAction.action === 'sw.lounge.browser.refresh') {
+                            try {
+                                const tts = await queueTtsOverlay(botAction.response, SPACEMOUNTAIN_SYSTEM_TENANT_ID);
+                                if (!tts.ok) console.warn('[Stella Lounge refresh] TTS overlay queue failed:', tts.error);
+                            } catch (error) {
+                                console.error('[Stella Lounge refresh] TTS overlay queue failed:', error);
+                            }
+                        }
                         const { rememberStellaThought, recordStellaDecision } = await import('./stella-thought-board');
                         rememberStellaThought({ kind: 'conversation', actor: actualUsername, text: `Stella action: ${botAction.response}`, ttlMs: 25 * 60_000 });
                         recordStellaDecision('speak', `action:${botAction.action}:${botAction.status}`);

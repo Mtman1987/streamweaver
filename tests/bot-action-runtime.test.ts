@@ -29,6 +29,19 @@ test('publishes a persona-neutral suite action catalog', () => {
   assert.equal(JSON.stringify(BOT_ACTION_CATALOG).includes('Moonbeam'), false);
 });
 
+test('Stella detects browser reset requests as Lounge browser refreshes', async () => {
+  for (const message of [
+    'Stella reset the browser',
+    'Stella restart the browser',
+    'Stella refresh the Lounge browser source',
+    'Stella, the Lounge browser source is frozen',
+  ]) {
+    assert.deepEqual(await detectBotAction(message), {
+      action: 'sw.lounge.browser.refresh', args: {}, detection: 'explicit',
+    }, message);
+  }
+});
+
 test('Stella can restart only the Lounge media player', async () => {
   assert.deepEqual(await detectBotAction('Stella restart the media player'), {
     action: 'sw.lounge.media.restart', args: {}, detection: 'explicit',
