@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
 
 const MODEL = 'gemini-3.5-flash-lite';
-// Keep the primary quick model, then only two current alternatives to preserve
-// a bounded latency budget. Gemini 3.7 is deprecated; 3.6/3.8 are stable.
+// Keep the primary quick model, then only alternatives that passed the live
+// candidate sweep. Avoid the 3.8 candidate, which timed out in the live probe.
 const FREE_MODEL_FALLBACKS = [
-  'gemini-3.8-flash',
+  'gemini-3.1-flash-lite',
   'gemini-3.6-flash',
 ] as const;
 const REQUEST_TIMEOUT_MS = 7_000;
