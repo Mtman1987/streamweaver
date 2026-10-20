@@ -103,8 +103,8 @@ export function getLifelikeFallbackVoices(selectedVoice: string): string[] {
       && voice.id !== selected.id
     )))
     .filter((voice): voice is TTSVoiceOption => Boolean(voice))
-    .slice(0, 3)
-    .map((voice) => voice.id);
+    .map((voice) => voice.id)
+    .filter((voiceId, index, all) => all.indexOf(voiceId) === index);
 }
 
 async function fetchWithRetry(
@@ -216,7 +216,24 @@ export async function generateTTS(
     }
   }
 
-  throw new Error(`Lifelike TTS failed; cross-voice fallback is disabled for pinned voices. ${errors.join(' | ')}`);
+  // Last-resort audible continuity: after every eligible lifelike provider/voice
+  // fails, try the local free Kokoro worker. This never enables a paid route.
+  const selected = getTtsVoiceOption(selectedVoice);
+  const localVoice = selected.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice;
+  try {
+    const localAudio = await generateFreeTTS(normalizedText, localVoice);
+    if (localAudio) {
+      console.warn('[TTS] Lifelike provider chain exhausted; local Kokoro fallback succeeded.', {
+        attemptedRoutes: attempts.length,
+        fallbackVoice: localVoice,
+      });
+      return localAudio;
+    }
+    errors.push('Local Kokoro fallback returned no playable audio');
+  } catch (error) {
+    errors.push(`Local Kokoro fallback: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  throw new Error(`All lifelike TTS routes and local Kokoro fallback failed. ${errors.join(' | ')}`);
 }
 
 async function generatePortableDeepgramTTS(text: string, voice: TTSVoiceOption, config: TTSConfig, tenantId?: string): Promise<string> {
