@@ -220,8 +220,9 @@ export async function buildStructuredDiscordReplyPayload(input: StructuredDiscor
     : getDiscordMessageCleanupDeleteAt();
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const botAvatar = firstUrl(
-    isTheCountName(speaker.botName) ? theCountAvatarUrl() : webhookIdentity.avatarUrl,
+    isTheCountName(speaker.botName) ? theCountAvatarUrl() : '',
     await getAvatarUrlForTenant(speaker.tenantId),
+    webhookIdentity.avatarUrl,
     SPACEMOUNTAIN_FALLBACK_LOGO,
   );
   const owner = isTheCountName(speaker.botName)
@@ -336,8 +337,9 @@ export async function sendStructuredDiscordReply(input: StructuredDiscordReplyIn
   const { deleteAt, speaker } = payload;
   const webhookIdentity = getDiscordBotWebhookIdentity(speaker.tenantId, speaker.botName);
   const avatarUrl = firstUrl(
-    isTheCountName(speaker.botName) ? theCountAvatarUrl() : webhookIdentity.avatarUrl,
+    isTheCountName(speaker.botName) ? theCountAvatarUrl() : '',
     await getAvatarUrlForTenant(speaker.tenantId),
+    webhookIdentity.avatarUrl,
     SPACEMOUNTAIN_FALLBACK_LOGO,
   );
 
