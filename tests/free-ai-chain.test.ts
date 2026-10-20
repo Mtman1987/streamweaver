@@ -131,6 +131,7 @@ test('request-shaped errors move on without cooling the provider down', async ()
     return host === 'api.groq.com' ? new Response('{"error":"too long"}', { status: 413 }) : chatReply('ok');
   }) as typeof fetch;
   await generateFreeChainResponse('One', '', undefined, {}, fetchImpl);
+  resetFreeChainRotation(); // Keep the same lead so this test isolates cooldown behavior.
   await generateFreeChainResponse('Two', '', undefined, {}, fetchImpl);
   assert.equal(calls.filter((host) => host === 'api.groq.com').length, 2);
 });
