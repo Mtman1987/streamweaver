@@ -127,18 +127,18 @@ test('private chat can see recent public context while public chat remains blind
   assert.doesNotMatch(publicSource, /readPrivateChatMessages/);
 });
 
-test('every public control action requires the owning signed-in tenant before GIF mutation or paid TTS', () => {
+test('public GIF controls are available to viewers while account-only controls and paid TTS remain owner-gated', () => {
   const source = readFileSync(
     new URL('../src/app/api/discord/control/route.ts', import.meta.url),
     'utf8',
   );
   assert.match(source, /getTenantFromRequest/);
   assert.match(source, /session\?\.tenantId === tenantId/);
-  const authGateIndex = source.indexOf('if (!requireOwningTenant(request, control.tenantId))');
+  const authGateIndex = source.indexOf("if (action !== 'gif' && !requireOwningTenant(request, control.tenantId))");
   const gifIndex = source.indexOf("if (action === 'gif')");
   const ttsIndex = source.indexOf('const audioDataUri = await generateTTS');
-  assert.ok(authGateIndex >= 0);
-  assert.ok(gifIndex > authGateIndex);
-  assert.ok(ttsIndex > authGateIndex);
+  assert.ok(authGateIndex >= 0, 'non-GIF public controls must require the owning tenant');
+  assert.ok(gifIndex > authGateIndex, 'public GIF toggle is handled after the explicit GIF exception');
+  assert.ok(ttsIndex > authGateIndex, 'paid TTS remains behind the owner gate');
   assert.match(source, /repeatedly trigger paid TTS synthesis/);
 });
