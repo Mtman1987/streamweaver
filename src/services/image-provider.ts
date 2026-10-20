@@ -74,14 +74,21 @@ function parseResolution(resolution?: string): { width: number; height: number }
 function makePollinationsUrls(options: ImageGenerationOptions): string[] {
   const { width, height } = parseResolution(options.resolution);
   const count = Math.max(1, Math.min(4, Number(options.numImages || options.providerParams?.count || 1) || 1));
-  const seed = Math.floor(Number(options.providerParams?.seed || 0) || 0);
+  const configuredSeed = Math.floor(Number(options.providerParams?.seed || 0) || 0);
+  // Always seed Pollinations URLs. Without a seed, identical prompt URLs can
+  // be cached and make the fallback appear to return the exact same image.
+  // Keep an explicitly configured seed reproducible; otherwise randomize each
+  // generation request and each image in a batch.
+  const seed = configuredSeed > 0
+    ? configuredSeed
+    : Math.floor(Math.random() * 2_147_483_646) + 1;
   return Array.from({ length: count }, (_, index) => {
     const url = new URL(`https://image.pollinations.ai/prompt/${encodeURIComponent(options.prompt)}`);
     url.searchParams.set('width', String(width));
     url.searchParams.set('height', String(height));
     url.searchParams.set('nologo', 'true');
     if (options.providerParams?.safe !== false) url.searchParams.set('safe', 'true');
-    if (seed > 0) url.searchParams.set('seed', String(seed + index));
+    url.searchParams.set('seed', String(seed + index));
     return url.toString();
   });
 }
