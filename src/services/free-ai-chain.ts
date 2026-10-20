@@ -100,6 +100,22 @@ const LOCAL_TRANSIENT_COOLDOWN_MS = 5 * 60_000;
 
 const cooldowns = new Map<FreeProviderId, { until: number; category: Category }>();
 
+// Rotate the first eligible provider per turn. Each process maintains its own
+// cursor; cooldowns remain provider-specific so a quota failure only sidelines
+// the provider that reported it.
+let nextProviderStartIndex = 0;
+
+export function resetFreeChainRotation(): void {
+  nextProviderStartIndex = 0;
+}
+
+function rotateProviderOrder(order: FreeProviderId[]): FreeProviderId[] {
+  if (order.length < 2) return order;
+  const start = nextProviderStartIndex % order.length;
+  nextProviderStartIndex = (start + 1) % order.length;
+  return [...order.slice(start), ...order.slice(0, start)];
+}
+
 function capAtCompleteSentence(text: string, limit: number): string {
   const value = String(text || '').trim();
   if (value.length <= limit) return value;
@@ -349,7 +365,13 @@ export async function generateFreeChainResponse(
     : Date.now() + MAX_CHAIN_DURATION_MS;
   const boundedOptions: FreeChainOptions = { ...options, deadlineAtMs };
 
-  for (const id of resolveChain(options.providers)) {
+  // Rotate only across providers that are actually configured for this tenant.
+  // A successful provider therefore does not monopolize every new turn, while
+  // failures still fall through the remaining providers in the same call.
+  const configuredOrder = resolveChain(options.providers).filter((id) => isProviderConfigured(id, tenantId));
+  const providerOrder = rotateProviderOrder(configuredOrder);
+
+  for (const id of providerOrder) {
     if (Date.now() >= deadlineAtMs) {
       failures.push('chain: time budget exhausted');
       lastCategory = 'upstream';
