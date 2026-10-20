@@ -7,6 +7,7 @@ import {
   generateFreeChainResponse,
   isFreeChainConfigured,
   resetFreeChainCooldowns,
+  resetFreeChainRotation,
   getFreeChainStatus,
 } from '../src/services/free-ai-chain';
 import { FreeChatUnavailableError } from '../src/services/free-gemini-chat';
@@ -39,6 +40,7 @@ beforeEach(() => {
   process.env.AI_COST_POLICY_PATH = policyFile;
   writePolicy({});
   resetFreeChainCooldowns();
+  resetFreeChainRotation();
   keyCounter += 1; // Gemini keeps per-key cooldowns at module level, so each test uses a fresh key.
 });
 
@@ -68,6 +70,22 @@ test('a single non-Gemini key is enough to serve replies', async () => {
   assert.equal(seen?.url, 'https://api.groq.com/openai/v1/chat/completions');
   assert.equal(seen?.auth, 'Bearer groq-test-key');
   assert.ok(seen?.model);
+});
+
+test('successful turns rotate the lead provider so one free API is not always hit first', async () => {
+  process.env.GROQ_API_KEY = 'groq-test-key';
+  process.env.CEREBRAS_API_KEY = 'cerebras-test-key';
+  writePolicy({ freeChain: ['groq', 'cerebras'] });
+  const hosts: string[] = [];
+  const fetchImpl = (async (url: any) => {
+    hosts.push(new URL(String(url)).host);
+    return chatReply('ok');
+  }) as typeof fetch;
+
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal(await generateFreeChainResponse('Hello', '', undefined, {}, fetchImpl), 'ok');
+  }
+  assert.deepEqual(hosts, ['api.groq.com', 'api.cerebras.ai', 'api.groq.com', 'api.cerebras.ai']);
 });
 
 test('429 moves to the next provider and only that provider cools down', async () => {
@@ -113,6 +131,7 @@ test('request-shaped errors move on without cooling the provider down', async ()
     return host === 'api.groq.com' ? new Response('{"error":"too long"}', { status: 413 }) : chatReply('ok');
   }) as typeof fetch;
   await generateFreeChainResponse('One', '', undefined, {}, fetchImpl);
+  resetFreeChainRotation(); // Keep the same lead so this test isolates cooldown behavior.
   await generateFreeChainResponse('Two', '', undefined, {}, fetchImpl);
   assert.equal(calls.filter((host) => host === 'api.groq.com').length, 2);
 });
