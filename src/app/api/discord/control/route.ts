@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
     if (!await canDeletePublicReply(request, control.tenantId)) {
       return apiError('Only the bot owner or an approved SpaceMountain administrator can delete this public reply.', { status: 403, code: 'PUBLIC_DELETE_FORBIDDEN' });
     }
-  } else if (!requireOwningTenant(request, control.tenantId)) {
+  } else if (action !== 'gif' && !requireOwningTenant(request, control.tenantId)) {
+    // The public GIF/image is public content, so anyone viewing the public
+    // Discord message may show or hide it. Keep account-only controls gated.
     return apiError('Sign in to the StreamWeaver account that owns this bot to use its public reply controls.', { status: 401, code: 'TENANT_AUTH_REQUIRED' });
   }
 
