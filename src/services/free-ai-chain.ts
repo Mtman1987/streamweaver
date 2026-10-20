@@ -63,14 +63,14 @@ const COMPAT: Record<CompatId, CompatSpec> = {
     modelEnv: 'NVIDIA_NIM_MODEL',
     // Both hosted endpoints are currently listed as free in NVIDIA's API catalog.
     // GLM-5.3-Flash also accepts images/tool calls; this basic probe validates text chat.
-    defaultModels: ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash'],
-    allowedModels: ['openai/gpt-oss-20b', 'z-ai/glm-5-3-flash'],
+    defaultModels: ['openai/gpt-oss-20b'],
+    allowedModels: ['openai/gpt-oss-20b'],
   },
   cerebras: {
     url: 'https://api.cerebras.ai/v1/chat/completions',
     keyEnv: 'CEREBRAS_API_KEY',
     modelEnv: 'CEREBRAS_MODEL',
-    defaultModels: ['gpt-oss-120b', 'llama3.1-8b'],
+    defaultModels: ['gpt-oss-120b'],
   },
   openrouter: {
     url: 'https://openrouter.ai/api/v1/chat/completions',
