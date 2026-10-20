@@ -40,14 +40,14 @@ patchFile('src/services/discord-structured-replies.ts', (source) => {
   }
 
   const buildAvatarMarker = "  const botAvatar = firstUrl(\n    webhookIdentity.avatarUrl,\n    await getAvatarUrlForTenant(speaker.tenantId),\n    SPACEMOUNTAIN_FALLBACK_LOGO,\n  );";
-  const buildAvatarReplacement = "  const botAvatar = firstUrl(\\n    isTheCountName(speaker.botName) ? theCountAvatarUrl() : '',\\n    await getAvatarUrlForTenant(speaker.tenantId),\\n    webhookIdentity.avatarUrl,\\n    SPACEMOUNTAIN_FALLBACK_LOGO,\\n  )";
+  const buildAvatarReplacement = "  const botAvatar = firstUrl(\n    isTheCountName(speaker.botName) ? theCountAvatarUrl() : '',\n    await getAvatarUrlForTenant(speaker.tenantId),\n    webhookIdentity.avatarUrl,\n    SPACEMOUNTAIN_FALLBACK_LOGO,\n  );";
   if (!source.includes(buildAvatarReplacement)) {
     if (!source.includes(buildAvatarMarker)) throw new Error('The Count patch: payload avatar marker missing');
     source = source.replace(buildAvatarMarker, buildAvatarReplacement);
   }
 
   const sendAvatarMarker = "  const avatarUrl = firstUrl(\n    webhookIdentity.avatarUrl,\n    await getAvatarUrlForTenant(speaker.tenantId),\n    SPACEMOUNTAIN_FALLBACK_LOGO,\n  );";
-  const sendAvatarReplacement = "  const avatarUrl = firstUrl(\\n    isTheCountName(speaker.botName) ? theCountAvatarUrl() : '',\\n    await getAvatarUrlForTenant(speaker.tenantId),\\n    webhookIdentity.avatarUrl,\\n    SPACEMOUNTAIN_FALLBACK_LOGO,\\n  )";
+  const sendAvatarReplacement = "  const avatarUrl = firstUrl(\n    isTheCountName(speaker.botName) ? theCountAvatarUrl() : '',\n    await getAvatarUrlForTenant(speaker.tenantId),\n    webhookIdentity.avatarUrl,\n    SPACEMOUNTAIN_FALLBACK_LOGO,\n  );";
   if (!source.includes(sendAvatarReplacement)) {
     if (!source.includes(sendAvatarMarker)) throw new Error('The Count patch: send avatar marker missing');
     source = source.replace(sendAvatarMarker, sendAvatarReplacement);
