@@ -218,6 +218,29 @@ export const EDENAI_VOICE_OPTIONS: TTSVoiceOption[] = [
   },
 ];
 
+// Direct OpenAI gpt-4o-mini-tts voices. These are separate IDs so saved
+// bot preferences never collapse distinct speakers into a legacy voice.
+export const OPENAI_DIRECT_VOICE_OPTIONS: TTSVoiceOption[] = [
+  ['alloy', 'Alloy', 'Female', 'Neutral, balanced delivery'],
+  ['ash', 'Ash', 'Male', 'Clear, measured delivery'],
+  ['ballad', 'Ballad', 'Male', 'Expressive, story-like delivery'],
+  ['coral', 'Coral', 'Female', 'Warm, conversational delivery'],
+  ['marin', 'Marin', 'Female', 'Natural, expressive delivery'],
+  ['cedar', 'Cedar', 'Male', 'Natural, grounded delivery'],
+  ['sage', 'Sage', 'Female', 'Calm, thoughtful delivery'],
+  ['verse', 'Verse', 'Male', 'Lively, expressive delivery'],
+].map(([name, label, gender, description]) => ({
+  id: `openai:${name}`,
+  label: `${label} (OpenAI)`,
+  provider: 'edenai' as TTSProvider,
+  providerLabel: 'OpenAI direct — gpt-4o-mini-tts',
+  gender: gender as 'Male' | 'Female',
+  description: description as string,
+  edenaiProvider: 'openai' as EdenAITTSProvider,
+  edenaiOption: gender === 'Male' ? 'MALE' as TTSVoiceGender : 'FEMALE' as TTSVoiceGender,
+  edenaiVoiceModel: name as string,
+}));
+
 export const KOKORO_VOICE_OPTIONS: TTSVoiceOption[] = [
   ['af_heart', 'Heart', 'Female'], ['af_bella', 'Bella', 'Female'],
   ['af_nicole', 'Nicole', 'Female'], ['af_kore', 'Kore', 'Female'],
@@ -275,12 +298,20 @@ export const GEMINI_VOICE_OPTIONS: TTSVoiceOption[] = [
     speechStyle: 'A natural adult male Scottish English accent. Warm, clear and conversational, with gentle pitch variation, human pacing and natural pauses. Keep the accent authentic rather than exaggerated. Never flat or robotic. Read the transcript exactly without adding words.',
   },
 ];
-export const TTS_VOICE_OPTIONS = [...KOKORO_VOICE_OPTIONS, ...GEMINI_VOICE_OPTIONS, ...DEEPGRAM_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS];
+export const TTS_VOICE_OPTIONS = [...KOKORO_VOICE_OPTIONS, ...GEMINI_VOICE_OPTIONS, ...DEEPGRAM_VOICE_OPTIONS, ...EDENAI_VOICE_OPTIONS, ...OPENAI_DIRECT_VOICE_OPTIONS];
 export const DEFAULT_TTS_PROVIDER: TTSProvider = 'edenai';
 export const DEFAULT_TTS_VOICE = 'edenai:openai:nova';
 
 const LEGACY_VOICE_MAP: Record<string, string> = {
   'openai:nova': 'edenai:openai:nova',
+  'openai:alloy': 'openai:alloy',
+  'openai:ash': 'openai:ash',
+  'openai:ballad': 'openai:ballad',
+  'openai:coral': 'openai:coral',
+  'openai:marin': 'openai:marin',
+  'openai:cedar': 'openai:cedar',
+  'openai:sage': 'openai:sage',
+  'openai:verse': 'openai:verse',
   'openai:shimmer': 'edenai:openai:shimmer',
   'openai:alloy': 'edenai:openai:nova',
   'openai:echo': 'edenai:openai:echo',
