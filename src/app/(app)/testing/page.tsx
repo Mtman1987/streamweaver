@@ -218,7 +218,7 @@ export default function TestingPage() {
               {output ? (
                 <div className="mt-4 space-y-3 border-t pt-4">
                   <p className="text-sm font-semibold">{output.summary}</p>
-                  {id === "ai" && Array.isArray(output.payload?.results) ? (
+                  {test.id === "ai" && Array.isArray(output.payload?.results) ? (
                     <div className="overflow-x-auto rounded-lg border">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-muted">
