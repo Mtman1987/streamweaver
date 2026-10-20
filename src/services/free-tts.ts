@@ -15,7 +15,14 @@ export function getFreeTTSStatus() {
   };
 }
 
-const FREE_KOKORO_VOICES = ['af_heart', 'af_bella', 'am_michael'] as const;
+const FREE_KOKORO_VOICES = [
+  'af_heart', 'af_bella', 'af_nicole', 'af_kore', 'af_sarah', 'af_aoede',
+  'af_alloy', 'af_jessica', 'af_nova', 'af_river', 'af_sky',
+  'am_michael', 'am_puck', 'am_fenrir', 'am_adam', 'am_echo', 'am_eric',
+  'am_liam', 'am_onyx', 'am_santa',
+  'bm_george', 'bf_emma', 'bf_alice', 'bf_isabella', 'bf_lily',
+  'bm_daniel', 'bm_fable', 'bm_lewis',
+] as const;
 const FREE_TTS_ATTEMPT_TIMEOUT_MS = 12_000;
 
 function resolveFreeWorkerBase(): URL | null {
