@@ -38,11 +38,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     const modelUrl = String(url);
     const modelMatch = modelUrl.match(/\/v1beta\/models\/([^/:]+):generateContent$/);
     assert.ok(modelMatch, 'requests must use the Gemini generateContent endpoint');
-    assert.ok([
-      'gemini-3.5-flash-lite',
-      'gemini-3.1-flash-lite',
-      'gemini-3.6-flash',
-    ].includes(modelMatch[1]), 'fallback must use a documented model ID');
+    assert.equal(modelMatch[1], 'gemini-3.5-flash-lite', 'only the live-verified free model is enabled');
     assert.equal(new Headers(init?.headers).get('x-goog-api-key'), process.env.GEMINI_API_KEY);
     assert.equal(new Headers(init?.headers).has('authorization'), false);
     assert.equal(init?.redirect, 'error');
@@ -136,7 +132,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
 });
 
 
-test('Gemini skips a retired or missing model and reaches the next stable candidate', async t => {
+test('Gemini does not retry unverified fallback models when the live-verified model is missing', async t => {
   const dir = mkdtempSync(path.join(tmpdir(), 'free-gemini-fallback-'));
   const policy = path.join(dir, 'policy.json');
   const oldPath = process.env.AI_COST_POLICY_PATH;
@@ -153,18 +149,12 @@ test('Gemini skips a retired or missing model and reaches the next stable candid
   const urls: string[] = [];
   t.mock.method(globalThis, 'fetch', async (url: any) => {
     urls.push(String(url));
-    if (urls.length === 1) {
-      return new Response(JSON.stringify({ error: { message: 'model not found' } }), {
-        status: 404, headers: { 'content-type': 'application/json' },
-      });
-    }
-    return new Response(JSON.stringify({
-      candidates: [{ content: { parts: [{ text: 'served by fallback' }] } }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ error: { message: 'model not found' } }), {
+      status: 404, headers: { 'content-type': 'application/json' },
+    });
   });
 
-  assert.equal(await generateFreeGeminiResponse('Quick fallback test'), 'served by fallback');
+  await assert.rejects(generateFreeGeminiResponse('Missing primary test'), { category: 'upstream' });
   assert.match(urls[0], /gemini-3\.5-flash-lite/);
-  assert.match(urls[1], /gemini-3\.1-flash-lite/);
-  assert.equal(urls.length, 2, 'stop after a usable fallback succeeds');
+  assert.equal(urls.length, 1, 'do not call unverified fallback models');
 });
