@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type TestId = "tts" | "voice" | "ai" | "picture";
+type TestId = "tts" | "voice" | "ai" | "picture" | "ttsProviders" | "imageProviders";
 type TestOutput = { id: TestId; title: string; startedAt: string; finishedAt: string; summary: string; payload: any };
 
 const tests: { id: TestId; title: string; description: string; button: string }[] = [
@@ -10,6 +10,8 @@ const tests: { id: TestId; title: string; description: string; button: string }[
   { id: "voice", title: "Full voice response chain", description: "Runs the actual free AI response chain, sends its answer through the actual TTS endpoint, and verifies both outputs.", button: "Test voice chain" },
   { id: "ai", title: "Free AI model chain", description: "Tests the currently configured free AI providers with tiny prompts, current model IDs, correct API formats, bounded timeouts, and model fallbacks.", button: "Test AI chain" },
   { id: "picture", title: "Picture generation chain", description: "Generates one public diagnostic image through StreamWeaver's image endpoint and checks for usable image output.", button: "Test picture chain" },
+  { id: "ttsProviders", title: "Free TTS voice fallback sweep", description: "Checks each local Kokoro voice separately and reports which voice returned playable audio. Free/local route only.", button: "Test TTS voices" },
+  { id: "imageProviders", title: "Image provider checks", description: "Checks Cloudflare Workers AI and Pollinations separately, records the provider actually returned, and displays usable image output.", button: "Test image providers" },
 ];
 
 function collectImageUrls(value: any, found: string[] = [], depth = 0): string[] {
@@ -120,6 +122,65 @@ export default function TestingPage() {
           audioDataUri: audio,
         };
         summary = "PASS — free AI generated text and TTS returned playable audio.";
+      } else if (id === "ttsProviders") {
+        const results: any[] = [];
+        for (const voice of ["kokoro:af_heart", "kokoro:af_bella", "kokoro:am_michael"]) {
+          const started = Date.now();
+          try {
+            const response = await requestJson("/api/tts", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ text: "StreamWeaver voice provider diagnostic.", voice }),
+            }, 40_000);
+            const audio = response?.audioDataUri || response?.data?.audioDataUri;
+            results.push({
+              provider: "Local Kokoro",
+              voice,
+              status: typeof audio === "string" && audio.startsWith("data:audio/") ? "PASS" : "NO AUDIO",
+              ms: Date.now() - started,
+              audioDataUri: typeof audio === "string" && audio.startsWith("data:audio/") ? audio : undefined,
+              reason: response?.reason || response?.data?.reason,
+            });
+          } catch (error) {
+            results.push({ provider: "Local Kokoro", voice, status: "FAIL", ms: Date.now() - started, reason: error instanceof Error ? error.message : "Request failed" });
+          }
+        }
+        const passes = results.filter(item => item.status === "PASS").length;
+        payload = { results };
+        summary = passes + " of " + results.length + " local TTS voices returned playable audio.";
+        if (!passes) throw Object.assign(new Error("No tested local Kokoro voice returned audio. See provider results."), { diagnosticPayload: payload });
+      } else if (id === "imageProviders") {
+        const results: any[] = [];
+        for (const providerOverride of ["cloudflare", "pollinations"]) {
+          const started = Date.now();
+          try {
+            const response = await requestJson("/api/ai/image", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                prompt: "A simple cheerful blue mountain under a clear sky, clean illustration, no text, diagnostic test image.",
+                numImages: 1,
+                scope: "public",
+                providerOverride,
+              }),
+            }, 120_000);
+            const images = collectImageUrls(response);
+            const actualProvider = response?.provider || response?.data?.provider || providerOverride;
+            results.push({
+              requestedProvider: providerOverride,
+              actualProvider,
+              status: images.length ? (actualProvider === providerOverride ? "PASS" : "PASS VIA FALLBACK") : "NO IMAGE",
+              ms: Date.now() - started,
+              images,
+            });
+          } catch (error) {
+            results.push({ requestedProvider: providerOverride, status: "FAIL", ms: Date.now() - started, reason: error instanceof Error ? error.message : "Request failed" });
+          }
+        }
+        const passes = results.filter(item => String(item.status).startsWith("PASS")).length;
+        payload = { results, __testImageUrls: results.flatMap(item => item.images || []) };
+        summary = passes + " of " + results.length + " image provider checks returned usable images.";
+        if (!passes) throw Object.assign(new Error("Neither image provider check returned a usable image. See provider results."), { diagnosticPayload: payload });
       } else if (id === "ai") {
         payload = await requestJson("/api/testing/free-model-candidates", { method: "POST" }, 50_000);
         const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -157,7 +218,24 @@ export default function TestingPage() {
         },
       }));
     } catch (error) {
-      setErrors(prev => ({ ...prev, [id]: error instanceof Error ? error.message : "Test failed." }));
+      const diagnosticPayload = error && typeof error === "object" && "diagnosticPayload" in error
+        ? (error as any).diagnosticPayload
+        : undefined;
+      if (diagnosticPayload) {
+        setOutputs(prev => ({
+          ...prev,
+          [id]: {
+            id,
+            title: tests.find(t => t.id === id)?.title || id,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            summary: "FAIL — " + (error instanceof Error ? error.message : "Diagnostic failed."),
+            payload: diagnosticPayload,
+          },
+        }));
+      } else {
+        setErrors(prev => ({ ...prev, [id]: error instanceof Error ? error.message : "Test failed." }));
+      }
     }
   }
 
@@ -218,28 +296,28 @@ export default function TestingPage() {
               {output ? (
                 <div className="mt-4 space-y-3 border-t pt-4">
                   <p className="text-sm font-semibold">{output.summary}</p>
-                  {test.id === "ai" && Array.isArray(output.payload?.results) ? (
+                  {["ai", "ttsProviders", "imageProviders"].includes(test.id) && Array.isArray(output.payload?.results) ? (
                     <div className="overflow-x-auto rounded-lg border">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-muted">
                           <tr>
-                            <th className="p-2">Provider</th>
-                            <th className="p-2">Model</th>
+                            <th className="p-2">Provider / requested</th>
+                            <th className="p-2">Model / voice</th>
                             <th className="p-2">Result</th>
                             <th className="p-2">HTTP</th>
                             <th className="p-2">Time</th>
-                            <th className="p-2">Output</th>
+                            <th className="p-2">Output / audio</th>
                           </tr>
                         </thead>
                         <tbody>
                           {output.payload.results.map((item: any, index: number) => (
                             <tr key={String(item.provider) + "-" + String(item.model) + "-" + index} className="border-t align-top">
-                              <td className="p-2">{item.provider || "—"}</td>
-                              <td className="p-2 font-mono">{item.model || "—"}</td>
+                              <td className="p-2">{item.provider || item.actualProvider || item.requestedProvider || "—"}</td>
+                              <td className="p-2 font-mono">{item.model || item.voice || "—"}</td>
                               <td className="p-2 font-semibold">{item.status || "UNKNOWN"}</td>
-                              <td className="p-2">{item.httpStatus ?? "—"}</td>
+                              <td className="p-2">{item.httpStatus ?? item.reason ?? "—"}</td>
                               <td className="p-2">{Number.isFinite(Number(item.ms)) ? Number(item.ms) + " ms" : "—"}</td>
-                              <td className="p-2">{item.outputTextLength ?? "—"} chars</td>
+                              <td className="p-2">{item.outputTextLength !== undefined ? item.outputTextLength + " chars" : item.audioDataUri ? <audio controls preload="none" src={item.audioDataUri} className="max-w-40" /> : "—"}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -261,7 +339,7 @@ export default function TestingPage() {
         })}
       </section>
       <p className="text-xs text-muted-foreground">
-        Model candidate results are direct text-provider probes. The voice test validates the real AI-to-TTS path. A successful test is point-in-time evidence, not a guarantee that a provider will remain available later.
+        Model results are direct text-provider probes. TTS voice checks use the local Kokoro route only. Image checks may use the production Cloudflare-to-Pollinations fallback, so each row reports both the requested and actual provider. A successful test is point-in-time evidence, not a guarantee that a provider will remain available later.
       </p>
     </main>
   );
