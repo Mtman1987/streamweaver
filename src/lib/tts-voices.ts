@@ -313,7 +313,6 @@ const LEGACY_VOICE_MAP: Record<string, string> = {
   'openai:sage': 'openai:sage',
   'openai:verse': 'openai:verse',
   'openai:shimmer': 'edenai:openai:shimmer',
-  'openai:alloy': 'edenai:openai:nova',
   'openai:echo': 'edenai:openai:echo',
   'openai:fable': 'edenai:openai:fable',
   'openai:onyx': 'edenai:openai:onyx',
