@@ -40,7 +40,7 @@ test('verified free Gemini serves public/private chat, blocks paid endpoints and
     assert.ok(modelMatch, 'requests must use the Gemini generateContent endpoint');
     assert.ok([
       'gemini-3.5-flash-lite',
-      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
       'gemini-3.6-flash',
     ].includes(modelMatch[1]), 'fallback must use a documented model ID');
     assert.equal(new Headers(init?.headers).get('x-goog-api-key'), process.env.GEMINI_API_KEY);
@@ -165,6 +165,6 @@ test('Gemini skips a retired or missing model and reaches the next stable candid
 
   assert.equal(await generateFreeGeminiResponse('Quick fallback test'), 'served by fallback');
   assert.match(urls[0], /gemini-3\.5-flash-lite/);
-  assert.match(urls[1], /gemini-3\.8-flash/);
+  assert.match(urls[1], /gemini-3\.1-flash-lite/);
   assert.equal(urls.length, 2, 'stop after a usable fallback succeeds');
 });
