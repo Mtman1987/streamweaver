@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type TestId = "tts" | "voice" | "ai" | "picture";
+type TestId = "tts" | "voice" | "ai" | "picture" | "imageProviders";
 type TestOutput = { id: TestId; title: string; startedAt: string; finishedAt: string; summary: string; payload: any };
 
 const tests: { id: TestId; title: string; description: string; button: string }[] = [
@@ -10,6 +10,7 @@ const tests: { id: TestId; title: string; description: string; button: string }[
   { id: "voice", title: "Full voice response chain", description: "Runs the actual free AI response chain, sends its answer through the actual TTS endpoint, and verifies both outputs.", button: "Test voice chain" },
   { id: "ai", title: "Free AI model chain", description: "Tests the currently configured free AI providers with tiny prompts, current model IDs, correct API formats, bounded timeouts, and model fallbacks.", button: "Test AI chain" },
   { id: "picture", title: "Picture generation chain", description: "Generates one public diagnostic image through StreamWeaver's image endpoint and checks for usable image output.", button: "Test picture chain" },
+  { id: "imageProviders", title: "Image provider sweep", description: "Attempts each configured image provider/model selection and reports whether the selected provider or a fallback returned an image.", button: "Test image providers" },
 ];
 
 function collectImageUrls(value: any, found: string[] = [], depth = 0): string[] {
@@ -127,6 +128,54 @@ export default function TestingPage() {
         const attempts = results.filter((item: any) => !String(item.status).startsWith("SKIPPED")).length;
         summary = passes + " passing candidate(s) out of " + attempts + " attempted check(s).";
         if (!results.length) summary = "Endpoint responded, but no provider results were returned.";
+      } else if (id === "imageProviders") {
+        const providers = [
+          { provider: "cloudflare", model: "default" },
+          { provider: "eden", model: "default" },
+          { provider: "openai", model: "gpt-image-1" },
+          { provider: "seaart", model: "default" },
+          { provider: "perchance", model: "ai-text-to-image" },
+          { provider: "pollinations", model: "flux" },
+        ];
+        const results: any[] = [];
+        for (const candidate of providers) {
+          const started = Date.now();
+          try {
+            const response = await fetch("/api/ai/image", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                prompt: "A small blue mountain under a clear sky, clean illustration, no text, provider diagnostic.",
+                model: candidate.model === "default" ? undefined : candidate.model,
+                providerOverride: candidate.provider,
+                numImages: 1,
+                scope: "public",
+              }),
+              signal: AbortSignal.timeout(45_000),
+              redirect: "error",
+            });
+            const responsePayload = await response.json().catch(() => ({}));
+            const data = responsePayload?.data ?? responsePayload;
+            const images = collectImageUrls(data);
+            results.push({
+              provider: candidate.provider,
+              model: candidate.model,
+              status: response.ok && images.length ? (data.provider === candidate.provider ? "PASS" : "FALLBACK USED") : "FAILED",
+              actualProvider: data.provider || "unknown",
+              httpStatus: response.status,
+              ms: Date.now() - started,
+              imageCount: images.length,
+              image: images[0] || null,
+              detail: response.ok && images.length ? (data.provider === candidate.provider ? "Selected provider returned an image." : "Selected provider did not complete; fallback returned an image.") : String(data?.error?.message || data?.error || data?.message || "No usable image output.").slice(0, 220),
+            });
+          } catch (error) {
+            results.push({ provider: candidate.provider, model: candidate.model, status: "REQUEST ERROR", actualProvider: "—", ms: Date.now() - started, detail: error instanceof Error ? error.name : "Request failed" });
+          }
+        }
+        payload = { results, note: "PASS means the selected provider returned an image. FALLBACK USED means a different provider returned the image. Paid-route restrictions remain enforced." };
+        const passes = results.filter((item: any) => item.status === "PASS").length;
+        const fallbacks = results.filter((item: any) => item.status === "FALLBACK USED").length;
+        summary = passes + " provider(s) passed directly; " + fallbacks + " used fallback; " + (results.length - passes - fallbacks) + " failed.";
       } else {
         payload = await requestJson("/api/ai/image", {
           method: "POST",
@@ -218,7 +267,7 @@ export default function TestingPage() {
               {output ? (
                 <div className="mt-4 space-y-3 border-t pt-4">
                   <p className="text-sm font-semibold">{output.summary}</p>
-                  {test.id === "ai" && Array.isArray(output.payload?.results) ? (
+                  {(test.id === "ai" || test.id === "imageProviders") && Array.isArray(output.payload?.results) ? (
                     <div className="overflow-x-auto rounded-lg border">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-muted">
@@ -234,12 +283,12 @@ export default function TestingPage() {
                         <tbody>
                           {output.payload.results.map((item: any, index: number) => (
                             <tr key={String(item.provider) + "-" + String(item.model) + "-" + index} className="border-t align-top">
-                              <td className="p-2">{item.provider || "—"}</td>
+                              <td className="p-2">{item.provider || "—"}{item.actualProvider && item.actualProvider !== item.provider ? " → " + item.actualProvider : ""}</td>
                               <td className="p-2 font-mono">{item.model || "—"}</td>
                               <td className="p-2 font-semibold">{item.status || "UNKNOWN"}</td>
                               <td className="p-2">{item.httpStatus ?? "—"}</td>
                               <td className="p-2">{Number.isFinite(Number(item.ms)) ? Number(item.ms) + " ms" : "—"}</td>
-                              <td className="p-2">{item.outputTextLength ?? "—"} chars</td>
+                              <td className="p-2">{item.outputTextLength ?? item.imageCount ?? "—"}{item.imageCount !== undefined ? " image(s)" : " chars"}</td>
                             </tr>
                           ))}
                         </tbody>
