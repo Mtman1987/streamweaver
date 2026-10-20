@@ -216,7 +216,14 @@ export async function generateTTS(
     }
   }
 
-  throw new Error(`Lifelike TTS failed; cross-voice fallback is disabled for pinned voices. ${errors.join(' | ')}`);
+  // Keep the response audible when every configured third-party route fails.
+  // This uses the existing local Kokoro worker only; it never unlocks a paid API.
+  console.warn('[TTS] All configured lifelike routes failed; falling back to local Kokoro.', errors.join(' | ').slice(0, 700));
+  const selected = getTtsVoiceOption(selectedVoice);
+  const trialVoice = selected.gender === 'Male' ? policy.maleTrialVoice : policy.femaleTrialVoice;
+  const localAudio = await generateFreeTTS(normalizedText, trialVoice);
+  if (localAudio) return localAudio;
+  throw new Error(`Lifelike TTS and local Kokoro fallback failed. ${errors.join(' | ')}`);
 }
 
 async function generatePortableDeepgramTTS(text: string, voice: TTSVoiceOption, config: TTSConfig, tenantId?: string): Promise<string> {
