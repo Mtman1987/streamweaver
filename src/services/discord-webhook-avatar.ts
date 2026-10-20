@@ -28,10 +28,17 @@ export async function getAvatarUrlForTenant(tenantId?: string): Promise<string> 
   const config = readUserConfigSync(tenantId);
   const tokens = (await getStoredTokens(tenantId).catch(() => null)) as Record<string, any> | null;
 
+  // A persona's own saved avatar wins when StreamWeaverbot is speaking as that persona.
+  // Keep the StreamWeaver / Twitch bot identity as fallback for personas without one.
   avatarUrl = firstUrl(
+    config.AI_BOT_AVATAR_URL,
+    config.AI_BOT_IDLE_AVATAR_URL,
+    config.PUBLIC_DISCORD_GIF_URL,
+    config.PUBLIC_AVATAR_URL,
     tokens?.botAvatarUrl,
     tokens?.botProfileImageUrl,
     tokens?.botProfileImage,
+    config.TWITCH_BOT_AVATAR_GIF_URL,
     config.TWITCH_BOT_AVATAR_URL,
     config.TWITCH_BOT_PROFILE_IMAGE_URL,
     config.BOT_AVATAR_URL
