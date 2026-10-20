@@ -91,12 +91,28 @@ test('free-only policy prevents paid calls even with credentials and retries fre
 });
 
 
-test('free Pollinations image generation remains available while paid routes are paused', async () => {
+test('free Pollinations image generation uses fresh seeds to avoid repeating cached images', async () => {
   const { generateImageWithPollinations } = await import('../src/services/image-provider');
-  const result = await generateImageWithPollinations({
-    prompt: 'a quiet mountain landscape',
-    providerParams: { safe: true },
-  });
-  assert.ok(result.imageResourceUrl);
-  assert.equal(new URL(String(result.imageResourceUrl)).searchParams.get('safe'), 'true');
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0.1;
+    const first = await generateImageWithPollinations({
+      prompt: 'a quiet mountain landscape',
+      providerParams: { safe: true },
+    });
+    Math.random = () => 0.8;
+    const second = await generateImageWithPollinations({
+      prompt: 'a quiet mountain landscape',
+      providerParams: { safe: true },
+    });
+    assert.ok(first.imageResourceUrl);
+    assert.equal(new URL(String(first.imageResourceUrl)).searchParams.get('safe'), 'true');
+    const firstUrl = new URL(String(first.imageResourceUrl));
+    const secondUrl = new URL(String(second.imageResourceUrl));
+    assert.ok(firstUrl.searchParams.get('seed'), 'every fallback URL must have an explicit seed');
+    assert.notEqual(firstUrl.searchParams.get('seed'), secondUrl.searchParams.get('seed'));
+    assert.notEqual(first.imageResourceUrl, second.imageResourceUrl);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
