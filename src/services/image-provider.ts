@@ -140,7 +140,7 @@ function parseSeaArtModelSpec(value: unknown): { modelNo?: string; modelVerNo?: 
   // Accept the full SeaArt create URL as well as the compact modelNo:modelVerNo
   // form shown in Generation Settings. Process URLs before separator parsing,
   // because the URL scheme itself contains a colon.
-  if (/^https?:\\/\\//i.test(raw)) {
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
     try {
       const url = new URL(raw);
       const modelNo = url.searchParams.get('model_no')
