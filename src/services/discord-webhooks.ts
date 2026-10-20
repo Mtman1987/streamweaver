@@ -145,11 +145,27 @@ export async function sendWebhookMessage(channelId: string, message: string, use
   }
 
   const separator = webhook.url.includes('?') ? '&' : '?';
-  const response = await fetch(`${webhook.url}${separator}wait=true`, {
+  let response = await fetch(`${webhook.url}${separator}wait=true`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
+
+  // A cached Discord webhook can be deleted or invalidated while its URL
+  // remains in tokens/discord-webhooks.json. A 404 is not a role-scope error;
+  // refresh that channel's webhook once, then retry the original send once.
+  if (response.status === 404) {
+    await createWebhookForChannel(channelId, username || webhook.username, avatarUrl || webhook.avatarUrl);
+    const replacement = await getWebhookForChannel(channelId);
+    if (!replacement) throw new Error('Webhook returned 404 and replacement could not be loaded');
+    webhook = replacement;
+    const retrySeparator = webhook.url.includes('?') ? '&' : '?';
+    response = await fetch(`${webhook.url}${retrySeparator}wait=true`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  }
 
   if (!response.ok) {
     throw new Error(`Webhook send failed: ${response.status}`);
