@@ -7,6 +7,7 @@ import {
   ATHENA_CANONICAL_TTS_VOICE,
   ATHENA_LIVEKIT_TTS_DESCRIPTOR,
   TTS_VOICE_OPTIONS,
+  OPENAI_DIRECT_VOICE_OPTIONS,
   normalizeTtsProvider,
   normalizeTtsVoice,
 } from '../src/lib/tts-voices';
@@ -29,6 +30,19 @@ test('TTS catalog contains named Eden voices and the portable Deepgram Athena id
   }
   assert.equal(normalizeTtsVoice('athena'), ATHENA_CANONICAL_TTS_VOICE);
   assert.equal(ATHENA_LIVEKIT_TTS_DESCRIPTOR, 'deepgram/aura-2:athena');
+});
+
+test('direct OpenAI voice catalog keeps distinct IDs for all added speakers', () => {
+  const expected = ['alloy', 'ash', 'ballad', 'coral', 'marin', 'cedar', 'sage', 'verse'];
+  assert.deepEqual(OPENAI_DIRECT_VOICE_OPTIONS.map((voice) => voice.id.slice('openai:'.length)), expected);
+  for (const name of expected) {
+    const voice = TTS_VOICE_OPTIONS.find((option) => option.id === `openai:${name}`);
+    assert.ok(voice, `missing direct OpenAI voice: ${name}`);
+    assert.equal(voice.edenaiVoiceModel, name);
+    assert.equal(voice.providerLabel, 'OpenAI direct — gpt-4o-mini-tts');
+    assert.equal(normalizeTtsVoice(`openai:${name}`), `openai:${name}`);
+  }
+  assert.equal(normalizeTtsVoice('openai:nova'), 'edenai:openai:nova');
 });
 
 test('legacy and unknown voices normalize to curated Eden voices', () => {
