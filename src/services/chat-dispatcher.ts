@@ -4398,6 +4398,25 @@ export async function handleTwitchMessage(channel: string, tags: any, message: s
                 return;
             }
 
+            // On the system Lounge channel, !sr source is an OBS overlay lookup,
+            // not a song request. Keep it ahead of the legacy !sr queue path.
+            if (command === 'sr' && /^(source|overlay|obs)$/i.test(argument)) {
+                if (!isHearMeOutOwner) {
+                    await reply('The broadcaster can get their OBS source with !sr source.', 'bot').catch(() => {});
+                    return;
+                }
+                try {
+                    const result: any = await executeHearMeOutBotAction({
+                        ...actionBase,
+                        action: 'hmo.media.source',
+                    });
+                    await reply('OBS browser source (1920×1080): ' + String(result?.sourceUrl || ''), 'bot').catch(() => {});
+                } catch (error) {
+                    await replyFailure(error);
+                }
+                return;
+            }
+
             if (command === 'sr' || command === 'wr') {
                 if (!argument) {
                     await reply(`@${actualUsername}, usage: !${command} <${command === 'sr' ? 'song or YouTube URL' : 'movie, show, or video'}>`, 'bot').catch(() => {});
