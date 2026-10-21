@@ -42,6 +42,16 @@ test('!play is silently consumed for every tenant without invoking the media act
  });
  assert.equal(handled,true);assert.equal(sent.length,0);assert.equal(replies.length,0);
 });
+test('system Lounge !sr source is routed to OBS source lookup before legacy song queueing', () => {
+ const source=readFileSync(new URL('../src/services/chat-dispatcher.ts',import.meta.url),'utf8');
+ const sourceCommand=source.indexOf("if (command === 'sr' && /^(source|overlay|obs)$/i.test(argument))");
+ const legacyRequest=source.indexOf("if (command === 'sr' || command === 'wr')", sourceCommand);
+ assert(sourceCommand >= 0);
+ assert(legacyRequest > sourceCommand);
+ assert(source.slice(sourceCommand,legacyRequest).includes("action: 'hmo.media.source'"));
+ assert(!source.slice(sourceCommand,legacyRequest).includes("action: 'hmo.media.request'"));
+});
+
 test('global dispatcher silently ignores !play before tenant and shared Lounge handlers', () => {
  const source=readFileSync(new URL('../src/services/chat-dispatcher.ts',import.meta.url),'utf8');
  assert(source.indexOf('!play may belong to another bot') < source.indexOf('await handleTenantMusicCommand('));
