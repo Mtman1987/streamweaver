@@ -85,9 +85,9 @@ test('free-only policy prevents paid calls even with credentials and retries fre
   assert.equal(calls, 2);
   fail = true;
   assert.deepEqual(await Promise.all(Array.from({ length: 20 }, () => generateFreeTTS('Hello.', 'af_heart'))), Array(20).fill(''));
-  assert.equal(calls, 5, 'preferred voice plus two free fallbacks are tried once before cooldown');
+  assert.equal(calls, 3, 'a worker outage makes one request before cooldown; it must not fan out across voices');
   assert.equal(await generateTTS('Another.', undefined, 'trial-test'), '');
-  assert.equal(calls, 5);
+  assert.equal(calls, 3);
 });
 
 

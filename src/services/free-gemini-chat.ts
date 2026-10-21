@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readAICostPolicy } from './ai-cost-policy';
+import { readUserConfigSync } from '@/lib/user-config';
 
 const MODEL = 'gemini-3.5-flash-lite';
 // The latest live sweep only confirmed the primary model. The former
@@ -46,11 +47,12 @@ function releaseSlot(): void {
 }
 
 // Only the operator-verified Fly credential may use the global free-tier policy.
-function key(): string {
-  return String(process.env.GEMINI_API_KEY || '').trim();
+function key(tenantId?: string): string {
+  const config = readUserConfigSync(tenantId);
+  return String(config.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '').trim();
 }
 export function isFreeGeminiConfigured(tenantId?: string): boolean {
-  return readAICostPolicy().geminiFreeTierVerified && Boolean(key());
+  return readAICostPolicy().geminiFreeTierVerified && Boolean(key(tenantId));
 }
 
 export class FreeChatUnavailableError extends Error {
@@ -69,7 +71,7 @@ export async function generateFreeGeminiResponse(
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
   if (!isFreeGeminiConfigured(tenantId)) throw new FreeChatUnavailableError('not_configured');
-  const apiKey = key();
+  const apiKey = key(tenantId);
   const fingerprint = createHash('sha256').update(apiKey).digest('hex');
   const cooldown = cooldowns.get(fingerprint);
   if (cooldown && cooldown.until > Date.now()) throw new FreeChatUnavailableError(cooldown.category);

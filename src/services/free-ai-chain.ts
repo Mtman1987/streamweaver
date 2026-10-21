@@ -5,6 +5,7 @@ import {
   isFreeGeminiConfigured,
 } from './free-gemini-chat';
 import { isSpmtLocalLlmEnabled, requestSpmtLocalLlm } from './spmt-local-llm';
+import { readUserConfigSync } from '@/lib/user-config';
 
 /**
  * Free-tier fallback chain for shared bot AI.
@@ -143,11 +144,12 @@ function safeDetail(value: string): string {
     .slice(0, 300);
 }
 
-function compatKeys(id: CompatId): string[] {
+function compatKeys(id: CompatId, tenantId?: string): string[] {
   const spec = COMPAT[id];
+  const config = readUserConfigSync(tenantId);
   return [spec.keyEnv, ...(spec.additionalKeyEnvs || [])]
-    .map((name) => String(process.env[name] || '').trim())
-    .filter(Boolean);
+    .map((name) => String(config[name] || process.env[name] || '').trim())
+    .filter((key, index, all) => Boolean(key) && all.indexOf(key) === index);
 }
 
 function compatModels(id: CompatId): string[] {
@@ -168,7 +170,7 @@ function compatModels(id: CompatId): string[] {
 function isProviderConfigured(id: FreeProviderId, tenantId?: string): boolean {
   if (id === 'gemini') return isFreeGeminiConfigured(tenantId);
   if (id === 'local') return isSpmtLocalLlmEnabled();
-  return compatKeys(id).length > 0 && compatModels(id).length > 0;
+  return compatKeys(id, tenantId).length > 0 && compatModels(id).length > 0;
 }
 
 function resolveChain(allowed?: readonly string[]): FreeProviderId[] {
@@ -236,11 +238,12 @@ async function requestCompatProvider(
   id: CompatId,
   prompt: string,
   systemPrompt: string,
+  tenantId: string | undefined,
   options: FreeChainOptions,
   fetchImpl: typeof fetch,
 ): Promise<string> {
   const spec = COMPAT[id];
-  const apiKeys = compatKeys(id);
+  const apiKeys = compatKeys(id, tenantId);
   if (!apiKeys.length) throw new ProviderFailure('not_configured', 0);
   const messages = [
     ...(systemPrompt.trim() ? [{ role: 'system', content: systemPrompt.slice(-12_000) }] : []),
@@ -314,7 +317,10 @@ async function requestCompatProvider(
     }
     if (status === 408 || status >= 500) {
       last = { category: 'upstream', cooldownMs: TRANSIENT_COOLDOWN_MS };
-      continue;
+      // A 5xx/timeout is a provider-wide failure. Do not spend another call
+      // on a sibling model from the same provider; the outer chain will move
+      // to an independent provider and this provider is cooled down.
+      break;
     }
     // 400/413/422 and similar describe this request, not the provider. Move on without a cooldown.
     throw new ProviderFailure('upstream', 0, body);
@@ -347,7 +353,7 @@ async function callProvider(
       throw new ProviderFailure('upstream', isTransientLocalFailure(message) ? LOCAL_TRANSIENT_COOLDOWN_MS : TRANSIENT_COOLDOWN_MS, safeDetail(message));
     }
   }
-  return requestCompatProvider(id, prompt, systemPrompt, options, fetchImpl);
+  return requestCompatProvider(id, prompt, systemPrompt, tenantId, options, fetchImpl);
 }
 
 export async function generateFreeChainResponse(

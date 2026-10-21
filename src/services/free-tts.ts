@@ -18,6 +18,13 @@ export function getFreeTTSStatus() {
 const FREE_KOKORO_VOICES = ['af_heart', 'af_bella', 'am_michael'] as const;
 const FREE_TTS_ATTEMPT_TIMEOUT_MS = 12_000;
 
+function shouldTryAnotherVoice(status: number): boolean {
+  // A 4xx can identify an unsupported voice. A timeout, 5xx, or rate limit
+  // describes the worker, not the voice; retrying those with every voice only
+  // multiplies the outage and burns CPU.
+  return status === 400 || status === 404 || status === 422;
+}
+
 function resolveFreeWorkerBase(): URL | null {
   const configured = readAICostPolicy().speechWorkerUrl;
   try {
@@ -49,11 +56,13 @@ export async function generateFreeTTS(text: string, voice: string, strictVoice =
     const base = resolveFreeWorkerBase();
     if (!base) return '';
 
-    // A timeout on the preferred voice must not immediately disable speech.
-    // Try the other free Kokoro voices before opening the short worker cooldown.
+    // Voice fallbacks are for an invalid/retired voice only. If the worker is
+    // down, stop after the first request and cool it down instead of generating
+    // three identical failures for one utterance.
     const voices = strictVoice ? [voice] : [voice, ...FREE_KOKORO_VOICES.filter((candidate) => candidate !== voice)];
     const failures: string[] = [];
     for (const candidate of voices) {
+      let responseStatus = 0;
       try {
         const response = await fetch(new URL('/v1/audio/speech', base), {
           method: 'POST',
@@ -61,6 +70,7 @@ export async function generateFreeTTS(text: string, voice: string, strictVoice =
           body: JSON.stringify({ input: text.slice(0, 2000), voice: candidate }),
           signal: AbortSignal.timeout(FREE_TTS_ATTEMPT_TIMEOUT_MS),
         });
+        responseStatus = response.status;
         if (!response.ok || !String(response.headers.get('content-type')).startsWith('audio/wav')) {
           throw new Error(`HTTP ${response.status}: invalid free voice response`);
         }
@@ -84,6 +94,7 @@ export async function generateFreeTTS(text: string, voice: string, strictVoice =
           voice: candidate, errorName: err.name, errorMessage: err.message.slice(0, 200),
           remainingFallbacks: voices.length - failures.length,
         });
+        if (!shouldTryAnotherVoice(responseStatus)) break;
       }
     }
 
