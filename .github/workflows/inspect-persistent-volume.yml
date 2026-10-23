@@ -29,7 +29,7 @@ jobs:
           fi
           cat > /tmp/export-public.pem <<'PUBKEY'
           -----BEGIN PUBLIC KEY-----
-          MIIBojANBgkqhkiG9w0BAQEFAAOCAYEAsy8quWVueuds6mXw2Lxd
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsy8quWVueuds6mXw2Lxd
           m2CQlIlZuvll0Stp4+rUvfM/55cAe1Aqs9yASbYL5VhhyDy8VOxaT4Xrz5hhkJsW
           Vn9+v+fz1hNjQt1BYo39LswVqWfGvALtC20AmwLHF7+QgvgEG/pLH2L1jDjSIjCB
           R7PQFsRa1h+OLqhv4IVK6nOxcmpZ0iytcO7Ryupi+vyOIOqKRwY5oP/ZH6SV8aus
