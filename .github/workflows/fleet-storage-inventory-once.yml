@@ -1,0 +1,59 @@
+name: One-time Fly fleet storage inventory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fleet-storage-inventory-once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Collect read-only app, machine, and volume metadata
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_MAIN || secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then echo "No Fly API token configured"; exit 1; fi
+          mkdir -p /tmp/fleet
+          flyctl apps list --json > /tmp/fleet/apps.json
+          jq -r '.[] | (.Name // .name // empty)' /tmp/fleet/apps.json | sort -u > /tmp/fleet/app-names.txt
+          : > /tmp/fleet/volume-results.jsonl
+          : > /tmp/fleet/machine-results.jsonl
+          while IFS= read -r app; do
+            [ -n "$app" ] || continue
+            echo "Inspecting metadata for app: $app"
+            if flyctl volumes list --app "$app" --json > "/tmp/fleet/volumes-$app.json" 2>"/tmp/fleet/volumes-$app.err"; then
+              jq -c --arg app "$app" '.[] | {app:$app,volume:.}' "/tmp/fleet/volumes-$app.json" >> /tmp/fleet/volume-results.jsonl || true
+            else
+              printf '%s\n' "{\"app\":\"$app\",\"error\":\"volume metadata unavailable\"}" >> /tmp/fleet/volume-results.jsonl
+            fi
+            if flyctl machines list --app "$app" --json > "/tmp/fleet/machines-$app.json" 2>"/tmp/fleet/machines-$app.err"; then
+              jq -c --arg app "$app" '.[] | {app:$app,machine:.}' "/tmp/fleet/machines-$app.json" >> /tmp/fleet/machine-results.jsonl || true
+            else
+              printf '%s\n' "{\"app\":\"$app\",\"error\":\"machine metadata unavailable\"}" >> /tmp/fleet/machine-results.jsonl
+            fi
+          done < /tmp/fleet/app-names.txt
+          jq -s '.' /tmp/fleet/volume-results.jsonl > /tmp/fleet/volumes.json
+          jq -s '.' /tmp/fleet/machine-results.jsonl > /tmp/fleet/machines.json
+          cp /tmp/fleet/apps.json /tmp/fleet-inventory-apps.json
+          tar -czf /tmp/fly-fleet-inventory.tar.gz -C /tmp/fleet apps.json app-names.txt volumes.json machines.json
+          echo "App count: $(wc -l < /tmp/fleet/app-names.txt)"
+          echo "Volume records: $(jq 'length' /tmp/fleet/volumes.json)"
+          echo "Machine records: $(jq 'length' /tmp/fleet/machines.json)"
+      - name: Upload metadata-only inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: fly-fleet-storage-inventory
+          path: /tmp/fly-fleet-inventory.tar.gz
+          retention-days: 1
+          if-no-files-found: error
