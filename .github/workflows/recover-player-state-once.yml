@@ -1,0 +1,62 @@
+name: Recover StreamWeaver player state (encrypted one-time recovery)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recover-player-state-once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-player-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Export player data and encrypt before upload
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_MAIN || secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "No Fly API token is configured in repository Actions secrets."
+            exit 1
+          fi
+          cat > /tmp/export-public.pem <<'PUBKEY'
+-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAYEAs+KIVdIzX8b6T3D3rGN1
+fWDUrWDYEkDIkHqpWrprjz25oHVQ3wKydiQCCim+56QjAZXCTf0FCkLkUMesZkbR
+BfnWhlX237axyV9d9CIP9eaJt57KiNlvxPeaNHv8J/NfthHMecw4+9ll1stgvrGP
+9zh2YdmPT9inDmK3ZaLi7gepcu8MXiKEEAIyePvEezBCMDL2T9ttUsNivE4VBn5g
+N+3CS7dbGspoQaEbSxy+lMahc4jxUwAB8a0cAgt4XMGSgSwtg3+hgElcuz36/VqD
+22Bz0NBqFhHBsSW1LGM7+hYl2gryN4wLnxVd0VkGZGF48yG+NygfYVzJX1UeLqfc
+uL6lrruK235AYKNeDL+f2lgT7WeqCtjwcRamdbivHyKtXsQiBcpMT675WRpdFy7K
+A4//IdcTUugxelWGfTbTPpZRkJIz6Tbc56dNTn63LnnoyvL8QAicwIi4btRpvBvM
+fJcaVJ4zrYH0Q8PwYSQaVQEmEdzCHkjEhwGr3o/CXcrLAgMBAAE=
+-----END PUBLIC KEY-----
+PUBKEY
+          echo "Exporting persistent player/user/game state; credentials and media caches are excluded."
+          timeout 300s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf - -C /data runtime/data runtime/streamweaver-main/data data tenants runtime/tenants 2>/dev/null | gzip -1 | base64'" > /tmp/player-state.b64
+          base64 -d /tmp/player-state.b64 > /tmp/player-state.tar.gz
+          tar -tzf /tmp/player-state.tar.gz > /tmp/player-state-list.txt
+          echo "Archive entries: $(wc -l < /tmp/player-state-list.txt); bytes: $(wc -c < /tmp/player-state.tar.gz)"
+          openssl rand -hex 32 > /tmp/player-state-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -in /tmp/player-state.tar.gz -out /tmp/player-state.tar.gz.enc -pass file:/tmp/player-state-password
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/export-public.pem -in /tmp/player-state-password -out /tmp/player-state.key.enc
+          rm -f /tmp/player-state.b64 /tmp/player-state.tar.gz /tmp/player-state-password
+          echo "Encrypted recovery archive ready."
+      - name: Upload encrypted recovery archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamweaver-player-state-encrypted-v2
+          path: |
+            /tmp/player-state.tar.gz.enc
+            /tmp/player-state.key.enc
+            /tmp/player-state-list.txt
+          retention-days: 1
+          if-no-files-found: error
