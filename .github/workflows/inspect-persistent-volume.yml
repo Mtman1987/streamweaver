@@ -1,0 +1,34 @@
+name: Inspect persistent StreamWeaver volume (read-only)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inspect-persistent-volume.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-volume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: List volume and machine metadata only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_MAIN || secrets.FLY_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "No Fly API token is configured in repository Actions secrets."
+            exit 1
+          fi
+          echo "--- StreamWeaver volumes ---"
+          flyctl volumes list --app streamweaver-new
+          echo "--- StreamWeaver machines ---"
+          flyctl machines list --app streamweaver-new
+          echo "Read-only inventory complete; no machine or volume state was changed."
