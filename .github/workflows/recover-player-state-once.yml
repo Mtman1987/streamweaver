@@ -29,7 +29,7 @@ jobs:
           fi
           printf '%s\n' '-----BEGIN PUBLIC KEY-----' 'MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAs+KIVdIzX8b6T3D3rGN1fWDUrWDYEkDIkHqpWrprjz25oHVQ3wKydiQCCim+56QjAZXCTf0FCkLkUMesZkbRBfnWhlX237axyV9d9CIP9eaJt57KiNlvxPeaNHv8J/NfthHMecw4+9ll1stgvrGP9zh2YdmPT9inDmK3ZaLi7gepcu8MXiKEEAIyePvEezBCMDL2T9ttUsNivE4VBn5gN+3CS7dbGspoQaEbSxy+lMahc4jxUwAB8a0cAgt4XMGSgSwtg3+hgElcuz36/VqD22Bz0NBqFhHBsSW1LGM7+hYl2gryN4wLnxVd0VkGZGF48yG+NygfYVzJX1UeLqfcuL6lrruK235AYKNeDL+f2lgT7WeqCtjwcRamdbivHyKtXsQiBcpMT675WRpdFy7KA4//IdcTUugxelWGfTbTPpZRkJIz6Tbc56dNTn63LnnoyvL8QAicwIi4btRpvBvMfJcaVJ4zrYH0Q8PwYSQaVQEmEdzCHkjEhwGr3o/CXcrLAgMBAAE=' '-----END PUBLIC KEY-----' > /tmp/export-public.pem
           echo "Exporting persistent player/user/game state; credentials and media caches are excluded."
-          timeout 300s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf - -C /data runtime/data runtime/streamweaver-main/data data tenants runtime/tenants 2>/dev/null | gzip -1 | base64'" > /tmp/player-state.b64
+          timeout 300s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf - -C /data runtime/data runtime/streamweaver-main/data runtime/global/pokedex data tenants runtime/tenants 2>/dev/null | gzip -1 | base64'" > /tmp/player-state.b64
           base64 -d /tmp/player-state.b64 > /tmp/player-state.tar.gz
           tar -tzf /tmp/player-state.tar.gz > /tmp/player-state-list.txt
           echo "Archive entries: $(wc -l < /tmp/player-state-list.txt); bytes: $(wc -c < /tmp/player-state.tar.gz)"
