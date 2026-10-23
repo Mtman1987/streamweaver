@@ -41,7 +41,7 @@ jobs:
           -----END PUBLIC KEY-----
           PUBKEY
           echo "Exporting player/runtime state without large Pokedex HTML pages..."
-          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar --exclude=runtime/global/pokedex -cf /tmp/streamweaver-state.tar -C /data runtime/data runtime/global runtime/streamweaver-main/data runtime/commands runtime/actions runtime/config runtime/tokens runtime/tenants data global commands actions config tokens tenants && gzip -1 -c /tmp/streamweaver-state.tar | base64'" > /tmp/streamweaver-state.b64
+          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar --exclude=runtime/global/pokedex -cf - -C /data runtime/data runtime/global runtime/streamweaver-main/data runtime/commands runtime/actions runtime/config runtime/tokens runtime/tenants data global commands actions config tokens tenants | gzip -1 | base64'" > /tmp/streamweaver-state.b64
           base64 -d /tmp/streamweaver-state.b64 > /tmp/streamweaver-state.tar.gz
           tar -tzf /tmp/streamweaver-state.tar.gz > /tmp/streamweaver-state-list.txt
           echo "State archive files: $(wc -l < /tmp/streamweaver-state-list.txt); bytes: $(wc -c < /tmp/streamweaver-state.tar.gz)"
@@ -50,7 +50,7 @@ jobs:
           openssl pkeyutl -encrypt -pubin -inkey /tmp/export-public.pem -in /tmp/state-password -out /tmp/streamweaver-state.key.enc
           rm -f /tmp/streamweaver-state.b64 /tmp/streamweaver-state.tar.gz /tmp/state-password
           echo "Exporting Pokedex HTML pages as a separate bundle..."
-          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf /tmp/streamweaver-pokedex.tar -C /data runtime/global/pokedex && gzip -1 -c /tmp/streamweaver-pokedex.tar | base64'" > /tmp/streamweaver-pokedex.b64
+          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf - -C /data runtime/global/pokedex | gzip -1 | base64'" > /tmp/streamweaver-pokedex.b64
           base64 -d /tmp/streamweaver-pokedex.b64 > /tmp/streamweaver-pokedex.tar.gz
           tar -tzf /tmp/streamweaver-pokedex.tar.gz > /tmp/streamweaver-pokedex-list.txt
           echo "Pokedex archive files: $(wc -l < /tmp/streamweaver-pokedex-list.txt); bytes: $(wc -c < /tmp/streamweaver-pokedex.tar.gz)"
