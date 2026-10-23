@@ -25,8 +25,24 @@ jobs:
           set -euo pipefail
           if [ -z "${FLY_API_TOKEN:-}" ]; then echo "No Fly API token configured"; exit 1; fi
           mkdir -p /tmp/fleet
-          flyctl apps list --json > /tmp/fleet/apps.json
-          jq -r '.[] | (.Name // .name // empty)' /tmp/fleet/apps.json | sort -u > /tmp/fleet/app-names.txt
+          cat > /tmp/fleet/app-names.txt <<'APPS'
+          streamweaver-new
+          hearmeout-main
+          hmo-dj-worker
+          hmo-dj-worker-new
+          chat-tag-new
+          chat-tag-bot-new
+          discord-stream-hub-new
+          dsh-clip-worker
+          spacemountain-live
+          spacemountainlive
+          spmt-live
+          fly-machine-rotator
+          rotator
+          apollostation
+          APPS
+          sed -i 's/^          //' /tmp/fleet/app-names.txt
+          printf '[]\n' > /tmp/fleet/apps.json
           : > /tmp/fleet/volume-results.jsonl
           : > /tmp/fleet/machine-results.jsonl
           while IFS= read -r app; do
