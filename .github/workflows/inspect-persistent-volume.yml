@@ -1,4 +1,4 @@
-name: Recover StreamWeaver player and runtime data (encrypted export)
+name: Recover StreamWeaver player state (encrypted export)
 
 on:
   push:
@@ -11,13 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  export-player-data:
+  export-player-state:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Export persistent state in size-bounded encrypted bundles
+      - name: Export player data and encrypt before upload
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_MAIN || secrets.FLY_API_TOKEN }}
         shell: bash
@@ -40,40 +40,22 @@ jobs:
           AUesZ6Sja8yAzbzWz/RKzXGhUO9pFGogOlokNyrGiY2rAgMBAAE=
           -----END PUBLIC KEY-----
           PUBKEY
-          echo "Exporting player/runtime state without large Pokedex HTML pages..."
-          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar --exclude=runtime/global/pokedex -cf - -C /data runtime/data runtime/global runtime/streamweaver-main/data runtime/commands runtime/actions runtime/config runtime/tokens runtime/tenants data global commands actions config tokens tenants | gzip -1 | base64'" > /tmp/streamweaver-state.b64
-          base64 -d /tmp/streamweaver-state.b64 > /tmp/streamweaver-state.tar.gz
-          tar -tzf /tmp/streamweaver-state.tar.gz > /tmp/streamweaver-state-list.txt
-          echo "State archive files: $(wc -l < /tmp/streamweaver-state-list.txt); bytes: $(wc -c < /tmp/streamweaver-state.tar.gz)"
-          openssl rand -hex 32 > /tmp/state-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -in /tmp/streamweaver-state.tar.gz -out /tmp/streamweaver-state.tar.gz.enc -pass file:/tmp/state-password
-          openssl pkeyutl -encrypt -pubin -inkey /tmp/export-public.pem -in /tmp/state-password -out /tmp/streamweaver-state.key.enc
-          rm -f /tmp/streamweaver-state.b64 /tmp/streamweaver-state.tar.gz /tmp/state-password
-          echo "Exporting Pokedex HTML pages as a separate bundle..."
-          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf - -C /data runtime/global/pokedex | gzip -1 | base64'" > /tmp/streamweaver-pokedex.b64
-          base64 -d /tmp/streamweaver-pokedex.b64 > /tmp/streamweaver-pokedex.tar.gz
-          tar -tzf /tmp/streamweaver-pokedex.tar.gz > /tmp/streamweaver-pokedex-list.txt
-          echo "Pokedex archive files: $(wc -l < /tmp/streamweaver-pokedex-list.txt); bytes: $(wc -c < /tmp/streamweaver-pokedex.tar.gz)"
-          openssl rand -hex 32 > /tmp/pokedex-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -in /tmp/streamweaver-pokedex.tar.gz -out /tmp/streamweaver-pokedex.tar.gz.enc -pass file:/tmp/pokedex-password
-          openssl pkeyutl -encrypt -pubin -inkey /tmp/export-public.pem -in /tmp/pokedex-password -out /tmp/streamweaver-pokedex.key.enc
-          rm -f /tmp/streamweaver-pokedex.b64 /tmp/streamweaver-pokedex.tar.gz /tmp/pokedex-password
-          echo "Both export bundles are encrypted before artifact upload."
-      - name: Upload encrypted player/runtime state (1-day retention)
+          echo "Exporting only persistent player/user/game state; tokens, Discord webhook files, action definitions, and media caches are excluded."
+          timeout 180s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf - -C /data runtime/data runtime/streamweaver-main/data data tenants runtime/tenants | gzip -1 | base64'" > /tmp/streamweaver-player-state.b64
+          base64 -d /tmp/streamweaver-player-state.b64 > /tmp/streamweaver-player-state.tar.gz
+          tar -tzf /tmp/streamweaver-player-state.tar.gz > /tmp/streamweaver-player-state-list.txt
+          echo "Player-state archive files: $(wc -l < /tmp/streamweaver-player-state-list.txt); bytes: $(wc -c < /tmp/streamweaver-player-state.tar.gz)"
+          openssl rand -hex 32 > /tmp/player-state-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -in /tmp/streamweaver-player-state.tar.gz -out /tmp/streamweaver-player-state.tar.gz.enc -pass file:/tmp/player-state-password
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/export-public.pem -in /tmp/player-state-password -out /tmp/streamweaver-player-state.key.enc
+          rm -f /tmp/streamweaver-player-state.b64 /tmp/streamweaver-player-state.tar.gz /tmp/player-state-password
+          echo "Encrypted player-state archive ready."
+      - name: Upload encrypted player-state archive (1-day retention)
         uses: actions/upload-artifact@v4
         with:
-          name: streamweaver-state-encrypted
+          name: streamweaver-player-state-encrypted
           path: |
-            /tmp/streamweaver-state.tar.gz.enc
-            /tmp/streamweaver-state.key.enc
-          retention-days: 1
-          if-no-files-found: error
-      - name: Upload encrypted Pokedex pages (1-day retention)
-        uses: actions/upload-artifact@v4
-        with:
-          name: streamweaver-pokedex-encrypted
-          path: |
-            /tmp/streamweaver-pokedex.tar.gz.enc
-            /tmp/streamweaver-pokedex.key.enc
+            /tmp/streamweaver-player-state.tar.gz.enc
+            /tmp/streamweaver-player-state.key.enc
           retention-days: 1
           if-no-files-found: error
