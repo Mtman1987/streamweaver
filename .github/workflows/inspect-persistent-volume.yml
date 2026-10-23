@@ -13,11 +13,11 @@ permissions:
 jobs:
   inspect-volume:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: List volume and machine metadata only
+      - name: List volume metadata and persistent file names
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_MAIN || secrets.FLY_API_TOKEN }}
         shell: bash
@@ -31,4 +31,6 @@ jobs:
           flyctl volumes list --app streamweaver-new
           echo "--- StreamWeaver machines ---"
           flyctl machines list --app streamweaver-new
+          echo "--- Read-only /data file inventory ---"
+          timeout 45s flyctl ssh console --app streamweaver-new -C 'find /data -xdev -maxdepth 4 -type f -printf "%p %s bytes\n"'
           echo "Read-only inventory complete; no machine or volume state was changed."
