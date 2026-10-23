@@ -1,4 +1,4 @@
-name: Inspect persistent StreamWeaver volume (read-only)
+name: Recover StreamWeaver player and runtime data (encrypted export)
 
 on:
   push:
@@ -11,13 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  inspect-volume:
+  export-player-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 12
     steps:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: List volume metadata and persistent file names
+      - name: Read persistent runtime state and encrypt before upload
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_MAIN || secrets.FLY_API_TOKEN }}
         shell: bash
@@ -27,10 +27,36 @@ jobs:
             echo "No Fly API token is configured in repository Actions secrets."
             exit 1
           fi
-          echo "--- StreamWeaver volumes ---"
-          flyctl volumes list --app streamweaver-new
-          echo "--- StreamWeaver machines ---"
-          flyctl machines list --app streamweaver-new
-          echo "--- Read-only /data file inventory ---"
-          timeout 45s flyctl ssh console --app streamweaver-new -C 'find /data -xdev -maxdepth 4 -type f -printf "%p %s bytes\n"'
-          echo "Read-only inventory complete; no machine or volume state was changed."
+          cat > /tmp/export-public.pem <<'PUBKEY'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAsy8quWVueuds6mXw2Lxd
+          m2CQlIlZuvll0Stp4+rUvfM/55cAe1Aqs9yASbYL5VhhyDy8VOxaT4Xrz5hhkJsW
+          Vn9+v+fz1hNjQt1BYo39LswVqWfGvALtC20AmwLHF7+QgvgEG/pLH2L1jDjSIjCB
+          R7PQFsRa1h+OLqhv4IVK6nOxcmpZ0iytcO7Ryupi+vyOIOqKRwY5oP/ZH6SV8aus
+          2pmxAOJHDjKgnM8e7CJu8OuwIposxu9sp0ng4jnlOoQx8EKZ58exz5vdqxur0E6b
+          xmfTLhQq1gjmpeZieyv2eO/0qXKM1EN8nrVVayJu536MGFoMbDVQmAg4SzVobK/K
+          HhvG+WZxgwvS9MMkvZNUWhS4L87LQ6I7loApVjN/sSPBwl1lVPH5z/NdCledLlT9
+          M+3NFx1rDnhTEh3t9KVHysmlrRhPmhUzSPDmq5gsyoCeA1wqVlcAewnIsCJvn6HS
+          AUesZ6Sja8yAzbzWz/RKzXGhUO9pFGogOlokNyrGiY2rAgMBAAE=
+          -----END PUBLIC KEY-----
+          PUBKEY
+          echo "Archiving runtime data, user stats, points, collections, commands, actions, configs, tenant data, tokens, and user Pokedex pages. The Discord media cache is excluded."
+          timeout 240s flyctl ssh console --app streamweaver-new -C "sh -c 'tar -cf /tmp/streamweaver-player-data.tar -C /data runtime/data runtime/global runtime/streamweaver-main/data runtime/commands runtime/actions runtime/config runtime/tokens runtime/tenants data global commands actions config tokens tenants && gzip -1 -c /tmp/streamweaver-player-data.tar | base64'" > /tmp/streamweaver-player-data.b64
+          base64 -d /tmp/streamweaver-player-data.b64 > /tmp/streamweaver-player-data.tar.gz
+          tar -tzf /tmp/streamweaver-player-data.tar.gz > /tmp/streamweaver-archive-list.txt
+          echo "Archive file count: $(wc -l < /tmp/streamweaver-archive-list.txt)"
+          echo "Archive size (bytes): $(wc -c < /tmp/streamweaver-player-data.tar.gz)"
+          openssl rand -hex 32 > /tmp/export-aes-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -in /tmp/streamweaver-player-data.tar.gz -out /tmp/streamweaver-player-data.tar.gz.enc -pass file:/tmp/export-aes-password
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/export-public.pem -in /tmp/export-aes-password -out /tmp/streamweaver-player-data.key.enc
+          rm -f /tmp/streamweaver-player-data.b64 /tmp/streamweaver-player-data.tar.gz /tmp/export-aes-password
+          echo "Encrypted export prepared. Raw player data and tokens are not uploaded to the public artifact."
+      - name: Upload encrypted recovery archive (1-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamweaver-player-data-encrypted
+          path: |
+            /tmp/streamweaver-player-data.tar.gz.enc
+            /tmp/streamweaver-player-data.key.enc
+          retention-days: 1
+          if-no-files-found: error
