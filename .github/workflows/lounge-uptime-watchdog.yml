@@ -187,9 +187,54 @@ jobs:
           echo "::error::StreamWeaver did not return status=ok after the bounded recovery attempt."
           exit 1
 
+      - name: Recheck Lounge surfaces after runtime recovery
+        if: ${{ steps.health.outputs.state == 'unreachable' && steps.canary.outputs.reachable == 'true' }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.error, urllib.request, sys
+
+          checks = [
+              ("Lounge overlay", "https://spmt.live/tenant/mtman1987/lounge", "marker", "spmt-commercial-ready"),
+              ("Chat Tag Lounge overlay", "https://chat-tag-new.fly.dev/overlay/preview?compact=lounge", "marker", 'data-chat-tag-rotation="player-cards-v3"'),
+              ("Lounge media program", "https://hmo-dj-worker.fly.dev:4444/lounge/media/program", "json", None),
+              ("Lounge status strip", "https://streamweaver-new.fly.dev/api/lounge/status-strip", "status_strip", None),
+          ]
+          failures = []
+          for label, url, kind, marker in checks:
+              try:
+                  request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "SPMT-Lounge-Uptime-Watchdog/1.0", "Cache-Control": "no-cache"})
+                  with urllib.request.urlopen(request, timeout=10) as response:
+                      body = response.read(2_000_000).decode("utf-8", "replace")
+                      if response.status != 200:
+                          raise RuntimeError(f"HTTP {response.status}")
+                      if kind == "marker" and marker not in body:
+                          raise RuntimeError("required overlay marker missing")
+                      if kind == "json" and not isinstance(json.loads(body), dict):
+                          raise RuntimeError("expected JSON object")
+                      if kind == "status_strip":
+                          payload = json.loads(body)
+                          if not isinstance(payload, dict) or not {"events", "games", "spotlight", "media"}.issubset(payload):
+                              raise RuntimeError("status strip response shape invalid")
+                  print(f"{label}: healthy after recovery")
+              except Exception as error:
+                  detail = f"{label}: {type(error).__name__}"
+                  print(f"::error::{detail}")
+                  failures.append(detail)
+          if failures:
+              sys.exit(1)
+          PY
+
       - name: Fail clearly when app health needs a non-restart fix
         if: ${{ steps.health.outputs.state == 'not_ready' || steps.health.outputs.state == 'unexpected' || (steps.health.outputs.state == 'unreachable' && steps.canary.outputs.reachable != 'true') }}
         shell: bash
         run: |
           echo "::error::No automatic restart was performed. Review the StreamWeaver health evidence and canary result above."
+          exit 1
+
+      - name: Fail if Lounge surfaces are unhealthy while StreamWeaver is responding
+        if: ${{ steps.health.outputs.state == 'healthy' && (steps.lounge.outputs.overlay_state != 'healthy' || steps.lounge.outputs.chat_tag_state != 'healthy' || steps.lounge.outputs.media_source_state != 'healthy' || steps.lounge.outputs.status_strip_state != 'healthy') }}
+        shell: bash
+        run: |
+          echo "::error::One or more Lounge surface checks failed while StreamWeaver health was reachable. See the Lounge surface checks summary; this is not automatically treated as a StreamWeaver machine crash."
           exit 1
