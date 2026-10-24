@@ -1,0 +1,195 @@
+name: Lounge 24/7 Uptime Watchdog
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/lounge-uptime-watchdog.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lounge-uptime-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Check Lounge dependencies and recover StreamWeaver if unreachable
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check independent SPMT network canary
+        id: canary
+        shell: bash
+        run: |
+          if curl --fail --silent --show-error --max-time 10 https://spmt.live/ -o /dev/null; then
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            echo "Independent canary https://spmt.live/ is reachable."
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SPMT canary is unreachable from this runner; automatic restarts are disabled for ambiguous network failures."
+          fi
+
+      - name: Probe StreamWeaver health (3 bounded attempts)
+        id: health
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.error, urllib.request
+
+          url = "https://streamweaver-new.fly.dev/api/health"
+          state = "unreachable"
+          details = ""
+          build = "unknown"
+          for attempt in range(1, 4):
+              try:
+                  request = urllib.request.Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache"})
+                  try:
+                      with urllib.request.urlopen(request, timeout=8) as response:
+                          status = response.status
+                          raw = response.read(16384)
+                  except urllib.error.HTTPError as error:
+                      status = error.code
+                      raw = error.read(16384)
+                  payload = json.loads(raw.decode("utf-8", "replace")) if raw else {}
+                  if status == 200 and payload.get("status") == "ok":
+                      state = "healthy"
+                      build = str(payload.get("buildSha", "unknown"))
+                      details = f"HTTP 200; build {build}"
+                      break
+                  if payload.get("status") == "not-ready":
+                      state = "not_ready"
+                      names = payload.get("dependencies", {}).get("serviceCredentials", {}).get("missingSecretNames", [])
+                      details = "readiness configuration incomplete; missing variable names: " + ", ".join(str(name) for name in names)
+                      break
+                  if status < 500 and status != 200:
+                      state = "unexpected"
+                      details = f"HTTP {status}; automatic restart suppressed"
+                      break
+                  details = f"HTTP {status}; attempt {attempt}/3"
+              except Exception as error:
+                  details = f"{type(error).__name__}; attempt {attempt}/3"
+              if attempt < 3:
+                  time.sleep(10)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"state={state}\n")
+              output.write(f"build={build}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(f"## StreamWeaver health\n\n- State: **{state}**\n- Build SHA: `{build}`\n- Evidence: {details}\n")
+          print(f"StreamWeaver health state: {state}; {details}")
+          PY
+
+      - name: Probe Lounge overlay, media source, and status strip
+        id: lounge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+
+          checks = [
+              ("overlay", "Lounge overlay", "https://spmt.live/tenant/mtman1987/lounge", "spmt-commercial-ready"),
+              ("chat_tag", "Chat Tag Lounge overlay", "https://chat-tag-new.fly.dev/overlay/preview?compact=lounge", 'data-chat-tag-rotation="player-cards-v3"'),
+          ]
+          results = {}
+          lines = []
+          for key, label, url, marker in checks:
+              try:
+                  request = urllib.request.Request(url, headers={"User-Agent": "SPMT-Lounge-Uptime-Watchdog/1.0", "Cache-Control": "no-cache"})
+                  with urllib.request.urlopen(request, timeout=10) as response:
+                      body = response.read(2_000_000).decode("utf-8", "replace")
+                      ok = response.status == 200 and marker in body
+                      state = "healthy" if ok else f"unexpected_http_or_marker_{response.status}"
+              except urllib.error.HTTPError as error:
+                  state = f"http_{error.code}"
+              except Exception as error:
+                  state = type(error).__name__
+              results[key] = state
+              lines.append(f"- {label}: **{state}**")
+              print(f"{label}: {state}")
+
+          endpoints = [
+              ("media_source", "Lounge media program", "https://hmo-dj-worker.fly.dev:4444/lounge/media/program", ("json", None)),
+              ("status_strip", "StreamWeaver Lounge status strip", "https://streamweaver-new.fly.dev/api/lounge/status-strip", ("keys", {"events", "games", "spotlight", "media"})),
+          ]
+          for key, label, url, validation in endpoints:
+              try:
+                  request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "SPMT-Lounge-Uptime-Watchdog/1.0", "Cache-Control": "no-cache"})
+                  with urllib.request.urlopen(request, timeout=10) as response:
+                      payload = json.loads(response.read(1_000_000).decode("utf-8", "replace"))
+                      if response.status == 200 and validation[0] == "json" and isinstance(payload, dict):
+                          state = "healthy"
+                      elif response.status == 200 and validation[0] == "keys" and validation[1].issubset(payload.keys()):
+                          state = "healthy"
+                      else:
+                          state = f"invalid_response_{response.status}"
+              except urllib.error.HTTPError as error:
+                  state = f"http_{error.code}"
+              except Exception as error:
+                  state = type(error).__name__
+              results[key] = state
+              lines.append(f"- {label}: **{state}**")
+              print(f"{label}: {state}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for key, value in results.items():
+                  output.write(f"{key}_state={value}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("\n## Lounge surface checks\n\n" + "\n".join(lines) + "\n")
+          PY
+
+      - name: Install Fly CLI only when an automatic recovery is warranted
+        if: ${{ steps.health.outputs.state == 'unreachable' && steps.canary.outputs.reachable == 'true' }}
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Recover one existing StreamWeaver machine after confirmed health failure
+        if: ${{ steps.health.outputs.state == 'unreachable' && steps.canary.outputs.reachable == 'true' }}
+        shell: bash
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          machines="$(flyctl machine list --app streamweaver-new --json)"
+          mapfile -t started < <(printf '%s' "$machines" | jq -r '.[] | select(.state == "started") | .id')
+          mapfile -t stopped < <(printf '%s' "$machines" | jq -r '.[] | select(.state == "stopped") | .id')
+
+          if [ "${#started[@]}" -eq 1 ]; then
+            echo "Health failed after three probes; restarting the single existing StreamWeaver machine."
+            flyctl machine restart "${started[0]}" --app streamweaver-new --yes
+          elif [ "${#started[@]}" -eq 0 ] && [ "${#stopped[@]}" -eq 1 ]; then
+            echo "Health failed and the single existing StreamWeaver machine is stopped; starting it."
+            flyctl machine start "${stopped[0]}" --app streamweaver-new --yes
+          else
+            echo "::error::Recovery refused: expected exactly one started machine, or no started machine and exactly one stopped machine. No machine was changed."
+            exit 1
+          fi
+
+      - name: Verify health after recovery
+        if: ${{ steps.health.outputs.state == 'unreachable' && steps.canary.outputs.reachable == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 15); do
+            if curl --fail --silent --show-error --max-time 8 https://streamweaver-new.fly.dev/api/health -o "$RUNNER_TEMP/lounge-health.json"; then
+              if jq -e '.status == "ok"' "$RUNNER_TEMP/lounge-health.json" >/dev/null; then
+                echo "Recovered: StreamWeaver health endpoint returned status=ok."
+                cat "$RUNNER_TEMP/lounge-health.json" | jq '{status, timestamp, service, buildSha}'
+                exit 0
+              fi
+            fi
+            echo "Waiting for StreamWeaver health after recovery ($attempt/15)."
+            sleep 10
+          done
+          echo "::error::StreamWeaver did not return status=ok after the bounded recovery attempt."
+          exit 1
+
+      - name: Fail clearly when app health needs a non-restart fix
+        if: ${{ steps.health.outputs.state == 'not_ready' || steps.health.outputs.state == 'unexpected' || (steps.health.outputs.state == 'unreachable' && steps.canary.outputs.reachable != 'true') }}
+        shell: bash
+        run: |
+          echo "::error::No automatic restart was performed. Review the StreamWeaver health evidence and canary result above."
+          exit 1
