@@ -525,16 +525,22 @@ function detectExplicitAction(message: string): BotActionRequest | null {
   if (/\b(?:restart|reboot|power[- ]?cycle|turn off and (?:back )?on)\b.*\bspotlight\b|\bspotlight\b.*\b(?:restart|reboot|power[- ]?cycle)\b/.test(value)) {
     return { action: 'sw.lounge.spotlight.restart', args: {}, detection: 'explicit' };
   }
+  // Resolve directional layout requests before the generic "bump/swap" toggle.
+  // People phrase this naturally ("put the movie on the big screen", "make
+  // Spotlight the main window"); those are installed Lounge actions, not an
+  // unsupported request that should fall through to Stella's generic AI chat.
+  const targetMain = value.match(/\b(?:put|move|show|focus|bring|make|bump|promote|feature|switch)\b.*\b(movie|media|hearmeout|hear me out|spotlight|stream|streamer)\b.*\b(?:on|in|to|as)?\s*(?:the\s+)?(?:main|big|large|primary)\s*(?:window|screen|stage|view)?\b/);
+  if (targetMain) {
+    const target = /\b(?:movie|media|hearmeout|hear me out)\b/.test(targetMain[1]) ? 'media' : 'stream';
+    return { action: 'sw.lounge.layout', args: { target }, detection: 'explicit' };
+  }
   if (
-    /\b(?:swap|switch|flip)\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them)\b|\bbump\s+(?:(?:the|those|these)\s+)?(?:screens|windows|players|them|spotlight|stream|movie|media)\b/.test(value)
-    || /\b(?:swap|switch|flip)\b.*\b(?:media|movie|hearmeout|hear me out)\b.*\b(?:spotlight|stream|streamer)\b/.test(value)
-    || /\b(?:swap|switch|flip)\b.*\b(?:spotlight|stream|streamer)\b.*\b(?:media|movie|hearmeout|hear me out)\b/.test(value)
+    /\b(?:swap|switch|flip|toggle)\s+(?:(?:the|those|these|main|big)\s+)?(?:screens?|windows?|players?|stages?|views?|them)\b|\bbump\s+(?:(?:the|those|these|current|main|big|small)\s+)*(?:screens?|windows?|players?|stages?|views?|them|spotlight|stream|streamer|movie|media|hearmeout|hear me out)\b/.test(value)
+    || /\b(?:swap|switch|flip|toggle)\b.*\b(?:media|movie|hearmeout|hear me out)\b.*\b(?:spotlight|stream|streamer)\b/.test(value)
+    || /\b(?:swap|switch|flip|toggle)\b.*\b(?:spotlight|stream|streamer)\b.*\b(?:media|movie|hearmeout|hear me out)\b/.test(value)
+    || /\b(?:make|put|move|bring|show)\b.*\b(?:the\s+)?(?:screen|window|stage|view)\b.*\b(?:bigger|larger|main|big)\b/.test(value)
   ) {
     return { action: 'sw.lounge.layout', args: { target: 'toggle' }, detection: 'explicit' };
-  }
-  if (/\b(?:put|move|show|focus|bring)\b.*\b(?:movie|media|hearmeout|hear me out|spotlight|stream|streamer)\b.*\b(?:main|big|large)\s*(?:window|screen|stage)?\b/.test(value)) {
-    const target = /\b(?:movie|media|hearmeout|hear me out)\b/.test(value) ? 'media' : 'stream';
-    return { action: 'sw.lounge.layout', args: { target }, detection: 'explicit' };
   }
   if (/\b(?:start|show|turn on)\b.*\bbrb\b|\b(?:brb|be right back)\s+(?:player|screen)\b/.test(value)) {
     return { action: 'sw.lounge.brb', args: { control: 'start' }, detection: 'explicit' };
