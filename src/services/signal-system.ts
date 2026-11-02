@@ -4,7 +4,7 @@ import { globalPath, listTenants } from '../lib/tenant';
 import { getBotName } from '../lib/bot-settings-store';
 import { readWorldLore } from '../lib/world-lore-store';
 import { getSpmtEasterEggEntitlement } from '../lib/spmt-easter-eggs';
-import { getDiscordStreamHubDefaultGuildId, postDiscordStreamHubSignalDrop, toggleDiscordStreamHubSignalSeeker } from './discord-stream-hub';
+import { getDiscordStreamHubDefaultGuildId, getDiscordStreamHubUrl, postDiscordStreamHubSignalDrop, toggleDiscordStreamHubSignalSeeker } from './discord-stream-hub';
 import { sendStructuredDiscordReply, type DiscordReplySpeaker } from './discord-structured-replies';
 import { resolveDiscordBotThumbnailUrl } from './discord-branding';
 import { sendWebhookMessage } from './discord-webhooks';
@@ -313,7 +313,7 @@ async function postDiscordStreamHubSignal(input: {
   sourceMessageId?: string;
   signalText: string;
 }): Promise<{ messageId?: string | null; isLive?: boolean }> {
-  const base = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || 'https://discord-stream-hub-new.fly.dev').replace(/\/$/, '');
+  const base = getDiscordStreamHubUrl();
   const secret = String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();
   if (!secret) throw new Error('DSH service secret is not configured');
   const response = await fetch(`${base}/api/discord/manual-shoutout`, {
@@ -336,7 +336,7 @@ async function postDiscordStreamHubSignal(input: {
 }
 
 async function resolveDiscordStreamHubSignalDestination(tenantId: string): Promise<{ guildId: string; channelId: string }> {
-  const base = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || 'https://discord-stream-hub-new.fly.dev').replace(/\/$/, '');
+  const base = getDiscordStreamHubUrl();
   const secret = String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();
   if (!secret) throw new Error('DSH service secret is not configured');
   const destinationUrl = new URL(`${base}/api/internal/signal/channel`);
