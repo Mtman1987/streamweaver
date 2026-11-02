@@ -220,6 +220,7 @@ export async function getDiscordStreamHubDefaultGuildId(): Promise<string> {
 }
 
 export async function postDiscordStreamHubSignalDrop(input: {
+  tenantId: string;
   guildId: string;
   channelId: string;
   channelName: string;
@@ -231,6 +232,7 @@ export async function postDiscordStreamHubSignalDrop(input: {
 }
 
 export async function toggleDiscordStreamHubSignalSeeker(input: {
+  tenantId: string;
   twitchUserId: string;
   twitchUsername: string;
   action?: 'join' | 'leave' | 'toggle';

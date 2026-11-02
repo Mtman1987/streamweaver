@@ -218,6 +218,7 @@ async function postSignalClue(channelId: string, guildId: string, channelName: s
   const clue = generateSignalClue();
   const avatarUrl = await resolveDiscordBotThumbnailUrl(speaker.tenantId).catch(() => '');
   const posted = await postDiscordStreamHubSignalDrop({
+    tenantId: SIGNAL_TWITCH_TENANT_ID,
     guildId,
     channelId,
     channelName,
@@ -431,6 +432,7 @@ export async function handleTwitchSignalCommand(input: {
   const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim();
   if (!signalText) {
     const seeker = await toggleDiscordStreamHubSignalSeeker({
+      tenantId: input.tenantId || SIGNAL_TWITCH_TENANT_ID,
       twitchUserId: input.providerUserId,
       twitchUsername: input.username,
       action: 'toggle',
