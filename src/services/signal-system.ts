@@ -305,6 +305,7 @@ async function recordSignalCooldown(target: string): Promise<void> {
 }
 
 async function postDiscordStreamHubSignal(input: {
+  tenantId: string;
   guildId: string;
   channelId: string;
   requesterName: string;
@@ -316,18 +317,19 @@ async function postDiscordStreamHubSignal(input: {
   const base = getDiscordStreamHubUrl();
   const secret = String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();
   if (!secret) throw new Error('DSH service secret is not configured');
-  const response = await fetch(`${base}/api/discord/manual-shoutout`, {
+  const response = await fetch(`${base}/api/internal/signal/transmit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
     body: JSON.stringify({
-      serverId: input.guildId,
+      tenantId: input.tenantId,
+      guildId: input.guildId,
       channelId: input.channelId,
       requesterName: input.requesterName,
       requesterDiscordId: input.requesterDiscordId,
       targetName: input.targetName,
       sourceMessageId: input.sourceMessageId,
-      kind: 'signal',
       signalText: input.signalText,
+      signalBadgeUrl: resolveSignalEmbedBadgeUrl(),
     }),
     cache: 'no-store',
   });
@@ -471,9 +473,11 @@ export async function handleTwitchSignalCommand(input: {
   const targetName = input.broadcaster.replace(/^#/, '').trim().toLowerCase();
   if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };
 
-  const { guildId, channelId } = await resolveDiscordStreamHubSignalDestination(input.tenantId || SIGNAL_TWITCH_TENANT_ID);
+  const tenantId = input.tenantId || SIGNAL_TWITCH_TENANT_ID;
+  const { guildId, channelId } = await resolveDiscordStreamHubSignalDestination(tenantId);
 
   const posted = await postDiscordStreamHubSignal({
+    tenantId,
     guildId,
     channelId,
     requesterName: input.username,
