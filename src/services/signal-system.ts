@@ -310,6 +310,7 @@ async function postDiscordStreamHubSignal(input: {
   channelId: string;
   requesterName: string;
   requesterDiscordId?: string;
+  requesterTwitchUserId?: string;
   targetName: string;
   sourceMessageId?: string;
   signalText: string;
@@ -326,6 +327,7 @@ async function postDiscordStreamHubSignal(input: {
       channelId: input.channelId,
       requesterName: input.requesterName,
       requesterDiscordId: input.requesterDiscordId,
+      requesterTwitchUserId: input.requesterTwitchUserId,
       targetName: input.targetName,
       sourceMessageId: input.sourceMessageId,
       signalText: input.signalText,
@@ -481,6 +483,7 @@ export async function handleTwitchSignalCommand(input: {
     guildId,
     channelId,
     requesterName: input.username,
+    requesterTwitchUserId: input.providerUserId,
     targetName,
     signalText,
   });
