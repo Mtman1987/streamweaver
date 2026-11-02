@@ -335,11 +335,13 @@ async function postDiscordStreamHubSignal(input: {
   return response.json().catch(() => ({}));
 }
 
-async function resolveDiscordStreamHubSignalDestination(): Promise<{ guildId: string; channelId: string }> {
+async function resolveDiscordStreamHubSignalDestination(tenantId: string): Promise<{ guildId: string; channelId: string }> {
   const base = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || 'https://discord-stream-hub-new.fly.dev').replace(/\/$/, '');
   const secret = String(process.env.DSH_SERVICE_SECRET || process.env.DSH_CLIENT_SECRET || process.env.BOT_SECRET_KEY || '').trim();
   if (!secret) throw new Error('DSH service secret is not configured');
-  const response = await fetch(`${base}/api/internal/signal/channel`, {
+  const destinationUrl = new URL(`${base}/api/internal/signal/channel`);
+  destinationUrl.searchParams.set('tenantId', tenantId);
+  const response = await fetch(destinationUrl, {
     headers: { Authorization: `Bearer ${secret}` },
     cache: 'no-store',
     signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
@@ -469,7 +471,7 @@ export async function handleTwitchSignalCommand(input: {
   const targetName = input.broadcaster.replace(/^#/, '').trim().toLowerCase();
   if (!(await signalCooldownAvailable(targetName))) return { handled: true, ok: false, message: `@${input.username}, this carrier has already accepted a Signal today.` };
 
-  const { guildId, channelId } = await resolveDiscordStreamHubSignalDestination();
+  const { guildId, channelId } = await resolveDiscordStreamHubSignalDestination(input.tenantId || SIGNAL_TWITCH_TENANT_ID);
 
   const posted = await postDiscordStreamHubSignal({
     guildId,
