@@ -93,7 +93,7 @@ export type DiscordStreamHubCheckinMember = {
 let cachedDefaultGuildId: string | null = null;
 const checkinMemberCache = new Map<string, { members: DiscordStreamHubCheckinMember[]; expiresAt: number }>();
 
-function getDiscordStreamHubUrl(): string {
+export function getDiscordStreamHubUrl(): string {
   const configured = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || '').trim();
   if (!configured) throw new Error('DISCORD_STREAM_HUB_URL must point to the Apollo Discord Stream Hub service');
   const url = new URL(configured);
