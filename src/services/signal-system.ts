@@ -431,6 +431,7 @@ export async function handleTwitchSignalCommand(input: {
   const signalText = input.rawMessage.replace(/^!signal\b/i, '').trim();
   if (!signalText) {
     const seeker = await toggleDiscordStreamHubSignalSeeker({
+      tenantId: input.tenantId || SIGNAL_TWITCH_TENANT_ID,
       twitchUserId: input.providerUserId,
       twitchUsername: input.username,
       action: 'toggle',
