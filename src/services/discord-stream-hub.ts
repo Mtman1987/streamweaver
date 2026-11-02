@@ -220,6 +220,7 @@ export async function getDiscordStreamHubDefaultGuildId(): Promise<string> {
 }
 
 export async function postDiscordStreamHubSignalDrop(input: {
+  tenantId: string;
   guildId: string;
   channelId: string;
   channelName: string;
