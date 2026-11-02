@@ -94,11 +94,13 @@ let cachedDefaultGuildId: string | null = null;
 const checkinMemberCache = new Map<string, { members: DiscordStreamHubCheckinMember[]; expiresAt: number }>();
 
 function getDiscordStreamHubUrl(): string {
-  return (
-    process.env.DISCORD_STREAM_HUB_URL ||
-    process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL ||
-    'https://discord-stream-hub-new.fly.dev'
-  ).replace(/\/$/, '');
+  const configured = String(process.env.DISCORD_STREAM_HUB_URL || process.env.NEXT_PUBLIC_DISCORD_STREAM_HUB_URL || '').trim();
+  if (!configured) throw new Error('DISCORD_STREAM_HUB_URL must point to the Apollo Discord Stream Hub service');
+  const url = new URL(configured);
+  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) || url.username || url.password || url.search || url.hash) {
+    throw new Error('DISCORD_STREAM_HUB_URL must be a credential-free HTTPS Apollo service URL');
+  }
+  return url.toString().replace(/\/$/, '');
 }
 
 function getDiscordStreamHubSecret(): string {
